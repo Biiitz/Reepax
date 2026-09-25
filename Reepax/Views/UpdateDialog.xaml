@@ -34,7 +34,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Version Transition Row (e.g. 26.9.1 -> 26.9.2) -->
+                <!-- Version Transition Row -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
                     <!-- Current Version Chip -->
                     <Border Background="{DynamicResource BgDarkBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Padding="8,4">

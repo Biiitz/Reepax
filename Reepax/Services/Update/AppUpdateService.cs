@@ -36,11 +36,7 @@ public class AppUpdateService
         _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.Html);
     }
 
-    /// <summary>
-    /// Parses an application release version string into components: Year, Month, Release, Patch.
-    /// Supports the primary YY.M.Release format (e.g. "26.9.1", "26.9.2", "26.10.1")
-    /// as well as legacy date formats ("24.9.26", "9.926", "2026.09.10").
-    /// </summary>
+    /// Parses an application release version string into components: Year, Month, Patch.
     public static bool TryParseAppVersion(string? input, out int year, out int month, out int release, out int patch)
     {
         year = 0;
@@ -77,7 +73,7 @@ public class AppUpdateService
             }
         }
 
-        // Pattern 2: Primary Scheme YY.M.Release[.Patch] or YYYY.M.Release[.Patch] (e.g. 26.9.1, 26.9.2, 26.10.1, 2026.9.1)
+        // Pattern 2: Primary Scheme YY.M.Release[.Patch] or YYYY.M.Release[.Patch]
         var mDot = Regex.Match(cleaned, @"^(\d{1,4})\.(\d{1,2})\.(\d{1,4})(?:\.(\d+))?$");
         if (mDot.Success)
         {

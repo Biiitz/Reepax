@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-file -->
 <p align="center">
   <a href="https://github.com/Biiitz/Reepax/actions/workflows/release.yml">
     <img src="https://github.com/Biiitz/Reepax/actions/workflows/release.yml/badge.svg" alt="Build & Release Reepax">
