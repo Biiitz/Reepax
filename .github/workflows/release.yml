@@ -27,7 +27,38 @@ jobs:
       - name: Run Test Suite
         shell: powershell
         run: |
-          dotnet test Reepax.slnx -c Release --verbosity minimal
+          dotnet test Reepax.slnx -c Release --verbosity minimal --logger "trx;LogFileName=test_results.trx"
+
+      - name: Update Test Count in README
+        shell: powershell
+        run: |
+          $trxFile = Get-ChildItem -Recurse -Filter "test_results.trx" | Select-Object -First 1
+          if ($trxFile) {
+              [xml]$trx = Get-Content $trxFile.FullName
+              $total = $trx.TestRun.ResultSummary.Counters.total
+              Write-Host "Total tests found in test run: $total"
+              if ($total) {
+                  $readme = Get-Content README.md -Raw -Encoding UTF8
+                  $readme = $readme -replace 'badge/Tests-\d+%20Passing', "badge/Tests-${total}%20Passing"
+                  $readme = $readme -replace 'alt="\d+ Passing Tests"', "alt=`"${total} Passing Tests`""
+                  $readme = $readme -replace '\*\*\d+ automated xUnit unit and integration tests\*\*', "**${total} automated xUnit unit and integration tests**"
+                  [System.IO.File]::WriteAllText("README.md", $readme, [System.Text.UTF8Encoding]::new($false))
+
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git add README.md
+                  $diff = git diff --staged
+                  if ($diff) {
+                      git commit -m "docs: update test count to $total in README [skip ci]"
+                      $targetBranch = "${{ github.event.repository.default_branch }}"
+                      if (-not $targetBranch) { $targetBranch = "main" }
+                      git push origin "HEAD:$targetBranch"
+                      Write-Host "Successfully pushed updated test count ($total) to $targetBranch branch."
+                  } else {
+                      Write-Host "README is already up to date with $total tests."
+                  }
+              }
+          }
 
       - name: Publish Self-Contained Application
         shell: powershell

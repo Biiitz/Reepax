@@ -10,7 +10,7 @@
   <a href="https://dotnet.microsoft.com/download/dotnet/8.0"><img src="https://img.shields.io/badge/.NET-8.0_WPF-512BD4?style=for-the-badge&logo=dotnet&logoColor=white" alt=".NET 8 WPF" /></a>
   <a href="https://learn.microsoft.com/en-us/dotnet/csharp/"><img src="https://img.shields.io/badge/C%23-12.0-239120?style=for-the-badge&logo=csharp&logoColor=white" alt="C# 12" /></a>
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/Platform-Windows_10%20%2F%2011-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" /></a>
-  <a href="#testing--quality-assurance"><img src="https://img.shields.io/badge/Tests-631%20Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white" alt="631 Passing Tests" /></a>
+  <a href="#testing--quality-assurance"><img src="https://img.shields.io/badge/Tests-640%20Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white" alt="640 Passing Tests" /></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge" alt="Reepax License" /></a>
 </p>
 
@@ -187,14 +187,13 @@ Reepax queries physical drive geometry via the Windows storage control layer (`I
 
 ## Testing & Quality Assurance
 
-Reepax is backed by a robust suite of **631 automated xUnit unit and integration tests** ensuring stability across all core subsystems:
+Reepax is backed by a robust suite of **640 automated xUnit unit and integration tests** ensuring stability across all core subsystems:
 
 ```bash
 # Clone the repository
 git clone https://github.com/Biiitz/Reepax.git
 cd Reepax
 
-# Run all 631 unit and integration tests
 dotnet test Reepax.slnx
 ```
 

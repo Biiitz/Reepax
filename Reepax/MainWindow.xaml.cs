@@ -28,6 +28,64 @@ public partial class MainWindow : Window
         InitializeComponent();
         Title = ViewModel.WindowTitle;
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
+
+        // Browser-style navigation
+        CommandBindings.Add(new CommandBinding(NavigationCommands.BrowseBack, (s, e) =>
+        {
+            if (ViewModel.CanGoBack)
+            {
+                ViewModel.GoBackCommand.Execute(null);
+                e.Handled = true;
+            }
+        }, (s, e) =>
+        {
+            e.CanExecute = ViewModel.CanGoBack;
+            e.Handled = true;
+        }));
+
+        CommandBindings.Add(new CommandBinding(NavigationCommands.BrowseForward, (s, e) =>
+        {
+            if (ViewModel.CanGoForward)
+            {
+                ViewModel.GoForwardCommand.Execute(null);
+                e.Handled = true;
+            }
+        }, (s, e) =>
+        {
+            e.CanExecute = ViewModel.CanGoForward;
+            e.Handled = true;
+        }));
+    }
+
+    protected override void OnPreviewMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnPreviewMouseDown(e);
+
+        if (e.ChangedButton == MouseButton.XButton1)
+        {
+            if (ViewModel.CanGoBack)
+            {
+                ViewModel.GoBackCommand.Execute(null);
+            }
+            e.Handled = true;
+        }
+        else if (e.ChangedButton == MouseButton.XButton2)
+        {
+            if (ViewModel.CanGoForward)
+            {
+                ViewModel.GoForwardCommand.Execute(null);
+            }
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnPreviewMouseUp(MouseButtonEventArgs e)
+    {
+        base.OnPreviewMouseUp(e);
+        if (e.ChangedButton is MouseButton.XButton1 or MouseButton.XButton2)
+        {
+            e.Handled = true;
+        }
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -1233,6 +1291,30 @@ public partial class MainWindow : Window
 
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var modifiers = Keyboard.Modifiers;
+
+        // Browser-style back/forward navigation shortcuts
+        if ((key == Key.Back && modifiers == ModifierKeys.None) ||
+            (key == Key.Left && modifiers == ModifierKeys.Alt) ||
+            key == Key.BrowserBack)
+        {
+            if (ViewModel.CanGoBack)
+            {
+                ViewModel.GoBackCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+        }
+        else if ((key == Key.Right && modifiers == ModifierKeys.Alt) ||
+                 key == Key.BrowserForward)
+        {
+            if (ViewModel.CanGoForward)
+            {
+                ViewModel.GoForwardCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+        }
+
         bool isDownloadsTab = ViewModel.SelectedMainTab == AppMainTab.Downloads;
 
         // 3. Match against dynamic keyboard shortcuts

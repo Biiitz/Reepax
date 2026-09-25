@@ -17,6 +17,7 @@ using Reepax.Services;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
+using Reepax.Services.Navigation;
 using Reepax.Services.Shortcuts;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -49,6 +50,16 @@ public partial class MainViewModel : ObservableObject
     private bool _lastCommandStateQueueRunning = false;
     private int _lastCommandStatePackageCount = -1;
     private bool _isGraphZeroSettled = false;
+    private readonly NavigationHistoryManager _navManager = new();
+    private bool _isApplyingNavigation = false;
+
+    public NavigationHistoryManager NavigationHistory => _navManager;
+
+    [ObservableProperty]
+    private bool _canGoBack;
+
+    [ObservableProperty]
+    private bool _canGoForward;
 
     public ObservableCollection<DownloadPackage> Packages => _queueManager.Packages;
     public ObservableCollection<DownloadPackage> RootPackages { get; } = new();
@@ -71,10 +82,68 @@ public partial class MainViewModel : ObservableObject
         StartAllCommand.NotifyCanExecuteChanged();
         PauseAllCommand.NotifyCanExecuteChanged();
         ClearCompletedCommand.NotifyCanExecuteChanged();
+
+        if (!_isApplyingNavigation)
+        {
+            _navManager.Record(new NavigationState(value, SelectedSettingsCategory));
+            UpdateNavigationProperties();
+        }
     }
 
     [ObservableProperty]
     private SettingsCategory _selectedSettingsCategory = SettingsCategory.General;
+
+    partial void OnSelectedSettingsCategoryChanged(SettingsCategory value)
+    {
+        if (!_isApplyingNavigation && SelectedMainTab == AppMainTab.Settings)
+        {
+            _navManager.Record(new NavigationState(SelectedMainTab, value));
+            UpdateNavigationProperties();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoBack))]
+    public void GoBack()
+    {
+        var state = _navManager.GoBack();
+        if (state != null)
+        {
+            ApplyNavigationState(state);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoForward))]
+    public void GoForward()
+    {
+        var state = _navManager.GoForward();
+        if (state != null)
+        {
+            ApplyNavigationState(state);
+        }
+    }
+
+    private void ApplyNavigationState(NavigationState state)
+    {
+        _isApplyingNavigation = true;
+        try
+        {
+            SelectedSettingsCategory = state.SettingsCategory;
+            SelectedMainTab = state.Tab;
+        }
+        finally
+        {
+            _isApplyingNavigation = false;
+            UpdateNavigationProperties();
+        }
+    }
+
+    private void UpdateNavigationProperties()
+    {
+        CanGoBack = _navManager.CanGoBack;
+        CanGoForward = _navManager.CanGoForward;
+        GoBackCommand.NotifyCanExecuteChanged();
+        GoForwardCommand.NotifyCanExecuteChanged();
+    }
 
     public static readonly string[] PresetAccentColors = new[]
     {
@@ -1257,6 +1326,9 @@ public partial class MainViewModel : ObservableObject
             _updateTimer.Tick += (s, e) => _ = CheckForUpdatesInBackgroundAsync();
             _updateTimer.Start();
         }
+
+        _navManager.Record(new NavigationState(SelectedMainTab, SelectedSettingsCategory));
+        UpdateNavigationProperties();
     }
 
     [RelayCommand]
