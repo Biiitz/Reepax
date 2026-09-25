@@ -1,4 +1,10 @@
 <p align="center">
+  <a href="https://github.com/Biiitz/Reepax/actions/workflows/release.yml">
+    <img src="https://github.com/Biiitz/Reepax/actions/workflows/release.yml/badge.svg" alt="Build & Release Reepax">
+  </a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Release-v26.9.1-blue?style=for-the-badge&logo=github" alt="Release v26.9.1" />
   <a href="https://dotnet.microsoft.com/download/dotnet/8.0"><img src="https://img.shields.io/badge/.NET-8.0_WPF-512BD4?style=for-the-badge&logo=dotnet&logoColor=white" alt=".NET 8 WPF" /></a>
   <a href="https://learn.microsoft.com/en-us/dotnet/csharp/"><img src="https://img.shields.io/badge/C%23-12.0-239120?style=for-the-badge&logo=csharp&logoColor=white" alt="C# 12" /></a>
