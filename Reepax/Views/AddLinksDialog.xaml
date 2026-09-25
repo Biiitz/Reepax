@@ -115,7 +115,7 @@
                                   ToolTip="{loc:Loc AddLinks_Option_LowResource_ToolTip}" />
 
                         <!-- Simple 'Recommended' text in bright blue -->
-                        <TextBlock x:Name="RecommendedText" Text="{loc:Loc Common_Recommended}" 
+                        <TextBlock x:Name="RecommendedText" Text="{loc:Loc Common_Recommended_Parentheses}" 
                                    FontSize="11" FontWeight="SemiBold" 
                                    Foreground="#3B82F6" 
                                    VerticalAlignment="Center" Margin="5,0,0,0" 

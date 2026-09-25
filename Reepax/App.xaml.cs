@@ -5,6 +5,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using Reepax.Converters;
 using Reepax.Services;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 
@@ -34,8 +35,19 @@ public partial class App : Application
         DispatcherUnhandledException += (s, e) =>
         {
             LogCrash("DispatcherUnhandledException", e.Exception);
-            MessageBox.Show($"Ein unerwarteter Fehler ist aufgetreten:\n\n{e.Exception.Message}\n\nDetails wurden in crash.log gespeichert.",
-                "Reepax Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+            string title;
+            string message;
+            try
+            {
+                title = Loc.Get("Crash_UnexpectedErrorTitle");
+                message = Loc.Format("Crash_UnexpectedErrorMessage", e.Exception.Message);
+            }
+            catch
+            {
+                title = "Reepax Error";
+                message = $"An unexpected error occurred:\n\n{e.Exception.Message}\n\nDetails were saved to crash.log.";
+            }
+            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
             e.Handled = true;
         };
 
@@ -44,8 +56,19 @@ public partial class App : Application
             if (e.ExceptionObject is Exception ex)
             {
                 LogCrash("AppDomain.UnhandledException", ex);
-                MessageBox.Show($"Kritischer Anwendungsfehler:\n\n{ex.Message}\n\nDetails wurden in crash.log gespeichert.",
-                    "Reepax Kritischer Fehler", MessageBoxButton.OK, MessageBoxImage.Error);
+                string title;
+                string message;
+                try
+                {
+                    title = Loc.Get("Crash_CriticalErrorTitle");
+                    message = Loc.Format("Crash_CriticalErrorMessage", ex.Message);
+                }
+                catch
+                {
+                    title = "Reepax Critical Error";
+                    message = $"Critical application error:\n\n{ex.Message}\n\nDetails were saved to crash.log.";
+                }
+                MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
             }
         };
 

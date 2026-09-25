@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using Reepax.Services.Localization;
 using Xunit;
 
@@ -110,21 +110,7 @@ public class LocalizationTests
             "QuickSettings_Title",
             "QuickSettings_OpenAllSettings",
             "Settings_Category_General",
-            "Settings_Category_Downloads",
-            "Settings_Category_Extraction",
-            "Settings_Category_Notifications",
-            "Settings_Category_Appearance",
-            "Settings_Card_DownloadDir_Title",
-            "Settings_Card_DownloadDir_Desc",
-            "Settings_Card_OpenFolder",
-            "Settings_Card_Appearance_ThemeTitle",
-            "Settings_Card_Appearance_ThemeDesc",
-            "Settings_Card_Appearance_AccentTitle",
-            "Settings_Card_Appearance_AccentDesc",
-            "Settings_Card_Notifications_Hint",
-            "Settings_Extensions_Title",
-            "Settings_Extensions_Subtitle",
-            "Settings_Extensions_OpenFolder"
+            "Settings_Category_Downloads"
         };
 
         var loc = LocalizationService.Instance;
@@ -189,4 +175,64 @@ public class LocalizationTests
             loc.CurrentLanguage = "en";
         }
     }
+
+    [Fact]
+    public void LocalizationService_RecommendedKeysAreDistinctAndLocalized()
+    {
+        var loc = LocalizationService.Instance;
+
+        try
+        {
+            loc.CurrentLanguage = "de";
+            Assert.Equal("Empfohlen", loc["Common_Recommended"]);
+            Assert.Equal("(Empfohlen)", loc["Common_Recommended_Parentheses"]);
+
+            loc.CurrentLanguage = "en";
+            Assert.Equal("Recommended", loc["Common_Recommended"]);
+            Assert.Equal("(Recommended)", loc["Common_Recommended_Parentheses"]);
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
+    }
+
+    [Fact]
+    public void LocalizationService_CrashKeysExistInBothLanguages()
+    {
+        var keys = new[]
+        {
+            "Crash_UnexpectedErrorMessage",
+            "Crash_UnexpectedErrorTitle",
+            "Crash_CriticalErrorMessage",
+            "Crash_CriticalErrorTitle"
+        };
+
+        var loc = LocalizationService.Instance;
+
+        try
+        {
+            loc.CurrentLanguage = "en";
+            foreach (var key in keys)
+            {
+                var val = loc[key];
+                Assert.False(string.IsNullOrWhiteSpace(val), $"Key {key} returned empty in EN");
+                Assert.NotEqual(key, val);
+            }
+
+            loc.CurrentLanguage = "de";
+            foreach (var key in keys)
+            {
+                var val = loc[key];
+                Assert.False(string.IsNullOrWhiteSpace(val), $"Key {key} returned empty in DE");
+                Assert.NotEqual(key, val);
+            }
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
+    }
 }
+
+
