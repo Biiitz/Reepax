@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Reepax.Tests/Reepax.Tests.csproj" />
+  <Project Path="Reepax/Reepax.csproj" />
+</Solution>

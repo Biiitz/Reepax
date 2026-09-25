@@ -1,0 +1,76 @@
+## =========================================================================
+## .gitignore for Reepax (C# .NET 8 WPF)
+## =========================================================================
+
+# Build Results & Binaries
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.baml
+*.g.cs
+*.g.i.cs
+*_wpftmp.csproj
+
+# Visual Studio & IDE files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.dbmdl
+*.jsproj.user
+
+# NuGet Packages & Cache
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.assets.json
+
+# Test Results & Profiler Output
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.visualstate
+*.trx
+*.coverage
+*.coveragexml
+
+# Temporary & Cache Files
+*.tmp
+*.temp
+*.log
+*.cache
+*.pid
+*.swp
+*.bak
+*~
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+
+# Runtime Data & Local Persistence
+downloads.json
+settings.json
+storage_type_cache.json
+Downloads/
+
+# Scratch & OS Files
+scratch/
+.tempmediaStorage/
+
+# Installer & Publish Artifacts
+publish/
+dist/
+installer_output/
+*.exe
+!Reepax/runtimes/**/par2.exe
+
+# Rust Build Artifacts
+target/
+native/**/target/
+

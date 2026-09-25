@@ -1,0 +1,82 @@
+<Application x:Class="Reepax.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Reepax"
+             xmlns:converters="clr-namespace:Reepax.Converters"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/VectorIcons.xaml" />
+                <ResourceDictionary Source="Themes/DarkTheme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <converters:BytesToHumanReadableConverter x:Key="BytesConverter" />
+            <converters:SpeedToHumanReadableConverter x:Key="SpeedConverter" />
+            <converters:SecondsToEtaConverter x:Key="EtaConverter" />
+            <converters:StatusToBrushConverter x:Key="StatusBrushConverter" />
+            <converters:FileExtensionIconConverter x:Key="FileIconConverter" />
+            <converters:PackageIconConverter x:Key="PackageIconConverter" />
+            <converters:HosterImageConverter x:Key="HosterImageConverter" />
+            <converters:DoubleToGridLengthConverter x:Key="GridLengthConverter" />
+            <converters:StatusToPlayPauseGeometryConverter x:Key="PlayPauseGeometryConverter" />
+            <converters:StatusToPlayPauseTooltipConverter x:Key="PlayPauseTooltipConverter" />
+            <converters:ItemActionMenuHeaderConverter x:Key="ItemActionMenuHeaderConverter" />
+            <converters:ItemActionMenuGeometryConverter x:Key="ItemActionMenuGeometryConverter" />
+            <converters:EqualsToVisibilityConverter x:Key="EqualsToVisConverter" />
+            <converters:EqualsToBrushConverter x:Key="EqualsToBrushConverter" />
+            <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
+            <converters:BoolToActiveTextConverter x:Key="BoolToActiveTextConverter" />
+            <converters:BoolToActiveBackgroundConverter x:Key="BoolToActiveBackgroundConverter" />
+            <converters:BoolToActiveBorderConverter x:Key="BoolToActiveBorderConverter" />
+            <converters:BoolToActiveForegroundConverter x:Key="BoolToActiveForegroundConverter" />
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisConverter" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <converters:SpeedLimitDisplayConverter x:Key="SpeedLimitDisplayConverter" />
+            <converters:IntToBoolConverter x:Key="IntToBoolConverter" />
+            <converters:CountToVisibilityConverter x:Key="CountToVisConverter" />
+            <converters:HexToBrushConverter x:Key="HexToBrushConverter" />
+            <converters:BoolToRightBorderThicknessConverter x:Key="BoolToRightBorderThicknessConverter" />
+            <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+
+            <!-- Dedicated compact button style for TreeListView row actions -->
+            <Style x:Key="RowActionButtonStyle" TargetType="{x:Type Button}">
+                <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Width" Value="18" />
+                <Setter Property="Height" Value="18" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type Button}">
+                            <Border x:Name="border"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="0">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.8" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="border" Property="Opacity" Value="0.3" />
+                                    <Setter Property="Cursor" Value="Arrow" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

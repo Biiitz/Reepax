@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <AssemblyName>Reepax</AssemblyName>
+    <RootNamespace>Reepax</RootNamespace>
+    <Version>26.9.1</Version>
+    <AssemblyVersion>26.9.1.0</AssemblyVersion>
+    <FileVersion>26.9.1.0</FileVersion>
+    <Product>Reepax</Product>
+    <Company>Biiitz</Company>
+    <Authors>Biiitz</Authors>
+    <Description>High-performance modern download manager with dynamic chunking, real-time rate limiting, and automated multi-archive extraction</Description>
+    <Copyright>Copyright © 2026 Biiitz</Copyright>
+    <RepositoryUrl>https://github.com/Biiitz/Reepax</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Biiitz/Reepax</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Content Include="Assets\app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Resource Include="Assets\app.png" />
+    <Content Include="Assets\app.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Resource Include="Assets\R.png" />
+    <Content Include="Assets\R.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="reepax_adblock.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtimes\win-x64\native\reepax_adblock.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>runtimes\win-x64\native\reepax_adblock.dll</Link>
+    </None>
+    <None Include="runtimes\win-x64\native\par2.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>runtimes\win-x64\native\par2.exe</Link>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+    <PackageReference Include="SharpCompress" Version="0.50.4" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
+  </ItemGroup>
+
+</Project>

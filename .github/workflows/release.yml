@@ -1,0 +1,120 @@
+name: Build & Release Reepax
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Installer & Portable Archive
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run Test Suite
+        shell: powershell
+        run: |
+          dotnet test Reepax.slnx -c Release --verbosity minimal
+
+      - name: Publish Self-Contained Application
+        shell: powershell
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          if (-not $tag) { $tag = "${{ github.ref_name }}" }
+          $version = $tag.TrimStart('v', 'V')
+          if (-not $version -or $version -match '^main$|^master$') {
+              [xml]$xml = Get-Content Reepax\Reepax.csproj
+              $version = $xml.Project.PropertyGroup.Version
+              if (-not $version) { $version = "26.9.1" }
+          }
+          Write-Host "Publishing Reepax with Version: $version"
+          New-Item -ItemType Directory -Force -Path dist\Reepax | Out-Null
+          dotnet publish Reepax\Reepax.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:AssemblyVersion="$version.0" -p:FileVersion="$version.0" -o dist\Reepax
+
+      - name: Create Portable Archive (portable.zip)
+        shell: powershell
+        run: |
+          Compress-Archive -Path "dist\Reepax\*" -DestinationPath "dist\portable.zip" -CompressionLevel Optimal
+          Get-Item "dist\portable.zip" | Select-Object Name, Length
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: |
+          choco install innosetup -y --no-progress
+
+      - name: Build Setup Installer (setup.exe)
+        shell: powershell
+        run: |
+          $isccCandidates = @(
+              "iscc.exe",
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "C:\Program Files\Inno Setup 6\ISCC.exe",
+              "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+              "C:\ProgramData\chocolatey\bin\iscc.exe"
+          )
+          $iscc = $null
+          foreach ($cand in $isccCandidates) {
+              if (Get-Command $cand -ErrorAction SilentlyContinue) {
+                  $iscc = $cand
+                  break
+              } elseif (Test-Path $cand) {
+                  $iscc = $cand
+                  break
+              }
+          }
+
+          if ($iscc) {
+              $tag = "${{ github.event.release.tag_name }}"
+              if (-not $tag) { $tag = "${{ github.ref_name }}" }
+              $version = $tag.TrimStart('v', 'V')
+              if (-not $version -or $version -match '^main$|^master$') {
+                  [xml]$xml = Get-Content Reepax\Reepax.csproj
+                  $version = $xml.Project.PropertyGroup.Version
+                  if (-not $version) { $version = "26.9.1" }
+              }
+              Write-Host "Compiling setup.exe with $iscc for Version: $version..."
+              & $iscc "/DMyAppVersion=$version" installer\Reepax.iss
+              if (Test-Path dist\Reepax-Setup.exe) {
+                  Copy-Item dist\Reepax-Setup.exe dist\setup.exe -Force
+              }
+              if (Test-Path dist\setup.exe) {
+                  Get-Item "dist\setup.exe" | Select-Object Name, Length
+              } else {
+                  Write-Error "dist\setup.exe was not created!"
+                  exit 1
+              }
+          } else {
+              Write-Error "Inno Setup Compiler (ISCC.exe) not found!"
+              exit 1
+          }
+
+      - name: Upload Artifacts to Workflow Run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reepax-Release-Files
+          path: |
+            dist/portable.zip
+            dist/setup.exe
+
+      - name: Attach Assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'release'
+        with:
+          files: |
+            dist/portable.zip
+            dist/setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

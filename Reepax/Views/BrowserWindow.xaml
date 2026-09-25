@@ -1,0 +1,158 @@
+<Window x:Class="Reepax.Views.BrowserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Reepax.Converters"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="{loc:Loc Browser_Title}"
+        Icon="pack://application:,,,/Reepax;component/Assets/app.ico"
+        Width="1100" Height="760"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgDarkBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: Hoster/URL + Aktionen -->
+        <Border Grid.Row="0" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="10,6">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="2,0,10,0">
+                    <Path Data="{StaticResource IconBrowser}" Fill="{DynamicResource TextSecondaryBrush}" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock x:Name="HosterText" Text="{loc:Loc Browser_Hoster}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="1" x:Name="UrlText" Text="" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Text, ElementName=UrlText}" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+
+                    <!-- Extension icons (populated via code-behind) -->
+                    <StackPanel x:Name="ExtensionsPanel" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0" />
+
+                    <!-- Reepax AdBlock Shield Button with Corner Badge -->
+                    <Grid VerticalAlignment="Center" Margin="0,0,6,0">
+                        <Button x:Name="ShieldButton"
+                                Click="ShieldButton_Click"
+                                ToolTip="{loc:Loc Browser_Shield_ToolTip}"
+                                Style="{DynamicResource ModernButtonStyle}"
+                                Padding="5,3"
+                                VerticalAlignment="Center">
+                            <Grid>
+                                <!-- Shield Vector Icon -->
+                                <Path x:Name="ShieldIcon"
+                                      Data="{StaticResource IconShield}"
+                                      Fill="{DynamicResource AccentBlueBrush}"
+                                      Width="14" Height="14"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center"
+                                      HorizontalAlignment="Center" />
+
+                                <!-- Corner Badge Counter -->
+                                <Border x:Name="ShieldBadge"
+                                        Background="#E53935"
+                                        CornerRadius="0"
+                                        Padding="3,0"
+                                        Height="12"
+                                        MinWidth="12"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Top"
+                                        Margin="4,-4,-8,0"
+                                        Visibility="Collapsed">
+                                    <TextBlock x:Name="ShieldBadgeText"
+                                               Text="0"
+                                               FontSize="8"
+                                               FontWeight="Bold"
+                                               Foreground="White"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </Button>
+
+                        <!-- Shield Popup Flyout -->
+                        <Popup x:Name="ShieldPopup"
+                               PlacementTarget="{Binding ElementName=ShieldButton}"
+                               Placement="Bottom"
+                               VerticalOffset="10"
+                               StaysOpen="False"
+                               AllowsTransparency="True">
+                            <Border Background="{DynamicResource BgCardBrush}"
+                                    BorderBrush="{DynamicResource BorderDarkBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="0"
+                                    Width="240"
+                                    Margin="0,5,0,0"
+                                    Padding="12,10">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Color="Black" Opacity="0.4" />
+                                </Border.Effect>
+                                <StackPanel>
+                                    <!-- Blocked Stats Box -->
+                                    <Border Background="{DynamicResource BgInputBrush}"
+                                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="0"
+                                            Padding="10,8"
+                                            Margin="0,0,0,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="ShieldCountLarge"
+                                                       Text="0"
+                                                       FontSize="22"
+                                                       FontWeight="Bold"
+                                                       Foreground="{DynamicResource AccentBlueBrush}"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,10,0" />
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock x:Name="ShieldHostText"
+                                                           Text="–"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,0,0,2" />
+                                                <TextBlock Text="{loc:Loc Browser_Shield_BlockedShort}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Update Lists Button -->
+                                    <Button x:Name="UpdateListsButton"
+                                            Content="{loc:Loc Browser_Shield_UpdateLists}"
+                                            Click="UpdateLists_Click"
+                                            Style="{DynamicResource ModernButtonStyle}"
+                                            HorizontalAlignment="Stretch"
+                                            Padding="6,5"
+                                            FontSize="10.5" />
+                                </StackPanel>
+                            </Border>
+                        </Popup>
+                    </Grid>
+
+                    <Button Content="{loc:Loc Browser_Button_Reload}" Click="Reload_Click" Style="{DynamicResource ModernButtonStyle}" Padding="8,3" FontSize="11" Margin="0,0,6,0" />
+                    <Button Content="{loc:Loc Browser_Button_Close}" Click="Close_Click" Style="{DynamicResource ModernButtonStyle}" Padding="8,3" FontSize="11"
+                            ToolTip="{loc:Loc Browser_Button_Close_ToolTip}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- WebView2 Browser -->
+        <wv2:WebView2 Grid.Row="1" x:Name="WebView" />
+    </Grid>
+</Window>
