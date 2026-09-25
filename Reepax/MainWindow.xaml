@@ -881,10 +881,10 @@
                                                          From="1.0" To="0.0" BeginTime="0:0:1.8" Duration="0:0:0.6" />
                                     </Storyboard>
                                 </DataTemplate.Resources>
-                                <StackPanel Margin="0,1,0,1">
+                                <StackPanel Margin="0">
                                     <!-- ================= PACKAGE ROW (PARENT) ================= -->
-                                    <Border Margin="0,1"
-                                            Padding="0,4"
+                                    <Border Margin="0,0.5"
+                                            Padding="0,1.5"
                                             CornerRadius="0"
                                             Focusable="True"
                                             FocusVisualStyle="{x:Null}"
@@ -1521,11 +1521,11 @@
                                                         </DoubleAnimation>
                                                     </Storyboard>
                                                 </DataTemplate.Resources>
-                                                <StackPanel Margin="0,1,0,1">
+                                                <StackPanel Margin="0">
                                                     <!-- ================= CLIPPED PACKAGE ROW ================= -->
                                                     <Border x:Name="ClippedPackageBorder"
-                                                            Margin="0,1"
-                                                            Padding="0,4"
+                                                            Margin="0,0.5"
+                                                            Padding="0,1.5"
                                                             CornerRadius="0"
                                                             Focusable="True"
                                                             FocusVisualStyle="{x:Null}"
