@@ -1,5 +1,5 @@
 #define MyAppName "Reepax"
-#define MyAppVersion "26.9.1"
+#define MyAppVersion "26.9.2"
 #define MyAppPublisher "Biiitz"
 #define MyAppURL "https://github.com/Biiitz/Reepax"
 #define MyAppExeName "Reepax.exe"

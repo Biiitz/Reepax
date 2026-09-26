@@ -9,9 +9,9 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>Reepax</AssemblyName>
     <RootNamespace>Reepax</RootNamespace>
-    <Version>26.9.1</Version>
-    <AssemblyVersion>26.9.1.0</AssemblyVersion>
-    <FileVersion>26.9.1.0</FileVersion>
+    <Version>26.9.2</Version>
+    <AssemblyVersion>26.9.2.0</AssemblyVersion>
+    <FileVersion>26.9.2.0</FileVersion>
     <Product>Reepax</Product>
     <Company>Biiitz</Company>
     <Authors>Biiitz</Authors>
