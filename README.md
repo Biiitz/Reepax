@@ -6,15 +6,6 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v26.9.1-blue?style=for-the-badge&logo=github" alt="Release v26.9.1" />
-  <a href="https://dotnet.microsoft.com/download/dotnet/8.0"><img src="https://img.shields.io/badge/.NET-8.0_WPF-512BD4?style=for-the-badge&logo=dotnet&logoColor=white" alt=".NET 8 WPF" /></a>
-  <a href="https://learn.microsoft.com/en-us/dotnet/csharp/"><img src="https://img.shields.io/badge/C%23-12.0-239120?style=for-the-badge&logo=csharp&logoColor=white" alt="C# 12" /></a>
-  <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/Platform-Windows_10%20%2F%2011-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows 10/11" /></a>
-  <a href="#testing--quality-assurance"><img src="https://img.shields.io/badge/Tests-640%20Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white" alt="640 Passing Tests" /></a>
-  <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge" alt="Reepax License" /></a>
-</p>
-
-<p align="center">
   <a href="#overview">Overview</a> •
   <a href="#architecture--pipeline">Architecture</a> •
   <a href="#key-features">Key Features</a> •
@@ -124,33 +115,6 @@ For USB drives or running without administrative privileges:
 1. Download `portable.zip` from the latest Releases.
 2. Extract the archive into any folder of your choice.
 3. Launch `Reepax.exe`. All configurations, settings, and queues are stored safely within your user profile (`%LOCALAPPDATA%\Reepax`).
-
----
-
-## Keyboard Shortcuts
-
-All keyboard shortcuts can be customized and remapped at any time under **Settings → Shortcuts**. Below are the built-in defaults:
-
-| Shortcut | Context | Action |
-|:---|:---|:---|
-| <kbd>Ctrl</kbd> + <kbd>Space</kbd> | Main Window | Pause or resume active queue / selected download |
-| <kbd>Ctrl</kbd> + <kbd>N</kbd> | Main Window | Open "Add Links" dialog |
-| <kbd>Ctrl</kbd> + <kbd>V</kbd> | Main Window | Paste links directly from clipboard |
-| <kbd>L</kbd> | Main Window | Expand or collapse all package folders in the queue |
-| <kbd>Delete</kbd> / <kbd>Backspace</kbd> | Main Window | Remove selected item or package from queue |
-| <kbd>F2</kbd> | Main Window | Rename selected download package or file |
-| <kbd>Ctrl</kbd> + <kbd>A</kbd> | Main Window | Select all packages and items |
-| <kbd>Esc</kbd> | Main Window | Deselect all packages and items |
-| <kbd>Ctrl</kbd> + <kbd>R</kbd> | Main Window | Start all downloads |
-| <kbd>Ctrl</kbd> + <kbd>P</kbd> | Main Window | Pause all active downloads |
-| <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd> | Main Window | Clear completed downloads from queue |
-| <kbd>Ctrl</kbd> + <kbd>T</kbd> | Main Window | Toggle application theme (Dark / Light) |
-| <kbd>Ctrl</kbd> + <kbd>D</kbd> | Main Window | Open primary download directory in Explorer |
-| <kbd>Ctrl</kbd> + <kbd>E</kbd> | Main Window | Open unpacked browser extensions folder |
-| <kbd>Ctrl</kbd> + <kbd>,</kbd> | Main Window | Open Settings (Shortcuts tab) |
-| <kbd>Ctrl</kbd> + <kbd>1</kbd> | Main Window | Switch to Downloads tab |
-| <kbd>Ctrl</kbd> + <kbd>2</kbd> | Main Window | Switch to Settings tab |
-| <kbd>Ctrl</kbd> + <kbd>I</kbd> | Main Window | Import package file (`.repx`) |
 
 ---
 
