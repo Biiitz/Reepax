@@ -25,7 +25,7 @@
                     <ControlTemplate TargetType="{x:Type Button}">
                         <Border x:Name="ItemBorder"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="0"
+                                CornerRadius="4"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center" />
                         </Border>
@@ -60,7 +60,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="0"
+                                CornerRadius="4"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
@@ -116,7 +116,7 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="0" Margin="0,2,0,2">
+                                <Border Grid.Column="0" CornerRadius="4" Margin="0,2,0,2">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="Transparent" />
@@ -168,7 +168,7 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="0" Margin="0,2,0,2">
+                                <Border Grid.Column="0" CornerRadius="4" Margin="0,2,0,2">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="Transparent" />
@@ -213,7 +213,7 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="0" Margin="0,2,0,2">
+                                <Border Grid.Column="0" CornerRadius="4" Margin="0,2,0,2">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="Transparent" />
@@ -384,7 +384,7 @@
                             <TextBlock Text="{loc:Loc Settings_SpeedLimit_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="{loc:Loc Settings_SpeedLimit_Subtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
                         </StackPanel>
-                        <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="28">
+                        <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="28">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="52" />
@@ -418,7 +418,7 @@
                                         </Button>
                                     </Grid>
                                 </Border>
-                                <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="0" Padding="8,2">
+                                <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="4" Padding="8,2">
                                     <TextBlock Text="MB/s" Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
                                 </Border>
                             </Grid>
@@ -437,7 +437,7 @@
                             <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Subtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
                         </StackPanel>
-                        <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="28">
+                        <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="28">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="46" />
@@ -486,7 +486,7 @@
                             <TextBlock Text="{loc:Loc Settings_Connections_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="{loc:Loc Settings_Connections_Subtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
                         </StackPanel>
-                        <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="28">
+                        <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="28">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="46" />
@@ -555,7 +555,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="30" Margin="0,0,8,0">
+                            <Border Grid.Column="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="30" Margin="0,0,8,0">
                                 <TextBox Text="{Binding GameInstallDirectory, UpdateSourceTrigger=PropertyChanged}"
                                          Background="Transparent"
                                          Foreground="{DynamicResource TextPrimaryBrush}"
@@ -640,7 +640,7 @@
                                 <Border Background="{DynamicResource BgCardBrush}"
                                         BorderBrush="{DynamicResource BorderDarkBrush}"
                                         BorderThickness="1"
-                                        CornerRadius="0"
+                                        CornerRadius="4"
                                         Padding="16,12"
                                         Margin="0,0,0,8">
                                     <Grid>
@@ -675,7 +675,7 @@
                                                                             Background="{TemplateBinding Background}"
                                                                             BorderBrush="{TemplateBinding BorderBrush}"
                                                                             BorderThickness="{TemplateBinding BorderThickness}"
-                                                                            CornerRadius="0"
+                                                                            CornerRadius="4"
                                                                             Padding="{TemplateBinding Padding}">
                                                                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                     </Border>

@@ -30,7 +30,7 @@
         </Grid.RowDefinitions>
 
         <!-- ================= 0: VERSION & METADATA CARD ================= -->
-        <Border Grid.Row="0" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Padding="12,10" Margin="0,0,0,12">
+        <Border Grid.Row="0" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,12">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -40,7 +40,7 @@
                 <!-- Version Transition Row -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
                     <!-- Current Version Chip -->
-                    <Border Background="{DynamicResource BgDarkBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Padding="8,4">
+                    <Border Background="{DynamicResource BgDarkBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Loc UpdateDialog_CurrentVersion}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,5,0" VerticalAlignment="Center" />
                             <TextBlock x:Name="CurrentVersionTextBlock" d:Text="26.9.1" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
@@ -51,7 +51,7 @@
                     <TextBlock Text="➔" FontSize="12" Foreground="{DynamicResource AccentBlueBrush}" Margin="8,0,8,0" VerticalAlignment="Center" />
 
                     <!-- New Version Chip -->
-                    <Border Background="#1E3B82F6" BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1" CornerRadius="0" Padding="8,4">
+                    <Border Background="#1E3B82F6" BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Loc UpdateDialog_NewVersion}" FontSize="11" Foreground="{DynamicResource AccentBlueBrush}" Margin="0,0,5,0" VerticalAlignment="Center" />
                             <TextBlock x:Name="NewVersionTextBlock" d:Text="26.9.2" FontWeight="Bold" FontSize="11.5" Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center" />
@@ -77,7 +77,7 @@
 
             <TextBlock Grid.Row="0" Text="{loc:Loc UpdateDialog_ChangelogTitle}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
 
-            <Border Grid.Row="1" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Padding="0">
+            <Border Grid.Row="1" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="0">
                 <FlowDocumentScrollViewer x:Name="ChangelogViewer"
                                           FontFamily="Segoe UI Emoji, Segoe UI, sans-serif"
                                           IsToolBarVisible="False"

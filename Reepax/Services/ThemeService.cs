@@ -185,9 +185,8 @@ public class ThemeService
                     int borderColor = isDark ? 0x002A2A2A : 0x00E5E7EB;
                     DwmSetWindowAttribute(hwnd, 34, ref borderColor, sizeof(int));
 
-                    // Windows 11 DWMWA_WINDOW_CORNER_PREFERENCE = 33:
-                    // DWMWCP_DONOTROUND = 1 (Strictly square rectangular window corners)
-                    int cornerPreference = 1;
+                    // Windows 11 DWMWA_WINDOW_CORNER_PREFERENCE
+                    int cornerPreference = 0;
                     DwmSetWindowAttribute(hwnd, 33, ref cornerPreference, sizeof(int));
                 }
             }

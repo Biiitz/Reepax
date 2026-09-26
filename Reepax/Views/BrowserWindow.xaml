@@ -60,7 +60,7 @@
                                 <!-- Corner Badge Counter -->
                                 <Border x:Name="ShieldBadge"
                                         Background="#E53935"
-                                        CornerRadius="0"
+                                        CornerRadius="4"
                                         Padding="3,0"
                                         Height="12"
                                         MinWidth="12"
@@ -89,7 +89,7 @@
                             <Border Background="{DynamicResource BgCardBrush}"
                                     BorderBrush="{DynamicResource BorderDarkBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="0"
+                                    CornerRadius="4"
                                     Width="240"
                                     Margin="0,5,0,0"
                                     Padding="12,10">
@@ -101,7 +101,7 @@
                                     <Border Background="{DynamicResource BgInputBrush}"
                                             BorderBrush="{DynamicResource BorderDarkBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="0"
+                                            CornerRadius="4"
                                             Padding="10,8"
                                             Margin="0,0,0,8">
                                         <Grid>

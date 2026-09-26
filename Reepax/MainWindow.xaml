@@ -694,7 +694,7 @@
                                                             Background="{DynamicResource ScrollBarThumbBrush}" 
                                                             BorderBrush="{DynamicResource ScrollBarThumbBorderBrush}" 
                                                             BorderThickness="1" 
-                                                            CornerRadius="0" 
+                                                            CornerRadius="4" 
                                                             Margin="1,2" 
                                                             Visibility="Collapsed" />
 
@@ -713,14 +713,14 @@
                                                                                     Background="{DynamicResource ScrollBarThumbBrush}" 
                                                                                     BorderBrush="{DynamicResource ScrollBarThumbBorderBrush}" 
                                                                                     BorderThickness="1" 
-                                                                                    CornerRadius="0" 
+                                                                                    CornerRadius="4" 
                                                                                     HorizontalAlignment="Stretch" />
                                                                             <!-- Smooth Hover Overlay -->
                                                                             <Border x:Name="HoverOverlay" 
                                                                                     Background="{DynamicResource ScrollBarThumbHoverBrush}" 
                                                                                     BorderBrush="{DynamicResource ScrollBarThumbHoverBorderBrush}" 
                                                                                     BorderThickness="1" 
-                                                                                    CornerRadius="0" 
+                                                                                    CornerRadius="4" 
                                                                                     HorizontalAlignment="Stretch"
                                                                                     Opacity="0" />
                                                                             <!-- Smooth Dragging Overlay -->
@@ -728,7 +728,7 @@
                                                                                     Background="{DynamicResource ScrollBarThumbDraggingBrush}" 
                                                                                     BorderBrush="{DynamicResource ScrollBarThumbDraggingBorderBrush}" 
                                                                                     BorderThickness="1" 
-                                                                                    CornerRadius="0" 
+                                                                                    CornerRadius="4" 
                                                                                     HorizontalAlignment="Stretch"
                                                                                     Opacity="0" />
                                                                         </Grid>
@@ -885,7 +885,7 @@
                                     <!-- ================= PACKAGE ROW (PARENT) ================= -->
                                     <Border Margin="0,0.5"
                                             Padding="0,1.5"
-                                            CornerRadius="0"
+                                            CornerRadius="4"
                                             Focusable="True"
                                             FocusVisualStyle="{x:Null}"
                                             AllowDrop="True"
@@ -1211,7 +1211,7 @@
                                             <!-- Modern Clean Shine Animation Overlay (App Gray / Luminous Silver-White) -->
                                             <Border x:Name="PackageShineOverlay"
                                                     Grid.Column="0" Grid.ColumnSpan="12"
-                                                    CornerRadius="0"
+                                                    CornerRadius="4"
                                                     IsHitTestVisible="False"
                                                     Opacity="0">
                                                 <Border.Background>
@@ -1239,7 +1239,7 @@
                                             <DataTemplate DataType="{x:Type models:DownloadItem}">
                                                 <Border Margin="0,1"
                                                         Padding="0,3"
-                                                        CornerRadius="0"
+                                                        CornerRadius="4"
                                                         Focusable="True"
                                                         FocusVisualStyle="{x:Null}"
                                                         MouseLeftButtonDown="ItemRow_MouseLeftButtonDown"
@@ -1295,7 +1295,7 @@
                                                                               ToolTip="{loc:Loc Menu_ToggleItem_ToolTip}">
                                                                     <ToggleButton.Template>
                                                                         <ControlTemplate TargetType="ToggleButton">
-                                                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
+                                                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
                                                                                 <Path x:Name="CheckCross" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7" Height="7" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                             </Border>
                                                                             <ControlTemplate.Triggers>
@@ -1526,7 +1526,7 @@
                                                     <Border x:Name="ClippedPackageBorder"
                                                             Margin="0,0.5"
                                                             Padding="0,1.5"
-                                                            CornerRadius="0"
+                                                            CornerRadius="4"
                                                             Focusable="True"
                                                             FocusVisualStyle="{x:Null}"
                                                             AllowDrop="True"
@@ -1856,7 +1856,7 @@
                                                             <!-- Modern Clean Shine Animation Overlay -->
                                                             <Border x:Name="ClippedPackageShineOverlay"
                                                                     Grid.Column="0" Grid.ColumnSpan="12"
-                                                                    CornerRadius="0"
+                                                                    CornerRadius="4"
                                                                     IsHitTestVisible="False"
                                                                     Opacity="0">
                                                                 <Border.Background>
@@ -1878,7 +1878,7 @@
                                                             <!-- Subtle Soft Dock Highlight Overlay -->
                                                             <Border x:Name="ClippedPackageDockOverlay"
                                                                     Grid.Column="0" Grid.ColumnSpan="12"
-                                                                    CornerRadius="0"
+                                                                    CornerRadius="4"
                                                                     IsHitTestVisible="False"
                                                                     Opacity="0"
                                                                     Background="#1038BDF8"
@@ -1894,7 +1894,7 @@
                                                             <DataTemplate DataType="{x:Type models:DownloadItem}">
                                                                 <Border Margin="0,1"
                                                                         Padding="0,3"
-                                                                        CornerRadius="0"
+                                                                        CornerRadius="4"
                                                                         Focusable="True"
                                                                         FocusVisualStyle="{x:Null}"
                                                                         MouseLeftButtonDown="ItemRow_MouseLeftButtonDown"
@@ -1950,7 +1950,7 @@
                                                                                               ToolTip="{loc:Loc Menu_ToggleItem_ToolTip}">
                                                                                     <ToggleButton.Template>
                                                                                         <ControlTemplate TargetType="ToggleButton">
-                                                                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
+                                                                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
                                                                                                 <Path x:Name="CheckCross" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7" Height="7" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                                             </Border>
                                                                                             <ControlTemplate.Triggers>
@@ -2230,7 +2230,7 @@
                                         Background="{TemplateBinding Background}" 
                                         BorderBrush="{TemplateBinding BorderBrush}" 
                                         BorderThickness="{TemplateBinding BorderThickness}" 
-                                        CornerRadius="0" 
+                                        CornerRadius="4" 
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -2265,7 +2265,7 @@
                         <Border Background="{DynamicResource BgCardBrush}" 
                                 BorderBrush="{DynamicResource BorderDarkBrush}" 
                                 BorderThickness="1" 
-                                CornerRadius="0" 
+                                CornerRadius="4" 
                                 Padding="16,14" 
                                 Width="340"
                                 SnapsToDevicePixels="True" 
@@ -2285,7 +2285,7 @@
                                         <TextBlock Text="{loc:Loc Settings_SpeedLimit_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                                         <TextBlock Text="{loc:Loc Settings_SpeedLimit_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                                     </StackPanel>
-                                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="24">
+                                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="24">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="40" />
@@ -2356,7 +2356,7 @@
                                                 </Grid>
                                             </Border>
 
-                                            <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="0" Padding="5,2">
+                                            <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="4" Padding="5,2">
                                                 <TextBlock Text="MB/s" Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10" VerticalAlignment="Center" />
                                             </Border>
                                         </Grid>
@@ -2375,7 +2375,7 @@
                                         <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                                         <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                                     </StackPanel>
-                                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="24">
+                                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="24">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="34" />
@@ -2452,7 +2452,7 @@
                                         <TextBlock Text="{loc:Loc Settings_Connections_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                                         <TextBlock Text="{loc:Loc Settings_Connections_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                                     </StackPanel>
-                                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="0" Height="24">
+                                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="24">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="34" />
@@ -2591,7 +2591,7 @@
                         <TextBlock Text="{Binding FreeDiskSpaceText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
 
                         <!-- Warning Badge if requirement exceeds free disk space -->
-                        <Border Background="#25EF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="0" Padding="5,1" Margin="8,0,0,0"
+                        <Border Background="#25EF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
                                 Visibility="{Binding IsDiskSpaceWarning, Converter={StaticResource BoolToVisConverter}}"
                                 ToolTip="{Binding DiskSpaceWarningMessage}">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
