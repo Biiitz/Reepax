@@ -10,7 +10,6 @@
   <a href="#architecture--pipeline">Architecture</a> •
   <a href="#key-features">Key Features</a> •
   <a href="#installation--portable-usage">Download</a> •
-  <a href="#keyboard-shortcuts">Shortcuts</a> •
   <a href="#tips--advanced-usage">Tips & Notes</a> •
   <a href="#license">License</a>
 </p>
