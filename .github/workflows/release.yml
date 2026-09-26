@@ -1,6 +1,10 @@
 name: Build & Release Reepax
 
 on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   release:
     types: [published]
   workflow_dispatch: {}
@@ -10,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Installer & Portable Archive
+    name: Build, Test & Release
     runs-on: windows-latest
 
     steps:
@@ -24,12 +28,20 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Build Solution (Release Configuration)
+        shell: powershell
+        run: |
+          Write-Host "Building solution in Release configuration..."
+          dotnet build Reepax.slnx -c Release --verbosity normal
+
       - name: Run Test Suite
         shell: powershell
         run: |
+          Write-Host "Executing automated xUnit test suite..."
           dotnet test Reepax.slnx -c Release --verbosity minimal --logger "trx;LogFileName=test_results.trx"
 
       - name: Update Test Count in README
+        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         shell: powershell
         run: |
           $trxFile = Get-ChildItem -Recurse -Filter "test_results.trx" | Select-Object -First 1
@@ -75,11 +87,62 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist\Reepax | Out-Null
           dotnet publish Reepax\Reepax.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:AssemblyVersion="$version.0" -p:FileVersion="$version.0" -o dist\Reepax
 
+      - name: Verify Published Binary & Dependencies
+        shell: powershell
+        run: |
+          $exePath = "dist\Reepax\Reepax.exe"
+          if (-not (Test-Path $exePath)) {
+              Write-Error "CRITICAL: dist\Reepax\Reepax.exe does not exist!"
+              exit 1
+          }
+
+          $exeSize = (Get-Item $exePath).Length
+          Write-Host "Reepax.exe Size: $exeSize bytes"
+          if ($exeSize -lt 100000) {
+              Write-Error "CRITICAL: dist\Reepax\Reepax.exe is unexpectedly small ($exeSize bytes)!"
+              exit 1
+          }
+
+          # Check essential runtime and configuration files
+          $criticalFiles = @(
+              "dist\Reepax\Reepax.dll",
+              "dist\Reepax\Reepax.deps.json",
+              "dist\Reepax\Reepax.runtimeconfig.json"
+          )
+          foreach ($file in $criticalFiles) {
+              if (-not (Test-Path $file)) {
+                  Write-Error "CRITICAL: Required runtime file '$file' is missing from published payload!"
+                  exit 1
+              }
+          }
+
+          # Validate executable version metadata
+          $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exePath))
+          Write-Host "Reepax.exe FileVersion: $($vi.FileVersion), ProductVersion: $($vi.ProductVersion)"
+          if (-not $vi.ProductVersion) {
+              Write-Error "CRITICAL: Reepax.exe ProductVersion is missing or empty!"
+              exit 1
+          }
+
+          Write-Host "Published binary and runtime integrity verified successfully."
+
       - name: Create Portable Archive (portable.zip)
         shell: powershell
         run: |
           Compress-Archive -Path "dist\Reepax\*" -DestinationPath "dist\portable.zip" -CompressionLevel Optimal
-          Get-Item "dist\portable.zip" | Select-Object Name, Length
+          $zipItem = Get-Item "dist\portable.zip"
+          Write-Host "portable.zip created ($($zipItem.Length) bytes)"
+
+          # Test extracting the archive to verify it is not corrupted
+          $testExtractDir = "dist\test_verify_archive"
+          New-Item -ItemType Directory -Force -Path $testExtractDir | Out-Null
+          Expand-Archive -Path "dist\portable.zip" -DestinationPath $testExtractDir -Force
+          if (-not (Test-Path "$testExtractDir\Reepax.exe")) {
+              Write-Error "CRITICAL: portable.zip verification failed - Reepax.exe not found in extracted archive!"
+              exit 1
+          }
+          Remove-Item -Recurse -Force $testExtractDir
+          Write-Host "portable.zip archive extraction verified successfully."
 
       - name: Install Inno Setup
         shell: powershell
@@ -132,6 +195,37 @@ jobs:
               exit 1
           }
 
+      - name: Verify Setup Installer Integrity
+        shell: powershell
+        run: |
+          $setupPath = "dist\setup.exe"
+          if (-not (Test-Path $setupPath)) {
+              Write-Error "CRITICAL: dist\setup.exe was not created!"
+              exit 1
+          }
+          $setupSize = (Get-Item $setupPath).Length
+          Write-Host "setup.exe Size: $setupSize bytes"
+          if ($setupSize -lt 1000000) {
+              Write-Error "CRITICAL: dist\setup.exe is unexpectedly small ($setupSize bytes)!"
+              exit 1
+          }
+          Write-Host "setup.exe installer integrity verified successfully."
+
+      - name: Generate Checksums (SHA256)
+        shell: powershell
+        run: |
+          $files = @("dist\portable.zip", "dist\setup.exe")
+          $checksums = foreach ($file in $files) {
+              if (Test-Path $file) {
+                  $hash = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLowerInvariant()
+                  $name = [System.IO.Path]::GetFileName($file)
+                  "$hash  $name"
+              }
+          }
+          $checksums | Set-Content -Path "dist\SHA256SUMS.txt" -Encoding utf8
+          Write-Host "Generated SHA256 Checksums:"
+          Get-Content "dist\SHA256SUMS.txt"
+
       - name: Upload Artifacts to Workflow Run
         uses: actions/upload-artifact@v4
         with:
@@ -139,6 +233,7 @@ jobs:
           path: |
             dist/portable.zip
             dist/setup.exe
+            dist/SHA256SUMS.txt
 
       - name: Attach Assets to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -147,5 +242,6 @@ jobs:
           files: |
             dist/portable.zip
             dist/setup.exe
+            dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
