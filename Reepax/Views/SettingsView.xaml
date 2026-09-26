@@ -391,19 +391,41 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
-                                         Text="{Binding SpeedLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                         Tag="NumericSpinner"
-                                         Background="Transparent"
-                                         Foreground="{DynamicResource TextPrimaryBrush}"
-                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                         BorderThickness="0"
-                                         Padding="6,2"
-                                         FontSize="12"
-                                         FontWeight="SemiBold"
-                                         HorizontalContentAlignment="Right"
-                                         VerticalContentAlignment="Center"
-                                         PreviewMouseWheel="SpeedLimit_PreviewMouseWheel" />
+                                <Grid Grid.Column="0" ClipToBounds="True">
+                                    <TextBlock x:Name="SpeedLimitGhostText"
+                                               Text=""
+                                               Opacity="0"
+                                               Background="Transparent"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Padding="6,2"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="SpeedLimitGhostTranslate" Y="0" />
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                    <TextBox x:Name="SpeedLimitBox"
+                                             Text="{Binding SpeedLimitText, UpdateSourceTrigger=PropertyChanged}"
+                                             Tag="NumericSpinner"
+                                             Background="Transparent"
+                                             Foreground="{DynamicResource TextPrimaryBrush}"
+                                             CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                             BorderThickness="0"
+                                             Padding="6,2"
+                                             FontSize="12"
+                                             FontWeight="SemiBold"
+                                             HorizontalContentAlignment="Right"
+                                             VerticalContentAlignment="Center"
+                                             PreviewMouseWheel="SpeedLimit_PreviewMouseWheel"
+                                             TextChanged="SpeedLimitBox_TextChanged">
+                                        <TextBox.RenderTransform>
+                                            <TranslateTransform x:Name="SpeedLimitTranslate" Y="0" />
+                                        </TextBox.RenderTransform>
+                                    </TextBox>
+                                </Grid>
                                 <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -443,19 +465,41 @@
                                     <ColumnDefinition Width="46" />
                                     <ColumnDefinition Width="22" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
-                                         Text="{Binding MaxConcurrentDownloadsText, UpdateSourceTrigger=PropertyChanged}"
-                                         Tag="NumericSpinner"
-                                         Background="Transparent"
-                                         Foreground="{DynamicResource TextPrimaryBrush}"
-                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                         BorderThickness="0"
-                                         Padding="4,2"
-                                         FontSize="12"
-                                         FontWeight="SemiBold"
-                                         HorizontalContentAlignment="Center"
-                                         VerticalContentAlignment="Center"
-                                         PreviewMouseWheel="MaxDownloads_PreviewMouseWheel" />
+                                <Grid Grid.Column="0" ClipToBounds="True">
+                                    <TextBlock x:Name="MaxDownloadsGhostText"
+                                               Text=""
+                                               Opacity="0"
+                                               Background="Transparent"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Padding="4,2"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="MaxDownloadsGhostTranslate" Y="0" />
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                    <TextBox x:Name="MaxDownloadsBox"
+                                             Text="{Binding MaxConcurrentDownloadsText, UpdateSourceTrigger=PropertyChanged}"
+                                             Tag="NumericSpinner"
+                                             Background="Transparent"
+                                             Foreground="{DynamicResource TextPrimaryBrush}"
+                                             CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                             BorderThickness="0"
+                                             Padding="4,2"
+                                             FontSize="12"
+                                             FontWeight="SemiBold"
+                                             HorizontalContentAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             PreviewMouseWheel="MaxDownloads_PreviewMouseWheel"
+                                             TextChanged="MaxDownloadsBox_TextChanged">
+                                        <TextBox.RenderTransform>
+                                            <TranslateTransform x:Name="MaxDownloadsTranslate" Y="0" />
+                                        </TextBox.RenderTransform>
+                                    </TextBox>
+                                </Grid>
                                 <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -492,19 +536,41 @@
                                     <ColumnDefinition Width="46" />
                                     <ColumnDefinition Width="22" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox Grid.Column="0"
-                                         Text="{Binding ConnectionsPerDownloadText, UpdateSourceTrigger=PropertyChanged}"
-                                         Tag="NumericSpinner"
-                                         Background="Transparent"
-                                         Foreground="{DynamicResource TextPrimaryBrush}"
-                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                         BorderThickness="0"
-                                         Padding="4,2"
-                                         FontSize="12"
-                                         FontWeight="SemiBold"
-                                         HorizontalContentAlignment="Center"
-                                         VerticalContentAlignment="Center"
-                                         PreviewMouseWheel="Connections_PreviewMouseWheel" />
+                                <Grid Grid.Column="0" ClipToBounds="True">
+                                    <TextBlock x:Name="ConnectionsGhostText"
+                                               Text=""
+                                               Opacity="0"
+                                               Background="Transparent"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
+                                               Padding="4,2"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="ConnectionsGhostTranslate" Y="0" />
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                    <TextBox x:Name="ConnectionsBox"
+                                             Text="{Binding ConnectionsPerDownloadText, UpdateSourceTrigger=PropertyChanged}"
+                                             Tag="NumericSpinner"
+                                             Background="Transparent"
+                                             Foreground="{DynamicResource TextPrimaryBrush}"
+                                             CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                             BorderThickness="0"
+                                             Padding="4,2"
+                                             FontSize="12"
+                                             FontWeight="SemiBold"
+                                             HorizontalContentAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             PreviewMouseWheel="Connections_PreviewMouseWheel"
+                                             TextChanged="ConnectionsBox_TextChanged">
+                                        <TextBox.RenderTransform>
+                                            <TranslateTransform x:Name="ConnectionsTranslate" Y="0" />
+                                        </TextBox.RenderTransform>
+                                    </TextBox>
+                                </Grid>
                                 <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0">
                                     <Grid>
                                         <Grid.RowDefinitions>
@@ -542,48 +608,55 @@
                                   Cursor="Hand" />
                     </Grid>
 
-                    <!-- Path selection (only visible when option is active) -->
-                    <Grid Margin="0,4,0,0" Visibility="{Binding CreateGameInstallFolder, Converter={StaticResource BoolToVisConverter}}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Text="{loc:Loc Settings_GameInstall_PathSubtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
-                        <Grid Grid.Row="1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="30" Margin="0,0,8,0">
-                                <TextBox Text="{Binding GameInstallDirectory, UpdateSourceTrigger=PropertyChanged}"
-                                         Background="Transparent"
-                                         Foreground="{DynamicResource TextPrimaryBrush}"
-                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                         BorderThickness="0"
-                                         Padding="10,0"
-                                         FontSize="12"
-                                         VerticalContentAlignment="Center" />
-                            </Border>
-                            <Button Grid.Column="1"
-                                    Style="{StaticResource SettingsActionButtonStyle}"
-                                    Command="{Binding BrowseGameInstallDirectoryCommand}"
-                                    Margin="0,0,6,0"
-                                    VerticalAlignment="Center">
-                                <StackPanel Orientation="Horizontal">
-                                    <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource AccentBlueBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                    <TextBlock Text="{loc:Loc Common_Browse}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-                            <Button Grid.Column="2"
-                                    Style="{StaticResource SettingsActionButtonStyle}"
-                                    Command="{Binding OpenGameInstallDirectoryCommand}"
-                                    ToolTip="{Binding GameInstallDirectory}"
-                                    VerticalAlignment="Center">
-                                <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
-                            </Button>
+                    <!-- Path selection -->
+                    <Border x:Name="GameInstallPathContainer"
+                            ClipToBounds="True"
+                            Focusable="False">
+                        <Grid Margin="0,4,0,0" x:Name="GameInstallPathContent" RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <TranslateTransform x:Name="GameInstallPathTranslate" Y="0" />
+                            </Grid.RenderTransform>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="{loc:Loc Settings_GameInstall_PathSubtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="30" Margin="0,0,8,0">
+                                    <TextBox Text="{Binding GameInstallDirectory, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent"
+                                             Foreground="{DynamicResource TextPrimaryBrush}"
+                                             CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                             BorderThickness="0"
+                                             Padding="10,0"
+                                             FontSize="12"
+                                             VerticalContentAlignment="Center" />
+                                </Border>
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource SettingsActionButtonStyle}"
+                                        Command="{Binding BrowseGameInstallDirectoryCommand}"
+                                        Margin="0,0,6,0"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource AccentBlueBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc Common_Browse}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Style="{StaticResource SettingsActionButtonStyle}"
+                                        Command="{Binding OpenGameInstallDirectoryCommand}"
+                                        ToolTip="{Binding GameInstallDirectory}"
+                                        VerticalAlignment="Center">
+                                    <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
+                                </Button>
+                            </Grid>
                         </Grid>
-                    </Grid>
+                    </Border>
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,16,0,16" />
 

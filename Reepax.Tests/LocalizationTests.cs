@@ -233,6 +233,26 @@ public class LocalizationTests
             loc.CurrentLanguage = "en";
         }
     }
+
+    [Fact]
+    public void LocalizationService_LineIndicatorKeysExistAndFormatProperly()
+    {
+        var loc = LocalizationService.Instance;
+        try
+        {
+            loc.CurrentLanguage = "de";
+            Assert.Equal("Noch 42 von 50 Zeilen", Loc.Format("LineIndicator_Remaining", 42, 50));
+            Assert.Equal("Klicken, um nach unten zu scrollen", loc["LineIndicator_ClickToScroll"]);
+
+            loc.CurrentLanguage = "en";
+            Assert.Equal("42 of 50 lines remaining", Loc.Format("LineIndicator_Remaining", 42, 50));
+            Assert.Equal("Click to scroll down", loc["LineIndicator_ClickToScroll"]);
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
+    }
 }
 
 

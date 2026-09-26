@@ -21,19 +21,17 @@
             <RowDefinition Height="Auto" />
             <!-- 3: Options (Auto-extraction / Low-resource mode) -->
             <RowDefinition Height="Auto" />
-            <!-- 4: Future Update Hint -->
-            <RowDefinition Height="Auto" />
-            <!-- 5: Summary & Bottom Action Bar -->
+            <!-- 4: Summary & Bottom Action Bar -->
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- 0: Links Input Area with Watermark -->
-        <Border Grid.Row="0" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="2" Margin="0,0,0,10">
+        <Border Grid.Row="0" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="2" Margin="0,0,0,10" ClipToBounds="True">
             <Grid>
                 <TextBox x:Name="LinksTextBox" 
                          AcceptsReturn="True"
-                         VerticalScrollBarVisibility="Auto"
-                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Hidden"
+                         HorizontalScrollBarVisibility="Disabled"
                          TextWrapping="NoWrap"
                          FontFamily="Consolas"
                          FontSize="12"
@@ -42,14 +40,36 @@
                          Foreground="{DynamicResource TextPrimaryBrush}"
                          CaretBrush="{DynamicResource TextPrimaryBrush}"
                          BorderThickness="0"
-                         TextChanged="LinksTextBox_TextChanged" />
+                         TextChanged="LinksTextBox_TextChanged"
+                         PreviewMouseWheel="LinksTextBox_PreviewMouseWheel" />
                 <TextBlock x:Name="LinksWatermark" 
                            Text="{loc:Loc AddLinks_Watermark_Links}" 
                            Foreground="{DynamicResource TextSecondaryBrush}" 
                            Opacity="0.55" 
                            FontSize="12" 
-                           Margin="12,10,0,0" 
+                           Margin="10,8,0,0" 
                            IsHitTestVisible="False" />
+
+                <!-- Bottom visible line indicator: shows remaining lines of total lines -->
+                <Border x:Name="LinksLineIndicator"
+                        VerticalAlignment="Bottom"
+                        HorizontalAlignment="Stretch"
+                        Background="{DynamicResource BgInputBrush}"
+                        BorderBrush="{DynamicResource BorderDarkBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="10,3"
+                        Visibility="Collapsed"
+                        Cursor="Hand"
+                        ToolTip="{loc:Loc LineIndicator_ClickToScroll}"
+                        PreviewMouseDown="LinksLineIndicator_PreviewMouseDown"
+                        PreviewMouseWheel="LinksTextBox_PreviewMouseWheel">
+                    <TextBlock x:Name="LinksLineIndicatorText" 
+                               FontSize="11.5" 
+                               FontStyle="Italic" 
+                               Foreground="{DynamicResource TextSecondaryBrush}" 
+                               HorizontalAlignment="Left" 
+                               VerticalAlignment="Center" />
+                </Border>
             </Grid>
         </Border>
 
@@ -86,14 +106,14 @@
                                Foreground="{DynamicResource TextSecondaryBrush}" 
                                Opacity="0.55" 
                                FontSize="11.5" 
-                               Margin="8,5,0,0" 
+                               Margin="6,4,0,0" 
                                IsHitTestVisible="False" />
                 </Grid>
             </Grid>
         </Border>
 
         <!-- 3: Options Row (Auto-extraction & low-resource mode) -->
-        <Border Grid.Row="3" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,7" Margin="0,0,0,8">
+        <Border Grid.Row="3" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,7" Margin="0,0,0,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -137,20 +157,8 @@
             </Grid>
         </Border>
 
-        <!-- 4: Future Update Hint -->
-        <Border Grid.Row="4" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Path Grid.Column="0" Data="{StaticResource IconInfo}" Fill="{DynamicResource AccentBlueBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="3,0,10,0" />
-                <TextBlock Grid.Column="1" Text="{loc:Loc AddLinks_UpdateHint}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextWrapping="Wrap" />
-            </Grid>
-        </Border>
-
-        <!-- 5: Summary & Action Buttons -->
-        <Grid Grid.Row="5">
+        <!-- 4: Summary & Action Buttons -->
+        <Grid Grid.Row="4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

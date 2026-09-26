@@ -49,7 +49,6 @@ public partial class MainViewModel : ObservableObject
     private int _lastCommandStateActiveCount = -1;
     private bool _lastCommandStateQueueRunning = false;
     private int _lastCommandStatePackageCount = -1;
-    private bool _isGraphZeroSettled = false;
     private readonly NavigationHistoryManager _navManager = new();
     private bool _isApplyingNavigation = false;
 
@@ -263,28 +262,19 @@ public partial class MainViewModel : ObservableObject
     private double _overallSpeedBytesPerSecond;
 
     [ObservableProperty]
-    private double _overallRemainingSeconds;
-
-    [ObservableProperty]
     private int _activeDownloadsCount;
 
-    // Realtime Speed History Graph
-    private readonly List<double> _speedHistory = new();
-    private const int SpeedHistoryCapacity = 40;
-    private const double GraphWidth = 180.0;
-    private const double GraphHeight = 24.0;
+    [ObservableProperty]
+    private int _totalDownloadsCount;
 
     [ObservableProperty]
-    private Geometry? _speedGraphLine;
+    private string _overallSpeedText = "0 B/s";
 
     [ObservableProperty]
-    private Geometry? _speedGraphArea;
+    private string _overallActiveDownloadsText = "0/0 aktiv";
 
     [ObservableProperty]
-    private string _currentSpeedText = "0 KB/s";
-
-    [ObservableProperty]
-    private string _peakSpeedText = "0 KB/s";
+    private string _overallProgressText = "Gesamt: 0%";
 
     [ObservableProperty]
     private string _driveName = "C:";
@@ -1293,13 +1283,6 @@ public partial class MainViewModel : ObservableObject
             RecalculateGlobalStats();
             StatusSummary = Loc.Format("Status_FileDownloadError", item.FileName, ex.Message);
         };
-
-        // Initialize Speed Graph baseline
-        for (int i = 0; i < SpeedHistoryCapacity; i++)
-        {
-            _speedHistory.Add(0);
-        }
-        UpdateSpeedGraph(0);
 
         // Setup timer for periodic stats refresh
         _statsTimer = new System.Windows.Threading.DispatcherTimer
@@ -3119,8 +3102,8 @@ public partial class MainViewModel : ObservableObject
         long downloaded = 0;
         double speed = 0;
         int active = 0;
+        int totalItems = 0;
 
-        double maxActivePackageEta = 0;
         var packageSnapshot = Packages.ToArray();
         foreach (var pkg in packageSnapshot)
         {
@@ -3139,17 +3122,27 @@ public partial class MainViewModel : ObservableObject
             downloaded += pkg.DownloadedBytes;
             speed += pkg.SpeedBytesPerSecond;
 
-            if (pkg.Status == DownloadStatus.Downloading && pkg.RemainingSeconds > maxActivePackageEta)
-            {
-                maxActivePackageEta = pkg.RemainingSeconds;
-            }
-
             var itemsSnapshot = pkg.Items.ToArray();
-            foreach (var item in itemsSnapshot)
+            if (itemsSnapshot.Length == 0)
             {
-                if (item.IsEnabled && item.Status == DownloadStatus.Downloading)
+                totalItems++;
+                if (pkg.Status == DownloadStatus.Downloading)
                 {
                     active++;
+                }
+            }
+            else
+            {
+                foreach (var item in itemsSnapshot)
+                {
+                    if (item.IsEnabled)
+                    {
+                        totalItems++;
+                        if (item.Status == DownloadStatus.Downloading)
+                        {
+                            active++;
+                        }
+                    }
                 }
             }
         }
@@ -3158,10 +3151,11 @@ public partial class MainViewModel : ObservableObject
         DownloadedBytes = downloaded;
         OverallSpeedBytesPerSecond = speed;
         ActiveDownloadsCount = active;
+        TotalDownloadsCount = totalItems;
 
+        var activePkgs = packageSnapshot.Where(p => p.IsEnabled && (p.Items.Count == 0 || p.Items.Any(i => i.IsEnabled))).ToList();
         if (total > 0)
         {
-            var activePkgs = packageSnapshot.Where(p => p.IsEnabled && (p.Items.Count == 0 || p.Items.Any(i => i.IsEnabled))).ToList();
             if (activePkgs.Count > 0 && activePkgs.All(p => p.Status == DownloadStatus.Completed))
             {
                 OverallProgressPercentage = 100.0;
@@ -3171,38 +3165,23 @@ public partial class MainViewModel : ObservableObject
             {
                 OverallProgressPercentage = Math.Min(100.0, (double)downloaded / total * 100.0);
             }
-            if (speed > 0 && total > downloaded)
-            {
-                double naive = (double)(total - downloaded) / speed;
-                OverallRemainingSeconds = Math.Max(naive, maxActivePackageEta);
-            }
-            else if (maxActivePackageEta > 0)
-            {
-                OverallRemainingSeconds = maxActivePackageEta;
-            }
-            else
-            {
-                OverallRemainingSeconds = 0;
-            }
         }
         else
         {
             OverallProgressPercentage = 0;
-            OverallRemainingSeconds = 0;
         }
 
-        if (double.IsNaN(OverallRemainingSeconds) || double.IsInfinity(OverallRemainingSeconds) || OverallRemainingSeconds < 0)
-        {
-            OverallRemainingSeconds = 0;
-        }
+        // Formatted overall stats
+        OverallSpeedText = FormatSpeed(speed);
+        OverallActiveDownloadsText = Loc.Format("StatusBar_OverallActiveDownloads", active, totalItems);
+        OverallProgressText = Loc.Format("StatusBar_OverallProgress", (int)Math.Round(OverallProgressPercentage));
 
         UpdateDriveSpace();
-        UpdateSpeedGraph(speed);
 
         // Adaptive timer frequency: 500 ms when active, 2000 ms when idle
         if (_statsTimer != null)
         {
-            if (active > 0 || IsQueueRunning || !_isGraphZeroSettled)
+            if (active > 0 || IsQueueRunning)
             {
                 if (_statsTimer.Interval.TotalMilliseconds != 500)
                 {
@@ -3230,73 +3209,6 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasDownloads));
             OnPropertyChanged(nameof(IsDownloadsEmpty));
         }
-    }
-
-    private void UpdateSpeedGraph(double currentSpeed)
-    {
-        if (currentSpeed <= 0 && _isGraphZeroSettled && _speedHistory.All(s => s <= 0))
-        {
-            return;
-        }
-
-        _speedHistory.Add(currentSpeed);
-        while (_speedHistory.Count > SpeedHistoryCapacity)
-        {
-            _speedHistory.RemoveAt(0);
-        }
-
-        if (currentSpeed <= 0 && _speedHistory.All(s => s <= 0))
-        {
-            _isGraphZeroSettled = true;
-        }
-        else
-        {
-            _isGraphZeroSettled = false;
-        }
-
-        double peak = _speedHistory.Count > 0 ? _speedHistory.Max() : 0;
-        double scaleMax = Math.Max(1024 * 512, peak); // minimum 512 KB/s scale
-
-        var points = new Point[SpeedHistoryCapacity];
-        double stepX = GraphWidth / (SpeedHistoryCapacity - 1);
-        int pad = SpeedHistoryCapacity - _speedHistory.Count;
-
-        for (int i = 0; i < SpeedHistoryCapacity; i++)
-        {
-            double x = i * stepX;
-            double speedVal = (i < pad) ? 0 : _speedHistory[i - pad];
-            double ratio = Math.Min(1.0, speedVal / scaleMax);
-            double y = GraphHeight - (ratio * (GraphHeight - 4)) - 2;
-            points[i] = new Point(x, y);
-        }
-
-        var lineGeom = new StreamGeometry();
-        using (var ctx = lineGeom.Open())
-        {
-            ctx.BeginFigure(points[0], false, false);
-            for (int i = 1; i < points.Length; i++)
-            {
-                ctx.LineTo(points[i], true, false);
-            }
-        }
-        lineGeom.Freeze();
-        SpeedGraphLine = lineGeom;
-
-        var areaGeom = new StreamGeometry();
-        using (var ctx = areaGeom.Open())
-        {
-            ctx.BeginFigure(new Point(0, GraphHeight), true, true);
-            for (int i = 0; i < points.Length; i++)
-            {
-                ctx.LineTo(points[i], true, false);
-            }
-            ctx.LineTo(new Point(GraphWidth, GraphHeight), true, false);
-        }
-        areaGeom.Freeze();
-        SpeedGraphArea = areaGeom;
-
-        CurrentSpeedText = FormatSpeed(currentSpeed);
-        PeakSpeedText = FormatSpeed(peak);
     }
 
     // DriveInfo query (Win32) at most every 5 seconds; 0 = not queried yet

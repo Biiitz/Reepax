@@ -954,17 +954,101 @@
                                                         <ToggleButton.Template>
                                                             <ControlTemplate TargetType="ToggleButton">
                                                                 <Grid Background="Transparent">
+                                                                    <!-- Subtle Rounded Hover Background -->
+                                                                    <Border x:Name="HoverOverlay" Width="18" Height="18" CornerRadius="4" 
+                                                                            Background="{DynamicResource BgCardAltBrush}" 
+                                                                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                                                            BorderThickness="1" 
+                                                                            Opacity="0" />
                                                                     <Path x:Name="Arrow" 
                                                                           Data="{StaticResource IconChevronRight}" 
                                                                           Fill="{DynamicResource TextSecondaryBrush}" 
-                                                                          Width="10" Height="10" 
+                                                                          Width="9.5" Height="9.5" 
                                                                           Stretch="Uniform" 
                                                                           HorizontalAlignment="Center" 
-                                                                          VerticalAlignment="Center" />
+                                                                          VerticalAlignment="Center"
+                                                                          RenderTransformOrigin="0.5,0.5">
+                                                                        <Path.RenderTransform>
+                                                                            <TransformGroup>
+                                                                                <ScaleTransform x:Name="ArrowScale" ScaleX="1.0" ScaleY="1.0" />
+                                                                                <RotateTransform x:Name="ArrowRotate" Angle="0" />
+                                                                            </TransformGroup>
+                                                                        </Path.RenderTransform>
+                                                                    </Path>
                                                                 </Grid>
                                                                 <ControlTemplate.Triggers>
                                                                     <Trigger Property="IsChecked" Value="True">
-                                                                        <Setter TargetName="Arrow" Property="Data" Value="{StaticResource IconChevronDown}" />
+                                                                        <Trigger.EnterActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowRotate"
+                                                                                                     Storyboard.TargetProperty="Angle"
+                                                                                                     To="90" Duration="0:0:0.35">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.35">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.35">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </Trigger.EnterActions>
+                                                                        <Trigger.ExitActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowRotate"
+                                                                                                     Storyboard.TargetProperty="Angle"
+                                                                                                     To="0" Duration="0:0:0.32">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.32">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.32">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </Trigger.ExitActions>
+                                                                        <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Trigger.EnterActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.12" />
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </Trigger.EnterActions>
+                                                                        <Trigger.ExitActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.15" />
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </Trigger.ExitActions>
                                                                         <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
                                                                     </Trigger>
                                                                 </ControlTemplate.Triggers>
@@ -1281,27 +1365,83 @@
                                                             <ColumnDefinition Width="{Binding DataContext.GridColWidthActions, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthActions, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                         </Grid.ColumnDefinitions>
 
-                                                        <!-- 0: Subtle Item Check/Cross Toggle + Tree Branch Line + Authentic Windows File/Zip Icon + Inline Editable File Name -->
+                                                        <!-- 0: Centered Check/Cross Toggle + Modern Tree Connector Branch + Authentic Windows File/Zip Icon + Inline Editable File Name -->
                                                         <Border Grid.Column="0" BorderBrush="{DynamicResource BorderDarkBrush}" 
                                                                 BorderThickness="{Binding DataContext.ShowDividerName, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="6,0"
                                                                 Visibility="{Binding DataContext.ShowColName, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                 <!-- Subtle Discreet Cross/Check Toggle -->
                                                                 <ToggleButton IsChecked="{Binding IsEnabled, Mode=TwoWay}" 
-                                                                              Width="13" Height="13"
-                                                                              Margin="0,0,5,0"
+                                                                              Width="18" Height="18"
+                                                                              Margin="0,0,6,0"
                                                                               VerticalAlignment="Center"
                                                                               Cursor="Hand"
+                                                                              Style="{x:Null}"
+                                                                              Background="Transparent"
+                                                                              BorderThickness="0"
                                                                               ToolTip="{loc:Loc Menu_ToggleItem_ToolTip}">
                                                                     <ToggleButton.Template>
                                                                         <ControlTemplate TargetType="ToggleButton">
-                                                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
-                                                                                <Path x:Name="CheckCross" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7" Height="7" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                                            </Border>
+                                                                            <Grid Background="Transparent">
+                                                                                <Border x:Name="Box" Width="13" Height="13" CornerRadius="3.5" 
+                                                                                        Background="{DynamicResource BgInputBrush}" 
+                                                                                        BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                                                                        BorderThickness="1"
+                                                                                        SnapsToDevicePixels="True"
+                                                                                        HorizontalAlignment="Center" 
+                                                                                        VerticalAlignment="Center">
+                                                                                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                                        <Path x:Name="CheckGlyph" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7.5" Height="7.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="1.0" RenderTransformOrigin="0.5,0.5">
+                                                                                            <Path.RenderTransform>
+                                                                                                <ScaleTransform x:Name="CheckGlyphScale" ScaleX="1.0" ScaleY="1.0" />
+                                                                                            </Path.RenderTransform>
+                                                                                        </Path>
+                                                                                        <Path x:Name="CrossGlyph" Data="{StaticResource IconClose}" Fill="#EF4444" Width="6.5" Height="6.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.0" RenderTransformOrigin="0.5,0.5">
+                                                                                            <Path.RenderTransform>
+                                                                                                <ScaleTransform x:Name="CrossGlyphScale" ScaleX="1.0" ScaleY="1.0" />
+                                                                                            </Path.RenderTransform>
+                                                                                        </Path>
+                                                                                    </Grid>
+                                                                                </Border>
+                                                                            </Grid>
                                                                             <ControlTemplate.Triggers>
                                                                                 <Trigger Property="IsChecked" Value="False">
-                                                                                    <Setter TargetName="CheckCross" Property="Data" Value="{StaticResource IconClose}" />
-                                                                                    <Setter TargetName="CheckCross" Property="Fill" Value="#EF4444" />
+                                                                                    <Trigger.EnterActions>
+                                                                                        <BeginStoryboard>
+                                                                                            <Storyboard>
+                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.18" />
+                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyph" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.25" />
+                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyphScale" Storyboard.TargetProperty="ScaleX" From="0.35" To="1.0" Duration="0:0:0.32">
+                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                </DoubleAnimation>
+                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyphScale" Storyboard.TargetProperty="ScaleY" From="0.35" To="1.0" Duration="0:0:0.32">
+                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                </DoubleAnimation>
+                                                                                            </Storyboard>
+                                                                                        </BeginStoryboard>
+                                                                                    </Trigger.EnterActions>
+                                                                                    <Trigger.ExitActions>
+                                                                                        <BeginStoryboard>
+                                                                                            <Storyboard>
+                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyph" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.18" />
+                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.25" />
+                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyphScale" Storyboard.TargetProperty="ScaleX" From="0.35" To="1.0" Duration="0:0:0.34">
+                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                </DoubleAnimation>
+                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyphScale" Storyboard.TargetProperty="ScaleY" From="0.35" To="1.0" Duration="0:0:0.34">
+                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                </DoubleAnimation>
+                                                                                            </Storyboard>
+                                                                                        </BeginStoryboard>
+                                                                                    </Trigger.ExitActions>
                                                                                     <Setter TargetName="Box" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                                                                     <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
                                                                                 </Trigger>
@@ -1313,10 +1453,19 @@
                                                                     </ToggleButton.Template>
                                                                 </ToggleButton>
 
-                                                                <!-- Tree Branch Dotted Line -->
-                                                                <Path Data="M0 0 V12 H8" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1" StrokeDashArray="2 2" Width="12" Height="14" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                                                <!-- Tree Connecting Line -->
+                                                                <Path Data="M 2,-14 L 2,6 Q 2,14 10,14 L 18,14" 
+                                                                      Stroke="{DynamicResource TextSecondaryBrush}" 
+                                                                      StrokeThickness="1.5" 
+                                                                      StrokeStartLineCap="Round"
+                                                                      StrokeEndLineCap="Round"
+                                                                      StrokeLineJoin="Round"
+                                                                      Opacity="0.55"
+                                                                      Width="18" Height="28" 
+                                                                      Margin="0,-6,6,-4" 
+                                                                      VerticalAlignment="Center" />
 
-                                                                <!-- Real Windows System Shell Icon for this File (.zip, .rar, .7z, .mp4, etc.) -->
+                                                                <!-- Windows System Shell Icon for this File (.zip, .rar, .7z, .mp4, etc.) -->
                                                                 <Image Source="{Binding FileName, Converter={StaticResource FileIconConverter}}" 
                                                                        Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" 
                                                                        RenderOptions.BitmapScalingMode="HighQuality" />
@@ -1591,11 +1740,15 @@
                                                                     <Path Data="M 4,-14 L 4,6 Q 4,14 12,14 L 18,14" 
                                                                           Stroke="{DynamicResource TextSecondaryBrush}" 
                                                                           StrokeThickness="1.5" 
+                                                                          StrokeStartLineCap="Round"
+                                                                          StrokeEndLineCap="Round"
+                                                                          StrokeLineJoin="Round"
+                                                                          Opacity="0.55"
                                                                           Width="18" Height="28" 
                                                                           Margin="0,-6,4,-4" 
                                                                           VerticalAlignment="Center" />
 
-                                                                    <!-- Expander Toggle Button -->
+                                                                    <!-- Expander Toggle Button with smooth rotation animation -->
                                                                     <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay}" 
                                                                                   Cursor="Hand"
                                                                                   Margin="0,0,5,0"
@@ -1606,17 +1759,101 @@
                                                                         <ToggleButton.Template>
                                                                             <ControlTemplate TargetType="ToggleButton">
                                                                                 <Grid Background="Transparent">
+                                                                                    <!-- Subtle Rounded Hover Background -->
+                                                                                    <Border x:Name="HoverOverlay" Width="16" Height="16" CornerRadius="4" 
+                                                                                            Background="{DynamicResource BgCardAltBrush}" 
+                                                                                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                                                                            BorderThickness="1" 
+                                                                                            Opacity="0" />
                                                                                     <Path x:Name="Arrow" 
                                                                                           Data="{StaticResource IconChevronRight}" 
                                                                                           Fill="{DynamicResource TextSecondaryBrush}" 
-                                                                                          Width="9" Height="9" 
+                                                                                          Width="8.5" Height="8.5" 
                                                                                           Stretch="Uniform" 
                                                                                           HorizontalAlignment="Center" 
-                                                                                          VerticalAlignment="Center" />
+                                                                                          VerticalAlignment="Center"
+                                                                                          RenderTransformOrigin="0.5,0.5">
+                                                                                        <Path.RenderTransform>
+                                                                                            <TransformGroup>
+                                                                                                <ScaleTransform x:Name="ArrowScale" ScaleX="1.0" ScaleY="1.0" />
+                                                                                                <RotateTransform x:Name="ArrowRotate" Angle="0" />
+                                                                                            </TransformGroup>
+                                                                                        </Path.RenderTransform>
+                                                                                    </Path>
                                                                                 </Grid>
                                                                                 <ControlTemplate.Triggers>
                                                                                     <Trigger Property="IsChecked" Value="True">
-                                                                                        <Setter TargetName="Arrow" Property="Data" Value="{StaticResource IconChevronDown}" />
+                                                                                        <Trigger.EnterActions>
+                                                                                            <BeginStoryboard>
+                                                                                                <Storyboard>
+                                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowRotate"
+                                                                                                                     Storyboard.TargetProperty="Angle"
+                                                                                                                     To="90" Duration="0:0:0.35">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.35">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.35">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </Trigger.EnterActions>
+                                                                        <Trigger.ExitActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowRotate"
+                                                                                                     Storyboard.TargetProperty="Angle"
+                                                                                                     To="0" Duration="0:0:0.32">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleX"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.32">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                    <DoubleAnimation Storyboard.TargetName="ArrowScale"
+                                                                                                     Storyboard.TargetProperty="ScaleY"
+                                                                                                     From="0.85" To="1.0" Duration="0:0:0.32">
+                                                                                        <DoubleAnimation.EasingFunction>
+                                                                                            <BackEase EasingMode="EaseOut" Amplitude="0.3" />
+                                                                                        </DoubleAnimation.EasingFunction>
+                                                                                    </DoubleAnimation>
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </Trigger.ExitActions>
+                                                                        <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                                                    </Trigger>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Trigger.EnterActions>
+                                                                                            <BeginStoryboard>
+                                                                                                <Storyboard>
+                                                                                                    <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.12" />
+                                                                                                </Storyboard>
+                                                                                            </BeginStoryboard>
+                                                                                        </Trigger.EnterActions>
+                                                                                        <Trigger.ExitActions>
+                                                                                            <BeginStoryboard>
+                                                                                                <Storyboard>
+                                                                                                    <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.15" />
+                                                                                                </Storyboard>
+                                                                                            </BeginStoryboard>
+                                                                                        </Trigger.ExitActions>
                                                                                         <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
                                                                                     </Trigger>
                                                                                 </ControlTemplate.Triggers>
@@ -1936,27 +2173,83 @@
                                                                             <ColumnDefinition Width="{Binding DataContext.GridColWidthActions, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthActions, RelativeSource={RelativeSource AncestorType=Window}}" />
                                                                         </Grid.ColumnDefinitions>
 
-                                                                        <!-- 0: Sub-indented Check/Cross Toggle + Tree Branch Line + Shell File Icon + Inline Editable File Name -->
+                                                                        <!-- 0: Centered Check/Cross Toggle + Modern Tree Connector Branch + Shell File Icon + Inline Editable File Name -->
                                                                         <Border Grid.Column="0" BorderBrush="{DynamicResource BorderDarkBrush}" 
                                                                                 BorderThickness="{Binding DataContext.ShowDividerName, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="6,0"
                                                                                 Visibility="{Binding DataContext.ShowColName, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="30,0,0,0">
+                                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="28,0,0,0">
                                                                                 <!-- Subtle Discreet Cross/Check Toggle -->
                                                                                 <ToggleButton IsChecked="{Binding IsEnabled, Mode=TwoWay}" 
-                                                                                              Width="13" Height="13"
-                                                                                              Margin="0,0,5,0"
+                                                                                              Width="16" Height="16"
+                                                                                              Margin="0,0,6,0"
                                                                                               VerticalAlignment="Center"
                                                                                               Cursor="Hand"
+                                                                                              Style="{x:Null}"
+                                                                                              Background="Transparent"
+                                                                                              BorderThickness="0"
                                                                                               ToolTip="{loc:Loc Menu_ToggleItem_ToolTip}">
                                                                                     <ToggleButton.Template>
                                                                                         <ControlTemplate TargetType="ToggleButton">
-                                                                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="4" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
-                                                                                                <Path x:Name="CheckCross" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7" Height="7" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                                                            </Border>
+                                                                                            <Grid Background="Transparent">
+                                                                                                <Border x:Name="Box" Width="13" Height="13" CornerRadius="3.5" 
+                                                                                                        Background="{DynamicResource BgInputBrush}" 
+                                                                                                        BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                                                                                        BorderThickness="1"
+                                                                                                        SnapsToDevicePixels="True"
+                                                                                                        HorizontalAlignment="Center" 
+                                                                                                        VerticalAlignment="Center">
+                                                                                                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                                                        <Path x:Name="CheckGlyph" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7.5" Height="7.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="1.0" RenderTransformOrigin="0.5,0.5">
+                                                                                                            <Path.RenderTransform>
+                                                                                                                <ScaleTransform x:Name="CheckGlyphScale" ScaleX="1.0" ScaleY="1.0" />
+                                                                                                            </Path.RenderTransform>
+                                                                                                        </Path>
+                                                                                                        <Path x:Name="CrossGlyph" Data="{StaticResource IconClose}" Fill="#EF4444" Width="6.5" Height="6.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.0" RenderTransformOrigin="0.5,0.5">
+                                                                                                            <Path.RenderTransform>
+                                                                                                                <ScaleTransform x:Name="CrossGlyphScale" ScaleX="1.0" ScaleY="1.0" />
+                                                                                                            </Path.RenderTransform>
+                                                                                                        </Path>
+                                                                                                    </Grid>
+                                                                                                </Border>
+                                                                                            </Grid>
                                                                                             <ControlTemplate.Triggers>
                                                                                                 <Trigger Property="IsChecked" Value="False">
-                                                                                                    <Setter TargetName="CheckCross" Property="Data" Value="{StaticResource IconClose}" />
-                                                                                                    <Setter TargetName="CheckCross" Property="Fill" Value="#EF4444" />
+                                                                                                    <Trigger.EnterActions>
+                                                                                                        <BeginStoryboard>
+                                                                                                            <Storyboard>
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.18" />
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyph" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.25" />
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyphScale" Storyboard.TargetProperty="ScaleX" From="0.35" To="1.0" Duration="0:0:0.32">
+                                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                                </DoubleAnimation>
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyphScale" Storyboard.TargetProperty="ScaleY" From="0.35" To="1.0" Duration="0:0:0.32">
+                                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                                </DoubleAnimation>
+                                                                                                            </Storyboard>
+                                                                                                        </BeginStoryboard>
+                                                                                                    </Trigger.EnterActions>
+                                                                                                    <Trigger.ExitActions>
+                                                                                                        <BeginStoryboard>
+                                                                                                            <Storyboard>
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CrossGlyph" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.18" />
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyph" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.25" />
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyphScale" Storyboard.TargetProperty="ScaleX" From="0.35" To="1.0" Duration="0:0:0.34">
+                                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                                </DoubleAnimation>
+                                                                                                                <DoubleAnimation Storyboard.TargetName="CheckGlyphScale" Storyboard.TargetProperty="ScaleY" From="0.35" To="1.0" Duration="0:0:0.34">
+                                                                                                                    <DoubleAnimation.EasingFunction>
+                                                                                                                        <BackEase EasingMode="EaseOut" Amplitude="0.35" />
+                                                                                                                    </DoubleAnimation.EasingFunction>
+                                                                                                                </DoubleAnimation>
+                                                                                                            </Storyboard>
+                                                                                                        </BeginStoryboard>
+                                                                                                    </Trigger.ExitActions>
                                                                                                     <Setter TargetName="Box" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                                                                                     <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
                                                                                                 </Trigger>
@@ -1968,8 +2261,17 @@
                                                                                     </ToggleButton.Template>
                                                                                 </ToggleButton>
 
-                                                                                <!-- Tree Branch Dotted Line -->
-                                                                                <Path Data="M0 0 V12 H8" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1" StrokeDashArray="2 2" Width="12" Height="14" Margin="0,0,4,0" VerticalAlignment="Center" />
+                                                                                <!-- Tree Connecting Line -->
+                                                                                <Path Data="M 2,-14 L 2,6 Q 2,14 10,14 L 18,14" 
+                                                                                      Stroke="{DynamicResource TextSecondaryBrush}" 
+                                                                                      StrokeThickness="1.5" 
+                                                                                      StrokeStartLineCap="Round"
+                                                                                      StrokeEndLineCap="Round"
+                                                                                      StrokeLineJoin="Round"
+                                                                                      Opacity="0.55"
+                                                                                      Width="18" Height="28" 
+                                                                                      Margin="0,-6,6,-4" 
+                                                                                      VerticalAlignment="Center" />
 
                                                                                 <!-- Real Windows System Shell Icon for this File -->
                                                                                 <Image Source="{Binding FileName, Converter={StaticResource FileIconConverter}}" 
@@ -2191,34 +2493,140 @@
         <!-- ================= BOTTOM ACTION & STATUS BAR ================= -->
         <Border Grid.Row="2" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,1,0,0" Padding="12,6">
             <DockPanel LastChildFill="True">
-                <!-- Left Section: 'Add New Links' Button -->
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                    <Button x:Name="AddLinksButton" Click="AddLinks_Click" Style="{DynamicResource ModernButtonStyle}" Padding="14,6"
+                <!-- Left Section: 'Add New Links' Button + Live Disk Space Box -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="AddLinksButton" Click="AddLinks_Click"
+                            Height="28" Padding="14,0" Margin="0,0,8,0"
+                            Background="{DynamicResource BgCardAltBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            Cursor="Hand"
+                            SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_AddLinks_ToolTip}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Border" 
+                                        Background="{TemplateBinding Background}" 
+                                        BorderBrush="{TemplateBinding BorderBrush}" 
+                                        BorderThickness="{TemplateBinding BorderThickness}" 
+                                        CornerRadius="4" 
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Path Data="{StaticResource IconPlus}" Fill="{DynamicResource AccentBlueBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,7,0" />
                             <TextBlock Text="{loc:Loc StatusBar_AddLinks_Text}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
+
+                    <!-- Live Disk Space Box -->
+                    <Border Background="{DynamicResource BgCardAltBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="4" 
+                            Padding="10,0" 
+                            Height="28" 
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconHardDrive}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding FreeDiskSpaceText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+
+                            <!-- Warning Badge if requirement exceeds free disk space -->
+                            <Border Background="#25EF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+                                    Visibility="{Binding IsDiskSpaceWarning, Converter={StaticResource BoolToVisConverter}}"
+                                    ToolTip="{Binding DiskSpaceWarningMessage}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Data="{StaticResource IconWarning}" Fill="#EF4444" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,3,0" />
+                                    <TextBlock Text="{loc:Loc StatusBar_DiskSpaceWarning}" FontSize="10" FontWeight="Bold" Foreground="#EF4444" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
-                <!-- Right Section: Extensions folder + Dark/White Mode + Settings Button + Popup -->
+                <!-- Right Section: Overall Download Summary + Extensions folder + Settings Button + Popup -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Open extensions folder (icon button, left of theme toggle) -->
+                    <!-- Overall Download Summary -->
+                    <Border Background="{DynamicResource BgCardAltBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="4" 
+                            Padding="10,0"
+                            Height="28"
+                            Margin="0,0,8,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding HasDownloads, Converter={StaticResource BoolToVisConverter}}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Speed: no icon, normal font weight -->
+                            <TextBlock Text="{Binding OverallSpeedText}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+
+                            <!-- Bullet separator -->
+                            <TextBlock Text="•" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0" VerticalAlignment="Center" />
+
+                            <!-- Active Count -->
+                            <TextBlock Text="{Binding OverallActiveDownloadsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+
+                            <!-- Bullet separator -->
+                            <TextBlock Text="•" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0" VerticalAlignment="Center" />
+
+                            <!-- Total Progress -->
+                            <TextBlock Text="{Binding OverallProgressText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Open extensions folder -->
                     <Button Command="{Binding OpenExtensionsFolderCommand}"
-                            Style="{DynamicResource ModernButtonStyle}"
-                            Width="32" Height="26" Padding="0" Margin="0,0,8,0"
+                            Width="32" Height="28" Padding="0" Margin="0,0,8,0"
+                            Background="{DynamicResource BgCardAltBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            Cursor="Hand"
+                            SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_OpenExtensionsFolder_ToolTip}">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Border" 
+                                        Background="{TemplateBinding Background}" 
+                                        BorderBrush="{TemplateBinding BorderBrush}" 
+                                        BorderThickness="{TemplateBinding BorderThickness}" 
+                                        CornerRadius="4" 
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
                         <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextSecondaryBrush}"
                               Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center" />
                     </Button>
 
-
                     <Button x:Name="QuickSettingsButton" 
+                            Height="28"
+                            Padding="10,0" 
                             Background="{DynamicResource BgCardAltBrush}" 
                             BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="1" 
-                            Padding="10,6" 
+                            Margin="0"
                             Cursor="Hand"
                             SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_Settings_ToolTip}"
@@ -2293,17 +2701,40 @@
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
-                                            <TextBox Grid.Column="0" Text="{Binding SpeedLimitText, UpdateSourceTrigger=PropertyChanged}" 
-                                                     Background="Transparent" 
-                                                     Foreground="{DynamicResource TextPrimaryBrush}" 
-                                                     CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                                     BorderThickness="0" 
-                                                     Padding="4,1" 
-                                                     FontSize="11.5" 
-                                                     FontWeight="SemiBold" 
-                                                     HorizontalContentAlignment="Right" 
-                                                     VerticalContentAlignment="Center" 
-                                                     PreviewMouseWheel="SpeedLimit_PreviewMouseWheel" />
+                                            <Grid Grid.Column="0" ClipToBounds="True">
+                                                <TextBlock x:Name="QuickSpeedLimitGhostText"
+                                                           Text=""
+                                                           Opacity="0"
+                                                           Background="Transparent"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           Padding="4,1"
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Right"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False">
+                                                    <TextBlock.RenderTransform>
+                                                        <TranslateTransform x:Name="QuickSpeedLimitGhostTranslate" Y="0" />
+                                                    </TextBlock.RenderTransform>
+                                                </TextBlock>
+                                                <TextBox x:Name="QuickSpeedLimitBox"
+                                                         Text="{Binding SpeedLimitText, UpdateSourceTrigger=PropertyChanged}" 
+                                                         Background="Transparent" 
+                                                         Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                                         BorderThickness="0" 
+                                                         Padding="4,1" 
+                                                         FontSize="11.5" 
+                                                         FontWeight="SemiBold" 
+                                                         HorizontalContentAlignment="Right" 
+                                                         VerticalContentAlignment="Center" 
+                                                         PreviewMouseWheel="SpeedLimit_PreviewMouseWheel"
+                                                         TextChanged="QuickSpeedLimitBox_TextChanged">
+                                                    <TextBox.RenderTransform>
+                                                        <TranslateTransform x:Name="QuickSpeedLimitTranslate" Y="0" />
+                                                    </TextBox.RenderTransform>
+                                                </TextBox>
+                                            </Grid>
 
                                             <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0">
                                                 <Grid>
@@ -2382,17 +2813,40 @@
                                                 <ColumnDefinition Width="18" />
                                             </Grid.ColumnDefinitions>
 
-                                            <TextBox Grid.Column="0" Text="{Binding MaxConcurrentDownloadsText, UpdateSourceTrigger=PropertyChanged}" 
-                                                     Background="Transparent" 
-                                                     Foreground="{DynamicResource TextPrimaryBrush}" 
-                                                     CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                                     BorderThickness="0" 
-                                                     Padding="2,1" 
-                                                     FontSize="11.5" 
-                                                     FontWeight="SemiBold" 
-                                                     HorizontalContentAlignment="Center" 
-                                                     VerticalContentAlignment="Center" 
-                                                     PreviewMouseWheel="MaxDownloads_PreviewMouseWheel" />
+                                            <Grid Grid.Column="0" ClipToBounds="True">
+                                                <TextBlock x:Name="QuickMaxDownloadsGhostText"
+                                                           Text=""
+                                                           Opacity="0"
+                                                           Background="Transparent"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           Padding="2,1"
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False">
+                                                    <TextBlock.RenderTransform>
+                                                        <TranslateTransform x:Name="QuickMaxDownloadsGhostTranslate" Y="0" />
+                                                    </TextBlock.RenderTransform>
+                                                </TextBlock>
+                                                <TextBox x:Name="QuickMaxDownloadsBox"
+                                                         Text="{Binding MaxConcurrentDownloadsText, UpdateSourceTrigger=PropertyChanged}" 
+                                                         Background="Transparent" 
+                                                         Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                                         BorderThickness="0" 
+                                                         Padding="2,1" 
+                                                         FontSize="11.5" 
+                                                         FontWeight="SemiBold" 
+                                                         HorizontalContentAlignment="Center" 
+                                                         VerticalContentAlignment="Center" 
+                                                         PreviewMouseWheel="MaxDownloads_PreviewMouseWheel"
+                                                         TextChanged="QuickMaxDownloadsBox_TextChanged">
+                                                    <TextBox.RenderTransform>
+                                                        <TranslateTransform x:Name="QuickMaxDownloadsTranslate" Y="0" />
+                                                    </TextBox.RenderTransform>
+                                                </TextBox>
+                                            </Grid>
 
                                             <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0">
                                                 <Grid>
@@ -2459,17 +2913,40 @@
                                                 <ColumnDefinition Width="18" />
                                             </Grid.ColumnDefinitions>
 
-                                            <TextBox Grid.Column="0" Text="{Binding ConnectionsPerDownloadText, UpdateSourceTrigger=PropertyChanged}" 
-                                                     Background="Transparent" 
-                                                     Foreground="{DynamicResource TextPrimaryBrush}" 
-                                                     CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                                     BorderThickness="0" 
-                                                     Padding="2,1" 
-                                                     FontSize="11.5" 
-                                                     FontWeight="SemiBold" 
-                                                     HorizontalContentAlignment="Center" 
-                                                     VerticalContentAlignment="Center" 
-                                                     PreviewMouseWheel="Connections_PreviewMouseWheel" />
+                                            <Grid Grid.Column="0" ClipToBounds="True">
+                                                <TextBlock x:Name="QuickConnectionsGhostText"
+                                                           Text=""
+                                                           Opacity="0"
+                                                           Background="Transparent"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           Padding="2,1"
+                                                           FontSize="11.5"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False">
+                                                    <TextBlock.RenderTransform>
+                                                        <TranslateTransform x:Name="QuickConnectionsGhostTranslate" Y="0" />
+                                                    </TextBlock.RenderTransform>
+                                                </TextBlock>
+                                                <TextBox x:Name="QuickConnectionsBox"
+                                                         Text="{Binding ConnectionsPerDownloadText, UpdateSourceTrigger=PropertyChanged}" 
+                                                         Background="Transparent" 
+                                                         Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                                         BorderThickness="0" 
+                                                         Padding="2,1" 
+                                                         FontSize="11.5" 
+                                                         FontWeight="SemiBold" 
+                                                         HorizontalContentAlignment="Center" 
+                                                         VerticalContentAlignment="Center" 
+                                                         PreviewMouseWheel="Connections_PreviewMouseWheel"
+                                                         TextChanged="QuickConnectionsBox_TextChanged">
+                                                    <TextBox.RenderTransform>
+                                                        <TranslateTransform x:Name="QuickConnectionsTranslate" Y="0" />
+                                                    </TextBox.RenderTransform>
+                                                </TextBox>
+                                            </Grid>
 
                                             <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0">
                                                 <Grid>
@@ -2534,8 +3011,8 @@
                     </Popup>
                 </StackPanel>
 
-                <!-- Center Section: Loading Spinner / Live Disk Space Info -->
-                <Grid VerticalAlignment="Center" Margin="4,0">
+                <!-- Center Section: Loading Spinner / Busy Message -->
+                <Grid VerticalAlignment="Center" Margin="8,0">
                     <!-- Web page link extraction / parsing: progress with dotted circle loading animation -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left"
                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}">
@@ -2582,23 +3059,6 @@
                             </Canvas>
                         </Viewbox>
                         <TextBlock Text="{Binding BusyMessage}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-
-                    <!-- Live Disk Space -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVisConverter}}">
-                        <Path Data="{StaticResource IconHardDrive}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,5,0" />
-                        <TextBlock Text="{Binding FreeDiskSpaceText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-
-                        <!-- Warning Badge if requirement exceeds free disk space -->
-                        <Border Background="#25EF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
-                                Visibility="{Binding IsDiskSpaceWarning, Converter={StaticResource BoolToVisConverter}}"
-                                ToolTip="{Binding DiskSpaceWarningMessage}">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Path Data="{StaticResource IconWarning}" Fill="#EF4444" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,3,0" />
-                                <TextBlock Text="{loc:Loc StatusBar_DiskSpaceWarning}" FontSize="10" FontWeight="Bold" Foreground="#EF4444" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
                 </Grid>
             </DockPanel>

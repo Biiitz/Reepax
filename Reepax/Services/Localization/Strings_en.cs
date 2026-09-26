@@ -154,6 +154,8 @@ public static class Strings_en
         ["StatusBar_OpenExtensionsFolder_ToolTip"] = "Open extensions folder",
         ["StatusBar_Settings_ToolTip"] = "Settings",
         ["StatusBar_DiskSpaceWarning"] = "Low disk space!",
+        ["StatusBar_OverallActiveDownloads"] = "{0}/{1} active",
+        ["StatusBar_OverallProgress"] = "Total: {0}%",
 
         // Status Messages
         ["Status_ReadyDragDrop"] = "Ready – Drag and drop links or text into the window",
@@ -267,7 +269,6 @@ public static class Strings_en
         ["AddLinks_LinksDetectedSummary"] = "{0} link(s) detected",
         ["AddLinks_Button_PasteClipboard"] = "Paste from Clipboard",
         ["AddLinks_Button_AddPackage"] = "Add Package",
-        ["AddLinks_UpdateHint"] = "Note: For future game updates, install ALL packages (do not skip voice packs etc.), otherwise updating will not work.",
 
         // Browser Window
         ["Browser_Title"] = "Reepax Browser",
@@ -385,6 +386,8 @@ public static class Strings_en
         ["UpdateDialog_NoChangelog"] = "No release notes provided for this release.",
         ["UpdateDialog_Button_GetUpdate"] = "Get Update",
         ["UpdateDialog_Button_Later"] = "Later",
+        ["LineIndicator_Remaining"] = "{0} of {1} lines remaining",
+        ["LineIndicator_ClickToScroll"] = "Click to scroll down",
         ["Dialog_ClearCompletedTitle"] = "Remove Completed Downloads",
         ["Dialog_ClearCompletedMessage"] = "Are you sure you want to remove all completed downloads from the list?",
 

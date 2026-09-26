@@ -77,17 +77,40 @@
 
             <TextBlock Grid.Row="0" Text="{loc:Loc UpdateDialog_ChangelogTitle}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
 
-            <Border Grid.Row="1" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="0">
-                <FlowDocumentScrollViewer x:Name="ChangelogViewer"
-                                          FontFamily="Segoe UI Emoji, Segoe UI, sans-serif"
-                                          IsToolBarVisible="False"
-                                          VerticalScrollBarVisibility="Hidden"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          PreviewMouseWheel="ChangelogViewer_PreviewMouseWheel"
-                                          Background="Transparent"
-                                          Foreground="{DynamicResource TextPrimaryBrush}"
-                                          BorderThickness="0"
-                                          Margin="0" />
+            <Border Grid.Row="1" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <FlowDocumentScrollViewer x:Name="ChangelogViewer"
+                                              FontFamily="Segoe UI Emoji, Segoe UI, sans-serif"
+                                              IsToolBarVisible="False"
+                                              VerticalScrollBarVisibility="Hidden"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              PreviewMouseWheel="ChangelogViewer_PreviewMouseWheel"
+                                              Background="Transparent"
+                                              Foreground="{DynamicResource TextPrimaryBrush}"
+                                              BorderThickness="0"
+                                              Margin="0" />
+
+                    <!-- Bottom visible line indicator: shows remaining lines of total lines -->
+                    <Border x:Name="ReleaseNotesLineIndicator"
+                            VerticalAlignment="Bottom"
+                            HorizontalAlignment="Stretch"
+                            Background="{DynamicResource BgCardBrush}"
+                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="0,1,0,0"
+                            Padding="8,3"
+                            Visibility="Collapsed"
+                            Cursor="Hand"
+                            ToolTip="{loc:Loc LineIndicator_ClickToScroll}"
+                            PreviewMouseDown="ReleaseNotesLineIndicator_PreviewMouseDown"
+                            PreviewMouseWheel="ChangelogViewer_PreviewMouseWheel">
+                        <TextBlock x:Name="ReleaseNotesLineIndicatorText" 
+                                   FontSize="11.5" 
+                                   FontStyle="Italic" 
+                                   Foreground="{DynamicResource TextSecondaryBrush}" 
+                                   HorizontalAlignment="Left" 
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
             </Border>
         </Grid>
 

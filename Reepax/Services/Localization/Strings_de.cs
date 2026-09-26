@@ -154,6 +154,8 @@ public static class Strings_de
         ["StatusBar_OpenExtensionsFolder_ToolTip"] = "Erweiterungen-Ordner öffnen",
         ["StatusBar_Settings_ToolTip"] = "Einstellungen",
         ["StatusBar_DiskSpaceWarning"] = "Speicherplatz knapp!",
+        ["StatusBar_OverallActiveDownloads"] = "{0}/{1} aktiv",
+        ["StatusBar_OverallProgress"] = "Gesamt: {0}%",
 
         // Status Messages
         ["Status_ReadyDragDrop"] = "Bereit – Ziehe Links oder Text in das Fenster",
@@ -253,8 +255,8 @@ public static class Strings_de
 
         // AddLinks Dialog
         ["AddLinks_Title"] = "Links analysieren und hinzufügen",
-        ["AddLinks_Watermark_Links"] = "Gib hier Links, Adressen, Webseiten oder anderen Text ein",
-        ["AddLinks_Watermark_PackageName"] = "Paketnamen eingeben oder leer lassen für automatischen Modus",
+        ["AddLinks_Watermark_Links"] = "  Gib hier Links, Adressen, Webseiten oder anderen Text ein",
+        ["AddLinks_Watermark_PackageName"] = "  Paketnamen eingeben oder leer lassen für automatischen Modus",
         ["AddLinks_Option_AutoExtract"] = "Automatisches Entpacken",
         ["AddLinks_Option_AutoExtract_ToolTip"] = "Archive nach erfolgreichem Download automatisch im Zielordner entpacken.",
         ["AddLinks_Option_LowResource"] = "PC-schonend entpacken",
@@ -267,7 +269,6 @@ public static class Strings_de
         ["AddLinks_LinksDetectedSummary"] = "{0} Link(s) erkannt",
         ["AddLinks_Button_PasteClipboard"] = "Zwischenablage einfügen",
         ["AddLinks_Button_AddPackage"] = "Paket hinzufügen",
-        ["AddLinks_UpdateHint"] = "Hinweis: Für zukünftige Spiel-Updates ALLE Pakete installieren (keine Voice-Packs etc. weglassen), ansonsten funktioniert das Updaten nicht.",
 
         // Browser Window
         ["Browser_Title"] = "Reepax Browser",
@@ -385,6 +386,8 @@ public static class Strings_de
         ["UpdateDialog_NoChangelog"] = "Keine Versionshinweise für dieses Release angegeben.",
         ["UpdateDialog_Button_GetUpdate"] = "Zum Update",
         ["UpdateDialog_Button_Later"] = "Später",
+        ["LineIndicator_Remaining"] = "Noch {0} von {1} Zeilen",
+        ["LineIndicator_ClickToScroll"] = "Klicken, um nach unten zu scrollen",
         ["Dialog_ClearCompletedTitle"] = "Fertige Downloads entfernen",
         ["Dialog_ClearCompletedMessage"] = "Möchtest du alle fertiggestellten Downloads wirklich aus der Liste entfernen?",
 

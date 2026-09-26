@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using Reepax.Models;
 using Reepax.Services;
@@ -196,6 +197,12 @@ public partial class AddLinksDialog : Window
         }
 
         UpdateSummary();
+        Loaded += (_, _) =>
+        {
+            LinksTextBox.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler((_, _) => UpdateLinksLineIndicator()));
+            UpdateLinksLineIndicator();
+        };
+        SizeChanged += (_, _) => UpdateLinksLineIndicator();
     }
 
     private static string? GetClipboardLinksText()
@@ -278,6 +285,64 @@ public partial class AddLinksDialog : Window
     private void LinksTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateSummary();
+        UpdateLinksLineIndicator();
+    }
+
+    private void LinksLineIndicator_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                LinksTextBox.LineDown();
+            }
+            e.Handled = true;
+            UpdateLinksLineIndicator();
+        }
+    }
+
+    private void LinksTextBox_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta < 0)
+        {
+            for (int i = 0; i < 3; i++) LinksTextBox.LineDown();
+        }
+        else if (e.Delta > 0)
+        {
+            for (int i = 0; i < 3; i++) LinksTextBox.LineUp();
+        }
+        e.Handled = true;
+        UpdateLinksLineIndicator();
+    }
+
+    private void UpdateLinksLineIndicator()
+    {
+        if (!IsLoaded || LinksTextBox == null || LinksTextBox.ActualHeight <= 0)
+            return;
+
+        int totalLines = LinksTextBox.LineCount;
+        if (totalLines <= 1 || string.IsNullOrWhiteSpace(LinksTextBox.Text))
+        {
+            LinksLineIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int lastVisible = LinksTextBox.GetLastVisibleLineIndex();
+        if (lastVisible < 0)
+        {
+            Dispatcher.BeginInvoke(new Action(UpdateLinksLineIndicator), System.Windows.Threading.DispatcherPriority.Loaded);
+            return;
+        }
+
+        int remainingLines = totalLines - (lastVisible + 1);
+        if (remainingLines <= 0)
+        {
+            LinksLineIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        LinksLineIndicatorText.Text = Services.Localization.Loc.Format("LineIndicator_Remaining", remainingLines, totalLines);
+        LinksLineIndicator.Visibility = Visibility.Visible;
     }
 
     /// <summary>
@@ -518,8 +583,20 @@ public partial class AddLinksDialog : Window
         ThemeService.Instance.ThemeChanged -= UpdateTitleBarTheme;
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e)
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        DialogResult = false;
+        base.OnPreviewKeyDown(e);
+        if (e.Key == Key.Escape)
+        {
+            try
+            {
+                DialogResult = false;
+            }
+            catch (InvalidOperationException)
+            {
+                Close();
+            }
+            e.Handled = true;
+        }
     }
 }

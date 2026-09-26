@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Reepax.Services;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.Update;
 
@@ -36,8 +37,17 @@ public partial class UpdateDialog : Window
         RestoreWindowBounds();
 
         LocationChanged += (_, _) => SaveWindowBounds();
-        SizeChanged += (_, _) => SaveWindowBounds();
-        StateChanged += (_, _) => SaveWindowBounds();
+        SizeChanged += (_, _) =>
+        {
+            SaveWindowBounds();
+            UpdateChangelogLineIndicator(null);
+        };
+        StateChanged += (_, _) =>
+        {
+            SaveWindowBounds();
+            UpdateChangelogLineIndicator(null);
+        };
+        Loaded += UpdateDialog_Loaded;
 
         ThemeService.Instance.ThemeChanged += UpdateTitleBarTheme;
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
@@ -178,6 +188,19 @@ public partial class UpdateDialog : Window
         Close();
     }
 
+    private void UpdateDialog_Loaded(object sender, RoutedEventArgs e)
+    {
+        ChangelogViewer.ApplyTemplate();
+        var scv = ChangelogViewer.Template?.FindName("PART_ContentHost", ChangelogViewer) as ScrollViewer
+               ?? FindVisualChild<ScrollViewer>(ChangelogViewer);
+
+        if (scv != null)
+        {
+            scv.ScrollChanged += (_, _) => UpdateChangelogLineIndicator(scv);
+        }
+        Dispatcher.BeginInvoke(new Action(() => UpdateChangelogLineIndicator(scv)), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
     private void ChangelogViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         var scv = ChangelogViewer.Template?.FindName("PART_ContentHost", ChangelogViewer) as ScrollViewer
@@ -187,7 +210,63 @@ public partial class UpdateDialog : Window
         {
             scv.ScrollToVerticalOffset(scv.VerticalOffset - (e.Delta * 0.5));
             e.Handled = true;
+            UpdateChangelogLineIndicator(scv);
         }
+    }
+
+    private void ReleaseNotesLineIndicator_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            var scv = ChangelogViewer.Template?.FindName("PART_ContentHost", ChangelogViewer) as ScrollViewer
+                   ?? FindVisualChild<ScrollViewer>(ChangelogViewer);
+            if (scv != null)
+            {
+                scv.ScrollToVerticalOffset(scv.VerticalOffset + Math.Max(40, scv.ViewportHeight * 0.7));
+                e.Handled = true;
+                UpdateChangelogLineIndicator(scv);
+            }
+        }
+    }
+
+    private void UpdateChangelogLineIndicator(ScrollViewer? scv)
+    {
+        if (scv == null)
+        {
+            ChangelogViewer.ApplyTemplate();
+            scv = ChangelogViewer.Template?.FindName("PART_ContentHost", ChangelogViewer) as ScrollViewer
+               ?? FindVisualChild<ScrollViewer>(ChangelogViewer);
+        }
+        if (scv == null) return;
+
+        var changelog = _updateInfo?.Changelog;
+        if (string.IsNullOrWhiteSpace(changelog))
+        {
+            ReleaseNotesLineIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var lines = changelog.TrimEnd().Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        int totalLines = lines.Length;
+        if (totalLines <= 1 || scv.ExtentHeight <= scv.ViewportHeight)
+        {
+            ReleaseNotesLineIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        double remainingPixels = scv.ExtentHeight - (scv.VerticalOffset + scv.ViewportHeight);
+        if (remainingPixels <= 1.5)
+        {
+            ReleaseNotesLineIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        double avgLineHeight = scv.ExtentHeight / totalLines;
+        int remainingLines = (int)Math.Max(1, Math.Round(remainingPixels / avgLineHeight));
+        remainingLines = Math.Min(remainingLines, totalLines - 1);
+
+        ReleaseNotesLineIndicatorText.Text = Loc.Format("LineIndicator_Remaining", remainingLines, totalLines);
+        ReleaseNotesLineIndicator.Visibility = Visibility.Visible;
     }
 
     private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
