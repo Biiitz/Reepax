@@ -155,7 +155,7 @@ Reepax queries physical drive geometry via the Windows storage control layer (`I
 
 ## Testing & Quality Assurance
 
-Reepax is backed by a robust suite of **640 automated xUnit unit and integration tests** ensuring stability across all core subsystems:
+Reepax is backed by a robust suite of **644 automated xUnit unit and integration tests** ensuring stability across all core subsystems:
 
 ```bash
 # Clone the repository
