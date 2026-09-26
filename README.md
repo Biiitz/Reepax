@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-file -->
 
 <p align="center">
-  <img src="Reepax/Assets/banner.png" alt="Reepax Banner" />
+  <img src="Reepax/Assets/R.png" alt="Reepax Logo/Banner" width="150" />
 </p>
 
 <p align="center">
