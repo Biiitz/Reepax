@@ -27,4 +27,4 @@ Die Nutzung erfolgt vollständig auf dein eigenes Risiko. Du bist allein dafür 
 
 ---
 
-*(English version: [DISCLAIMER.md](DISCLAIMER.md))*
+*English version: [DISCLAIMER.md](DISCLAIMER.md)*

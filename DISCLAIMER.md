@@ -27,4 +27,4 @@ You use this application entirely at your own risk. You are solely responsible f
 
 ---
 
-*(Deutsche Fassung: [DISCLAIMER_DE.md](DISCLAIMER_DE.md))*
+*Deutsche Fassung: [DISCLAIMER_DE.md](DISCLAIMER_DE.md)*
