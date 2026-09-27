@@ -113,13 +113,13 @@ Reepax is architected around a streamlined execution pipeline designed for maxim
 ## Installation & Portable Usage
 
 ### Option 1: Windows Installer (`setup.exe`)
-For a clean, standard desktop installation:
+
 1. Download `setup.exe` from the latest Releases.
 2. Run the installer to set up Start Menu shortcuts, desktop icons, and `.repx` package file associations.
 3. Clean uninstallation is fully supported with optional AppData cleanup prompt.
 
 ### Option 2: Portable Edition (`portable.zip`)
-For USB drives or running without administrative privileges:
+
 1. Download `portable.zip` from the latest Releases.
 2. Extract the archive into any folder of your choice.
 3. Launch `Reepax.exe`. All configurations, settings, and queues are stored safely within your user profile (`%LOCALAPPDATA%\Reepax`).
