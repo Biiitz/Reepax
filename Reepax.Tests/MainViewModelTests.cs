@@ -1150,5 +1150,29 @@ https://rapidgator.net/file/202/archive.part2.rar
         vm.CollapseAll();
         Assert.False(pkg.IsExpanded, "Package should collapse when in Downloads tab");
     }
+
+    [Fact]
+    public async Task DownloadCompleted_TriggeredFromBackgroundThread_UpdatesStatusSummaryWithoutException()
+    {
+        var vm = new MainViewModel();
+        var item = new DownloadItem { FileName = "bg_complete_test.bin" };
+
+        await Task.Run(() => DownloadEngine.Instance.TriggerDownloadCompletedForTesting(item));
+
+        Assert.Contains("bg_complete_test.bin", vm.StatusSummary);
+    }
+
+    [Fact]
+    public async Task DownloadFailed_TriggeredFromBackgroundThread_UpdatesStatusSummaryWithoutException()
+    {
+        var vm = new MainViewModel();
+        var item = new DownloadItem { FileName = "bg_fail_test.bin" };
+        var ex = new Exception("Connection timeout error");
+
+        await Task.Run(() => DownloadEngine.Instance.TriggerDownloadFailedForTesting(item, ex));
+
+        Assert.Contains("bg_fail_test.bin", vm.StatusSummary);
+        Assert.Contains("Connection timeout error", vm.StatusSummary);
+    }
 }
 

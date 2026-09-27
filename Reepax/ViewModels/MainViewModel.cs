@@ -1188,7 +1188,7 @@ public partial class MainViewModel : ObservableObject
 
         DriveHardwareDetector.DriveTypeDetected += (letter, type) =>
         {
-            App.Current?.Dispatcher?.BeginInvoke(() =>
+            SafeDispatch(() =>
             {
                 var dir = !string.IsNullOrWhiteSpace(CurrentDownloadDirectory) ? CurrentDownloadDirectory : _settingsService.Settings.DefaultDownloadDirectory;
                 IsLowResourceRecommended = DriveHardwareDetector.IsLowResourceRecommended(dir);
@@ -1268,20 +1268,29 @@ public partial class MainViewModel : ObservableObject
 
         _queueManager.QueueStateChanged += isRunning =>
         {
-            IsQueueRunning = isRunning;
-            UpdateStatusSummary();
+            SafeDispatch(() =>
+            {
+                IsQueueRunning = isRunning;
+                UpdateStatusSummary();
+            });
         };
 
         // Global stats are handled by the 500 ms timer below without per-item progress subscription overhead.
         DownloadEngine.Instance.DownloadCompleted += item =>
         {
-            RecalculateGlobalStats();
-            StatusSummary = Loc.Format("Status_FileDownloadedSuccess", item.FileName);
+            SafeDispatch(() =>
+            {
+                RecalculateGlobalStats();
+                StatusSummary = Loc.Format("Status_FileDownloadedSuccess", item.FileName);
+            });
         };
         DownloadEngine.Instance.DownloadFailed += (item, ex) =>
         {
-            RecalculateGlobalStats();
-            StatusSummary = Loc.Format("Status_FileDownloadError", item.FileName, ex.Message);
+            SafeDispatch(() =>
+            {
+                RecalculateGlobalStats();
+                StatusSummary = Loc.Format("Status_FileDownloadError", item.FileName, ex.Message);
+            });
         };
 
         // Setup timer for periodic stats refresh
@@ -1295,7 +1304,7 @@ public partial class MainViewModel : ObservableObject
         RefreshRootPackages();
         _queueManager.Packages.CollectionChanged += (s, e) =>
         {
-            RefreshRootPackages();
+            SafeDispatch(RefreshRootPackages);
         };
 
         if (!DownloadPersistenceService.IsTestEnvironment)
@@ -2432,6 +2441,29 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             AppLogger.Debug($"[MainViewModel] SafeInvoke error: {ex.Message}");
+        }
+    }
+
+    private static void SafeDispatch(Action action)
+    {
+        try
+        {
+            var app = Application.Current;
+            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+            {
+                if (!app.Dispatcher.CheckAccess())
+                {
+                    app.Dispatcher.BeginInvoke(action);
+                    return;
+                }
+            }
+            action();
+        }
+        catch (TaskCanceledException) { }
+        catch (InvalidOperationException) { }
+        catch (Exception ex)
+        {
+            AppLogger.Debug($"[MainViewModel] SafeDispatch error: {ex.Message}");
         }
     }
 

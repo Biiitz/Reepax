@@ -48,6 +48,22 @@ public class DownloadEngine
     public event Action<DownloadItem, Exception>? DownloadFailed;
     public event Action<DownloadItem>? DownloadProgressUpdated;
 
+    /// <summary>
+    /// For unit tests: triggers DownloadCompleted event directly.
+    /// </summary>
+    internal void TriggerDownloadCompletedForTesting(DownloadItem item)
+    {
+        DownloadCompleted?.Invoke(item);
+    }
+
+    /// <summary>
+    /// For unit tests: triggers DownloadFailed event directly.
+    /// </summary>
+    internal void TriggerDownloadFailedForTesting(DownloadItem item, Exception ex)
+    {
+        DownloadFailed?.Invoke(item, ex);
+    }
+
     public DownloadEngine(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny);
