@@ -78,13 +78,6 @@ public class ExtensionSavedState
     public bool IsEnabled { get; set; } = true;
     public string? ExtensionId { get; set; }
 }
-
-/// <summary>
-/// Manages WebExtensions (MV2/MV3) from %LocalAppData%/Reepax/Extensions.
-/// Scans the directory, parses manifests (name, icon, options page), extracts archive drops (.zip, .crx),
-/// discovers manifests in subfolders, installs enabled extensions into the shared WebView2 profile,
-/// and persists activation states.
-/// </summary>
 public class BrowserExtensionService
 {
     private static readonly Lazy<BrowserExtensionService> _instance = new(() => new BrowserExtensionService());

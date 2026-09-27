@@ -94,9 +94,11 @@
                 BorderThickness="0,0,1,0">
             <!-- Category List -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12">
-                    <StackPanel>
+                <Grid x:Name="CategoryButtonsContainer">
+                    <StackPanel x:Name="CategoryButtonsPanel">
                         <!-- 1. General -->
-                        <Button Command="{Binding SelectSettingsCategoryCommand}"
+                        <Button x:Name="GeneralCategoryButton"
+                                Command="{Binding SelectSettingsCategoryCommand}"
                                 CommandParameter="General">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
@@ -116,21 +118,6 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="4" Margin="0,2,0,2">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="General">
-                                                    <Setter Property="Background" Value="{DynamicResource AccentBlueBrush}" />
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="Notifications">
-                                                    <Setter Property="Background" Value="{DynamicResource AccentBlueBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                </Border>
                                 <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconSliders}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
@@ -151,7 +138,8 @@
                         </Button>
 
                         <!-- 2. Downloads & Connections -->
-                        <Button Command="{Binding SelectSettingsCategoryCommand}"
+                        <Button x:Name="DownloadsCategoryButton"
+                                Command="{Binding SelectSettingsCategoryCommand}"
                                 CommandParameter="DownloadConnections">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
@@ -168,18 +156,6 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="4" Margin="0,2,0,2">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="DownloadConnections">
-                                                    <Setter Property="Background" Value="{DynamicResource AccentBlueBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                </Border>
                                 <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconDownload}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
@@ -195,8 +171,10 @@
                                 <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_Downloads}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                             </Grid>
                         </Button>
+
                         <!-- 3. Keyboard Shortcuts -->
-                        <Button Command="{Binding SelectSettingsCategoryCommand}"
+                        <Button x:Name="ShortcutsCategoryButton"
+                                Command="{Binding SelectSettingsCategoryCommand}"
                                 CommandParameter="Shortcuts">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
@@ -213,18 +191,6 @@
                                     <ColumnDefinition Width="22" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="4" Margin="0,2,0,2">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="Shortcuts">
-                                                    <Setter Property="Background" Value="{DynamicResource AccentBlueBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                </Border>
                                 <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconKeyboard}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
@@ -241,7 +207,25 @@
                             </Grid>
                         </Button>
                     </StackPanel>
-                </ScrollViewer>
+
+                    <!-- Animated Sliding Blue Pill Indicator -->
+                    <Border x:Name="SlidingCategoryIndicator"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Width="3"
+                            Height="18"
+                            CornerRadius="1.5"
+                            Background="{DynamicResource AccentBlueBrush}"
+                            IsHitTestVisible="False">
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="CategoryIndicatorTransform" X="18" Y="10" />
+                        </Border.RenderTransform>
+                        <Border.Effect>
+                            <DropShadowEffect Direction="0" ShadowDepth="0" BlurRadius="6" Color="#38BDF8" Opacity="0.25" />
+                        </Border.Effect>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
         </Border>
 
         <!-- ==================== RIGHT CONTENT PANE ==================== -->

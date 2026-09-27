@@ -252,6 +252,8 @@ public static class Strings_de
         ["Dialog_ImportErrorMessage"] = "Fehler beim Importieren des Pakets: {0}",
         ["Dialog_RemoveExtensionTitle"] = "Erweiterung entfernen",
         ["Dialog_RemoveExtensionMessage"] = "Möchtest du \"{0}\" wirklich entfernen? Der Ordner wird endgültig gelöscht.",
+        ["Dialog_DownloadsLoadFailedTitle"] = "Warnung – Downloads-Datei gesperrt",
+        ["Dialog_DownloadsLoadFailedMessage"] = "Die Download-Liste ('downloads.json') konnte nicht geladen werden, da die Datei gesperrt oder beschädigt ist.\n\nUm Datenverlust zu verhindern, wurde das automatische Überschreiben der Datei deaktiviert.\nBitte stellen Sie sicher, dass keine andere Anwendung (wie ein Virenscanner oder Editor) die Datei sperrt, und starten Sie Reepax neu.",
 
         // AddLinks Dialog
         ["AddLinks_Title"] = "Links analysieren und hinzufügen",

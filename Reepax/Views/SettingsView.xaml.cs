@@ -20,14 +20,32 @@ public partial class SettingsView : UserControl
         Loaded += SettingsView_Loaded;
         Unloaded += SettingsView_Unloaded;
         DataContextChanged += SettingsView_DataContextChanged;
+        IsVisibleChanged += SettingsView_IsVisibleChanged;
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
+
+    private bool _isCategoryIndicatorInitialized;
 
     private void SettingsView_Loaded(object sender, RoutedEventArgs e)
     {
         HookViewModel();
         UpdateGameInstallFolderVisibility(animate: false);
+
+        if (GeneralCategoryButton != null)
+            GeneralCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
+        if (DownloadsCategoryButton != null)
+            DownloadsCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
+        if (ShortcutsCategoryButton != null)
+            ShortcutsCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
+        if (CategoryButtonsContainer != null)
+            CategoryButtonsContainer.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            UpdateSlidingCategoryIndicator(animate: false);
+            _isCategoryIndicatorInitialized = true;
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void SettingsView_Unloaded(object sender, RoutedEventArgs e)
@@ -39,6 +57,17 @@ public partial class SettingsView : UserControl
     {
         HookViewModel();
         UpdateGameInstallFolderVisibility(animate: false);
+        Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: false)),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void SettingsView_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (IsVisible)
+        {
+            Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: false)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        }
     }
 
     private void HookViewModel()
@@ -69,6 +98,72 @@ public partial class SettingsView : UserControl
         {
             UpdateGameInstallFolderVisibility(animate: true);
         }
+        else if (e.PropertyName == nameof(MainViewModel.SelectedSettingsCategory))
+        {
+            Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: true)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    private void UpdateSlidingCategoryIndicator(bool animate = true)
+    {
+        if (GeneralCategoryButton == null || DownloadsCategoryButton == null || 
+            ShortcutsCategoryButton == null || CategoryIndicatorTransform == null || 
+            SlidingCategoryIndicator == null || CategoryButtonsContainer == null)
+            return;
+
+        var category = ViewModel?.SelectedSettingsCategory ?? SettingsCategory.General;
+        Button targetButton = category switch
+        {
+            SettingsCategory.General or SettingsCategory.Notifications => GeneralCategoryButton,
+            SettingsCategory.DownloadConnections => DownloadsCategoryButton,
+            SettingsCategory.Shortcuts => ShortcutsCategoryButton,
+            _ => GeneralCategoryButton
+        };
+
+        double targetHeight = targetButton.ActualHeight;
+        if (targetHeight <= 0)
+        {
+            targetButton.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            targetHeight = targetButton.DesiredSize.Height > 0 ? targetButton.DesiredSize.Height : 36.0;
+        }
+
+        Point relativePoint;
+        try
+        {
+            relativePoint = targetButton.TranslatePoint(new Point(0, 0), CategoryButtonsContainer);
+        }
+        catch
+        {
+            return;
+        }
+
+        double pillHeight = 18.0;
+        double targetX = relativePoint.X + 12.0;
+        double targetY = relativePoint.Y + (targetHeight - pillHeight) / 2.0;
+
+        CategoryIndicatorTransform.X = targetX;
+
+        if (!animate || !_isCategoryIndicatorInitialized)
+        {
+            CategoryIndicatorTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            CategoryIndicatorTransform.Y = targetY;
+            SlidingCategoryIndicator.Opacity = 1.0;
+            return;
+        }
+
+        var duration = TimeSpan.FromMilliseconds(130);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var moveAnim = new DoubleAnimation
+        {
+            To = targetY,
+            Duration = duration,
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+
+        CategoryIndicatorTransform.BeginAnimation(TranslateTransform.YProperty, moveAnim);
     }
 
     private void SpeedLimit_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

@@ -23,12 +23,15 @@ namespace Reepax;
 public partial class MainWindow : Window
 {
     private bool _hasInitializedDownloadsTab;
+    private bool _isTabIndicatorInitialized;
 
     public MainWindow()
     {
         InitializeComponent();
         Title = ViewModel.WindowTitle;
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
+
+        Loaded += MainWindow_TabIndicator_Loaded;
 
         // Browser-style navigation
         CommandBindings.Add(new CommandBinding(NavigationCommands.BrowseBack, (s, e) =>
@@ -238,6 +241,93 @@ public partial class MainWindow : Window
 
             transform.BeginAnimation(TranslateTransform.YProperty, slideAnim);
         }
+    }
+
+    private void MainWindow_TabIndicator_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DownloadsTabButton != null)
+            DownloadsTabButton.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
+        if (SettingsTabButton != null)
+            SettingsTabButton.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
+        if (TabStripContainer != null)
+            TabStripContainer.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
+
+        if (ViewModel != null)
+            ViewModel.PropertyChanged += ViewModel_TabIndicator_PropertyChanged;
+
+        UpdateSlidingTabIndicator(animate: false);
+        _isTabIndicatorInitialized = true;
+    }
+
+    private void ViewModel_TabIndicator_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ViewModel.SelectedMainTab))
+        {
+            Dispatcher.BeginInvoke(new Action(() => UpdateSlidingTabIndicator(animate: true)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    private void UpdateSlidingTabIndicator(bool animate = true)
+    {
+        if (DownloadsTabButton == null || SettingsTabButton == null || 
+            TabIndicatorTransform == null || SlidingTabIndicator == null || 
+            TabStripContainer == null)
+            return;
+
+        var targetButton = ViewModel?.SelectedMainTab == AppMainTab.Settings 
+            ? SettingsTabButton 
+            : DownloadsTabButton;
+
+        double targetWidth = targetButton.ActualWidth;
+        if (targetWidth <= 0)
+        {
+            targetButton.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            targetWidth = targetButton.DesiredSize.Width > 0 ? targetButton.DesiredSize.Width : targetButton.MinWidth;
+        }
+
+        Point relativePoint;
+        try
+        {
+            relativePoint = targetButton.TranslatePoint(new Point(0, 0), TabStripContainer);
+        }
+        catch
+        {
+            return;
+        }
+
+        double targetX = relativePoint.X;
+
+        if (!animate || !_isTabIndicatorInitialized)
+        {
+            TabIndicatorTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            TabIndicatorTransform.X = targetX;
+            SlidingTabIndicator.BeginAnimation(FrameworkElement.WidthProperty, null);
+            SlidingTabIndicator.Width = targetWidth;
+            return;
+        }
+
+        var duration = TimeSpan.FromMilliseconds(200);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var slideAnim = new DoubleAnimation
+        {
+            To = targetX,
+            Duration = duration,
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+
+        var widthAnim = new DoubleAnimation
+        {
+            To = targetWidth,
+            Duration = duration,
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+
+        TabIndicatorTransform.BeginAnimation(TranslateTransform.XProperty, slideAnim);
+        SlidingTabIndicator.BeginAnimation(FrameworkElement.WidthProperty, widthAnim);
     }
 
     private void SaveWindowState()

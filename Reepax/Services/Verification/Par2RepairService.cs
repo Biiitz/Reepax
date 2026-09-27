@@ -86,17 +86,11 @@ public class Par2RepairService
 
     private string? _cachedExecutablePath;
 
-    /// <summary>
-    /// Resolves the full path to the par2cmdline binary (par2.exe).
-    /// Prioritizes the user settings directory (%LocalAppData%\Reepax\par2.exe),
-    /// automatically deploying from bundled binaries if not yet present in AppData.
-    /// </summary>
     public string? ResolvePar2ExecutablePath()
     {
         if (!string.IsNullOrEmpty(_cachedExecutablePath) && File.Exists(_cachedExecutablePath))
             return _cachedExecutablePath;
 
-        // 1. User settings / AppData directory (%LocalAppData%\Reepax\par2.exe)
         var appDataPar2 = Path.Combine(SettingsService.AppDataDirectory, "par2.exe");
         if (File.Exists(appDataPar2))
         {

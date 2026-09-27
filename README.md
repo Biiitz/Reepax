@@ -19,6 +19,10 @@
   <a href="#license">License</a>
 </p>
 
+<p align="center">
+   Note: This app is in early state and under development, Expect bugs or unexpected behavior.
+</p>
+
 ---
 
 ## Overview

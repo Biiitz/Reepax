@@ -240,8 +240,7 @@ public class SettingsService
             {
                 Directory.CreateDirectory(AppDataDirectory);
             }
-
-            // Migrate all files from Roaming to LocalAppData
+            
             string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json", "adblock_whitelist.txt" };
             foreach (var file in filesToMigrate)
             {

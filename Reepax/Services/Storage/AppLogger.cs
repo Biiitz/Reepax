@@ -15,15 +15,8 @@ public static class AppLogger
     private static readonly object _lock = new();
     private static string? _customLogsDirectory;
 
-    /// <summary>
-    /// Whether file logging is active. When false, no log files or directories are created.
-    /// </summary>
     public static bool IsLoggingEnabled { get; set; } = false;
 
-    /// <summary>
-    /// Path to the log directory in the user profile (%LocalAppData%\Reepax\logs).
-    /// Can be overridden in tests if needed.
-    /// </summary>
     public static string LogsDirectory
     {
         get => _customLogsDirectory ?? Path.Combine(

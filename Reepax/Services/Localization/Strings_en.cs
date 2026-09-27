@@ -252,6 +252,8 @@ public static class Strings_en
         ["Dialog_ImportErrorMessage"] = "Error importing package: {0}",
         ["Dialog_RemoveExtensionTitle"] = "Remove Extension",
         ["Dialog_RemoveExtensionMessage"] = "Are you sure you want to remove \"{0}\"? The folder will be permanently deleted.",
+        ["Dialog_DownloadsLoadFailedTitle"] = "Warning – Downloads File Locked",
+        ["Dialog_DownloadsLoadFailedMessage"] = "The downloads list ('downloads.json') could not be loaded because the file is locked or corrupt.\n\nTo prevent data loss, automatic overwriting of the file has been disabled.\nPlease ensure no other application (such as an antivirus scanner or editor) is locking the file, and restart Reepax.",
 
         // AddLinks Dialog
         ["AddLinks_Title"] = "Analyze and Add Links",

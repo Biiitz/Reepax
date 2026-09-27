@@ -14,7 +14,6 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 
-; Per-User Installation like JDownloader2, Chrome, VS Code (No Admin rights needed!)
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableWelcomePage=yes

@@ -200,159 +200,169 @@
                 SnapsToDevicePixels="True" 
                 UseLayoutRounding="True">
             <DockPanel LastChildFill="False">
-                <!-- Browser Tabs Strip (Docked to far left) -->
-                <StackPanel DockPanel.Dock="Left" 
-                            Orientation="Horizontal" 
-                            VerticalAlignment="Stretch" 
-                            Margin="0">
-                    <!-- Tab 1: Downloads -->
-                    <Button x:Name="DownloadsTabButton"
-                            Command="{Binding SwitchToDownloadsTabCommand}"
-                            Height="38"
-                            MinWidth="136"
-                            VerticalAlignment="Stretch"
-                            Cursor="Hand"
-                            FocusVisualStyle="{x:Null}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <!-- Main Tab Body & Right Border -->
-                                    <Border x:Name="TabBg"
-                                            Background="Transparent"
-                                            BorderBrush="{DynamicResource BorderDarkBrush}"
-                                            BorderThickness="0,0,1,0"
-                                            Padding="20,0">
-                                        <StackPanel Orientation="Horizontal" 
-                                                    VerticalAlignment="Center" 
-                                                    HorizontalAlignment="Center">
-                                            <Path x:Name="TabIcon" 
-                                                  Data="{StaticResource IconDownload}" 
-                                                  Width="13" Height="13" 
-                                                  Stretch="Uniform" 
-                                                  VerticalAlignment="Center" 
-                                                  Margin="0,0,9,0" 
-                                                  Fill="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock x:Name="TabText" 
-                                                       Text="{loc:Loc Tab_Downloads}" 
-                                                       FontSize="12.5" 
-                                                       FontWeight="Normal" 
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" 
-                                                       VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Border>
+                <!-- Browser Tabs Strip (Docked to far left) with Sliding Indicator & Upward Glow -->
+                <Grid x:Name="TabStripContainer" 
+                      DockPanel.Dock="Left" 
+                      VerticalAlignment="Stretch"
+                      ClipToBounds="False">
+                    <!-- Tab Buttons -->
+                    <StackPanel x:Name="TabButtonsPanel" 
+                                Orientation="Horizontal" 
+                                VerticalAlignment="Stretch" 
+                                Margin="0">
+                        <!-- Tab 1: Downloads -->
+                        <Button x:Name="DownloadsTabButton"
+                                Command="{Binding SwitchToDownloadsTabCommand}"
+                                Height="38"
+                                MinWidth="136"
+                                VerticalAlignment="Stretch"
+                                Cursor="Hand"
+                                FocusVisualStyle="{x:Null}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid>
+                                        <!-- Main Tab Body & Right Border -->
+                                        <Border x:Name="TabBg"
+                                                Background="Transparent"
+                                                BorderBrush="{DynamicResource BorderDarkBrush}"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="20,0">
+                                            <StackPanel Orientation="Horizontal" 
+                                                        VerticalAlignment="Center" 
+                                                        HorizontalAlignment="Center">
+                                                <Path x:Name="TabIcon" 
+                                                      Data="{StaticResource IconDownload}" 
+                                                      Width="13" Height="13" 
+                                                      Stretch="Uniform" 
+                                                      VerticalAlignment="Center" 
+                                                      Margin="0,0,9,0" 
+                                                      Fill="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock x:Name="TabText" 
+                                                           Text="{loc:Loc Tab_Downloads}" 
+                                                           FontSize="12.5" 
+                                                           FontWeight="Normal" 
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <!-- Inactive Tab Hover -->
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                            <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                        </Trigger>
 
-                                    <!-- Modern Active Indicator (Sleek Bottom Accent Line) -->
-                                    <Border x:Name="ActiveIndicator" 
-                                            Height="2.5" 
-                                            VerticalAlignment="Bottom" 
-                                            Background="{DynamicResource AccentBlueBrush}" 
-                                            Visibility="Collapsed" />
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <!-- Inactive Tab Hover -->
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                                        <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                        <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
-                                    </Trigger>
+                                        <!-- Active State (Downloads selected) -->
+                                        <DataTrigger Binding="{Binding SelectedMainTab}" Value="Downloads">
+                                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
+                                            <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter TargetName="TabText" Property="FontWeight" Value="SemiBold" />
+                                            <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                        </DataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
 
-                                    <!-- Active State (Downloads selected) -->
-                                    <DataTrigger Binding="{Binding SelectedMainTab}" Value="Downloads">
-                                        <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
-                                        <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                        <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                        <Setter TargetName="TabText" Property="FontWeight" Value="SemiBold" />
-                                        <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
-                                    </DataTrigger>
+                        <!-- Tab 2: Settings -->
+                        <Button x:Name="SettingsTabButton"
+                                Command="{Binding SwitchToSettingsTabCommand}"
+                                Height="38"
+                                MinWidth="136"
+                                VerticalAlignment="Stretch"
+                                Cursor="Hand"
+                                FocusVisualStyle="{x:Null}">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid>
+                                        <!-- Main Tab Body & Right Border -->
+                                        <Border x:Name="TabBg"
+                                                Background="Transparent"
+                                                BorderBrush="{DynamicResource BorderDarkBrush}"
+                                                BorderThickness="0,0,1,0"
+                                                Padding="20,0">
+                                            <StackPanel Orientation="Horizontal" 
+                                                        VerticalAlignment="Center" 
+                                                        HorizontalAlignment="Center">
+                                                <Path x:Name="TabIcon" 
+                                                      Data="{StaticResource IconSettings}" 
+                                                      Width="13" Height="13" 
+                                                      Stretch="Uniform" 
+                                                      VerticalAlignment="Center" 
+                                                      Margin="0,0,9,0" 
+                                                      Fill="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock x:Name="TabText" 
+                                                           Text="{loc:Loc Tab_Settings}" 
+                                                           FontSize="12.5" 
+                                                           FontWeight="Normal" 
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" 
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <!-- Inactive Tab Hover -->
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                            <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                        </Trigger>
 
-                                    <!-- Hover on Active Tab -->
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <Condition Binding="{Binding Path=IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
-                                            <Condition Binding="{Binding SelectedMainTab}" Value="Downloads" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
-                                        <Setter TargetName="ActiveIndicator" Property="Background" Value="{DynamicResource AccentBlueHoverBrush}" />
-                                    </MultiDataTrigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
+                                        <!-- Active State (Settings selected) -->
+                                        <DataTrigger Binding="{Binding SelectedMainTab}" Value="Settings">
+                                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
+                                            <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter TargetName="TabText" Property="FontWeight" Value="SemiBold" />
+                                            <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                        </DataTrigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
 
-                    <!-- Tab 2: Settings -->
-                    <Button x:Name="SettingsTabButton"
-                            Command="{Binding SwitchToSettingsTabCommand}"
-                            Height="38"
-                            MinWidth="136"
-                            VerticalAlignment="Stretch"
-                            Cursor="Hand"
-                            FocusVisualStyle="{x:Null}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <!-- Main Tab Body & Right Border -->
-                                    <Border x:Name="TabBg"
-                                            Background="Transparent"
-                                            BorderBrush="{DynamicResource BorderDarkBrush}"
-                                            BorderThickness="0,0,1,0"
-                                            Padding="20,0">
-                                        <StackPanel Orientation="Horizontal" 
-                                                    VerticalAlignment="Center" 
-                                                    HorizontalAlignment="Center">
-                                            <Path x:Name="TabIcon" 
-                                                  Data="{StaticResource IconSettings}" 
-                                                  Width="13" Height="13" 
-                                                  Stretch="Uniform" 
-                                                  VerticalAlignment="Center" 
-                                                  Margin="0,0,9,0" 
-                                                  Fill="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock x:Name="TabText" 
-                                                       Text="{loc:Loc Tab_Settings}" 
-                                                       FontSize="12.5" 
-                                                       FontWeight="Normal" 
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" 
-                                                       VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Border>
+                    <!-- Animated Sliding Tab Indicator with Upward Glow -->
+                    <Grid x:Name="SlidingTabIndicator"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Bottom"
+                          IsHitTestVisible="False"
+                          ClipToBounds="False"
+                          Width="136">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="TabIndicatorTransform" X="0" Y="0" />
+                        </Grid.RenderTransform>
 
-                                    <!-- Modern Active Indicator (Sleek Bottom Accent Line) -->
-                                    <Border x:Name="ActiveIndicator" 
-                                            Height="2.5" 
-                                            VerticalAlignment="Bottom" 
-                                            Background="{DynamicResource AccentBlueBrush}" 
-                                            Visibility="Collapsed" />
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <!-- Inactive Tab Hover -->
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                                        <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                        <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
-                                    </Trigger>
+                        <!-- Upward Glow Layer: Radiates softly upwards into the active tab -->
+                        <Border Height="18" 
+                                VerticalAlignment="Bottom" 
+                                Margin="0,0,0,2.5" 
+                                IsHitTestVisible="False">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0">
+                                    <GradientStop Color="#383B82F6" Offset="0.0" />
+                                    <GradientStop Color="#1838BDF8" Offset="0.4" />
+                                    <GradientStop Color="#00000000" Offset="1.0" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
 
-                                    <!-- Active State (Settings selected) -->
-                                    <DataTrigger Binding="{Binding SelectedMainTab}" Value="Settings">
-                                        <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
-                                        <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible" />
-                                        <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                        <Setter TargetName="TabText" Property="FontWeight" Value="SemiBold" />
-                                        <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
-                                    </DataTrigger>
-
-                                    <!-- Hover on Active Tab -->
-                                    <MultiDataTrigger>
-                                        <MultiDataTrigger.Conditions>
-                                            <Condition Binding="{Binding Path=IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
-                                            <Condition Binding="{Binding SelectedMainTab}" Value="Settings" />
-                                        </MultiDataTrigger.Conditions>
-                                        <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
-                                        <Setter TargetName="ActiveIndicator" Property="Background" Value="{DynamicResource AccentBlueHoverBrush}" />
-                                    </MultiDataTrigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                </StackPanel>
+                        <!-- Sleek Modern Accent Line with subtle rounded top corners & neon glow -->
+                        <Border Height="2.5" 
+                                VerticalAlignment="Bottom" 
+                                CornerRadius="1.5,1.5,0,0"
+                                Background="{DynamicResource AccentBlueBrush}">
+                            <Border.Effect>
+                                <DropShadowEffect Direction="90" 
+                                                  ShadowDepth="1.5" 
+                                                  BlurRadius="8" 
+                                                  Color="#38BDF8" 
+                                                  Opacity="0.35" />
+                            </Border.Effect>
+                        </Border>
+                    </Grid>
+                </Grid>
             </DockPanel>
         </Border>
 

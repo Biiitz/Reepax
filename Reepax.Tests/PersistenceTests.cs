@@ -612,4 +612,123 @@ public class PersistenceTests
         Assert.StartsWith(expectedLocal, AppLogger.LogsDirectory, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Local", SettingsService.AppDataDirectory, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void LoadDownloads_WhenPrimaryFileIsLocked_RecoversFromBackup()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_LockBackupTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var downloadsFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            var service = new DownloadPersistenceService(downloadsFile);
+            var packages = new List<DownloadPackage>
+            {
+                new DownloadPackage
+                {
+                    Name = "Locked_Test_Package",
+                    IsEnabled = true
+                }
+            };
+
+            // Save once to create downloads.json
+            service.SaveDownloads(packages, sync: true);
+
+            // Save a second time to ensure downloads.json.bak is created with previous content
+            packages[0].Name = "Locked_Test_Package_V2";
+            service.SaveDownloads(packages, sync: true);
+
+            var bakFile = downloadsFile + ".bak";
+            Assert.True(File.Exists(bakFile));
+
+            // Lock primary file exclusively so ReadFileWithRetry fails for downloads.json
+            using (var lockStream = new FileStream(downloadsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                var reloaded = service.LoadDownloads();
+                Assert.Single(reloaded);
+                Assert.Equal("Locked_Test_Package", reloaded[0].Name);
+                Assert.False(service.HasDownloadsLoadFailed);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void LoadDownloads_WhenBothPrimaryAndBackupAreLocked_BlocksEmptySaveToPreventDataLoss()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_LockDataLossTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var downloadsFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            var service = new DownloadPersistenceService(downloadsFile);
+            var packages = new List<DownloadPackage>
+            {
+                new DownloadPackage
+                {
+                    Name = "Crucial_Download_Package",
+                    IsEnabled = true
+                }
+            };
+
+            // Save twice to have primary and backup
+            service.SaveDownloads(packages, sync: true);
+            service.SaveDownloads(packages, sync: true);
+
+            var bakFile = downloadsFile + ".bak";
+            Assert.True(File.Exists(downloadsFile));
+            Assert.True(File.Exists(bakFile));
+
+            // Lock BOTH primary and backup files exclusively
+            using (var primaryLock = new FileStream(downloadsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            using (var bakLock = new FileStream(bakFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                var reloaded = service.LoadDownloads();
+                Assert.Empty(reloaded);
+                Assert.True(service.HasDownloadsLoadFailed);
+
+                // Now simulate QueueManager or app trying to save an empty list on shutdown/debounce
+                service.SaveDownloads(new List<DownloadPackage>(), sync: true);
+            }
+
+            // After releasing lock, verify the original file was NOT overwritten with an empty list
+            var recoveredService = new DownloadPersistenceService(downloadsFile);
+            var finalPackages = recoveredService.LoadDownloads();
+            Assert.Single(finalPackages);
+            Assert.Equal("Crucial_Download_Package", finalPackages[0].Name);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void ReadFileWithRetry_CanReadThroughFileShareReadWriteLock()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_RetryTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testFile = Path.Combine(testDir, "test.txt");
+
+        try
+        {
+            File.WriteAllText(testFile, "Hello World from Retry");
+
+            // Open with FileShare.ReadWrite (typical for indexer or non-exclusive readers)
+            using (var fs = new FileStream(testFile, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+            {
+                var content = DownloadPersistenceService.ReadFileWithRetry(testFile);
+                Assert.Equal("Hello World from Retry", content);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
 }

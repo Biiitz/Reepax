@@ -15,12 +15,6 @@ using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services;
 
-/// <summary>
-/// Manages official filehoster favicons.
-/// Icons are loaded lazily: when a hoster appears in the app, its favicon
-/// is downloaded and permanently cached under %LocalAppData%\Reepax\Icons\{domain}.png.
-/// If the icon already exists in disk cache, the local file is always used.
-/// </summary>
 public static class HosterIconService
 {
     private static readonly ConcurrentDictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
