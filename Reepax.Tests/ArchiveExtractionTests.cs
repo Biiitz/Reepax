@@ -1139,6 +1139,54 @@ public class ArchiveExtractionTests
             try { Directory.Delete(testDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public void HasSufficientDiskSpace_WhenSpaceIsPlenty_ReturnsTrue()
+    {
+        var tempPath = Path.GetTempPath();
+        bool result = ArchiveExtractionService.HasSufficientDiskSpace(tempPath, 1024, out long availableFreeSpace, out long requiredWithBuffer);
+
+        Assert.True(result);
+        Assert.True(availableFreeSpace > 0);
+        Assert.True(requiredWithBuffer > 1024);
+        Assert.True(availableFreeSpace >= requiredWithBuffer);
+    }
+
+    [Fact]
+    public void HasSufficientDiskSpace_WhenRequiredExceedsAvailable_ReturnsFalse()
+    {
+        var tempPath = Path.GetTempPath();
+        // Request an impossible amount of space (500 TB)
+        long impossibleBytes = 500_000_000_000_000L;
+        bool result = ArchiveExtractionService.HasSufficientDiskSpace(tempPath, impossibleBytes, out long availableFreeSpace, out long requiredWithBuffer);
+
+        Assert.False(result);
+        Assert.True(availableFreeSpace > 0);
+        Assert.True(requiredWithBuffer > impossibleBytes);
+        Assert.True(availableFreeSpace < requiredWithBuffer);
+    }
+
+    [Fact]
+    public void HasSufficientDiskSpace_OnUncPath_ReturnsTrueTolerantly()
+    {
+        var uncPath = @"\\127.0.0.1\SharedFolder\Downloads";
+        bool result = ArchiveExtractionService.HasSufficientDiskSpace(uncPath, 1_000_000, out long availableFreeSpace, out long requiredWithBuffer);
+
+        Assert.True(result);
+        Assert.Equal(-1, availableFreeSpace);
+    }
+
+    [Fact]
+    public void HasSufficientDiskSpace_OnEmptyOrNullPath_ReturnsTrueTolerantly()
+    {
+        bool resultEmpty = ArchiveExtractionService.HasSufficientDiskSpace("", 1000, out long available1, out _);
+        bool resultNull = ArchiveExtractionService.HasSufficientDiskSpace(null!, 1000, out long available2, out _);
+
+        Assert.True(resultEmpty);
+        Assert.True(resultNull);
+        Assert.Equal(-1, available1);
+        Assert.Equal(-1, available2);
+    }
 }
 
 

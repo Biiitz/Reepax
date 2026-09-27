@@ -1066,5 +1066,72 @@ public class DownloadEngineTests
         vm.TogglePauseResume();
         Assert.True(vm.StatusSummary.Contains("gestartet", StringComparison.OrdinalIgnoreCase) || vm.StatusSummary.Contains("started", StringComparison.OrdinalIgnoreCase) || vm.StatusSummary.Contains("resumed", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public async Task DownloadEngine_CancelOrPauseDownload_CancelsImmediatelyWithoutDeadlock()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxCancelDeadlock_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "cancel_test.bin");
+            var startedTcs = new TaskCompletionSource<bool>();
+            var cancelTcs = new TaskCompletionSource<bool>();
+
+            var handler = new TestMockHttpMessageHandler(async (req, ct) =>
+            {
+                startedTcs.TrySetResult(true);
+                try
+                {
+                    await Task.Delay(10000, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelTcs.TrySetResult(true);
+                    throw;
+                }
+
+                var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(new byte[1000])
+                };
+                return response;
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            var item = new DownloadItem
+            {
+                Id = Guid.NewGuid(),
+                FileName = "cancel_test.bin",
+                SaveFilePath = destinationFile,
+                TotalBytes = 1000,
+                DirectDownloadUrl = "https://example.com/cancel_test.bin"
+            };
+
+            var downloadTask = engine.ResumeDownloadAsync(item);
+            await startedTcs.Task;
+
+            Assert.True(engine.IsDownloading(item.Id));
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            engine.CancelOrPauseDownload(item.Id, waitForCompletion: false);
+            sw.Stop();
+
+            Assert.True(sw.ElapsedMilliseconds < 50, $"CancelOrPauseDownload took {sw.ElapsedMilliseconds} ms, expected non-blocking.");
+
+            var canceledInTime = await Task.WhenAny(cancelTcs.Task, Task.Delay(2000));
+            Assert.Same(cancelTcs.Task, canceledInTime);
+
+            await Task.Delay(100);
+            Assert.False(engine.IsDownloading(item.Id));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
 

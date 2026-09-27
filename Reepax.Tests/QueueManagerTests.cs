@@ -603,4 +603,36 @@ public class QueueManagerTests
         Assert.Equal(DownloadStatus.InBrowser, item.Status);
         Assert.Single(host.Windows);
     }
+
+    [Fact]
+    public void QueueManager_DemoteActiveItemToQueued_ReturnsImmediatelyWithoutBlockingUIThread()
+    {
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 2 };
+        queueManager.Packages.Clear();
+
+        var pkg = new DownloadPackage { Name = "DemoteNonBlockingTest" };
+        var item = new DownloadItem
+        {
+            Id = Guid.NewGuid(),
+            FileName = "active_item.bin",
+            Status = DownloadStatus.Downloading,
+            SpeedBytesPerSecond = 5_000_000,
+            RemainingSeconds = 60,
+            DirectDownloadUrl = "https://example.com/test.bin"
+        };
+        pkg.Items.Add(item);
+        queueManager.Packages.Add(pkg);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        queueManager.DemoteActiveItemToQueued(item);
+        sw.Stop();
+
+        Assert.Equal(DownloadStatus.Queued, item.Status);
+        Assert.Equal(Loc.Get("Status_Queued"), item.StatusMessage);
+        Assert.Equal(0, item.SpeedBytesPerSecond);
+        Assert.Equal(0, item.RemainingSeconds);
+        Assert.Null(item.CurrentSlot);
+        Assert.False(item.IsTrickling);
+        Assert.True(sw.ElapsedMilliseconds < 100, $"DemoteActiveItemToQueued took {sw.ElapsedMilliseconds} ms, expected non-blocking < 100 ms.");
+    }
 }

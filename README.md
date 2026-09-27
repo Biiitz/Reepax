@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-   Note: This app is in early state and under development, Expect bugs or unexpected behavior.
+   <b>Notice:</b> Reepax is an evolving project provided &ldquo;as is&rdquo;. Please read the <a href="#disclaimer--limitation-of-liability">Disclaimer & Limitation of Liability</a> before use.
 </p>
 
 ---
@@ -183,6 +183,19 @@ Test coverage includes:
 - **Zero Telemetry**: Reepax does not collect user data, track activity, or transmit download URLs to external analytics servers.
 - **Local Persistence**: All configuration parameters, download queues, and historical statistics are stored locally on your device in standard JSON files (`settings.json`, `downloads.json`, `history.json`).
 - **Configurable Logging**: Diagnostic file logging can be completely disabled in the Settings tab at any time.
+
+---
+
+## Disclaimer & Limitation of Liability
+
+> [!WARNING]
+> **AUTOMATIC ACCEPTANCE & USE AT YOUR OWN RISK**
+> 
+> Reepax is an independent project under active development and **is not perfect** — bugs or unexpected behaviors can occur. By downloading, installing, launching, or using Reepax, you automatically and unconditionally accept all terms of the Disclaimer & Limitation of Liability in full, agreeing to the complete exclusion of liability for the developer (**Biiitz**).
+> 
+> Please review the full legal terms in your preferred language:
+> - 📄 **[English: Disclaimer & Limitation of Liability](DISCLAIMER.md)**
+> - 📄 **[Deutsch: Haftungsausschluss & Haftungsbeschränkung](DISCLAIMER_DE.md)**
 
 ---
 

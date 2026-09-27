@@ -398,7 +398,7 @@ public class QueueManager
 
         if (DownloadEngine.Instance.IsDownloading(item.Id))
         {
-            DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: true, timeoutMs: 300);
+            DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: false);
         }
 
         int? windowIdToClose = null;

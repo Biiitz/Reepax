@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using SharpCompress.Archives;
 using SharpCompress.Common;
+using Reepax.Converters;
 using Reepax.Models;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
@@ -303,7 +304,17 @@ public class ArchiveExtractionService
             }
             else
             {
-                SafeInvoke(() => package.StatusMessage = Loc.Get("Status_CompletedExtractionError"));
+                SafeInvoke(() =>
+                {
+                    if (string.IsNullOrWhiteSpace(package.StatusMessage) ||
+                        package.StatusMessage == Loc.Get("Status_Completed") ||
+                        package.StatusMessage == Loc.Get("Status_Extracting") ||
+                        package.StatusMessage.StartsWith(Loc.Get("Status_Extracting") + " (") ||
+                        package.StatusMessage == Loc.Get("Status_ExtractionCompleted"))
+                    {
+                        package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
+                    }
+                });
             }
 
             var shouldDelete = package.DeleteArchiveAfterExtraction || SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
@@ -364,6 +375,50 @@ public class ArchiveExtractionService
         {
             action();
         }
+    }
+
+    /// <summary>
+    /// Checks whether the target drive has sufficient free disk space to extract the given number of bytes.
+    /// Returns true if sufficient space exists or if free space cannot be queried (e.g. UNC network path).
+    /// Returns false if available space is strictly less than required bytes + safety buffer.
+    /// </summary>
+    public static bool HasSufficientDiskSpace(string targetDirectory, long requiredBytes, out long availableFreeSpace, out long requiredWithBuffer)
+    {
+        availableFreeSpace = -1;
+        // Dynamic safety buffer: at least 50 MB, at most 1 GB, or 5% of uncompressed data
+        long safetyBuffer = Math.Min(1024L * 1024L * 1024L, Math.Max(50L * 1024L * 1024L, (long)(requiredBytes * 0.05)));
+        requiredWithBuffer = requiredBytes + safetyBuffer;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(targetDirectory))
+                return true;
+
+            var fullPath = Path.GetFullPath(targetDirectory);
+            var root = Path.GetPathRoot(fullPath);
+            if (string.IsNullOrWhiteSpace(root) || root.StartsWith(@"\\") || root.StartsWith("//"))
+            {
+                // UNC path or network share where DriveInfo is not supported: allow extraction
+                return true;
+            }
+
+            var driveInfo = new DriveInfo(root);
+            if (driveInfo.IsReady)
+            {
+                availableFreeSpace = driveInfo.AvailableFreeSpace;
+                if (availableFreeSpace < requiredWithBuffer)
+                {
+                    return false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"[ArchiveExtractor] Could not check free disk space for '{targetDirectory}': {ex.Message}");
+            return true;
+        }
+
+        return true;
     }
 
     public Task<bool> ExtractArchiveAsync(
@@ -433,6 +488,17 @@ public class ArchiveExtractionService
                     foreach (var entry in validZipEntries)
                     {
                         try { if (entry.Length > 0) totalBytesZip += entry.Length; } catch { }
+                    }
+
+                    long requiredBytesZip = totalBytesZip > 0 ? totalBytesZip : (File.Exists(archiveFilePath) ? new FileInfo(archiveFilePath).Length : 0);
+                    if (requiredBytesZip > 0 && !HasSufficientDiskSpace(fullTarget, requiredBytesZip, out long availableFreeSpaceZip, out long requiredWithBufferZip))
+                    {
+                        var reqFormatted = BytesToHumanReadableConverter.FormatBytes(requiredBytesZip);
+                        var freeFormatted = BytesToHumanReadableConverter.FormatBytes(availableFreeSpaceZip);
+                        var errorMsg = Loc.Format("Status_ExtractionInsufficientDiskSpace", reqFormatted, freeFormatted);
+                        AppLogger.Error($"[ArchiveExtractor] Insufficient disk space to extract '{archiveFilePath}' into '{fullTarget}'. Required: {reqFormatted} (with buffer: {BytesToHumanReadableConverter.FormatBytes(requiredWithBufferZip)}), Available: {freeFormatted}.");
+                        statusCallback?.Invoke(errorMsg);
+                        return false;
                     }
 
                     long completedBytesZip = 0;
@@ -515,6 +581,17 @@ public class ArchiveExtractionService
                 foreach (var entry in validEntries)
                 {
                     try { if (entry.Size > 0) totalBytes += entry.Size; } catch { }
+                }
+
+                long requiredBytes = totalBytes > 0 ? totalBytes : (File.Exists(archiveFilePath) ? new FileInfo(archiveFilePath).Length : 0);
+                if (requiredBytes > 0 && !HasSufficientDiskSpace(fullTarget, requiredBytes, out long availableFreeSpace, out long requiredWithBuffer))
+                {
+                    var reqFormatted = BytesToHumanReadableConverter.FormatBytes(requiredBytes);
+                    var freeFormatted = BytesToHumanReadableConverter.FormatBytes(availableFreeSpace);
+                    var errorMsg = Loc.Format("Status_ExtractionInsufficientDiskSpace", reqFormatted, freeFormatted);
+                    AppLogger.Error($"[ArchiveExtractor] Insufficient disk space to extract '{archiveFilePath}' into '{fullTarget}'. Required: {reqFormatted} (with buffer: {BytesToHumanReadableConverter.FormatBytes(requiredWithBuffer)}), Available: {freeFormatted}.");
+                    statusCallback?.Invoke(errorMsg);
+                    return false;
                 }
 
                 long completedBytes = 0;

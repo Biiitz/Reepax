@@ -684,6 +684,7 @@ public partial class DownloadPackage : ObservableObject
                      StatusMessage != "Fertig & Entpackt" &&
                      StatusMessage != "Completed & Extracted" &&
                      StatusMessage != Loc.Get("Status_CompletedExtractionError") &&
+                     !StatusMessage.StartsWith(Loc.Get("Status_ExtractionInsufficientDiskSpace").Split('(')[0].Trim()) &&
                      StatusMessage != Loc.Get("Status_Extracting"))
             {
                 StatusMessage = Loc.Get("Status_Completed");

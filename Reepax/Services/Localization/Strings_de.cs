@@ -214,6 +214,8 @@ public static class Strings_de
         ["Status_ExtractionCompleted"] = "Entpacken abgeschlossen",
         ["Status_ExtractionPasswordProtected"] = "Passwortgeschützt (Entpacken abgebrochen)",
         ["Status_ExtractionFailed"] = "Entpacken fehlgeschlagen: {0}",
+        ["Status_ExtractionInsufficientDiskSpace"] = "Zu wenig Speicherplatz zum Entpacken ({0} benötigt, {1} frei)",
+        ["Status_ExtractionInsufficientDiskSpaceDetail"] = "Nicht genügend freier Speicherplatz auf Laufwerk {0} zum Entpacken ({1} benötigt, {2} verfügbar).",
         ["Status_ErrorPrefix"] = "Fehler: {0}",
 
         // Dialogs

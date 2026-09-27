@@ -100,7 +100,7 @@ public class DownloadEngine
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                SafeInvoke(() =>
+                SafeInvokeAsync(() =>
                 {
                     item.Status = DownloadStatus.Failed;
                     item.StatusMessage = Loc.Get("Status_ErrorStarting");
@@ -150,7 +150,7 @@ public class DownloadEngine
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                SafeInvoke(() =>
+                SafeInvokeAsync(() =>
                 {
                     item.Status = DownloadStatus.Failed;
                     item.StatusMessage = Loc.Get("Status_ErrorResuming");
@@ -339,7 +339,7 @@ public class DownloadEngine
         }
         catch (OperationCanceledException)
         {
-            SafeInvoke(() =>
+            SafeInvokeAsync(() =>
             {
                 if (item.Status != DownloadStatus.Queued)
                 {
@@ -356,7 +356,7 @@ public class DownloadEngine
         }
         catch (Exception ex)
         {
-            SafeInvoke(() =>
+            SafeInvokeAsync(() =>
             {
                 item.Status = DownloadStatus.Failed;
                 item.StatusMessage = Loc.Get("Status_Failed");
@@ -551,7 +551,7 @@ public class DownloadEngine
             try { await watcher; } catch { }
             SaveSegmentState(segMetaPath, state);
             long doneBytes = segments.Sum(s => s.Done);
-            SafeInvoke(() =>
+            SafeInvokeAsync(() =>
             {
                 item.DownloadedBytes = doneBytes;
                 if (totalBytes > 0)
@@ -802,7 +802,7 @@ public class DownloadEngine
         finally
         {
             try { await fileStream.FlushAsync(); } catch { }
-            SafeInvoke(() =>
+            SafeInvokeAsync(() =>
             {
                 item.DownloadedBytes = currentDownloaded;
                 if (totalBytes > 0)

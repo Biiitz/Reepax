@@ -214,6 +214,8 @@ public static class Strings_en
         ["Status_ExtractionCompleted"] = "Extraction completed",
         ["Status_ExtractionPasswordProtected"] = "Password protected (Extraction aborted)",
         ["Status_ExtractionFailed"] = "Extraction failed: {0}",
+        ["Status_ExtractionInsufficientDiskSpace"] = "Insufficient disk space for extraction ({0} required, {1} available)",
+        ["Status_ExtractionInsufficientDiskSpaceDetail"] = "Not enough free disk space on drive {0} for extraction ({1} required, {2} available).",
         ["Status_ErrorPrefix"] = "Error: {0}",
 
         // Dialogs
