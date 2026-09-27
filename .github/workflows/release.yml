@@ -1,10 +1,6 @@
 name: Build & Release Reepax
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   release:
     types: [published]
   workflow_dispatch: {}
@@ -41,7 +37,7 @@ jobs:
           dotnet test Reepax.slnx -c Release --verbosity minimal --logger "trx;LogFileName=test_results.trx"
 
       - name: Update Test Count in README
-        if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         shell: powershell
         run: |
           $trxFile = Get-ChildItem -Recurse -Filter "test_results.trx" | Select-Object -First 1
