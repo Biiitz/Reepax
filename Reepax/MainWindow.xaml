@@ -334,31 +334,31 @@
                             <TranslateTransform x:Name="TabIndicatorTransform" X="0" Y="0" />
                         </Grid.RenderTransform>
 
-                        <!-- Upward Glow Layer: Radiates softly upwards into the active tab -->
-                        <Border Height="18" 
+                        <!-- Upward Glow Layer: Radiates softly upwards into the active tab (subtle & elegant) -->
+                        <Border Height="12" 
                                 VerticalAlignment="Bottom" 
                                 Margin="0,0,0,2.5" 
                                 IsHitTestVisible="False">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0.5,1" EndPoint="0.5,0">
-                                    <GradientStop Color="#383B82F6" Offset="0.0" />
-                                    <GradientStop Color="#1838BDF8" Offset="0.4" />
+                                    <GradientStop Color="#1C3B82F6" Offset="0.0" />
+                                    <GradientStop Color="#0C38BDF8" Offset="0.45" />
                                     <GradientStop Color="#00000000" Offset="1.0" />
                                 </LinearGradientBrush>
                             </Border.Background>
                         </Border>
 
-                        <!-- Sleek Modern Accent Line with subtle rounded top corners & neon glow -->
+                        <!-- Sleek Modern Accent Line with subtle rounded top corners & delicate ambient glow -->
                         <Border Height="2.5" 
                                 VerticalAlignment="Bottom" 
                                 CornerRadius="1.5,1.5,0,0"
                                 Background="{DynamicResource AccentBlueBrush}">
                             <Border.Effect>
                                 <DropShadowEffect Direction="90" 
-                                                  ShadowDepth="1.5" 
-                                                  BlurRadius="8" 
+                                                  ShadowDepth="1.0" 
+                                                  BlurRadius="5" 
                                                   Color="#38BDF8" 
-                                                  Opacity="0.35" />
+                                                  Opacity="0.18" />
                             </Border.Effect>
                         </Border>
                     </Grid>
