@@ -91,16 +91,9 @@ public class Par2RepairService
         if (!string.IsNullOrEmpty(_cachedExecutablePath) && File.Exists(_cachedExecutablePath))
             return _cachedExecutablePath;
 
-        var appDataPar2 = Path.Combine(SettingsService.AppDataDirectory, "par2.exe");
-        if (File.Exists(appDataPar2))
-        {
-            _cachedExecutablePath = appDataPar2;
-            return appDataPar2;
-        }
-
         var baseDir = AppDomain.CurrentDomain.BaseDirectory;
 
-        // 2. Bundled fallback: If in application directory, deploy/copy to AppData where settings are stored
+        // 1. Bundled executable: check application directory or native runtime directory
         var bundledPath = Path.Combine(baseDir, "par2.exe");
         if (!File.Exists(bundledPath))
         {
@@ -109,23 +102,16 @@ public class Par2RepairService
 
         if (File.Exists(bundledPath))
         {
-            try
-            {
-                Directory.CreateDirectory(SettingsService.AppDataDirectory);
-                File.Copy(bundledPath, appDataPar2, overwrite: true);
-                if (File.Exists(appDataPar2))
-                {
-                    _cachedExecutablePath = appDataPar2;
-                    return appDataPar2;
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[Par2RepairService] Konnte par2.exe nicht nach AppData kopieren: {ex.Message}");
-            }
-
             _cachedExecutablePath = bundledPath;
             return bundledPath;
+        }
+
+        // 2. Existing AppData fallback (if present from previous installs)
+        var appDataPar2 = Path.Combine(SettingsService.AppDataDirectory, "par2.exe");
+        if (File.Exists(appDataPar2))
+        {
+            _cachedExecutablePath = appDataPar2;
+            return appDataPar2;
         }
 
         // 3. Current working directory fallback

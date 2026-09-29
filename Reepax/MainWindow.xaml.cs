@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -156,7 +157,20 @@ public partial class MainWindow : Window
         catch { }
 
         LocationChanged += (_, _) => SaveWindowState();
-        SizeChanged += (_, _) => SaveWindowState();
+        SizeChanged += (_, _) =>
+        {
+            SaveWindowState();
+            AutoFitNameColumn();
+        };
+        Loaded += (_, _) => AutoFitNameColumn();
+
+        ViewModel.ColumnLayoutChanged += (_, _) =>
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                AutoFitNameColumn();
+            });
+        };
 
         ViewModel.RequestShowAddLinksDialog += (_, _) => ShowAddLinksDialog();
         ViewModel.RequestShowUpdateDialog += (_, updateInfo) => ShowUpdateDialog(updateInfo);
@@ -360,14 +374,47 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    private bool _isForceExit;
+
     public void ForceExit()
     {
+        _isForceExit = true;
         Close();
+    }
+
+    public void PrepareForRestart()
+    {
+        SaveWindowState();
+        var settings = SettingsService.Instance.Settings;
+        if (ViewModel != null)
+        {
+            settings.ColWidthName = ViewModel.ColWidthName;
+            settings.ColWidthHoster = ViewModel.ColWidthHoster;
+            settings.ColWidthSize = ViewModel.ColWidthSize;
+            settings.ColWidthProgress = ViewModel.ColWidthProgress;
+            settings.ColWidthSpeed = ViewModel.ColWidthSpeed;
+            settings.ColWidthEta = ViewModel.ColWidthEta;
+            settings.ColWidthStatus = ViewModel.ColWidthStatus;
+            settings.ColWidthActions = ViewModel.ColWidthActions;
+        }
+        SettingsService.Instance.SaveSettings();
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         base.OnClosing(e);
+
+        var settings = SettingsService.Instance.Settings;
+        var minimizeToTray = ViewModel?.MinimizeToTrayOnClose ?? settings.MinimizeToTrayOnClose;
+
+        if (!_isForceExit && minimizeToTray)
+        {
+            e.Cancel = true;
+            SaveWindowState();
+            Hide();
+            Services.SystemIntegration.TrayIconService.Instance.ShowTrayIcon();
+            return;
+        }
 
         try
         {
@@ -377,17 +424,18 @@ public partial class MainWindow : Window
 
             SaveWindowState();
 
-            var settings = SettingsService.Instance.Settings;
-
             // Save Column Widths
-            settings.ColWidthName = ViewModel.ColWidthName;
-            settings.ColWidthHoster = ViewModel.ColWidthHoster;
-            settings.ColWidthSize = ViewModel.ColWidthSize;
-            settings.ColWidthProgress = ViewModel.ColWidthProgress;
-            settings.ColWidthSpeed = ViewModel.ColWidthSpeed;
-            settings.ColWidthEta = ViewModel.ColWidthEta;
-            settings.ColWidthStatus = ViewModel.ColWidthStatus;
-            settings.ColWidthActions = ViewModel.ColWidthActions;
+            if (ViewModel != null)
+            {
+                settings.ColWidthName = ViewModel.ColWidthName;
+                settings.ColWidthHoster = ViewModel.ColWidthHoster;
+                settings.ColWidthSize = ViewModel.ColWidthSize;
+                settings.ColWidthProgress = ViewModel.ColWidthProgress;
+                settings.ColWidthSpeed = ViewModel.ColWidthSpeed;
+                settings.ColWidthEta = ViewModel.ColWidthEta;
+                settings.ColWidthStatus = ViewModel.ColWidthStatus;
+                settings.ColWidthActions = ViewModel.ColWidthActions;
+            }
 
             SettingsService.Instance.SaveSettings();
 
@@ -1374,7 +1422,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 2. Do not intercept if actively typing inside an inline editing TextBox or any input control
+        // 2. Cancel column header drag if in progress
+        if (e.Key == Key.Escape && _isDraggingColumnHeader)
+        {
+            CancelHeaderDragState();
+            e.Handled = true;
+            return;
+        }
+
+        // 3. Do not intercept if actively typing inside an inline editing TextBox or any input control
         if (e.OriginalSource is TextBox or PasswordBox or RichTextBox)
             return;
         if (Keyboard.FocusedElement is TextBox or PasswordBox or RichTextBox)
@@ -1523,6 +1579,11 @@ public partial class MainWindow : Window
 
                 case "ImportPackage":
                     _ = ViewModel.ImportPackage();
+                    e.Handled = true;
+                    return;
+
+                case "RestartApp":
+                    ViewModel.RestartApplicationCommand.Execute(null);
                     e.Handled = true;
                     return;
             }
@@ -1815,32 +1876,133 @@ public partial class MainWindow : Window
         var scv = sender as ScrollViewer ?? TreeListScrollViewer;
         if (scv != null)
         {
-            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt) || Keyboard.IsKeyDown(Key.LeftAlt) || Keyboard.IsKeyDown(Key.RightAlt))
-            {
-                // Horizontal scrolling when ALT is held down
-                scv.ScrollToHorizontalOffset(scv.HorizontalOffset - e.Delta);
-            }
-            else
-            {
-                // Instant, 100% fluid vertical scrolling directly tracking hardware wheel events with zero latency
-                scv.ScrollToVerticalOffset(scv.VerticalOffset - e.Delta);
-            }
+            scv.ScrollToVerticalOffset(scv.VerticalOffset - e.Delta);
             e.Handled = true;
         }
     }
 
-    private void TreeListScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    private void ScrollToTop_Click(object sender, RoutedEventArgs e)
     {
-        if (HeaderGridTransform != null && sender is ScrollViewer scv)
-        {
-            HeaderGridTransform.X = -scv.HorizontalOffset;
-        }
+        TreeListScrollViewer?.ScrollToTop();
+    }
+
+    private void ScrollToBottom_Click(object sender, RoutedEventArgs e)
+    {
+        TreeListScrollViewer?.ScrollToBottom();
     }
 
     private bool _isResizingColumn;
     private string? _resizingColumnTag;
-    private Point _resizeStartPoint;
-    private double _resizeStartWidth;
+    private double _resizeStartColWidth;
+    private double _resizeStartNameWidth;
+    private Dictionary<string, double> _resizeStartMetadataWidths = new();
+    private double _resizeStartMouseScreenX;
+
+    private bool _headerMouseDown;
+    private bool _isDraggingColumnHeader;
+    private string? _draggedColumnTag;
+    private FrameworkElement? _draggedHeaderElement;
+    private Point _headerMouseDownPos;
+    private Point _headerMouseDownGridPos;
+    private double _draggedColumnStartLeft;
+    private double _draggedColumnWidth;
+    private double _draggedGrabOffsetX;
+    private string? _dropTargetBeforeCol;
+    private bool _dropAtEnd;
+
+    internal static double GetColumnLeft(MainViewModel? vm, string col)
+    {
+        if (vm == null) return 0;
+        var order = vm.ColumnOrder;
+        if (order != null && order.Count > 0)
+        {
+            double left = 0;
+            foreach (var c in order)
+            {
+                if (c == col) return left;
+                if (vm.IsColumnVisible(c))
+                    left += vm.GetColumnPixelWidth(c);
+            }
+            return left;
+        }
+
+        return 0;
+    }
+
+    internal static double CalculateDraggedHeaderBarLeft(double mouseGridX, double grabOffsetX, double containerWidth, double barWidth)
+    {
+        double maxLeft = Math.Max(0, containerWidth - barWidth);
+        return Math.Clamp(mouseGridX - grabOffsetX, 0, maxLeft);
+    }
+
+    internal static (string? targetBefore, bool atEnd, double indicatorX) CalculateDropInsertion(
+        MainViewModel? vm,
+        double mouseX)
+    {
+        if (vm == null) return (null, false, 0);
+        var order = vm.ColumnOrder;
+        if (order == null || order.Count == 0) return (null, false, 0);
+
+        List<string> visibleCols = new();
+        foreach (var c in order)
+        {
+            if (vm.IsColumnVisible(c))
+                visibleCols.Add(c);
+        }
+
+        if (visibleCols.Count == 0) return (null, false, 0);
+
+        string? targetBefore = null;
+        bool atEnd = false;
+        double indicatorX = 0;
+        double currentLeft = 0;
+        bool found = false;
+
+        for (int i = 0; i < visibleCols.Count; i++)
+        {
+            string col = visibleCols[i];
+            double colWidth = vm.GetColumnPixelWidth(col);
+            double midPoint = currentLeft + (colWidth / 2.0);
+
+            if (mouseX < midPoint)
+            {
+                targetBefore = col;
+                indicatorX = currentLeft;
+                found = true;
+                break;
+            }
+
+            currentLeft += colWidth;
+        }
+
+        if (!found)
+        {
+            atEnd = true;
+            indicatorX = currentLeft;
+        }
+
+        return (targetBefore, atEnd, indicatorX);
+    }
+
+    internal static void SetColumnWidth(MainViewModel? vm, string col, double width)
+    {
+        if (vm == null) return;
+        switch (col)
+        {
+            case "Name": vm.ColWidthName = width; break;
+            case "Hoster": vm.ColWidthHoster = width; break;
+            case "SavePath": vm.ColWidthSavePath = width; break;
+            case "Size": vm.ColWidthSize = width; break;
+            case "Progress": vm.ColWidthProgress = width; break;
+            case "Speed": vm.ColWidthSpeed = width; break;
+            case "Eta": vm.ColWidthEta = width; break;
+            case "Status": vm.ColWidthStatus = width; break;
+            case "AddedDate": vm.ColWidthAddedDate = width; break;
+            case "CompletedDate": vm.ColWidthCompletedDate = width; break;
+            case "Checksum": vm.ColWidthChecksum = width; break;
+            case "Actions": vm.ColWidthActions = width; break;
+        }
+    }
 
     private void ColumnConfigButton_Click(object sender, RoutedEventArgs e)
     {
@@ -1852,93 +2014,599 @@ public partial class MainWindow : Window
         }
     }
 
-    private void HeaderDivider_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+
+
+    private bool _isAutoFittingName;
+    public void AutoFitNameColumn()
     {
-        if (sender is FrameworkElement el && el.Tag is string col)
+        if (ViewModel == null || _isResizingColumn || _isAutoFittingName) return;
+
+        double viewerWidth = (HeaderViewportBorder?.ActualWidth > 50 
+            ? HeaderViewportBorder.ActualWidth 
+            : (TreeListScrollViewer?.ActualWidth > 50 ? TreeListScrollViewer.ActualWidth : ActualWidth) - 18);
+
+        if (viewerWidth <= 50) return;
+
+        // All visible columns fit perfectly within the visible viewport width (up to the gear button).
+        // The table right edge aligns flush with the gear button border (targetTableWidth = Math.Floor(viewerWidth)).
+        double targetTableWidth = Math.Floor(viewerWidth);
+        double metadataWidth = GetVisibleMetadataSum(ViewModel);
+
+        const double minNameWidth = 80.0;
+        double remaining = targetTableWidth - metadataWidth;
+
+        _isAutoFittingName = true;
+        try
         {
-            _isResizingColumn = true;
-            _resizingColumnTag = col;
-            _resizeStartPoint = e.GetPosition(this);
-            _resizeStartWidth = col switch
+            if (remaining >= minNameWidth)
             {
-                "Name" => ViewModel.ColWidthName,
-                "Hoster" => ViewModel.ColWidthHoster,
-                "SavePath" => ViewModel.ColWidthSavePath,
-                "Size" => ViewModel.ColWidthSize,
-                "Progress" => ViewModel.ColWidthProgress,
-                "Speed" => ViewModel.ColWidthSpeed,
-                "Eta" => ViewModel.ColWidthEta,
-                "Status" => ViewModel.ColWidthStatus,
-                "AddedDate" => ViewModel.ColWidthAddedDate,
-                "CompletedDate" => ViewModel.ColWidthCompletedDate,
-                "Checksum" => ViewModel.ColWidthChecksum,
-                "Actions" => ViewModel.ColWidthActions,
-                _ => 100
-            };
+                if (Math.Abs(ViewModel.ColWidthName - remaining) > 0.5)
+                {
+                    ViewModel.ColWidthName = Math.Round(remaining, 1);
+                }
+            }
+            else
+            {
+                if (Math.Abs(ViewModel.ColWidthName - minNameWidth) > 0.5)
+                {
+                    ViewModel.ColWidthName = minNameWidth;
+                }
+                CompressMetadataColumnsToFit(ViewModel, targetTableWidth - minNameWidth);
+            }
+        }
+        finally
+        {
+            _isAutoFittingName = false;
+        }
+    }
+
+    internal static void CompressMetadataColumnsToFit(MainViewModel vm, double availableMetadataWidth)
+    {
+        var visibleCols = new List<string>();
+        if (vm.ShowColHoster) visibleCols.Add("Hoster");
+        if (vm.ShowColSavePath) visibleCols.Add("SavePath");
+        if (vm.ShowColSize) visibleCols.Add("Size");
+        if (vm.ShowColProgress) visibleCols.Add("Progress");
+        if (vm.ShowColSpeed) visibleCols.Add("Speed");
+        if (vm.ShowColEta) visibleCols.Add("Eta");
+        if (vm.ShowColStatus) visibleCols.Add("Status");
+        if (vm.ShowColAddedDate) visibleCols.Add("AddedDate");
+        if (vm.ShowColCompletedDate) visibleCols.Add("CompletedDate");
+        if (vm.ShowColChecksum) visibleCols.Add("Checksum");
+        if (vm.ShowColActions) visibleCols.Add("Actions");
+
+        if (visibleCols.Count == 0) return;
+
+        double currentSum = visibleCols.Sum(c => GetColumnWidth(vm, c));
+        double minSum = visibleCols.Sum(c => GetColumnMinWidth(c));
+
+        if (currentSum <= availableMetadataWidth) return;
+
+        if (availableMetadataWidth <= minSum)
+        {
+            foreach (var col in visibleCols)
+            {
+                SetColumnWidth(vm, col, GetColumnMinWidth(col));
+            }
+            return;
+        }
+
+        double excessToReduce = currentSum - availableMetadataWidth;
+        double totalReducible = visibleCols.Sum(c => Math.Max(0, GetColumnWidth(vm, c) - GetColumnMinWidth(c)));
+
+        if (totalReducible > 0)
+        {
+            double sumAssigned = 0;
+            for (int i = 0; i < visibleCols.Count - 1; i++)
+            {
+                string col = visibleCols[i];
+                double cur = GetColumnWidth(vm, col);
+                double min = GetColumnMinWidth(col);
+                double reducible = Math.Max(0, cur - min);
+                double share = reducible / totalReducible;
+                double newWidth = Math.Max(min, Math.Round(cur - (excessToReduce * share), 1));
+                SetColumnWidth(vm, col, newWidth);
+                sumAssigned += newWidth;
+            }
+            string lastCol = visibleCols[^1];
+            double lastWidth = Math.Max(GetColumnMinWidth(lastCol), Math.Round(availableMetadataWidth - sumAssigned, 1));
+            SetColumnWidth(vm, lastCol, lastWidth);
+        }
+    }
+
+    public void AutoFitAllColumns()
+    {
+        if (ViewModel == null) return;
+
+        // Auto-fit all active metadata columns to clean, optimal compact widths
+        ViewModel.AutoFitColumns();
+
+        // Dynamically size Name column so all visible columns fit perfectly within the visible viewport width
+        AutoFitNameColumn();
+        SaveColumnWidths();
+    }
+
+    internal static string? GetLastVisibleColumn(MainViewModel? vm)
+    {
+        if (vm == null) return null;
+        var order = vm.ColumnOrder;
+        if (order != null && order.Count > 0)
+        {
+            for (int i = order.Count - 1; i >= 0; i--)
+            {
+                var col = order[i];
+                if (vm.IsColumnVisible(col))
+                    return col;
+            }
+        }
+
+        if (vm.ShowColActions) return "Actions";
+        if (vm.ShowColChecksum) return "Checksum";
+        if (vm.ShowColCompletedDate) return "CompletedDate";
+        if (vm.ShowColAddedDate) return "AddedDate";
+        if (vm.ShowColStatus) return "Status";
+        if (vm.ShowColEta) return "Eta";
+        if (vm.ShowColSpeed) return "Speed";
+        if (vm.ShowColProgress) return "Progress";
+        if (vm.ShowColSize) return "Size";
+        if (vm.ShowColSavePath) return "SavePath";
+        if (vm.ShowColHoster) return "Hoster";
+        if (vm.ShowColName) return "Name";
+        return null;
+    }
+
+    internal static double GetColumnMinWidth(string col) => col switch
+    {
+        "Name" => 80.0,
+        "Hoster" => 36.0,
+        "SavePath" => 50.0,
+        "Size" => 36.0,
+        "Progress" => 50.0,
+        "Speed" => 40.0,
+        "Eta" => 36.0,
+        "Status" => 40.0,
+        "AddedDate" => 50.0,
+        "CompletedDate" => 50.0,
+        "Checksum" => 50.0,
+        "Actions" => 40.0,
+        _ => 36.0
+    };
+
+    internal static double GetColumnWidth(MainViewModel? vm, string col)
+    {
+        if (vm == null) return 100;
+        return col switch
+        {
+            "Name" => vm.ColWidthName,
+            "Hoster" => vm.ColWidthHoster,
+            "SavePath" => vm.ColWidthSavePath,
+            "Size" => vm.ColWidthSize,
+            "Progress" => vm.ColWidthProgress,
+            "Speed" => vm.ColWidthSpeed,
+            "Eta" => vm.ColWidthEta,
+            "Status" => vm.ColWidthStatus,
+            "AddedDate" => vm.ColWidthAddedDate,
+            "CompletedDate" => vm.ColWidthCompletedDate,
+            "Checksum" => vm.ColWidthChecksum,
+            "Actions" => vm.ColWidthActions,
+            _ => 100
+        };
+    }
+
+    internal static Dictionary<string, double> GetVisibleMetadataWidths(MainViewModel vm)
+    {
+        var dict = new Dictionary<string, double>();
+        if (vm.ShowColHoster) dict["Hoster"] = vm.ColWidthHoster;
+        if (vm.ShowColSavePath) dict["SavePath"] = vm.ColWidthSavePath;
+        if (vm.ShowColSize) dict["Size"] = vm.ColWidthSize;
+        if (vm.ShowColProgress) dict["Progress"] = vm.ColWidthProgress;
+        if (vm.ShowColSpeed) dict["Speed"] = vm.ColWidthSpeed;
+        if (vm.ShowColEta) dict["Eta"] = vm.ColWidthEta;
+        if (vm.ShowColStatus) dict["Status"] = vm.ColWidthStatus;
+        if (vm.ShowColAddedDate) dict["AddedDate"] = vm.ColWidthAddedDate;
+        if (vm.ShowColCompletedDate) dict["CompletedDate"] = vm.ColWidthCompletedDate;
+        if (vm.ShowColChecksum) dict["Checksum"] = vm.ColWidthChecksum;
+        if (vm.ShowColActions) dict["Actions"] = vm.ColWidthActions;
+        return dict;
+    }
+
+    internal static double GetVisibleMetadataSum(MainViewModel vm)
+    {
+        return (vm.ShowColHoster ? vm.ColWidthHoster : 0) +
+               (vm.ShowColSavePath ? vm.ColWidthSavePath : 0) +
+               (vm.ShowColSize ? vm.ColWidthSize : 0) +
+               (vm.ShowColProgress ? vm.ColWidthProgress : 0) +
+               (vm.ShowColSpeed ? vm.ColWidthSpeed : 0) +
+               (vm.ShowColEta ? vm.ColWidthEta : 0) +
+               (vm.ShowColStatus ? vm.ColWidthStatus : 0) +
+               (vm.ShowColAddedDate ? vm.ColWidthAddedDate : 0) +
+               (vm.ShowColCompletedDate ? vm.ColWidthCompletedDate : 0) +
+               (vm.ShowColChecksum ? vm.ColWidthChecksum : 0) +
+               (vm.ShowColActions ? vm.ColWidthActions : 0);
+    }
+
+    internal static void ResetSingleColumnWidth(MainViewModel? vm, string col)
+    {
+        if (vm == null) return;
+
+        switch (col)
+        {
+            case "Name": vm.ColWidthName = 220; break;
+            case "Hoster": vm.ColWidthHoster = 75; break;
+            case "SavePath": vm.ColWidthSavePath = 140; break;
+            case "Size": vm.ColWidthSize = 75; break;
+            case "Progress": vm.ColWidthProgress = 110; break;
+            case "Speed": vm.ColWidthSpeed = 80; break;
+            case "Eta": vm.ColWidthEta = 65; break;
+            case "Status": vm.ColWidthStatus = 95; break;
+            case "AddedDate": vm.ColWidthAddedDate = 95; break;
+            case "CompletedDate": vm.ColWidthCompletedDate = 95; break;
+            case "Checksum": vm.ColWidthChecksum = 90; break;
+            case "Actions": vm.ColWidthActions = 95; break;
+        }
+    }
+
+    private void ResetSingleColumn(string col)
+    {
+        if (ViewModel == null) return;
+        ResetSingleColumnWidth(ViewModel, col);
+        AutoFitNameColumn();
+        SaveColumnWidths();
+    }
+
+    private void ColumnHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.Tag is string col && ViewModel != null)
+        {
+            _headerMouseDown = true;
+            _isDraggingColumnHeader = false;
+            _draggedColumnTag = col;
+            _draggedHeaderElement = el;
+            _headerMouseDownPos = e.GetPosition(this);
+            if (HeaderColumnsGrid != null)
+            {
+                _headerMouseDownGridPos = e.GetPosition(HeaderColumnsGrid);
+                _draggedColumnStartLeft = GetColumnLeft(ViewModel, col);
+                _draggedColumnWidth = el.ActualWidth > 0 ? el.ActualWidth : ViewModel.GetColumnPixelWidth(col);
+                _draggedGrabOffsetX = Math.Max(0, _headerMouseDownGridPos.X - _draggedColumnStartLeft);
+            }
+            _dropTargetBeforeCol = null;
+            _dropAtEnd = false;
             el.CaptureMouse();
             e.Handled = true;
         }
     }
 
-    private void HeaderDivider_MouseMove(object sender, MouseEventArgs e)
+    private void ColumnHeader_MouseMove(object sender, MouseEventArgs e)
     {
-        if (_isResizingColumn && _resizingColumnTag != null && sender is FrameworkElement el && el.IsMouseCaptured)
-        {
-            Point currentPoint = e.GetPosition(this);
-            double deltaX = currentPoint.X - _resizeStartPoint.X;
+        if (!_headerMouseDown || _draggedColumnTag == null || ViewModel == null)
+            return;
 
-            double newWidth = Math.Max(36, _resizeStartWidth + deltaX);
-            switch (_resizingColumnTag)
+        Point curPos = e.GetPosition(this);
+
+        if (!_isDraggingColumnHeader)
+        {
+            double diffX = Math.Abs(curPos.X - _headerMouseDownPos.X);
+            double diffY = Math.Abs(curPos.Y - _headerMouseDownPos.Y);
+            if (diffX >= SystemParameters.MinimumHorizontalDragDistance || diffY >= SystemParameters.MinimumVerticalDragDistance)
             {
-                case "Name":
-                    ViewModel.ColWidthName = Math.Max(80, newWidth);
-                    break;
-                case "Hoster":
-                    ViewModel.ColWidthHoster = Math.Max(36, newWidth);
-                    break;
-                case "SavePath":
-                    ViewModel.ColWidthSavePath = Math.Max(50, newWidth);
-                    break;
-                case "Size":
-                    ViewModel.ColWidthSize = Math.Max(36, newWidth);
-                    break;
-                case "Progress":
-                    ViewModel.ColWidthProgress = Math.Max(50, newWidth);
-                    break;
-                case "Speed":
-                    ViewModel.ColWidthSpeed = Math.Max(40, newWidth);
-                    break;
-                case "Eta":
-                    ViewModel.ColWidthEta = Math.Max(36, newWidth);
-                    break;
-                case "Status":
-                    ViewModel.ColWidthStatus = Math.Max(40, newWidth);
-                    break;
-                case "AddedDate":
-                    ViewModel.ColWidthAddedDate = Math.Max(50, newWidth);
-                    break;
-                case "CompletedDate":
-                    ViewModel.ColWidthCompletedDate = Math.Max(50, newWidth);
-                    break;
-                case "Checksum":
-                    ViewModel.ColWidthChecksum = Math.Max(50, newWidth);
-                    break;
-                case "Actions":
-                    ViewModel.ColWidthActions = Math.Max(40, newWidth);
-                    break;
+                StartHeaderDrag(e);
             }
+        }
+
+        if (_isDraggingColumnHeader)
+        {
+            UpdateHeaderDrag(e);
             e.Handled = true;
         }
     }
 
+    private void StartHeaderDrag(MouseEventArgs e)
+    {
+        _isDraggingColumnHeader = true;
+
+        if (_draggedHeaderElement != null)
+        {
+            _draggedHeaderElement.Opacity = 0.35;
+        }
+
+        if (DraggedHeaderBar != null && DraggedHeaderBarText != null && _draggedColumnTag != null && ViewModel != null)
+        {
+            double colWidth = _draggedHeaderElement != null && _draggedHeaderElement.ActualWidth > 0
+                ? _draggedHeaderElement.ActualWidth
+                : (_draggedColumnWidth > 0 ? _draggedColumnWidth : ViewModel.GetColumnPixelWidth(_draggedColumnTag));
+
+            DraggedHeaderBar.Width = colWidth;
+            if (_draggedHeaderElement != null && _draggedHeaderElement.ActualHeight > 0)
+            {
+                DraggedHeaderBar.Height = _draggedHeaderElement.ActualHeight;
+            }
+            DraggedHeaderBarText.Text = GetColumnDisplayName(_draggedColumnTag);
+
+            if (DraggedHeaderBarSortArrow != null)
+            {
+                if (ViewModel.SortColumn != null && string.Equals(ViewModel.SortColumn, _draggedColumnTag, StringComparison.OrdinalIgnoreCase) && ViewModel.SortDirection.HasValue)
+                {
+                    DraggedHeaderBarSortArrow.Data = ViewModel.SortDirection.Value == ListSortDirection.Ascending
+                        ? Geometry.Parse("M 0 5 L 4 0 L 8 5 Z")
+                        : Geometry.Parse("M 0 0 L 4 5 L 8 0 Z");
+                    DraggedHeaderBarSortArrow.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    DraggedHeaderBarSortArrow.Visibility = Visibility.Collapsed;
+                }
+            }
+
+            Canvas.SetTop(DraggedHeaderBar, 0);
+            Canvas.SetLeft(DraggedHeaderBar, _draggedColumnStartLeft);
+            DraggedHeaderBar.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void UpdateHeaderDrag(MouseEventArgs e)
+    {
+        if (HeaderColumnsGrid == null || ViewModel == null || _draggedColumnTag == null)
+            return;
+
+        Point curGridPos = e.GetPosition(HeaderColumnsGrid);
+
+        // Slide the full dragged column bar horizontally directly locked to the user's mouse grip
+        if (DraggedHeaderBar != null)
+        {
+            double barWidth = DraggedHeaderBar.Width > 0 ? DraggedHeaderBar.Width : _draggedColumnWidth;
+            double barLeft = CalculateDraggedHeaderBarLeft(curGridPos.X, _draggedGrabOffsetX, HeaderColumnsGrid.ActualWidth, barWidth);
+            Canvas.SetLeft(DraggedHeaderBar, barLeft);
+            Canvas.SetTop(DraggedHeaderBar, 0);
+        }
+
+        var (targetBefore, atEnd, indicatorX) = CalculateDropInsertion(ViewModel, curGridPos.X);
+        _dropTargetBeforeCol = targetBefore;
+        _dropAtEnd = atEnd;
+
+        if (ColumnDropIndicator != null)
+        {
+            ColumnDropIndicator.Margin = new Thickness(Math.Max(0, indicatorX - 1), 0, 0, 0);
+            ColumnDropIndicator.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void FinishHeaderDrag()
+    {
+        if (ViewModel == null || _draggedColumnTag == null)
+            return;
+
+        if (_dropAtEnd)
+        {
+            string? lastVisible = GetLastVisibleColumn(ViewModel);
+            if (lastVisible != null && lastVisible != _draggedColumnTag)
+            {
+                ViewModel.MoveColumnAfter(_draggedColumnTag, lastVisible);
+            }
+        }
+        else if (_dropTargetBeforeCol != null && _dropTargetBeforeCol != _draggedColumnTag)
+        {
+            ViewModel.MoveColumnBefore(_draggedColumnTag, _dropTargetBeforeCol);
+        }
+
+        SaveColumnWidths();
+    }
+
+    private void CancelHeaderDragState()
+    {
+        if (ColumnDropIndicator != null)
+            ColumnDropIndicator.Visibility = Visibility.Collapsed;
+
+        if (DraggedHeaderBar != null)
+            DraggedHeaderBar.Visibility = Visibility.Collapsed;
+
+        if (_draggedHeaderElement != null)
+        {
+            _draggedHeaderElement.Opacity = 1.0;
+            if (_draggedHeaderElement.IsMouseCaptured)
+            {
+                _draggedHeaderElement.ReleaseMouseCapture();
+            }
+            _draggedHeaderElement = null;
+        }
+
+        _headerMouseDown = false;
+        _isDraggingColumnHeader = false;
+        _draggedColumnTag = null;
+        _dropTargetBeforeCol = null;
+        _dropAtEnd = false;
+    }
+
+    private void ColumnHeader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_headerMouseDown)
+        {
+            if (_isDraggingColumnHeader)
+            {
+                FinishHeaderDrag();
+            }
+            else if (_draggedColumnTag != null && ViewModel != null)
+            {
+                ViewModel.ToggleColumnSort(_draggedColumnTag);
+            }
+
+            CancelHeaderDragState();
+            e.Handled = true;
+        }
+    }
+
+    private void ColumnHeader_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        CancelHeaderDragState();
+    }
+
+    private static string GetColumnDisplayName(string tag)
+    {
+        return tag switch
+        {
+            "Name" => LocalizationService.Instance.Get("Col_Name"),
+            "Hoster" => LocalizationService.Instance.Get("Col_Hoster"),
+            "SavePath" => LocalizationService.Instance.Get("Col_SavePath"),
+            "Size" => LocalizationService.Instance.Get("Col_Size"),
+            "Progress" => LocalizationService.Instance.Get("Col_Progress"),
+            "Speed" => LocalizationService.Instance.Get("Col_Speed"),
+            "Eta" => LocalizationService.Instance.Get("Col_Eta"),
+            "Status" => LocalizationService.Instance.Get("Col_Status"),
+            "AddedDate" => LocalizationService.Instance.Get("Col_AddedDate"),
+            "CompletedDate" => LocalizationService.Instance.Get("Col_CompletedDate"),
+            "Checksum" => LocalizationService.Instance.Get("Col_Checksum"),
+            "Actions" => LocalizationService.Instance.Get("Col_Actions"),
+            _ => tag
+        };
+    }
+
+    private void HeaderDivider_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.Tag is string col && ViewModel != null)
+        {
+            _isResizingColumn = true;
+            _resizingColumnTag = col;
+            ViewModel.IsDraggingColumnWidth = true;
+
+            _resizeStartColWidth = GetColumnWidth(ViewModel, col);
+            _resizeStartNameWidth = ViewModel.ColWidthName;
+            _resizeStartMetadataWidths = GetVisibleMetadataWidths(ViewModel);
+            _resizeStartMouseScreenX = e.GetPosition(this).X;
+
+            el.CaptureMouse();
+            e.Handled = true;
+        }
+    }
+
+    internal static void ResizeMetadataColumn(
+        MainViewModel vm,
+        string col,
+        double startColWidth,
+        double startNameWidth,
+        double deltaX)
+    {
+        double minColWidth = GetColumnMinWidth(col);
+        double requestedColWidth = Math.Max(minColWidth, startColWidth + deltaX);
+        double delta = requestedColWidth - startColWidth;
+
+        const double minNameWidth = 80.0;
+        double newNameWidth = startNameWidth - delta;
+
+        if (newNameWidth < minNameWidth)
+        {
+            // Name cannot shrink below minimum (80px)
+            newNameWidth = minNameWidth;
+            double maxAbsorbable = startNameWidth - minNameWidth;
+            requestedColWidth = startColWidth + maxAbsorbable;
+        }
+
+        vm.ColWidthName = Math.Round(newNameWidth, 1);
+        SetColumnWidth(vm, col, Math.Round(requestedColWidth, 1));
+    }
+
+    internal static void ResizeNameColumn(
+        MainViewModel vm,
+        double startNameWidth,
+        Dictionary<string, double> startMetadataWidths,
+        double deltaX)
+    {
+        if (startMetadataWidths.Count == 0) return;
+
+        const double minNameWidth = 80.0;
+        double targetNameWidth = Math.Max(minNameWidth, startNameWidth + deltaX);
+        double delta = targetNameWidth - startNameWidth;
+
+        if (delta > 0)
+        {
+            // Name wants to expand: metadata columns must shrink proportionally to absorb delta
+            double totalReducible = startMetadataWidths.Sum(kv => Math.Max(0, kv.Value - GetColumnMinWidth(kv.Key)));
+            if (totalReducible <= 0) return;
+
+            double actualDelta = Math.Min(delta, totalReducible);
+            targetNameWidth = startNameWidth + actualDelta;
+
+            double sumAssigned = 0;
+            var list = startMetadataWidths.ToList();
+            for (int i = 0; i < list.Count - 1; i++)
+            {
+                var kv = list[i];
+                double colMin = GetColumnMinWidth(kv.Key);
+                double colReducible = Math.Max(0, kv.Value - colMin);
+                double share = colReducible / totalReducible;
+                double newColWidth = Math.Max(colMin, Math.Round(kv.Value - (actualDelta * share), 1));
+                SetColumnWidth(vm, kv.Key, newColWidth);
+                sumAssigned += (kv.Value - newColWidth);
+            }
+            var lastKv = list[^1];
+            double lastColMin = GetColumnMinWidth(lastKv.Key);
+            double lastNewColWidth = Math.Max(lastColMin, Math.Round(lastKv.Value - (actualDelta - sumAssigned), 1));
+            SetColumnWidth(vm, lastKv.Key, lastNewColWidth);
+        }
+        else if (delta < 0)
+        {
+            // Name wants to shrink: metadata columns expand proportionally to fill freed space
+            double freedSpace = -delta;
+            double currentMetadataSum = startMetadataWidths.Values.Sum();
+            if (currentMetadataSum <= 0) return;
+
+            double sumAssigned = 0;
+            var list = startMetadataWidths.ToList();
+            for (int i = 0; i < list.Count - 1; i++)
+            {
+                var kv = list[i];
+                double share = kv.Value / currentMetadataSum;
+                double added = Math.Round(freedSpace * share, 1);
+                double newColWidth = kv.Value + added;
+                SetColumnWidth(vm, kv.Key, newColWidth);
+                sumAssigned += added;
+            }
+            var lastKv = list[^1];
+            double lastNewColWidth = Math.Round(lastKv.Value + (freedSpace - sumAssigned), 1);
+            SetColumnWidth(vm, lastKv.Key, lastNewColWidth);
+        }
+
+        vm.ColWidthName = Math.Round(targetNameWidth, 1);
+    }
+
+    private void HeaderDivider_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_isResizingColumn && _resizingColumnTag != null && sender is FrameworkElement el && el.IsMouseCaptured && ViewModel != null)
+        {
+            double currentX = e.GetPosition(this).X;
+            double deltaX = currentX - _resizeStartMouseScreenX;
+
+            if (_resizingColumnTag == "Name")
+            {
+                ResizeNameColumn(ViewModel, _resizeStartNameWidth, _resizeStartMetadataWidths, deltaX);
+            }
+            else
+            {
+                ResizeMetadataColumn(ViewModel, _resizingColumnTag, _resizeStartColWidth, _resizeStartNameWidth, deltaX);
+            }
+
+            e.Handled = true;
+        }
+    }
+
+    private void EndColumnResize()
+    {
+        if (!_isResizingColumn) return;
+
+        _isResizingColumn = false;
+        _resizingColumnTag = null;
+        _resizeStartMetadataWidths.Clear();
+
+        if (ViewModel != null)
+        {
+            ViewModel.IsDraggingColumnWidth = false;
+        }
+
+        SaveColumnWidths();
+    }
+
     private void HeaderDivider_LostMouseCapture(object sender, MouseEventArgs e)
     {
-        if (_isResizingColumn)
-        {
-            _isResizingColumn = false;
-            _resizingColumnTag = null;
-            SaveColumnWidths();
-        }
+        EndColumnResize();
     }
 
     private void HeaderDivider_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -1946,9 +2614,7 @@ public partial class MainWindow : Window
         if (_isResizingColumn && sender is FrameworkElement el)
         {
             el.ReleaseMouseCapture();
-            _isResizingColumn = false;
-            _resizingColumnTag = null;
-            SaveColumnWidths();
+            EndColumnResize();
             e.Handled = true;
         }
     }
@@ -1970,6 +2636,7 @@ public partial class MainWindow : Window
             settings.ColWidthCompletedDate = ViewModel.ColWidthCompletedDate;
             settings.ColWidthChecksum = ViewModel.ColWidthChecksum;
             settings.ColWidthActions = ViewModel.ColWidthActions;
+            settings.ColumnOrder = new List<string>(ViewModel.ColumnOrder);
             SettingsService.Instance.SaveSettings();
         }
         catch { }
@@ -2010,7 +2677,7 @@ public partial class MainWindow : Window
         {
             QuickSettingsPopup.HorizontalOffset = -304;
         }
-        QuickSettingsPopup.VerticalOffset = -18;
+        QuickSettingsPopup.VerticalOffset = -13;
         QuickSettingsPopup.IsOpen = !QuickSettingsPopup.IsOpen;
     }
 
@@ -2163,4 +2830,4 @@ public partial class MainWindow : Window
     }
 
     #endregion
-}
+}

@@ -19,11 +19,7 @@ public static class AppLogger
 
     public static string LogsDirectory
     {
-        get => _customLogsDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Reepax",
-            "logs"
-        );
+        get => _customLogsDirectory ?? Path.Combine(SettingsService.AppDataDirectory, "logs");
         set => _customLogsDirectory = value;
     }
 

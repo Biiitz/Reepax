@@ -28,7 +28,7 @@ public static class FileAssociationService
     /// </summary>
     public static void EnsureAssociationRegistered()
     {
-        if (DownloadPersistenceService.IsTestEnvironment)
+        if (DownloadPersistenceService.IsTestEnvironment || SettingsService.IsPortableMode)
             return;
 
         try

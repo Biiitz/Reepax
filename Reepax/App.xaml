@@ -37,6 +37,8 @@
             <converters:CountToVisibilityConverter x:Key="CountToVisConverter" />
             <converters:HexToBrushConverter x:Key="HexToBrushConverter" />
             <converters:BoolToRightBorderThicknessConverter x:Key="BoolToRightBorderThicknessConverter" />
+            <converters:ColumnSortArrowGeometryConverter x:Key="ColumnSortArrowGeometryConverter" />
+            <converters:ColumnSortArrowVisibilityConverter x:Key="ColumnSortArrowVisibilityConverter" />
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
 
             <!-- Dedicated compact button style for TreeListView row actions -->

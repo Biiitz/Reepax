@@ -77,7 +77,19 @@ public partial class DownloadItem : ObservableObject
     private int? _currentSlot;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayChecksum))]
     private string? _expectedChecksum;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayChecksum))]
+    private string? _calculatedChecksum;
+
+    /// <summary>
+    /// Displays the verified calculated checksum if available; otherwise the expected checksum if present.
+    /// </summary>
+    public string? DisplayChecksum => !string.IsNullOrWhiteSpace(CalculatedChecksum)
+        ? CalculatedChecksum
+        : (!string.IsNullOrWhiteSpace(ExpectedChecksum) ? ExpectedChecksum : null);
 
     [ObservableProperty]
     private int _retryCount;
@@ -120,6 +132,7 @@ public partial class DownloadItem : ObservableObject
     private long _elapsedDurationMs;
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public int OriginalOrderIndex { get; set; }
 
     public TimeSpan Duration
     {

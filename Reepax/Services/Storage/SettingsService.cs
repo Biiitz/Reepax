@@ -10,14 +10,72 @@ public class SettingsService
     private static readonly Lazy<SettingsService> _instance = new(() => new SettingsService());
     public static SettingsService Instance => _instance.Value;
 
-    public static string AppDataDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Reepax"
-    );
+    public static bool? PortableModeOverride { get; set; }
+
+    public static bool IsPortableMode
+    {
+        get => PortableModeOverride ?? DetectPortableMode();
+        set => PortableModeOverride = value;
+    }
+
+    public static string AppDataDirectory => IsPortableMode
+        ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data")
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax");
 
     public static string LogsDirectory => AppLogger.LogsDirectory;
-    public static string IconsDirectory { get; } = Path.Combine(AppDataDirectory, "Icons");
-    public static string WebView2Directory { get; } = Path.Combine(AppDataDirectory, "WebView2");
+    public static string IconsDirectory => Path.Combine(AppDataDirectory, "Icons");
+    public static string WebView2Directory => Path.Combine(AppDataDirectory, "WebView2");
+
+    public static bool DetectPortableMode(string? baseDirectory = null)
+    {
+        if (baseDirectory == null && DownloadPersistenceService.IsTestEnvironment)
+        {
+            return false;
+        }
+
+        try
+        {
+            // 1. Command-line args for --portable
+            if (baseDirectory == null)
+            {
+                var args = Environment.GetCommandLineArgs();
+                if (args != null)
+                {
+                    for (int i = 0; i < args.Length; i++)
+                    {
+                        if (string.Equals(args[i], "--portable", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            // 2. Presence of portable.txt OR .portable OR portable.dat in AppDomain.CurrentDomain.BaseDirectory
+            var baseDir = baseDirectory ?? AppDomain.CurrentDomain.BaseDirectory;
+            if (!string.IsNullOrEmpty(baseDir))
+            {
+                if (File.Exists(Path.Combine(baseDir, "portable.txt")) ||
+                    File.Exists(Path.Combine(baseDir, ".portable")) ||
+                    File.Exists(Path.Combine(baseDir, "portable.dat")))
+                {
+                    return true;
+                }
+
+                // 3. Presence of an existing Data directory in AppDomain.CurrentDomain.BaseDirectory
+                if (Directory.Exists(Path.Combine(baseDir, "Data")))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // Fallback if environment or security permissions prevent inspection
+        }
+
+        return false;
+    }
 
     private readonly string _settingsFilePath;
     private readonly string _backupFilePath;
@@ -29,6 +87,18 @@ public class SettingsService
 
     public SettingsService(string? customSettingsFilePath = null)
     {
+        if (IsPortableMode)
+        {
+            try
+            {
+                Directory.CreateDirectory(AppDataDirectory);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("Fehler beim Erstellen des Datenordners im Portabel-Modus", ex);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(customSettingsFilePath))
         {
             _settingsFilePath = customSettingsFilePath;
@@ -45,7 +115,10 @@ public class SettingsService
             _isCustomPath = false;
             try
             {
-                MigrateFromRoamingIfNeeded();
+                if (!IsPortableMode)
+                {
+                    MigrateFromRoamingIfNeeded();
+                }
 
                 Directory.CreateDirectory(AppDataDirectory);
                 Directory.CreateDirectory(IconsDirectory);
@@ -92,6 +165,7 @@ public class SettingsService
                         var loaded = JsonSerializer.Deserialize<AppSettings>(json);
                         if (loaded != null)
                         {
+                            loaded.ColumnOrder = AppSettings.SanitizeColumnOrder(loaded.ColumnOrder);
                             _currentSettings = loaded;
                             loadedSuccessfully = true;
                         }
@@ -226,6 +300,9 @@ public class SettingsService
 
     private static void MigrateFromRoamingIfNeeded()
     {
+        if (IsPortableMode)
+            return;
+
         try
         {
             var roamingDir = Path.Combine(

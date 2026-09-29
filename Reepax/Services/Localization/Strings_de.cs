@@ -44,6 +44,7 @@ public static class Strings_de
         ["Col_CompletedDate"] = "Fertiggestellt am",
         ["Col_Checksum"] = "Prüfsumme",
         ["Col_Actions"] = "Aktionen",
+        ["Col_AutoFitColumns"] = "Spaltenbreite automatisch anpassen",
         ["Col_ResetColumns"] = "Spalten zurücksetzen",
         ["Col_Customize_ToolTip"] = "Spalten anpassen",
 
@@ -88,6 +89,9 @@ public static class Strings_de
         ["Settings_Connections_Subtitle"] = "Parallele Chunks je Datei (1 - 20)",
         ["Settings_StartWithWindows_Title"] = "Mit Windows starten",
         ["Settings_StartWithWindows_Subtitle"] = "Startet die App automatisch beim Hochfahren",
+        ["Settings_StartWithWindows_PortableDisabled"] = "Im Portable-Modus nicht verfügbar",
+        ["Settings_MinimizeToTrayOnClose_Title"] = "In Infobereich minimieren beim Schließen",
+        ["Settings_MinimizeToTrayOnClose_Subtitle"] = "Hält Downloads im Hintergrund aktiv, wenn das Fenster geschlossen wird.",
         ["Settings_Notifications_Title"] = "Benachrichtigungen",
         ["Settings_Notifications_Subtitle"] = "Benachrichtigen, wenn ein Paket fertig ist",
         ["Settings_AutoCollapse_Title"] = "Fertige Pakete zuklappen",
@@ -106,6 +110,7 @@ public static class Strings_de
         ["Settings_Category_General"] = "Allgemein",
         ["Settings_Category_Downloads"] = "Download & Verbindungen",
         ["Settings_Category_Shortcuts"] = "Tastenkombinationen",
+        ["Settings_Category_About"] = "Über Reepax",
 
         // Shortcuts Settings
         ["Settings_Shortcuts_ResetOne"] = "Auf Standard zurücksetzen",
@@ -143,6 +148,8 @@ public static class Strings_de
         ["Shortcut_ShowSettings_Desc"] = "Wechselt zur Ansicht der Einstellungen.",
         ["Shortcut_ImportPackage_Title"] = "Paket importieren",
         ["Shortcut_ImportPackage_Desc"] = "Öffnet eine gespeicherte .repx-Paketdatei.",
+        ["Shortcut_RestartApp_Title"] = "App neu starten",
+        ["Shortcut_RestartApp_Desc"] = "Pausiert alle aktiven Downloads und startet die Anwendung neu.",
 
         // Notifications
         ["Notification_PackageCompleted_Title"] = "Paket fertiggestellt",
@@ -379,7 +386,7 @@ public static class Strings_de
 
         // App Updates
         ["Toolbar_UpdateAvailable_ToolTip"] = "Neues Reepax Update verfügbar! Klicke hier für Details.",
-        ["Toolbar_UpdateUpToDate_ToolTip"] = "Reepax ist auf dem neuesten Stand (v{0})",
+        ["Toolbar_UpdateUpToDate_ToolTip"] = "Reepax ist auf dem neuesten Stand",
         ["Toolbar_UpdateAvailable_Button"] = "Update {0}",
         ["Toolbar_UpdateAvailable_DefaultButton"] = "Update",
         ["UpdateDialog_Title"] = "Reepax Aktualisierung",
@@ -399,6 +406,29 @@ public static class Strings_de
         ["Crash_UnexpectedErrorMessage"] = "Ein unerwarteter Fehler ist aufgetreten:\n\n{0}\n\nDetails wurden in crash.log gespeichert.",
         ["Crash_UnexpectedErrorTitle"] = "Reepax Fehler",
         ["Crash_CriticalErrorMessage"] = "Kritischer Anwendungsfehler:\n\n{0}\n\nDetails wurden in crash.log gespeichert.",
-        ["Crash_CriticalErrorTitle"] = "Reepax Kritischer Fehler"
+        ["Crash_CriticalErrorTitle"] = "Reepax Kritischer Fehler",
+
+        // About
+        ["About_Title"] = "Über",
+        ["About_SystemDiagnostics_Title"] = "System & Laufzeitumgebung",
+        ["About_OS_Label"] = "Betriebssystem",
+        ["About_Architecture_Label"] = "Architektur",
+        ["About_Runtime_Label"] = ".NET Laufzeit",
+        ["About_NativeEngine_Label"] = "Nativer Adblock-Kern",
+        ["About_NativeEngine_Value"] = "reepax_adblock.dll (Rust x86_64)",
+        ["About_ArchiveEngine_Label"] = "Archiv- & Reparatur-Engine",
+        ["About_ArchiveEngine_Value"] = "SharpCompress & par2 (Parchive 2.0)",
+        ["About_CopyDiagnostics_Button"] = "Diagnose kopieren",
+        ["About_DiagnosticCopied"] = "Systemdiagnose in die Zwischenablage kopiert.",
+        ["About_Directories_Title"] = "Verzeichnisse & Speicherorte",
+        ["About_AppDataFolder_Label"] = "Konfigurationsordner (AppData)",
+        ["About_LogsFolder_Label"] = "Protokolldateien (Logs)",
+        ["About_DownloadsFolder_Label"] = "Standard-Download-Ordner",
+        ["About_OpenFolder_Button"] = "Ordner öffnen",
+        ["About_Developer_Label"] = "Entwickelt von",
+        ["About_Developer_Value"] = "Biiitz",
+        ["About_Links_Repository"] = "GitHub Repository",
+        ["About_Links_Releases"] = "Changelog & Releases",
+        ["About_Links_Issues"] = "Fehler melden / Feedback"
     };
 }

@@ -40,6 +40,8 @@ public class DownloadItemDto
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public long ElapsedDurationMs { get; set; }
+    public string? ExpectedChecksum { get; set; }
+    public string? CalculatedChecksum { get; set; }
 }
 
 public class NextTaskStepDto
@@ -800,7 +802,9 @@ public class DownloadPersistenceService : IDisposable
                     CreatedAt = item.CreatedAt,
                     StartedAt = item.StartedAt,
                     CompletedAt = item.CompletedAt,
-                    ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds
+                    ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
+                    ExpectedChecksum = item.ExpectedChecksum,
+                    CalculatedChecksum = item.CalculatedChecksum
                 };
             }).ToList();
 
@@ -1279,7 +1283,9 @@ public class DownloadPersistenceService : IDisposable
                         ElapsedDurationMs = itemDto.ElapsedDurationMs,
                         Status = itemDto.Status,
                         StatusMessage = itemDto.StatusMessage,
-                        ProgressPercentage = itemDto.ProgressPercentage
+                        ProgressPercentage = itemDto.ProgressPercentage,
+                        ExpectedChecksum = itemDto.ExpectedChecksum,
+                        CalculatedChecksum = itemDto.CalculatedChecksum
                     };
 
                     package.Items.Add(item);
@@ -1505,7 +1511,9 @@ public class DownloadPersistenceService : IDisposable
                         CreatedAt = itemDto.CreatedAt,
                         StartedAt = itemDto.StartedAt,
                         CompletedAt = itemDto.CompletedAt,
-                        ElapsedDurationMs = itemDto.ElapsedDurationMs
+                        ElapsedDurationMs = itemDto.ElapsedDurationMs,
+                        ExpectedChecksum = itemDto.ExpectedChecksum,
+                        CalculatedChecksum = itemDto.CalculatedChecksum
                     };
 
                     if (!string.IsNullOrWhiteSpace(item.SaveFilePath))

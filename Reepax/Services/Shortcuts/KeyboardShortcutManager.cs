@@ -39,6 +39,7 @@ public partial class KeyboardShortcutManager : ObservableObject
         AddShortcut("ShowDownloads", "Shortcut_ShowDownloads_Title", "Shortcut_ShowDownloads_Desc", Key.D1, ModifierKeys.Control);
         AddShortcut("ShowSettings", "Shortcut_ShowSettings_Title", "Shortcut_ShowSettings_Desc", Key.D2, ModifierKeys.Control);
         AddShortcut("ImportPackage", "Shortcut_ImportPackage_Title", "Shortcut_ImportPackage_Desc", Key.I, ModifierKeys.Control);
+        AddShortcut("RestartApp", "Shortcut_RestartApp_Title", "Shortcut_RestartApp_Desc", Key.R, ModifierKeys.Control | ModifierKeys.Shift);
     }
 
     private void AddShortcut(string id, string titleKey, string descKey, Key defaultKey, ModifierKeys defaultModifiers)

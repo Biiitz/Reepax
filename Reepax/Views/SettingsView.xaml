@@ -206,6 +206,41 @@
                                 <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_Shortcuts}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
                             </Grid>
                         </Button>
+
+                        <!-- 4. About -->
+                        <Button x:Name="AboutCategoryButton"
+                                Command="{Binding SelectSettingsCategoryCommand}"
+                                CommandParameter="About">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="About">
+                                            <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconInfo}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
+                                    <Path.Style>
+                                        <Style TargetType="Path">
+                                            <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="About">
+                                                    <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Path.Style>
+                                </Path>
+                                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_About}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </Grid>
+                        </Button>
                     </StackPanel>
 
                     <!-- Animated Sliding Blue Pill Indicator -->
@@ -275,7 +310,7 @@
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
                     <!-- Start with Windows -->
-                    <Grid Margin="0,0,0,8">
+                    <Grid Margin="0,0,0,8" Opacity="{Binding IsStartWithWindowsEnabled, Converter={StaticResource BoolToOpacityConverter}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -283,10 +318,31 @@
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="{loc:Loc Settings_StartWithWindows_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="{loc:Loc Settings_StartWithWindows_Subtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            <TextBlock Text="{loc:Loc Settings_StartWithWindows_PortableDisabled}" FontSize="11" Foreground="{DynamicResource AccentBlueBrush}" FontStyle="Italic" Margin="0,2,0,0" Visibility="{Binding IsPortableMode, Converter={StaticResource BoolToVisConverter}}" />
                         </StackPanel>
                         <CheckBox Grid.Column="1"
                                   HorizontalAlignment="Right"
+                                  IsEnabled="{Binding IsStartWithWindowsEnabled}"
                                   IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  Cursor="Hand" />
+                    </Grid>
+
+                    <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
+
+                    <!-- In Infobereich minimieren beim Schließen -->
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="{loc:Loc Settings_MinimizeToTrayOnClose_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{loc:Loc Settings_MinimizeToTrayOnClose_Subtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1"
+                                  HorizontalAlignment="Right"
+                                  IsChecked="{Binding MinimizeToTrayOnClose, Mode=TwoWay}"
                                   VerticalAlignment="Center"
                                   Cursor="Hand" />
                     </Grid>
@@ -811,6 +867,254 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                </StackPanel>
+
+                <!-- ******************** CATEGORY 4: ABOUT ******************** -->
+                <StackPanel x:Name="CategoryAbout"
+                            IsVisibleChanged="Category_IsVisibleChanged"
+                            Visibility="{Binding SelectedSettingsCategory, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='About'}"
+                            RenderTransformOrigin="0.5,0.5">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform X="0" Y="0" />
+                    </StackPanel.RenderTransform>
+
+                    <!-- Centered Header (Logo without background, Name, Version as pure blue text) -->
+                    <StackPanel HorizontalAlignment="Center" Margin="0,6,0,22">
+                        <Image Source="pack://application:,,,/Reepax;component/Assets/R.png" 
+                               Width="68" Height="68" 
+                               Stretch="Uniform" 
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               SnapsToDevicePixels="True" 
+                               HorizontalAlignment="Center" 
+                               Margin="0,0,0,10" />
+
+                        <TextBlock Text="Reepax" 
+                                   FontSize="22" 
+                                   FontWeight="Bold" 
+                                   Foreground="{DynamicResource TextPrimaryBrush}" 
+                                   HorizontalAlignment="Center" 
+                                   Margin="0,0,0,3" />
+
+                        <!-- Version as pure blue text without box/border/background -->
+                        <TextBlock Text="{Binding AppDisplayVersion}" 
+                                   FontSize="13" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="{DynamicResource AccentBlueBrush}" 
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Section 1: System & Laufzeitumgebung (Diagnostics) -->
+                    <Border Background="{DynamicResource BgCardBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="6" 
+                            Padding="20,16" 
+                            Margin="0,0,0,16">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Loc About_SystemDiagnostics_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" 
+                                        Command="{Binding CopySystemDiagnosticInfoCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconCopy}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_CopyDiagnostics_Button}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <!-- OS -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Loc About_OS_Label}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding OperatingSystemInfo}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,6,0,8" />
+
+                            <!-- Runtime -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Loc About_Runtime_Label}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding DotNetRuntimeInfo}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,6,0,8" />
+
+                            <!-- Architecture -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Loc About_Architecture_Label}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding ArchitectureInfo}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,6,0,8" />
+
+                            <!-- Native Engine -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Loc About_NativeEngine_Label}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{loc:Loc About_NativeEngine_Value}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,6,0,8" />
+
+                            <!-- Archive & Repair Engine -->
+                            <Grid Margin="0,0,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{loc:Loc About_ArchiveEngine_Label}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{loc:Loc About_ArchiveEngine_Value}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Section 2: Storage & Directories -->
+                    <Border Background="{DynamicResource BgCardBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="6" 
+                            Padding="20,16" 
+                            Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Loc About_Directories_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14" />
+
+                            <!-- AppData Path -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{loc:Loc About_AppDataFolder_Label}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding AppDataFolderPath}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1" 
+                                        Command="{Binding OpenAppDataFolderInExplorerCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}" 
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_OpenFolder_Button}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,8,0,10" />
+
+                            <!-- Logs Path -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{loc:Loc About_LogsFolder_Label}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding LogsFolderPath}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1" 
+                                        Command="{Binding OpenLogsFolderInExplorerCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}" 
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_OpenFolder_Button}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,8,0,10" />
+
+                            <!-- Downloads Path -->
+                            <Grid Margin="0,0,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="{loc:Loc About_DownloadsFolder_Label}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding CurrentDownloadDirectory}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1" 
+                                        Command="{Binding OpenDefaultDownloadFolderCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}" 
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_OpenFolder_Button}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Section 3: Developer & Links -->
+                    <Border Background="{DynamicResource BgCardBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="6" 
+                            Padding="20,16">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,14">
+                                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{loc:Loc About_Developer_Label}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{loc:Loc About_Developer_Value}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="Copyright © 2026 Biiitz" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <WrapPanel Grid.Row="1" Orientation="Horizontal">
+                                <Button Command="{Binding OpenGitHubRepositoryCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}" 
+                                        Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconGitHub}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_Links_Repository}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Command="{Binding OpenGitHubReleasesCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}" 
+                                        Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconHistory}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_Links_Releases}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Command="{Binding OpenGitHubIssuesCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconExternalLink}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_Links_Issues}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
                 </StackPanel>
 
             </Grid>

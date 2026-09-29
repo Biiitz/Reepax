@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using Reepax.Models;
 using Reepax.Services.Download;
@@ -320,5 +320,25 @@ public class SafeExitTests
     {
         var settings = new AppSettings();
         Assert.False(settings.MinimizeToTrayOnClose);
+    }
+
+    [Fact]
+    public void Localization_MinimizeToTrayOnClose_KeysExistInBothLanguages()
+    {
+        var originalLang = LocalizationService.Instance.CurrentLanguage;
+        try
+        {
+            LocalizationService.Instance.CurrentLanguage = "de";
+            Assert.Equal("In Infobereich minimieren beim Schließen", Loc.Get("Settings_MinimizeToTrayOnClose_Title"));
+            Assert.Equal("Hält Downloads im Hintergrund aktiv, wenn das Fenster geschlossen wird.", Loc.Get("Settings_MinimizeToTrayOnClose_Subtitle"));
+
+            LocalizationService.Instance.CurrentLanguage = "en";
+            Assert.Equal("Minimize to tray on close", Loc.Get("Settings_MinimizeToTrayOnClose_Title"));
+            Assert.Equal("Keeps downloads running in the background when closing the window.", Loc.Get("Settings_MinimizeToTrayOnClose_Subtitle"));
+        }
+        finally
+        {
+            LocalizationService.Instance.CurrentLanguage = originalLang;
+        }
     }
 }

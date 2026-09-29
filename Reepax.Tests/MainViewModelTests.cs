@@ -415,40 +415,33 @@ https://rapidgator.net/file/182937105
         Assert.False(vm.ShowColCompletedDate);
         Assert.False(vm.ShowColChecksum);
         Assert.True(vm.ShowColActions);
-        Assert.Equal(340, vm.ColWidthName);
-        Assert.Equal(120, vm.ColWidthHoster);
+        Assert.Equal(220, vm.ColWidthName);
+        Assert.Equal(75, vm.ColWidthHoster);
     }
 
     [Fact]
-    public void ColumnDividers_LastVisibleColumn_HasNoDivider()
+    public void ColumnDividers_EveryVisibleColumn_HasDividerAndResizeGripper()
     {
         var vm = new MainViewModel();
         vm.ResetColumnsCommand.Execute(null);
 
-        // By default: Actions is visible at the end.
-        // Actions has no divider.
-        Assert.False(vm.ShowDividerActions);
-        // Status is visible, and Actions is to its right, so Status has divider.
+        // By default: Actions and Status are visible, both have dividers and can be resized
+        Assert.True(vm.ShowDividerActions);
         Assert.True(vm.ShowDividerStatus);
 
-        // Turn off Actions
+        // Turn off Actions: Status is now rightmost visible column and retains its divider and resize gripper
         vm.ShowColActions = false;
-        // Now Status is the last visible column (AddedDate, CompletedDate, Checksum are false by default).
+        Assert.False(vm.ShowDividerActions);
+        Assert.True(vm.ShowDividerStatus);
+
+        // Turn off Status: Eta is rightmost and retains its divider and resize gripper
+        vm.ShowColStatus = false;
         Assert.False(vm.ShowDividerStatus);
-        // But Eta is before Status, so Eta still has a divider.
         Assert.True(vm.ShowDividerEta);
 
-        // Also turn off Status
-        vm.ShowColStatus = false;
-        // Now Eta is the last visible column -> Eta has no divider!
-        Assert.False(vm.ShowDividerEta);
-        // Speed is before Eta -> Speed has divider!
-        Assert.True(vm.ShowDividerSpeed);
-
-        // Enable Checksum (which is after Eta)
+        // Enable Checksum: both Eta and Checksum have dividers
         vm.ShowColChecksum = true;
-        // Now Checksum is the last visible column -> Checksum has no divider, but Eta now has divider!
-        Assert.False(vm.ShowDividerChecksum);
+        Assert.True(vm.ShowDividerChecksum);
         Assert.True(vm.ShowDividerEta);
     }
 
@@ -1173,6 +1166,101 @@ https://rapidgator.net/file/202/archive.part2.rar
 
         Assert.Contains("bg_fail_test.bin", vm.StatusSummary);
         Assert.Contains("Connection timeout error", vm.StatusSummary);
+    }
+
+    [Fact]
+    public void WindowTitle_IsReepaxWithoutVersionNumber()
+    {
+        var vm = new MainViewModel();
+
+        Assert.Equal("Reepax", vm.WindowTitle);
+        Assert.DoesNotContain("v", vm.WindowTitle, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(".", vm.WindowTitle);
+    }
+
+    [Fact]
+    public void AboutSection_ProvidesVersionAndDiagnostics()
+    {
+        var vm = new MainViewModel();
+
+        Assert.Equal(Reepax.Services.Update.AppUpdateService.AppCurrentVersion, vm.AppVersion);
+        Assert.Equal($"v{Reepax.Services.Update.AppUpdateService.AppCurrentVersion}", vm.AppDisplayVersion);
+        Assert.Contains("10 / 11", vm.OperatingSystemInfo);
+        Assert.False(string.IsNullOrWhiteSpace(vm.DotNetRuntimeInfo));
+        Assert.False(string.IsNullOrWhiteSpace(vm.ArchitectureInfo));
+        Assert.False(string.IsNullOrWhiteSpace(vm.AppDataFolderPath));
+        Assert.False(string.IsNullOrWhiteSpace(vm.LogsFolderPath));
+    }
+
+    [Fact]
+    public void SettingsCategory_CanSelectAboutCategory()
+    {
+        var vm = new MainViewModel();
+
+        vm.SelectSettingsCategory("About");
+        Assert.Equal(SettingsCategory.About, vm.SelectedSettingsCategory);
+
+        vm.SelectSettingsCategory(SettingsCategory.About);
+        Assert.Equal(SettingsCategory.About, vm.SelectedSettingsCategory);
+    }
+
+    [Fact]
+    public void PortableMode_DisablesStartWithWindows()
+    {
+        var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;
+        try
+        {
+            Reepax.Services.Storage.SettingsService.PortableModeOverride = true;
+            var vm = new MainViewModel();
+
+            Assert.True(vm.IsPortableMode);
+            Assert.False(vm.IsStartWithWindowsEnabled);
+            Assert.False(vm.StartWithWindows);
+
+            // Toggling should have no effect in portable mode
+            vm.ToggleStartWithWindows();
+            Assert.False(vm.StartWithWindows);
+
+            // Directly attempting to set property should remain false
+            vm.StartWithWindows = true;
+            Assert.False(vm.StartWithWindows);
+        }
+        finally
+        {
+            Reepax.Services.Storage.SettingsService.PortableModeOverride = prevOverride;
+        }
+    }
+
+    [Fact]
+    public void WindowsStartupService_SetAutostart_ReturnsFalseInPortableMode()
+    {
+        var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;
+        try
+        {
+            Reepax.Services.Storage.SettingsService.PortableModeOverride = true;
+            bool result = Reepax.Services.SystemIntegration.WindowsStartupService.SetAutostart(true);
+            Assert.False(result);
+        }
+        finally
+        {
+            Reepax.Services.Storage.SettingsService.PortableModeOverride = prevOverride;
+        }
+    }
+
+    [Fact]
+    public void FileAssociationService_EnsureAssociationRegistered_NoOpInPortableMode()
+    {
+        var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;
+        try
+        {
+            Reepax.Services.Storage.SettingsService.PortableModeOverride = true;
+            // Must execute without exception and do nothing
+            Reepax.Services.SystemIntegration.FileAssociationService.EnsureAssociationRegistered();
+        }
+        finally
+        {
+            Reepax.Services.Storage.SettingsService.PortableModeOverride = prevOverride;
+        }
     }
 }
 

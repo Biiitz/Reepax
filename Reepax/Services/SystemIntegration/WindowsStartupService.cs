@@ -27,6 +27,9 @@ public static class WindowsStartupService
     {
         try
         {
+            if (enable && Storage.SettingsService.IsPortableMode)
+                return false;
+
             if (Storage.DownloadPersistenceService.IsTestEnvironment)
                 return true;
 

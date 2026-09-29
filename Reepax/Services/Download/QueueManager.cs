@@ -185,6 +185,11 @@ public class QueueManager
 
     private static int _shutdownState = 0;
 
+    internal static void ResetShutdownStateForTesting()
+    {
+        Interlocked.Exchange(ref _shutdownState, 0);
+    }
+
     public static void PerformSafeShutdown()
     {
         if (Interlocked.Exchange(ref _shutdownState, 1) != 0)
@@ -1121,6 +1126,14 @@ public class QueueManager
                     }
 
                     AppLogger.Info($"[QueueManager] Datei '{item.FileName}' erfolgreich verifiziert ({verification.Algorithm}: {verification.CalculatedChecksum}).");
+
+                    SafeInvoke(() =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(verification.CalculatedChecksum))
+                        {
+                            item.CalculatedChecksum = verification.CalculatedChecksum;
+                        }
+                    });
                 }
 
                 // Mark Item as Completed

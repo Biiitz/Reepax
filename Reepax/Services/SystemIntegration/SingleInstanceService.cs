@@ -45,23 +45,39 @@ public sealed class SingleInstanceService : IDisposable
     /// Attempts to acquire primary single-instance ownership.
     /// Returns true if this is the first instance running.
     /// </summary>
-    public bool TryAcquireOwnership()
+    public bool TryAcquireOwnership(int timeoutMs = 0)
     {
         if (DownloadPersistenceService.IsTestEnvironment)
             return true;
 
-        try
+        var start = DateTime.UtcNow;
+        do
         {
-            _mutex = new Mutex(true, _mutexName, out bool createdNew);
-            _hasMutexOwnership = createdNew;
-            return createdNew;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"Failed to acquire single instance mutex: {ex.Message}");
-            _hasMutexOwnership = false;
-            return false;
-        }
+            try
+            {
+                _mutex = new Mutex(true, _mutexName, out bool createdNew);
+                if (createdNew)
+                {
+                    _hasMutexOwnership = true;
+                    return true;
+                }
+
+                _mutex.Dispose();
+                _mutex = null;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"Failed to acquire single instance mutex: {ex.Message}");
+                _hasMutexOwnership = false;
+            }
+
+            if (timeoutMs > 0)
+            {
+                Thread.Sleep(50);
+            }
+        } while (timeoutMs > 0 && (DateTime.UtcNow - start).TotalMilliseconds < timeoutMs);
+
+        return false;
     }
 
     /// <summary>
@@ -180,6 +196,8 @@ public sealed class SingleInstanceService : IDisposable
                 ShowWindow(hwnd, SW_RESTORE);
                 SetForegroundWindow(hwnd);
             }
+
+            TrayIconService.Instance.HideTrayIcon();
         }
         catch (Exception ex)
         {

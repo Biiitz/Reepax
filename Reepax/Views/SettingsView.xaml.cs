@@ -38,6 +38,8 @@ public partial class SettingsView : UserControl
             DownloadsCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
         if (ShortcutsCategoryButton != null)
             ShortcutsCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
+        if (AboutCategoryButton != null)
+            AboutCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
         if (CategoryButtonsContainer != null)
             CategoryButtonsContainer.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
 
@@ -108,7 +110,8 @@ public partial class SettingsView : UserControl
     private void UpdateSlidingCategoryIndicator(bool animate = true)
     {
         if (GeneralCategoryButton == null || DownloadsCategoryButton == null || 
-            ShortcutsCategoryButton == null || CategoryIndicatorTransform == null || 
+            ShortcutsCategoryButton == null || AboutCategoryButton == null || 
+            CategoryIndicatorTransform == null || 
             SlidingCategoryIndicator == null || CategoryButtonsContainer == null)
             return;
 
@@ -118,6 +121,7 @@ public partial class SettingsView : UserControl
             SettingsCategory.General or SettingsCategory.Notifications => GeneralCategoryButton,
             SettingsCategory.DownloadConnections => DownloadsCategoryButton,
             SettingsCategory.Shortcuts => ShortcutsCategoryButton,
+            SettingsCategory.About => AboutCategoryButton,
             _ => GeneralCategoryButton
         };
 

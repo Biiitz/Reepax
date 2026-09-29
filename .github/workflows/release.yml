@@ -36,38 +36,6 @@ jobs:
           Write-Host "Executing automated xUnit test suite..."
           dotnet test Reepax.slnx -c Release --verbosity minimal --logger "trx;LogFileName=test_results.trx"
 
-      - name: Update Test Count in README
-        if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-        shell: powershell
-        run: |
-          $trxFile = Get-ChildItem -Recurse -Filter "test_results.trx" | Select-Object -First 1
-          if ($trxFile) {
-              [xml]$trx = Get-Content $trxFile.FullName
-              $total = $trx.TestRun.ResultSummary.Counters.total
-              Write-Host "Total tests found in test run: $total"
-              if ($total) {
-                  $readme = Get-Content README.md -Raw -Encoding UTF8
-                  $readme = $readme -replace 'badge/Tests-\d+%20Passing', "badge/Tests-${total}%20Passing"
-                  $readme = $readme -replace 'alt="\d+ Passing Tests"', "alt=`"${total} Passing Tests`""
-                  $readme = $readme -replace '\*\*\d+ automated xUnit unit and integration tests\*\*', "**${total} automated xUnit unit and integration tests**"
-                  [System.IO.File]::WriteAllText("README.md", $readme, [System.Text.UTF8Encoding]::new($false))
-
-                  git config user.name "github-actions[bot]"
-                  git config user.email "github-actions[bot]@users.noreply.github.com"
-                  git add README.md
-                  $diff = git diff --staged
-                  if ($diff) {
-                      git commit -m "docs: update test count to $total in README [skip ci]"
-                      $targetBranch = "${{ github.event.repository.default_branch }}"
-                      if (-not $targetBranch) { $targetBranch = "main" }
-                      git push origin "HEAD:$targetBranch"
-                      Write-Host "Successfully pushed updated test count ($total) to $targetBranch branch."
-                  } else {
-                      Write-Host "README is already up to date with $total tests."
-                  }
-              }
-          }
-
       - name: Publish Self-Contained Application
         shell: powershell
         run: |
@@ -77,7 +45,7 @@ jobs:
           if (-not $version -or $version -match '^main$|^master$') {
               [xml]$xml = Get-Content Reepax\Reepax.csproj
               $version = $xml.Project.PropertyGroup.Version
-              if (-not $version) { $version = "26.9.2" }
+              if (-not $version) { $version = "26.9.3" }
           }
           Write-Host "Publishing Reepax with Version: $version"
           New-Item -ItemType Directory -Force -Path dist\Reepax | Out-Null
@@ -125,6 +93,9 @@ jobs:
       - name: Create Portable Archive (portable.zip)
         shell: powershell
         run: |
+          New-Item -ItemType File -Force -Path "dist\Reepax\portable.txt" -Value "Reepax Portable Mode" | Out-Null
+          New-Item -ItemType Directory -Force -Path "dist\Reepax\Data" | Out-Null
+
           Compress-Archive -Path "dist\Reepax\*" -DestinationPath "dist\portable.zip" -CompressionLevel Optimal
           $zipItem = Get-Item "dist\portable.zip"
           Write-Host "portable.zip created ($($zipItem.Length) bytes)"
@@ -137,8 +108,18 @@ jobs:
               Write-Error "CRITICAL: portable.zip verification failed - Reepax.exe not found in extracted archive!"
               exit 1
           }
+          if (-not (Test-Path "$testExtractDir\portable.txt")) {
+              Write-Error "CRITICAL: portable.zip verification failed - portable.txt not found in extracted archive!"
+              exit 1
+          }
           Remove-Item -Recurse -Force $testExtractDir
           Write-Host "portable.zip archive extraction verified successfully."
+
+          # Clean up portable markers so Inno Setup installer will not package them
+          Remove-Item -Force "dist\Reepax\portable.txt" -ErrorAction SilentlyContinue
+          if (Test-Path "dist\Reepax\Data") {
+              Remove-Item -Recurse -Force "dist\Reepax\Data" -ErrorAction SilentlyContinue
+          }
 
       - name: Install Inno Setup
         shell: powershell
@@ -173,7 +154,7 @@ jobs:
               if (-not $version -or $version -match '^main$|^master$') {
                   [xml]$xml = Get-Content Reepax\Reepax.csproj
                   $version = $xml.Project.PropertyGroup.Version
-                  if (-not $version) { $version = "26.9.2" }
+                  if (-not $version) { $version = "26.9.3" }
               }
               Write-Host "Compiling setup.exe with $iscc for Version: $version..."
               & $iscc "/DMyAppVersion=$version" installer\Reepax.iss
@@ -207,21 +188,6 @@ jobs:
           }
           Write-Host "setup.exe installer integrity verified successfully."
 
-      - name: Generate Checksums (SHA256)
-        shell: powershell
-        run: |
-          $files = @("dist\portable.zip", "dist\setup.exe")
-          $checksums = foreach ($file in $files) {
-              if (Test-Path $file) {
-                  $hash = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLowerInvariant()
-                  $name = [System.IO.Path]::GetFileName($file)
-                  "$hash  $name"
-              }
-          }
-          $checksums | Set-Content -Path "dist\SHA256SUMS.txt" -Encoding utf8
-          Write-Host "Generated SHA256 Checksums:"
-          Get-Content "dist\SHA256SUMS.txt"
-
       - name: Upload Artifacts to Workflow Run
         uses: actions/upload-artifact@v4
         with:
@@ -229,7 +195,6 @@ jobs:
           path: |
             dist/portable.zip
             dist/setup.exe
-            dist/SHA256SUMS.txt
 
       - name: Attach Assets to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -238,6 +203,5 @@ jobs:
           files: |
             dist/portable.zip
             dist/setup.exe
-            dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

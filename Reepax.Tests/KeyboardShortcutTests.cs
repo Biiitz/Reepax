@@ -37,6 +37,37 @@ public class KeyboardShortcutTests
         Assert.NotNull(renameSelected);
         Assert.Equal(Key.F2, renameSelected.Key);
         Assert.Equal(ModifierKeys.None, renameSelected.Modifiers);
+
+        var restartApp = manager.Shortcuts.FirstOrDefault(s => s.Id == "RestartApp");
+        Assert.NotNull(restartApp);
+        Assert.Equal(Key.R, restartApp.Key);
+        Assert.Equal(ModifierKeys.Control | ModifierKeys.Shift, restartApp.Modifiers);
+    }
+
+    [Fact]
+    public void RestartApp_Shortcut_HasCorrectLocalizationAndMatches()
+    {
+        var manager = new KeyboardShortcutManager();
+        var restart = manager.Shortcuts.FirstOrDefault(s => s.Id == "RestartApp");
+        Assert.NotNull(restart);
+
+        var loc = LocalizationService.Instance;
+
+        loc.CurrentLanguage = "de";
+        restart.RefreshLocalization();
+        Assert.Equal("App neu starten", restart.Title);
+        Assert.Equal("Pausiert alle aktiven Downloads und startet die Anwendung neu.", restart.Description);
+        Assert.Equal("Strg + Umschalt + R", restart.DisplayGesture);
+
+        loc.CurrentLanguage = "en";
+        restart.RefreshLocalization();
+        Assert.Equal("Restart App", restart.Title);
+        Assert.Equal("Pauses all active downloads and restarts the application.", restart.Description);
+        Assert.Equal("Ctrl + Shift + R", restart.DisplayGesture);
+
+        var matched = manager.FindMatch(Key.R, ModifierKeys.Control | ModifierKeys.Shift);
+        Assert.NotNull(matched);
+        Assert.Equal("RestartApp", matched.Id);
     }
 
     [Fact]

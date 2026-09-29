@@ -83,7 +83,12 @@ public partial class App : Application
     {
         try
         {
-            var logPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
+            var targetDir = SettingsService.AppDataDirectory;
+            if (!System.IO.Directory.Exists(targetDir))
+            {
+                System.IO.Directory.CreateDirectory(targetDir);
+            }
+            var logPath = System.IO.Path.Combine(targetDir, "crash.log");
             var text = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{source}] {ex}\n\n";
             System.IO.File.AppendAllText(logPath, text);
         }
@@ -98,8 +103,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // 1. Single-Instance Check via Mutex & Named Pipe
-        if (!SingleInstanceService.Instance.TryAcquireOwnership())
+        // 1. Single-Instance Check via Mutex & Named Pipe (with retry timeout if launched via restart)
+        bool isRestart = e.Args.Any(a => string.Equals(a, "--restart", StringComparison.OrdinalIgnoreCase));
+        if (!SingleInstanceService.Instance.TryAcquireOwnership(isRestart ? 4000 : 0))
         {
             var argsToSend = e.Args.Length > 0 ? e.Args : new[] { "--activate" };
             SingleInstanceService.Instance.SendArgsToPrimary(argsToSend);
@@ -129,15 +135,18 @@ public partial class App : Application
             }));
         });
 
-        // Ensure file association for .repx (and .sdlr) is registered in user context asynchronously
-        System.Threading.Tasks.Task.Run(() =>
+        // Ensure file association for .repx (and .sdlr) is registered in user context asynchronously (skipped in portable mode to avoid host registry changes)
+        if (!SettingsService.IsPortableMode)
         {
-            try
+            System.Threading.Tasks.Task.Run(() =>
             {
-                FileAssociationService.EnsureAssociationRegistered();
-            }
-            catch { }
-        });
+                try
+                {
+                    FileAssociationService.EnsureAssociationRegistered();
+                }
+                catch { }
+            });
+        }
 
         base.OnStartup(e);
 
@@ -213,6 +222,10 @@ public partial class App : Application
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
+        if (MainWindow is MainWindow mw)
+        {
+            mw.ForceExit();
+        }
         base.OnSessionEnding(e);
         try
         {

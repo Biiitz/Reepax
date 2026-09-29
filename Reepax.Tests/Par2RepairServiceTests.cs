@@ -22,6 +22,29 @@ public class Par2RepairServiceTests
         Assert.True(Par2RepairService.Instance.IsPar2Available);
     }
 
+    [Fact]
+    public void ResolvePar2ExecutablePath_DoesNotCopyPar2ToAppData()
+    {
+        var exePath = Par2RepairService.Instance.ResolvePar2ExecutablePath();
+        Assert.NotNull(exePath);
+        Assert.True(File.Exists(exePath));
+
+        // Delete any par2.exe in AppData if left from old versions/tests
+        var appDataPar2 = Path.Combine(Reepax.Services.Storage.SettingsService.AppDataDirectory, "par2.exe");
+        if (File.Exists(appDataPar2))
+        {
+            try { File.Delete(appDataPar2); } catch { }
+        }
+
+        // Reset cached path
+        var field = typeof(Par2RepairService).GetField("_cachedExecutablePath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        field?.SetValue(Par2RepairService.Instance, null);
+
+        var resolvedPath = Par2RepairService.Instance.ResolvePar2ExecutablePath();
+        Assert.NotNull(resolvedPath);
+        Assert.False(File.Exists(appDataPar2), "par2.exe must not be copied to AppDataDirectory!");
+    }
+
     [Theory]
     [InlineData("archive.par2", true)]
     [InlineData("archive.vol00+01.par2", true)]

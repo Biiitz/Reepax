@@ -44,6 +44,7 @@ public static class Strings_en
         ["Col_CompletedDate"] = "Completed on",
         ["Col_Checksum"] = "Checksum",
         ["Col_Actions"] = "Actions",
+        ["Col_AutoFitColumns"] = "Auto-fit columns",
         ["Col_ResetColumns"] = "Reset columns",
         ["Col_Customize_ToolTip"] = "Customize columns",
 
@@ -88,6 +89,9 @@ public static class Strings_en
         ["Settings_Connections_Subtitle"] = "Parallel chunks per file (1 - 20)",
         ["Settings_StartWithWindows_Title"] = "Start with Windows",
         ["Settings_StartWithWindows_Subtitle"] = "Automatically start the app on system boot",
+        ["Settings_StartWithWindows_PortableDisabled"] = "Not available in portable mode",
+        ["Settings_MinimizeToTrayOnClose_Title"] = "Minimize to tray on close",
+        ["Settings_MinimizeToTrayOnClose_Subtitle"] = "Keeps downloads running in the background when closing the window.",
         ["Settings_Notifications_Title"] = "Notifications",
         ["Settings_Notifications_Subtitle"] = "Notify when a package completes",
         ["Settings_AutoCollapse_Title"] = "Auto-collapse completed packages",
@@ -106,6 +110,7 @@ public static class Strings_en
         ["Settings_Category_General"] = "General",
         ["Settings_Category_Downloads"] = "Download & Connections",
         ["Settings_Category_Shortcuts"] = "Keyboard Shortcuts",
+        ["Settings_Category_About"] = "About Reepax",
 
         // Shortcuts Settings
         ["Settings_Shortcuts_ResetOne"] = "Reset to default",
@@ -143,6 +148,8 @@ public static class Strings_en
         ["Shortcut_ShowSettings_Desc"] = "Switches to the settings view.",
         ["Shortcut_ImportPackage_Title"] = "Import package",
         ["Shortcut_ImportPackage_Desc"] = "Opens a saved .repx package file.",
+        ["Shortcut_RestartApp_Title"] = "Restart App",
+        ["Shortcut_RestartApp_Desc"] = "Pauses all active downloads and restarts the application.",
 
         // Notifications
         ["Notification_PackageCompleted_Title"] = "Package Completed",
@@ -379,7 +386,7 @@ public static class Strings_en
 
         // App Updates
         ["Toolbar_UpdateAvailable_ToolTip"] = "A new Reepax update is available! Click here for details.",
-        ["Toolbar_UpdateUpToDate_ToolTip"] = "Reepax is up to date (v{0})",
+        ["Toolbar_UpdateUpToDate_ToolTip"] = "Reepax is up to date",
         ["Toolbar_UpdateAvailable_Button"] = "Update {0}",
         ["Toolbar_UpdateAvailable_DefaultButton"] = "Update",
         ["UpdateDialog_Title"] = "Reepax Update",
@@ -399,6 +406,29 @@ public static class Strings_en
         ["Crash_UnexpectedErrorMessage"] = "An unexpected error occurred:\n\n{0}\n\nDetails have been saved to crash.log.",
         ["Crash_UnexpectedErrorTitle"] = "Reepax Error",
         ["Crash_CriticalErrorMessage"] = "Critical application error:\n\n{0}\n\nDetails have been saved to crash.log.",
-        ["Crash_CriticalErrorTitle"] = "Reepax Critical Error"
+        ["Crash_CriticalErrorTitle"] = "Reepax Critical Error",
+
+        // About
+        ["About_Title"] = "About",
+        ["About_SystemDiagnostics_Title"] = "System & Runtime Environment",
+        ["About_OS_Label"] = "Operating System",
+        ["About_Architecture_Label"] = "Architecture",
+        ["About_Runtime_Label"] = ".NET Runtime",
+        ["About_NativeEngine_Label"] = "Native AdBlock Core",
+        ["About_NativeEngine_Value"] = "reepax_adblock.dll (Rust x86_64)",
+        ["About_ArchiveEngine_Label"] = "Archive & Repair Engine",
+        ["About_ArchiveEngine_Value"] = "SharpCompress & par2 (Parchive 2.0)",
+        ["About_CopyDiagnostics_Button"] = "Copy Diagnostics",
+        ["About_DiagnosticCopied"] = "System diagnostics copied to clipboard.",
+        ["About_Directories_Title"] = "Directories & Storage Locations",
+        ["About_AppDataFolder_Label"] = "Configuration Folder (AppData)",
+        ["About_LogsFolder_Label"] = "Log Files (Logs)",
+        ["About_DownloadsFolder_Label"] = "Default Downloads Folder",
+        ["About_OpenFolder_Button"] = "Open Folder",
+        ["About_Developer_Label"] = "Developed by",
+        ["About_Developer_Value"] = "Biiitz",
+        ["About_Links_Repository"] = "GitHub Repository",
+        ["About_Links_Releases"] = "Changelog & Releases",
+        ["About_Links_Issues"] = "Report Issue / Feedback"
     };
 }

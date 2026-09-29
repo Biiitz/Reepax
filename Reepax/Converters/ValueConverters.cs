@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -607,6 +608,43 @@ public class BoolToRightBorderThicknessConverter : IValueConverter
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotImplementedException();
+}
+
+public class ColumnSortArrowGeometryConverter : IMultiValueConverter
+{
+    private static readonly Geometry AscGeometry = Geometry.Parse("M 0 5 L 4 0 L 8 5 Z");
+    private static readonly Geometry DescGeometry = Geometry.Parse("M 0 0 L 4 5 L 8 0 Z");
+
+    public object? Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 && values[0] is string currentCol && values[1] is ListSortDirection dir && parameter is string targetCol)
+        {
+            if (string.Equals(currentCol, targetCol, StringComparison.OrdinalIgnoreCase))
+            {
+                return dir == ListSortDirection.Ascending ? AscGeometry : DescGeometry;
+            }
+        }
+        return null;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotImplementedException();
+}
+
+public class ColumnSortArrowVisibilityConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 && values[0] is string currentCol && values[1] is ListSortDirection && parameter is string targetCol)
+        {
+            if (string.Equals(currentCol, targetCol, StringComparison.OrdinalIgnoreCase))
+            {
+                return Visibility.Visible;
+            }
+        }
+        return Visibility.Collapsed;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotImplementedException();
 }
 
 

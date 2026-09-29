@@ -241,7 +241,7 @@ public class AnimatedExpansionDecorator : Decorator
         // Measure the child with unconstrained height to ensure internal layout
         // (text, icons, columns) is computed naturally at full size without squishing.
         double widthConstraint = double.IsInfinity(constraint.Width) || double.IsNaN(constraint.Width)
-            ? (ActualWidth > 0 ? ActualWidth : double.PositiveInfinity)
+            ? double.PositiveInfinity
             : constraint.Width;
 
         Child.Measure(new Size(widthConstraint, double.PositiveInfinity));

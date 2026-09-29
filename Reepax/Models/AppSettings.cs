@@ -78,18 +78,18 @@ public class AppSettings
     public bool IsUpdateDialogMaximized { get; set; } = false;
 
     // TreeListView Column Widths
-    public double ColWidthName { get; set; } = 340;
-    public double ColWidthHoster { get; set; } = 120;
-    public double ColWidthSavePath { get; set; } = 180;
-    public double ColWidthSize { get; set; } = 95;
-    public double ColWidthProgress { get; set; } = 180;
-    public double ColWidthSpeed { get; set; } = 105;
-    public double ColWidthEta { get; set; } = 85;
-    public double ColWidthStatus { get; set; } = 160;
-    public double ColWidthAddedDate { get; set; } = 130;
-    public double ColWidthCompletedDate { get; set; } = 130;
-    public double ColWidthChecksum { get; set; } = 110;
-    public double ColWidthActions { get; set; } = 135;
+    public double ColWidthName { get; set; } = 220;
+    public double ColWidthHoster { get; set; } = 75;
+    public double ColWidthSavePath { get; set; } = 140;
+    public double ColWidthSize { get; set; } = 75;
+    public double ColWidthProgress { get; set; } = 110;
+    public double ColWidthSpeed { get; set; } = 80;
+    public double ColWidthEta { get; set; } = 65;
+    public double ColWidthStatus { get; set; } = 95;
+    public double ColWidthAddedDate { get; set; } = 95;
+    public double ColWidthCompletedDate { get; set; } = 95;
+    public double ColWidthChecksum { get; set; } = 90;
+    public double ColWidthActions { get; set; } = 95;
 
     [System.Text.Json.Serialization.JsonPropertyName("_engineSignature")]
     public string EngineSignature { get; set; } = "made by Biiitz";
@@ -107,4 +107,49 @@ public class AppSettings
     public bool ShowColCompletedDate { get; set; } = false;
     public bool ShowColChecksum { get; set; } = false;
     public bool ShowColActions { get; set; } = true;
+
+    // TreeListView Column Order
+    public static readonly string[] DefaultColumnOrder = new[]
+    {
+        "Name",
+        "Hoster",
+        "SavePath",
+        "Size",
+        "Progress",
+        "Speed",
+        "Eta",
+        "Status",
+        "AddedDate",
+        "CompletedDate",
+        "Checksum",
+        "Actions"
+    };
+
+    public List<string> ColumnOrder { get; set; } = new(DefaultColumnOrder);
+
+    public static List<string> SanitizeColumnOrder(IEnumerable<string>? order)
+    {
+        var list = new List<string>();
+        if (order != null)
+        {
+            foreach (var col in order)
+            {
+                if (DefaultColumnOrder.Contains(col, StringComparer.OrdinalIgnoreCase) &&
+                    !list.Contains(col, StringComparer.OrdinalIgnoreCase))
+                {
+                    // Use canonical casing from DefaultColumnOrder
+                    string canonical = DefaultColumnOrder.First(c => string.Equals(c, col, StringComparison.OrdinalIgnoreCase));
+                    list.Add(canonical);
+                }
+            }
+        }
+        foreach (var def in DefaultColumnOrder)
+        {
+            if (!list.Contains(def, StringComparer.OrdinalIgnoreCase))
+            {
+                list.Add(def);
+            }
+        }
+        return list;
+    }
 }

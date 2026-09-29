@@ -225,4 +225,59 @@ public class ChecksumVerificationTests : IDisposable
 
         Assert.True(result.IsValid);
     }
+
+    [Fact]
+    public void DisplayChecksum_PrioritizesCalculatedOverExpected()
+    {
+        var item = new DownloadItem();
+        Assert.Null(item.DisplayChecksum);
+
+        item.ExpectedChecksum = "expected_hash_123";
+        Assert.Equal("expected_hash_123", item.DisplayChecksum);
+
+        item.CalculatedChecksum = "calculated_sha256_456";
+        Assert.Equal("calculated_sha256_456", item.DisplayChecksum);
+    }
+
+    [Fact]
+    public void DownloadPersistenceService_PersistsAndRestores_CalculatedChecksum()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_ChecksumPersistTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var downloadsFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            var persistenceService = new DownloadPersistenceService(downloadsFile);
+
+            var item = new DownloadItem
+            {
+                Id = Guid.NewGuid(),
+                FileName = "test_checksum_item.dat",
+                TotalBytes = 1024,
+                CalculatedChecksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                ExpectedChecksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            };
+
+            var package = new DownloadPackage
+            {
+                Id = Guid.NewGuid(),
+                Name = "Checksum Package",
+                SaveDirectory = testDir
+            };
+            package.Items.Add(item);
+
+            persistenceService.SaveDownloads(new List<DownloadPackage> { package });
+
+            var loaded = persistenceService.LoadDownloads();
+            Assert.NotEmpty(loaded);
+            var loadedItem = loaded[0].Items[0];
+            Assert.Equal("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", loadedItem.CalculatedChecksum);
+            Assert.Equal("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", loadedItem.DisplayChecksum);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
 }
