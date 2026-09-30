@@ -47,6 +47,11 @@ public static class DriveHardwareDetector
     {
         var type = DetectDriveType(path);
         var driveLetter = GetDriveLetter(path);
+        if (string.IsNullOrWhiteSpace(driveLetter))
+        {
+            var sysRoot = Path.GetPathRoot(Environment.SystemDirectory)?.TrimEnd('\\', '/').Trim();
+            driveLetter = !string.IsNullOrWhiteSpace(sysRoot) ? sysRoot : "C:";
+        }
 
         return type switch
         {
@@ -63,21 +68,40 @@ public static class DriveHardwareDetector
         {
             if (string.IsNullOrWhiteSpace(path))
             {
-                path = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                return string.Empty;
             }
 
-            var fullPath = Path.GetFullPath(path);
-            var root = Path.GetPathRoot(fullPath);
+            var cleanPath = path.Trim();
+
+            // Direct drive letter check (e.g. "C:", "C:\", "D:\Path")
+            var root = Path.GetPathRoot(cleanPath);
             if (!string.IsNullOrWhiteSpace(root))
             {
                 var letter = root.TrimEnd('\\', '/').Trim();
-                return letter;
+                if (letter.Length == 2 && char.IsAsciiLetter(letter[0]) && letter[1] == ':')
+                {
+                    return char.ToUpperInvariant(letter[0]) + ":";
+                }
+            }
+
+            // Relative path check (e.g. "downloads/game.zip"), ensure no invalid chars or random input prefixes
+            if (cleanPath.IndexOfAny(Path.GetInvalidPathChars()) < 0 && !cleanPath.StartsWith(';'))
+            {
+                var fullPath = Path.GetFullPath(cleanPath);
+                var fullRoot = Path.GetPathRoot(fullPath);
+                if (!string.IsNullOrWhiteSpace(fullRoot))
+                {
+                    var letter = fullRoot.TrimEnd('\\', '/').Trim();
+                    if (letter.Length == 2 && char.IsAsciiLetter(letter[0]) && letter[1] == ':')
+                    {
+                        return char.ToUpperInvariant(letter[0]) + ":";
+                    }
+                }
             }
         }
         catch { }
 
-        var sysRoot = Path.GetPathRoot(Environment.SystemDirectory)?.TrimEnd('\\', '/').Trim();
-        return !string.IsNullOrWhiteSpace(sysRoot) ? sysRoot : "C:";
+        return string.Empty;
     }
 
     private static DriveStorageType DetectDriveTypeInternal(string driveLetter)

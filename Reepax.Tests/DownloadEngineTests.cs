@@ -1125,7 +1125,8 @@ public class DownloadEngineTests
             var canceledInTime = await Task.WhenAny(cancelTcs.Task, Task.Delay(2000));
             Assert.Same(cancelTcs.Task, canceledInTime);
 
-            await Task.Delay(100);
+            var finishedInTime = await Task.WhenAny(downloadTask, Task.Delay(3000));
+            Assert.Same(downloadTask, finishedInTime);
             Assert.False(engine.IsDownloading(item.Id));
         }
         finally

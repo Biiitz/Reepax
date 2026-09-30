@@ -8,7 +8,7 @@
   <a href="https://github.com/Biiitz/Reepax/actions/workflows/release.yml">
     <img src="https://github.com/Biiitz/Reepax/actions/workflows/release.yml/badge.svg" alt="Build & Release Reepax">
   </a>
-  <img src="https://img.shields.io/badge/Tests-700%2B%20Passing-success?style=flat" alt="700+ Passing Tests">
+  <img src="https://img.shields.io/badge/Tests-700%2B%20Passing-success?style=flat" alt="800+ Passing Tests">
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 
 **Reepax** is a fast, lightweight download manager for Windows built with **.NET 8** and **WPF**. It streamlines the entire download workflow into a clean, modern interface: accelerating multi-connection transfers, resolving hoster gates and countdowns via an isolated browser sandbox, repairing damaged archives with integrated PAR2, and automatically extracting finished files directly to your drive.
 
-Backed by **700+ automated tests**, the architecture is thoroughly verified for stability, download integrity, and resilient background processing.
+Backed by **800+ automated tests**, the architecture is thoroughly verified for stability, download integrity, and resilient background processing.
 
 ---
 
