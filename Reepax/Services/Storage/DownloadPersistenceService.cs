@@ -722,156 +722,318 @@ public class DownloadPersistenceService : IDisposable
         }
     }
 
-    private static List<DownloadPackageDto> CreateDtos(IEnumerable<DownloadPackage> packages)
+    internal static List<DownloadPackageDto> CreateDtos(IEnumerable<DownloadPackage>? packages)
     {
-        DownloadPackage[] pkgArray;
-        try
-        {
-            pkgArray = packages.ToArray();
-        }
-        catch
-        {
-            pkgArray = packages.ToList().ToArray();
-        }
+        if (packages == null) return new List<DownloadPackageDto>();
 
-        return pkgArray.Select(pkg =>
+        var app = System.Windows.Application.Current;
+        if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
         {
-            DownloadItem[] itemsArray;
             try
             {
-                itemsArray = pkg.Items.ToArray();
+                var op = app.Dispatcher.InvokeAsync(() => CreateDtosInternal(packages));
+                if (op.Task.Wait(TimeSpan.FromMilliseconds(500)))
+                {
+                    return op.Result;
+                }
             }
             catch
             {
-                itemsArray = pkg.Items.ToList().ToArray();
+                // Fall back to direct snapshot
             }
+        }
 
-            var itemDtos = itemsArray.Select(item =>
+        return CreateDtosInternal(packages);
+    }
+
+    private static List<DownloadPackageDto> CreateDtosInternal(IEnumerable<DownloadPackage> packages)
+    {
+        if (packages == null) return new List<DownloadPackageDto>();
+
+        DownloadPackage[] pkgArray = SafeSnapshotCollectionCore(packages);
+
+        var result = new List<DownloadPackageDto>(pkgArray.Length);
+
+        foreach (var pkg in pkgArray)
+        {
+            if (pkg == null) continue;
+
+            try
             {
-                // Incomplete downloads are normalized to Paused (or Skipped) when saved
-                var itemStatus = item.Status == DownloadStatus.Completed ? DownloadStatus.Completed : DownloadStatus.Paused;
-                var itemStatusMsg = !item.IsEnabled ? Loc.Get("Status_Skipped") : (itemStatus == DownloadStatus.Completed ? Loc.Get("Status_Completed") : Loc.Get("Status_Paused"));
+                DownloadItem[] itemsArray = SafeSnapshotCollectionCore(pkg.Items);
 
-                long downloaded = item.DownloadedBytes;
-                if (itemStatus != DownloadStatus.Completed && !string.IsNullOrWhiteSpace(item.SaveFilePath))
+                var itemDtos = new List<DownloadItemDto>(itemsArray.Length);
+                foreach (var item in itemsArray)
                 {
-                    var segBytes = GetSegmentedDownloadedBytes(item.SaveFilePath);
-                    if (segBytes.HasValue)
+                    if (item == null) continue;
+
+                    // Incomplete downloads are normalized to Paused (or Skipped) when saved
+                    var itemStatus = item.Status == DownloadStatus.Completed ? DownloadStatus.Completed : DownloadStatus.Paused;
+                    var itemStatusMsg = !item.IsEnabled ? Loc.Get("Status_Skipped") : (itemStatus == DownloadStatus.Completed ? Loc.Get("Status_Completed") : Loc.Get("Status_Paused"));
+
+                    long downloaded = item.DownloadedBytes;
+                    if (itemStatus != DownloadStatus.Completed && !string.IsNullOrWhiteSpace(item.SaveFilePath))
                     {
-                        downloaded = segBytes.Value;
+                        var segBytes = GetSegmentedDownloadedBytes(item.SaveFilePath);
+                        if (segBytes.HasValue)
+                        {
+                            downloaded = segBytes.Value;
+                        }
+                        else
+                        {
+                            var part = item.SaveFilePath + ".part";
+                            if (File.Exists(part))
+                            {
+                                try
+                                {
+                                    var len = new FileInfo(part).Length;
+                                    if (len > downloaded) downloaded = len;
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+
+                    double progress = item.TotalBytes > 0 
+                        ? Math.Clamp((double)downloaded / item.TotalBytes * 100.0, 0, 100) 
+                        : (itemStatus == DownloadStatus.Completed ? 100.0 : 0);
+
+                    itemDtos.Add(new DownloadItemDto
+                    {
+                        Id = item.Id,
+                        PackageId = item.PackageId != Guid.Empty ? item.PackageId : pkg.Id,
+                        OriginalUrl = item.OriginalUrl,
+                        DirectDownloadUrl = item.DirectDownloadUrl,
+                        FileName = item.FileName,
+                        HosterName = item.HosterName,
+                        HosterIconKey = item.HosterIconKey,
+                        TotalBytes = item.TotalBytes,
+                        DownloadedBytes = downloaded,
+                        ProgressPercentage = progress,
+                        Status = itemStatus,
+                        StatusMessage = itemStatusMsg,
+                        ErrorMessage = item.ErrorMessage,
+                        SaveFilePath = item.SaveFilePath,
+                        Cookies = item.Cookies,
+                        UserAgent = item.UserAgent,
+                        Referer = item.Referer,
+                        IsEnabled = item.IsEnabled,
+                        CreatedAt = item.CreatedAt,
+                        StartedAt = item.StartedAt,
+                        CompletedAt = item.CompletedAt,
+                        ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
+                        ExpectedChecksum = item.ExpectedChecksum,
+                        CalculatedChecksum = item.CalculatedChecksum
+                    });
+                }
+
+                long pkgTotal = itemDtos.Sum(i => i.TotalBytes);
+                long pkgDownloaded = itemDtos.Sum(i => i.DownloadedBytes);
+                double pkgProgress = pkgTotal > 0 ? Math.Clamp((double)pkgDownloaded / pkgTotal * 100.0, 0, 100) : 0;
+                var pkgStatus = (itemDtos.Count > 0 && itemDtos.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
+                    ? DownloadStatus.Completed
+                    : DownloadStatus.Paused;
+                string pkgStatusMsg;
+                if (!pkg.IsEnabled)
+                {
+                    pkgStatusMsg = Loc.Get("Status_Skipped");
+                }
+                else if (pkgStatus == DownloadStatus.Completed)
+                {
+                    if (!string.IsNullOrWhiteSpace(pkg.StatusMessage) &&
+                        pkg.StatusMessage != Loc.Get("Status_Paused") &&
+                        pkg.StatusMessage != Loc.Get("Status_Downloading") &&
+                        pkg.StatusMessage != Loc.Get("Status_Queued"))
+                    {
+                        pkgStatusMsg = pkg.StatusMessage;
                     }
                     else
                     {
-                        var part = item.SaveFilePath + ".part";
-                        if (File.Exists(part))
-                        {
-                            try
-                            {
-                                var len = new FileInfo(part).Length;
-                                if (len > downloaded) downloaded = len;
-                            }
-                            catch { }
-                        }
+                        pkgStatusMsg = Loc.Get("Status_Completed");
                     }
-                }
-
-                double progress = item.TotalBytes > 0 
-                    ? Math.Clamp((double)downloaded / item.TotalBytes * 100.0, 0, 100) 
-                    : (itemStatus == DownloadStatus.Completed ? 100.0 : 0);
-
-                return new DownloadItemDto
-                {
-                    Id = item.Id,
-                    PackageId = item.PackageId != Guid.Empty ? item.PackageId : pkg.Id,
-                    OriginalUrl = item.OriginalUrl,
-                    DirectDownloadUrl = item.DirectDownloadUrl,
-                    FileName = item.FileName,
-                    HosterName = item.HosterName,
-                    HosterIconKey = item.HosterIconKey,
-                    TotalBytes = item.TotalBytes,
-                    DownloadedBytes = downloaded,
-                    ProgressPercentage = progress,
-                    Status = itemStatus,
-                    StatusMessage = itemStatusMsg,
-                    ErrorMessage = item.ErrorMessage,
-                    SaveFilePath = item.SaveFilePath,
-                    Cookies = item.Cookies,
-                    UserAgent = item.UserAgent,
-                    Referer = item.Referer,
-                    IsEnabled = item.IsEnabled,
-                    CreatedAt = item.CreatedAt,
-                    StartedAt = item.StartedAt,
-                    CompletedAt = item.CompletedAt,
-                    ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
-                    ExpectedChecksum = item.ExpectedChecksum,
-                    CalculatedChecksum = item.CalculatedChecksum
-                };
-            }).ToList();
-
-            long pkgTotal = itemDtos.Sum(i => i.TotalBytes);
-            long pkgDownloaded = itemDtos.Sum(i => i.DownloadedBytes);
-            double pkgProgress = pkgTotal > 0 ? Math.Clamp((double)pkgDownloaded / pkgTotal * 100.0, 0, 100) : 0;
-            var pkgStatus = (itemDtos.Count > 0 && itemDtos.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
-                ? DownloadStatus.Completed
-                : DownloadStatus.Paused;
-            string pkgStatusMsg;
-            if (!pkg.IsEnabled)
-            {
-                pkgStatusMsg = Loc.Get("Status_Skipped");
-            }
-            else if (pkgStatus == DownloadStatus.Completed)
-            {
-                if (!string.IsNullOrWhiteSpace(pkg.StatusMessage) &&
-                    pkg.StatusMessage != Loc.Get("Status_Paused") &&
-                    pkg.StatusMessage != Loc.Get("Status_Downloading") &&
-                    pkg.StatusMessage != Loc.Get("Status_Queued"))
-                {
-                    pkgStatusMsg = pkg.StatusMessage;
                 }
                 else
                 {
-                    pkgStatusMsg = Loc.Get("Status_Completed");
+                    pkgStatusMsg = Loc.Get("Status_Paused");
+                }
+
+                var stepsArray = SafeSnapshotCollectionCore(pkg.NextTaskSteps);
+                var stepDtos = stepsArray.Where(s => s != null).Select(s => new NextTaskStepDto
+                {
+                    Key = s.Key,
+                    Name = s.Name,
+                    State = s.State
+                }).ToList();
+
+                result.Add(new DownloadPackageDto
+                {
+                    Id = pkg.Id,
+                    ParentPackageId = pkg.ParentPackageId,
+                    Name = pkg.Name,
+                    SaveDirectory = pkg.SaveDirectory,
+                    IsEnabled = pkg.IsEnabled,
+                    AutoExtractArchives = pkg.AutoExtractArchives,
+                    LowResourceExtraction = pkg.LowResourceExtraction,
+                    DeleteArchiveAfterExtraction = pkg.DeleteArchiveAfterExtraction,
+                    MoveArchiveToRecycleBin = pkg.MoveArchiveToRecycleBin,
+                    AutoResolveHostLinks = pkg.AutoResolveHostLinks,
+                    IsExpanded = pkg.IsExpanded,
+                    PackageIconKey = pkg.PackageIconKey,
+                    TotalBytes = pkgTotal > 0 ? pkgTotal : pkg.TotalBytes,
+                    DownloadedBytes = pkgDownloaded,
+                    ProgressPercentage = pkgProgress,
+                    Status = pkgStatus,
+                    StatusMessage = pkgStatusMsg,
+                    CreatedAt = pkg.CreatedAt,
+                    StartedAt = pkg.StartedAt,
+                    CompletedAt = pkg.CompletedAt,
+                    ElapsedDurationMs = pkg.ElapsedDurationMs > 0 ? pkg.ElapsedDurationMs : (long)pkg.Duration.TotalMilliseconds,
+                    NextTaskSteps = stepDtos,
+                    Items = itemDtos
+                });
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"[DownloadPersistenceService] Fehler beim Konvertieren eines Pakets in DTO: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    internal static T[] SafeSnapshotCollection<T>(IEnumerable<T>? source, int maxRetries = 3)
+    {
+        if (source == null) return Array.Empty<T>();
+
+        var app = System.Windows.Application.Current;
+        if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
+        {
+            try
+            {
+                var op = app.Dispatcher.InvokeAsync(() => SafeSnapshotCollectionCore(source, maxRetries));
+                if (op.Task.Wait(TimeSpan.FromMilliseconds(500)))
+                {
+                    return op.Result;
                 }
             }
-            else
+            catch
             {
-                pkgStatusMsg = Loc.Get("Status_Paused");
+                // Fall back to direct snapshot with retries
             }
+        }
 
-            var stepDtos = pkg.NextTaskSteps.Select(s => new NextTaskStepDto
-            {
-                Key = s.Key,
-                Name = s.Name,
-                State = s.State
-            }).ToList();
+        return SafeSnapshotCollectionCore(source, maxRetries);
+    }
 
-            return new DownloadPackageDto
+    internal static T[] SafeSnapshotCollectionCore<T>(IEnumerable<T>? source, int maxRetries = 3)
+    {
+        if (source == null) return Array.Empty<T>();
+
+        List<T>? lastCaptured = null;
+
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            bool lockTaken = false;
+            object? syncRoot = (source is System.Collections.ICollection col) ? col.SyncRoot : null;
+
+            try
             {
-                Id = pkg.Id,
-                ParentPackageId = pkg.ParentPackageId,
-                Name = pkg.Name,
-                SaveDirectory = pkg.SaveDirectory,
-                IsEnabled = pkg.IsEnabled,
-                AutoExtractArchives = pkg.AutoExtractArchives,
-                LowResourceExtraction = pkg.LowResourceExtraction,
-                DeleteArchiveAfterExtraction = pkg.DeleteArchiveAfterExtraction,
-                MoveArchiveToRecycleBin = pkg.MoveArchiveToRecycleBin,
-                AutoResolveHostLinks = pkg.AutoResolveHostLinks,
-                IsExpanded = pkg.IsExpanded,
-                PackageIconKey = pkg.PackageIconKey,
-                TotalBytes = pkgTotal > 0 ? pkgTotal : pkg.TotalBytes,
-                DownloadedBytes = pkgDownloaded,
-                ProgressPercentage = pkgProgress,
-                Status = pkgStatus,
-                StatusMessage = pkgStatusMsg,
-                CreatedAt = pkg.CreatedAt,
-                StartedAt = pkg.StartedAt,
-                CompletedAt = pkg.CompletedAt,
-                ElapsedDurationMs = pkg.ElapsedDurationMs > 0 ? pkg.ElapsedDurationMs : (long)pkg.Duration.TotalMilliseconds,
-                NextTaskSteps = stepDtos,
-                Items = itemDtos
-            };
-        }).ToList();
+                if (syncRoot != null)
+                {
+                    Monitor.TryEnter(syncRoot, 50, ref lockTaken);
+                }
+
+                return source.ToArray();
+            }
+            catch (InvalidOperationException)
+            {
+                // Attempt to capture as many items as possible up to the point of modification
+                try
+                {
+                    var partial = new List<T>();
+                    using var enumerator = source.GetEnumerator();
+                    while (true)
+                    {
+                        try
+                        {
+                            if (!enumerator.MoveNext())
+                                break;
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            break;
+                        }
+                        partial.Add(enumerator.Current);
+                    }
+                    if (partial.Count > 0)
+                    {
+                        lastCaptured = partial;
+                    }
+                }
+                catch
+                {
+                    // Ignore partial enumeration errors
+                }
+
+                if (attempt < maxRetries - 1)
+                {
+                    Thread.Sleep(5);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"[DownloadPersistenceService] SafeSnapshotCollection unerwarteter Fehler: {ex.Message}");
+                break;
+            }
+            finally
+            {
+                if (lockTaken && syncRoot != null)
+                {
+                    Monitor.Exit(syncRoot);
+                }
+            }
+        }
+
+        // Fallback: If source implements IList<T> (e.g. ObservableCollection<T>),
+        // indexed access avoids enumerator version checking and can safely snapshot the list.
+        if (source is IList<T> list)
+        {
+            try
+            {
+                var fallback = new List<T>();
+                int count = list.Count;
+                for (int i = 0; i < count; i++)
+                {
+                    try
+                    {
+                        if (i < list.Count)
+                        {
+                            fallback.Add(list[i]);
+                        }
+                    }
+                    catch
+                    {
+                        break;
+                    }
+                }
+                if (fallback.Count > 0)
+                {
+                    return fallback.ToArray();
+                }
+            }
+            catch
+            {
+                // Fall through to lastCaptured
+            }
+        }
+
+        // If indexed access wasn't applicable or empty, safely use the items captured up to that point
+        if (lastCaptured != null && lastCaptured.Count > 0)
+        {
+            return lastCaptured.ToArray();
+        }
+
+        return Array.Empty<T>();
     }
 
     public static List<DownloadPackageDto> SnapshotDtos(IEnumerable<DownloadPackage> packages)

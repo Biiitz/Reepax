@@ -51,6 +51,7 @@ public static class Strings_en
         // Package & Item Context Menus & Tooltips
         ["Menu_Rename"] = "Rename (F2)",
         ["Menu_OpenPackageFolder"] = "Open Package",
+        ["Menu_ShowInExplorer"] = "Show in folder",
         ["Status_PackageFolderOpened"] = "Package folder opened: {0}",
         ["Dialog_AutoExtractAlreadyDone_ToolTip"] = "Extraction options cannot be changed because extraction for this package has already completed.",
         ["Dialog_PackageNameLocked_ToolTip"] = "Package name is locked because links are being added to an existing package.",
@@ -429,6 +430,29 @@ public static class Strings_en
         ["About_Developer_Value"] = "Biiitz",
         ["About_Links_Repository"] = "GitHub Repository",
         ["About_Links_Releases"] = "Changelog & Releases",
-        ["About_Links_Issues"] = "Report Issue / Feedback"
-    };
+        ["About_Links_Issues"] = "Report Issue / Feedback",
+
+        // Search & Filter Bar
+        ["Filter_Search_Placeholder"] = "Search downloads",
+        ["Filter_Clear_ToolTip"] = "Clear search",
+        ["Filter_All"] = "All",
+        ["Filter_Running"] = "Running",
+        ["Filter_Paused"] = "Paused",
+        ["Filter_Completed"] = "Completed",
+        ["Filter_Failed"] = "Failed",
+
+        // Archive Password Prompt & Management
+        ["PasswordPrompt_Title"] = "Password Protected Archive",
+        ["PasswordPrompt_Message"] = "This archive is password-protected. Please enter the password to extract it:",
+        ["PasswordPrompt_PasswordLabel"] = "Password:",
+        ["PasswordPrompt_Remember"] = "Remember password for future archives",
+        ["PasswordPrompt_Extract"] = "Extract",
+        ["PasswordPrompt_Cancel"] = "Cancel",
+        ["Settings_Card_ArchivePasswords_Title"] = "Saved Archive Passwords",
+        ["Settings_Card_ArchivePasswords_Subtitle"] = "Passwords tested automatically in sequence during archive extraction",
+        ["Settings_ArchivePasswords_Add"] = "Add",
+        ["Settings_ArchivePasswords_Placeholder"] = "New password...",
+        ["Settings_ArchivePasswords_Remove"] = "Remove",
+        ["Settings_ArchivePasswords_Empty"] = "No saved passwords."
+     };
 }

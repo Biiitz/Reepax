@@ -21,6 +21,8 @@ public class ArchiveExtractionService
     private static readonly Lazy<ArchiveExtractionService> _instance = new(() => new ArchiveExtractionService());
     public static ArchiveExtractionService Instance => _instance.Value;
 
+    public static Func<string, Task<(string? Password, bool Remember)>>? PasswordPromptHandler { get; set; }
+
     private static readonly HashSet<string> _archiveExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".iso", ".cab"
@@ -426,9 +428,10 @@ public class ArchiveExtractionService
         string targetDirectory, 
         Action<string>? statusCallback = null,
         bool? lowResourceMode = null,
-        Action<double>? progressCallback = null)
+        Action<double>? progressCallback = null,
+        string? explicitPassword = null)
     {
-        return Task.Run(() =>
+        return Task.Run(async () =>
         {
             var originalPriority = System.Threading.Thread.CurrentThread.Priority;
             var isLowResource = lowResourceMode
@@ -438,6 +441,83 @@ public class ArchiveExtractionService
             {
                 if (!File.Exists(archiveFilePath))
                     return false;
+
+                // 1. Password detection and trial
+                string? passwordToUse = explicitPassword;
+                bool isArchiveEncrypted = false;
+
+                if (string.IsNullOrEmpty(passwordToUse))
+                {
+                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted) && !isArchiveEncrypted)
+                    {
+                        passwordToUse = null;
+                    }
+                    else
+                    {
+                        isArchiveEncrypted = true;
+                        var savedPasswords = SettingsService.Instance.Settings.ExtractionPasswords;
+                        if (savedPasswords != null)
+                        {
+                            foreach (var candidate in savedPasswords)
+                            {
+                                if (!string.IsNullOrWhiteSpace(candidate) &&
+                                    TryTestArchivePassword(archiveFilePath, candidate.Trim(), out _))
+                                {
+                                    passwordToUse = candidate.Trim();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted) && !isArchiveEncrypted)
+                    {
+                        passwordToUse = null;
+                    }
+                    else
+                    {
+                        isArchiveEncrypted = true;
+                        if (!TryTestArchivePassword(archiveFilePath, passwordToUse, out _))
+                        {
+                            passwordToUse = null;
+                        }
+                    }
+                }
+
+                // If encrypted and no password matched, invoke async prompt handler
+                if (isArchiveEncrypted && string.IsNullOrEmpty(passwordToUse))
+                {
+                    if (PasswordPromptHandler != null)
+                    {
+                        var fileName = Path.GetFileName(archiveFilePath);
+                        var (enteredPassword, remember) = await PasswordPromptHandler.Invoke(fileName);
+                        if (!string.IsNullOrEmpty(enteredPassword))
+                        {
+                            if (TryTestArchivePassword(archiveFilePath, enteredPassword, out _))
+                            {
+                                passwordToUse = enteredPassword;
+                                if (remember)
+                                {
+                                    var list = SettingsService.Instance.Settings.ExtractionPasswords ??= new List<string>();
+                                    if (!list.Contains(enteredPassword, StringComparer.Ordinal))
+                                    {
+                                        list.Add(enteredPassword);
+                                        SettingsService.Instance.Settings.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(list);
+                                        SettingsService.Instance.SaveSettings();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(passwordToUse))
+                    {
+                        statusCallback?.Invoke(Loc.Get("Status_ExtractionPasswordProtected"));
+                        return false;
+                    }
+                }
 
                 if (isLowResource)
                 {
@@ -478,8 +558,8 @@ public class ArchiveExtractionService
 
                 ReportCurrentProgress(0.0, force: true);
 
-                // If standard ZIP, use fast System.IO.Compression with safe entry extraction
-                if (archiveFilePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                // If standard unencrypted ZIP, use fast System.IO.Compression with safe entry extraction
+                if (passwordToUse == null && archiveFilePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
                 {
                     using var zipArchive = System.IO.Compression.ZipFile.OpenRead(archiveFilePath);
                     var validZipEntries = zipArchive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
@@ -569,8 +649,9 @@ public class ArchiveExtractionService
                     return true;
                 }
 
-                // SharpCompress for RAR, 7Z, TAR, GZ and multi-part archives
-                using var archive = SharpCompress.Archives.ArchiveFactory.OpenArchive(archiveFilePath);
+                // SharpCompress for RAR, 7Z, TAR, GZ, multi-part, and password-protected archives
+                var readerOptions = new SharpCompress.Readers.ReaderOptions { Password = passwordToUse };
+                using var archive = SharpCompress.Archives.ArchiveFactory.OpenArchive(archiveFilePath, readerOptions);
 
                 if (archive == null)
                     return false;
@@ -661,7 +742,14 @@ public class ArchiveExtractionService
                 statusCallback?.Invoke(Loc.Get("Status_ExtractionCompleted"));
                 return true;
             }
-            catch (CryptographicException)
+            catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException ||
+                                       ex is SharpCompress.Common.CryptographicException)
+            {
+                statusCallback?.Invoke(Loc.Get("Status_ExtractionPasswordProtected"));
+                return false;
+            }
+            catch (SharpCompress.Common.ArchiveException aex) when (aex.Message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                                                                    aex.Message.Contains("encrypted", StringComparison.OrdinalIgnoreCase))
             {
                 statusCallback?.Invoke(Loc.Get("Status_ExtractionPasswordProtected"));
                 return false;
@@ -684,6 +772,70 @@ public class ArchiveExtractionService
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// Tests whether an archive is encrypted and whether the specified password successfully unlocks it.
+    /// Returns true if unlocked or if archive is unencrypted (with isEncrypted = false).
+    /// Returns false if password is wrong or required but missing.
+    /// </summary>
+    public static bool TryTestArchivePassword(string archiveFilePath, string? password, out bool isEncrypted)
+    {
+        isEncrypted = false;
+        try
+        {
+            var options = new SharpCompress.Readers.ReaderOptions { Password = password };
+            using var archive = SharpCompress.Archives.ArchiveFactory.OpenArchive(archiveFilePath, options);
+            if (archive == null)
+                return false;
+
+            var entries = archive.Entries.ToList();
+            var encryptedEntry = entries.FirstOrDefault(e => !e.IsDirectory && e.IsEncrypted);
+
+            if (encryptedEntry != null)
+            {
+                isEncrypted = true;
+                if (string.IsNullOrEmpty(password))
+                {
+                    return false;
+                }
+
+                using var stream = encryptedEntry.OpenEntryStream();
+                byte[] testBuffer = new byte[32];
+                int read = stream.Read(testBuffer, 0, testBuffer.Length);
+                return true;
+            }
+
+            var firstFile = entries.FirstOrDefault(e => !e.IsDirectory);
+            if (firstFile != null && !string.IsNullOrEmpty(password))
+            {
+                using var stream = firstFile.OpenEntryStream();
+                byte[] testBuffer = new byte[32];
+                int read = stream.Read(testBuffer, 0, testBuffer.Length);
+            }
+
+            return true;
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            isEncrypted = true;
+            return false;
+        }
+        catch (SharpCompress.Common.CryptographicException)
+        {
+            isEncrypted = true;
+            return false;
+        }
+        catch (SharpCompress.Common.ArchiveException)
+        {
+            isEncrypted = true;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Debug($"[ArchiveExtractor] Password test note for '{archiveFilePath}': {ex.Message}");
+            return false;
+        }
     }
 
     private void TryDeletePackageArchives(IEnumerable<string> archiveFilesToDelete, bool sendToRecycleBin, DownloadPackage? package = null)

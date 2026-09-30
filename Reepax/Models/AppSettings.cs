@@ -47,6 +47,31 @@ public class AppSettings
     public int MaxAutoRetryOnCorruption { get; set; } = 3;
     public bool AutoPar2Repair { get; set; } = false;
     public bool DeletePar2AfterExtraction { get; set; } = false;
+    public List<string> ExtractionPasswords { get; set; } = new();
+    public bool IsArchivePasswordsExpanded { get; set; } = false;
+
+    public static List<string> SanitizeExtractionPasswords(IEnumerable<string>? passwords)
+    {
+        if (passwords == null)
+        {
+            return new List<string>();
+        }
+
+        var list = new List<string>();
+        foreach (var pwd in passwords)
+        {
+            if (string.IsNullOrWhiteSpace(pwd))
+                continue;
+
+            var trimmed = pwd.Trim();
+            if (!list.Contains(trimmed, StringComparer.Ordinal))
+            {
+                list.Add(trimmed);
+            }
+        }
+
+        return list;
+    }
 
     // Game Installation Directory Settings
     public bool CreateGameInstallFolder { get; set; } = false;

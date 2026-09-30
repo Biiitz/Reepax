@@ -166,6 +166,7 @@ public class SettingsService
                         if (loaded != null)
                         {
                             loaded.ColumnOrder = AppSettings.SanitizeColumnOrder(loaded.ColumnOrder);
+                            loaded.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(loaded.ExtractionPasswords);
                             _currentSettings = loaded;
                             loadedSuccessfully = true;
                         }
@@ -197,6 +198,8 @@ public class SettingsService
                         var loadedFromBackup = JsonSerializer.Deserialize<AppSettings>(backupJson);
                         if (loadedFromBackup != null)
                         {
+                            loadedFromBackup.ColumnOrder = AppSettings.SanitizeColumnOrder(loadedFromBackup.ColumnOrder);
+                            loadedFromBackup.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(loadedFromBackup.ExtractionPasswords);
                             _currentSettings = loadedFromBackup;
                             loadedSuccessfully = true;
                             AppLogger.Warn("Einstellungen erfolgreich aus Backup wiederhergestellt.");
@@ -253,6 +256,7 @@ public class SettingsService
             string? tempFile = null;
             try
             {
+                _currentSettings.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(_currentSettings.ExtractionPasswords);
                 _currentSettings.SecurityDescriptor = "made by Biiitz";
                 _currentSettings.EngineSignature = "made by Biiitz";
                 var json = JsonSerializer.Serialize(_currentSettings, new JsonSerializerOptions { WriteIndented = true });

@@ -664,10 +664,16 @@ public partial class DownloadPackage : ObservableObject
             SpeedBytesPerSecond = 0;
             RemainingSeconds = 0;
         }
-        else if (enabledCount == 0)
+        else if (itemsSnapshot.Length > 0 && enabledCount == 0)
         {
             Status = DownloadStatus.Paused;
             StatusMessage = Loc.Get("Status_Skipped");
+            SpeedBytesPerSecond = 0;
+            RemainingSeconds = 0;
+        }
+        else if (itemsSnapshot.Length == 0)
+        {
+            // Package has no items: preserve current status and status message
             SpeedBytesPerSecond = 0;
             RemainingSeconds = 0;
         }

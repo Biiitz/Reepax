@@ -125,6 +125,11 @@
                     <Path Data="{StaticResource IconFile}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="{loc:Loc Menu_ShowInExplorer}" Click="ShowItemInExplorer_MenuItem_Click">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
             <MenuItem Header="{loc:Loc Menu_CopyOriginalUrl}" Click="CopyItemUrl_MenuItem_Click">
                 <MenuItem.Icon>
                     <Path Data="{StaticResource IconCopy}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
@@ -170,6 +175,35 @@
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.35" />
                                 <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Filter Dropdown Menu Item Style -->
+        <Style x:Key="FilterDropdownItemStyle" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="itemBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="itemBorder" Property="Background" Value="{DynamicResource BgInputBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -2895,6 +2929,53 @@
                             </Border>
                         </StackPanel>
                     </Border>
+
+                    <!-- Busy / Link Extraction Spinner -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0"
+                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}">
+                        <Viewbox Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0">
+                            <Canvas Width="20" Height="20" RenderTransformOrigin="0.5,0.5">
+                                <Canvas.RenderTransform>
+                                    <RotateTransform Angle="0" />
+                                </Canvas.RenderTransform>
+                                <Canvas.Style>
+                                    <Style TargetType="Canvas">
+                                        <Style.Triggers>
+                                            <Trigger Property="Visibility" Value="Visible">
+                                                <Trigger.EnterActions>
+                                                    <BeginStoryboard Name="SpinStoryboard">
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                             From="0" To="360"
+                                                                             Duration="0:0:0.9"
+                                                                             RepeatBehavior="Forever" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.EnterActions>
+                                                <Trigger.ExitActions>
+                                                    <StopStoryboard BeginStoryboardName="SpinStoryboard" />
+                                                </Trigger.ExitActions>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Canvas.Style>
+
+                                <Ellipse Canvas.Left="15.75" Canvas.Top="8.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="1.00" />
+                                <Ellipse Canvas.Left="14.8" Canvas.Top="12.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.92" />
+                                <Ellipse Canvas.Left="12.25" Canvas.Top="14.8" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.83" />
+                                <Ellipse Canvas.Left="8.75" Canvas.Top="15.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.75" />
+                                <Ellipse Canvas.Left="5.25" Canvas.Top="14.8" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.67" />
+                                <Ellipse Canvas.Left="2.7" Canvas.Top="12.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.58" />
+                                <Ellipse Canvas.Left="1.75" Canvas.Top="8.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.50" />
+                                <Ellipse Canvas.Left="2.7" Canvas.Top="5.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.42" />
+                                <Ellipse Canvas.Left="5.25" Canvas.Top="2.7" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.33" />
+                                <Ellipse Canvas.Left="8.75" Canvas.Top="1.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.25" />
+                                <Ellipse Canvas.Left="12.25" Canvas.Top="2.7" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.17" />
+                                <Ellipse Canvas.Left="14.8" Canvas.Top="5.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.08" />
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Text="{Binding BusyMessage}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Right Section: Overall Download Summary + Extensions folder + Settings Button + Popup -->
@@ -3353,55 +3434,268 @@
                     </Popup>
                 </StackPanel>
 
-                <!-- Center Section: Loading Spinner / Busy Message -->
-                <Grid VerticalAlignment="Center" Margin="8,0">
-                    <!-- Web page link extraction / parsing: progress with dotted circle loading animation -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left"
-                                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}">
-                        <!-- Dotted Circle Loading Spinner -->
-                        <Viewbox Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,8,0">
-                            <Canvas Width="20" Height="20" RenderTransformOrigin="0.5,0.5">
-                                <Canvas.RenderTransform>
-                                    <RotateTransform Angle="0" />
-                                </Canvas.RenderTransform>
-                                <Canvas.Style>
-                                    <Style TargetType="Canvas">
-                                        <Style.Triggers>
-                                            <Trigger Property="Visibility" Value="Visible">
-                                                <Trigger.EnterActions>
-                                                    <BeginStoryboard Name="SpinStoryboard">
-                                                        <Storyboard>
-                                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                                             From="0" To="360"
-                                                                             Duration="0:0:0.9"
-                                                                             RepeatBehavior="Forever" />
-                                                        </Storyboard>
-                                                    </BeginStoryboard>
-                                                </Trigger.EnterActions>
-                                                <Trigger.ExitActions>
-                                                    <StopStoryboard BeginStoryboardName="SpinStoryboard" />
-                                                </Trigger.ExitActions>
+                <!-- Center Section: Search Bar & Status Filter Dropdown Popup (fills remaining space with equal margins) -->
+                <Grid Margin="8,0" 
+                      VerticalAlignment="Center"
+                      Visibility="{Binding SelectedMainTab, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Downloads'}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Search Input Box (stretches to fill remaining space) -->
+                    <Border Grid.Column="0"
+                            Background="{DynamicResource BgCardAltBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="4" 
+                            Height="28" 
+                            MinWidth="120"
+                            VerticalAlignment="Center">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Path Grid.Column="0" 
+                                  Data="{StaticResource IconSearch}" 
+                                  Fill="{DynamicResource TextSecondaryBrush}" 
+                                  Width="12" Height="12" 
+                                  Stretch="Uniform" 
+                                  VerticalAlignment="Center" 
+                                  Margin="9,0,6,0" />
+
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <!-- Placeholder Watermark -->
+                                <TextBlock Text="{loc:Loc Filter_Search_Placeholder}" 
+                                           Foreground="{DynamicResource TextSecondaryBrush}" 
+                                           FontSize="11.5" 
+                                           VerticalAlignment="Center" 
+                                           Margin="2,0,0,0"
+                                           IsHitTestVisible="False"
+                                           Visibility="{Binding HasSearchFilterText, Converter={StaticResource InverseBoolToVisConverter}}" />
+
+                                <!-- Search Text Box -->
+                                <TextBox x:Name="BottomSearchFilterBox"
+                                         Text="{Binding SearchFilterText, UpdateSourceTrigger=PropertyChanged}" 
+                                         Background="Transparent" 
+                                         Foreground="{DynamicResource TextPrimaryBrush}" 
+                                         CaretBrush="{DynamicResource TextPrimaryBrush}" 
+                                         BorderThickness="0" 
+                                         FontSize="11.5" 
+                                         VerticalAlignment="Center" 
+                                         Padding="2,0" />
+                            </Grid>
+
+                            <!-- Clear Button -->
+                            <Button Grid.Column="2" 
+                                    Command="{Binding ClearSearchFilterCommand}"
+                                    Focusable="False" 
+                                    Background="Transparent" 
+                                    BorderThickness="0" 
+                                    Padding="0" 
+                                    Margin="0,0,6,0"
+                                    Cursor="Hand" 
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding HasSearchFilterText, Converter={StaticResource BoolToVisConverter}}"
+                                    ToolTip="{loc:Loc Filter_Clear_ToolTip}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="Transparent" Padding="2">
+                                            <Path Data="{StaticResource IconClose}" 
+                                                  Fill="{DynamicResource TextSecondaryBrush}" 
+                                                  Width="10" Height="10" 
+                                                  Stretch="Uniform" />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Opacity" Value="0.75" />
                                             </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Compact Status Filter Button -->
+                    <Button Grid.Column="1"
+                            x:Name="StatusFilterButton" 
+                            Height="28"
+                            Padding="10,0" 
+                            Background="{DynamicResource BgCardAltBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            Margin="8,0,0,0"
+                            Cursor="Hand"
+                            SnapsToDevicePixels="True"
+                            PreviewMouseDown="StatusFilterButton_PreviewMouseDown"
+                            Click="StatusFilterButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Border" 
+                                                    Background="{TemplateBinding Background}" 
+                                                    BorderBrush="{TemplateBinding BorderBrush}" 
+                                                    BorderThickness="{TemplateBinding BorderThickness}" 
+                                                    CornerRadius="4" 
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
+                                                </Trigger>
+                                                <Trigger Property="IsPressed" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsStatusFilterActive}" Value="True">
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconFilter}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsStatusFilterActive}" Value="True">
+                                                <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </Canvas.Style>
+                                </Path.Style>
+                            </Path>
+                            <TextBlock Text="{Binding SelectedStatusFilterText}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsStatusFilterActive}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBlueBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <Path Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Button>
 
-                                <Ellipse Canvas.Left="15.75" Canvas.Top="8.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="1.00" />
-                                <Ellipse Canvas.Left="14.8" Canvas.Top="12.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.92" />
-                                <Ellipse Canvas.Left="12.25" Canvas.Top="14.8" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.83" />
-                                <Ellipse Canvas.Left="8.75" Canvas.Top="15.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.75" />
-                                <Ellipse Canvas.Left="5.25" Canvas.Top="14.8" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.67" />
-                                <Ellipse Canvas.Left="2.7" Canvas.Top="12.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.58" />
-                                <Ellipse Canvas.Left="1.75" Canvas.Top="8.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.50" />
-                                <Ellipse Canvas.Left="2.7" Canvas.Top="5.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.42" />
-                                <Ellipse Canvas.Left="5.25" Canvas.Top="2.7" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.33" />
-                                <Ellipse Canvas.Left="8.75" Canvas.Top="1.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.25" />
-                                <Ellipse Canvas.Left="12.25" Canvas.Top="2.7" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.17" />
-                                <Ellipse Canvas.Left="14.8" Canvas.Top="5.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.08" />
-                            </Canvas>
-                        </Viewbox>
-                        <TextBlock Text="{Binding BusyMessage}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                    <!-- Popup for Status Filter -->
+                    <Popup Grid.Column="1"
+                           x:Name="StatusFilterPopup"
+                           PlacementTarget="{Binding ElementName=StatusFilterButton}"
+                           Placement="Top"
+                           StaysOpen="False"
+                           AllowsTransparency="True"
+                           PopupAnimation="Fade"
+                           VerticalOffset="-6"
+                           Closed="StatusFilterPopup_Closed">
+                        <Border Background="{DynamicResource BgCardBrush}" 
+                                BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                BorderThickness="1" 
+                                CornerRadius="4" 
+                                Padding="4" 
+                                Width="140"
+                                SnapsToDevicePixels="True" 
+                                UseLayoutRounding="True">
+                            <StackPanel>
+                                <!-- All -->
+                                <Button Style="{StaticResource FilterDropdownItemStyle}"
+                                        Click="StatusFilterOption_Click"
+                                        Command="{Binding SetStatusFilterCommand}"
+                                        CommandParameter="All">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{loc:Loc Filter_All}" FontSize="11.5" VerticalAlignment="Center" />
+                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='All'}" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- Running -->
+                                <Button Style="{StaticResource FilterDropdownItemStyle}"
+                                        Click="StatusFilterOption_Click"
+                                        Command="{Binding SetStatusFilterCommand}"
+                                        CommandParameter="Running">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{loc:Loc Filter_Running}" FontSize="11.5" VerticalAlignment="Center" />
+                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Running'}" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- Paused -->
+                                <Button Style="{StaticResource FilterDropdownItemStyle}"
+                                        Click="StatusFilterOption_Click"
+                                        Command="{Binding SetStatusFilterCommand}"
+                                        CommandParameter="Paused">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{loc:Loc Filter_Paused}" FontSize="11.5" VerticalAlignment="Center" />
+                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Paused'}" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- Completed -->
+                                <Button Style="{StaticResource FilterDropdownItemStyle}"
+                                        Click="StatusFilterOption_Click"
+                                        Command="{Binding SetStatusFilterCommand}"
+                                        CommandParameter="Completed">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{loc:Loc Filter_Completed}" FontSize="11.5" VerticalAlignment="Center" />
+                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Completed'}" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- Failed -->
+                                <Button Style="{StaticResource FilterDropdownItemStyle}"
+                                        Click="StatusFilterOption_Click"
+                                        Command="{Binding SetStatusFilterCommand}"
+                                        CommandParameter="Failed">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{loc:Loc Filter_Failed}" FontSize="11.5" VerticalAlignment="Center" />
+                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Failed'}" />
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </Grid>
             </DockPanel>
         </Border>

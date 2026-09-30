@@ -423,14 +423,7 @@ public class Par2RepairService
             // Clean up temporary .1 backup files created by par2 if requested
             if (success && purgeBackups)
             {
-                try
-                {
-                    foreach (var backupFile in Directory.GetFiles(workingDir, "*.1", SearchOption.TopDirectoryOnly))
-                    {
-                        Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(backupFile);
-                    }
-                }
-                catch { }
+                CleanBackupFiles(workingDir);
             }
 
             int repairedCount = 0;
@@ -465,6 +458,41 @@ public class Par2RepairService
                 ErrorMessage = ex.Message,
                 RawOutput = outputBuilder.ToString()
             };
+        }
+    }
+
+    public static void CleanBackupFiles(string workingDir)
+    {
+        if (string.IsNullOrWhiteSpace(workingDir) || !Directory.Exists(workingDir))
+            return;
+
+        try
+        {
+            foreach (var backupFile in Directory.GetFiles(workingDir, "*.1", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    if (!backupFile.EndsWith(".1", StringComparison.OrdinalIgnoreCase) || backupFile.Length <= 2)
+                        continue;
+
+                    var baseFile = backupFile.Substring(0, backupFile.Length - 2);
+                    if (string.IsNullOrWhiteSpace(Path.GetFileName(baseFile)))
+                        continue;
+
+                    if (File.Exists(baseFile))
+                    {
+                        Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(backupFile);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn($"[Par2RepairService] Fehler beim Bereinigen der Backup-Datei '{backupFile}': {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"[Par2RepairService] Fehler bei der Suche nach Backup-Dateien in '{workingDir}': {ex.Message}");
         }
     }
 

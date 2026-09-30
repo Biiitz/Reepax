@@ -19,8 +19,8 @@ public enum FilterUpdateResult
 }
 
 /// <summary>
-/// High-level service managing the native Brave adblock-rust engine.
-/// Supports uBlock Origin & EasyList rules, FlatBuffers caching, domain-specific toggles,
+/// High-level service managing the native adblock engine.
+/// Supports standard adblock rules, FlatBuffers caching, domain-specific toggles,
 /// cosmetic injection, and real-time statistics.
 /// </summary>
 public class AdBlockRustEngine : IDisposable
@@ -35,7 +35,53 @@ public class AdBlockRustEngine : IDisposable
     private readonly ConcurrentDictionary<string, byte> _userWhitelistedDomains = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, int> _blockedCountsPerHost = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool IsNativeAvailable => AdBlockRustNative.IsAvailable && _engine != IntPtr.Zero;
+    public bool IsNativeAvailable
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return !_isDisposed && AdBlockRustNative.IsAvailable && _engine != IntPtr.Zero;
+            }
+        }
+    }
+
+    internal bool IsDisposed
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _isDisposed;
+            }
+        }
+    }
+
+    internal IntPtr EngineHandle
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _engine;
+            }
+        }
+    }
+
+    internal Func<System.Threading.CancellationToken, Task<string?>>? FilterListFetcherForTesting { get; set; }
+    internal Action<IntPtr>? OnEngineCompiledForTesting { get; set; }
+    internal Action<IntPtr>? OnNativeEngineFreedForTesting { get; set; }
+
+    private void SafeFreeNativeEngine(IntPtr ptr)
+    {
+        if (ptr == IntPtr.Zero) return;
+        try
+        {
+            AdBlockRustNative.Free(ptr);
+            OnNativeEngineFreedForTesting?.Invoke(ptr);
+        }
+        catch { }
+    }
 
     public bool IsEnabled { get; set; } = true;
     public bool IsCosmeticFilteringEnabled { get; set; } = true;
@@ -62,6 +108,12 @@ public class AdBlockRustEngine : IDisposable
 
     private void InitializeEngine()
     {
+        lock (_lock)
+        {
+            if (_isDisposed)
+                return;
+        }
+
         if (!AdBlockRustNative.IsAvailable)
         {
             AppLogger.Warn("[AdBlockRustEngine] Native Rust library (reepax_adblock.dll) not present.");
@@ -81,7 +133,21 @@ public class AdBlockRustEngine : IDisposable
                         var ptr = AdBlockRustNative.CreateFromBuffer(bytes);
                         if (ptr != IntPtr.Zero)
                         {
-                            _engine = ptr;
+                            lock (_lock)
+                            {
+                                if (_isDisposed)
+                                {
+                                    SafeFreeNativeEngine(ptr);
+                                    return;
+                                }
+
+                                var oldEngine = _engine;
+                                _engine = ptr;
+                                if (oldEngine != IntPtr.Zero)
+                                {
+                                    SafeFreeNativeEngine(oldEngine);
+                                }
+                            }
                             AppLogger.Info($"[AdBlockRustEngine] Loaded serialized adblock engine from cache ({bytes.Length} bytes).");
                             return;
                         }
@@ -109,10 +175,25 @@ public class AdBlockRustEngine : IDisposable
             }
 
             // 3. Compile rules into native engine
-            _engine = AdBlockRustNative.CreateFromRules(allRules);
-
-            if (_engine != IntPtr.Zero)
+            var createdEngine = AdBlockRustNative.CreateFromRules(allRules);
+            if (createdEngine != IntPtr.Zero)
             {
+                lock (_lock)
+                {
+                    if (_isDisposed)
+                    {
+                        SafeFreeNativeEngine(createdEngine);
+                        return;
+                    }
+
+                    var oldEngine = _engine;
+                    _engine = createdEngine;
+                    if (oldEngine != IntPtr.Zero)
+                    {
+                        SafeFreeNativeEngine(oldEngine);
+                    }
+                }
+
                 AppLogger.Info("[AdBlockRustEngine] Compiled filter rules into native engine.");
                 SaveCacheAsync();
             }
@@ -128,29 +209,40 @@ public class AdBlockRustEngine : IDisposable
     /// </summary>
     public async Task<FilterUpdateResult> UpdateFilterListsAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        if (!AdBlockRustNative.IsAvailable)
-            return FilterUpdateResult.Failed;
+        lock (_lock)
+        {
+            if (_isDisposed || !AdBlockRustNative.IsAvailable)
+                return FilterUpdateResult.Failed;
+        }
 
+        IntPtr newEnginePtr = IntPtr.Zero;
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"Mozilla/5.0 (Windows NT 10.0; Win64; x64) Reepax/{Update.AppUpdateService.AppCurrentVersion}");
-
             string? downloadedRules = null;
-            foreach (var url in FilterListUrls)
+            if (FilterListFetcherForTesting != null)
             {
-                try
+                downloadedRules = await FilterListFetcherForTesting(cancellationToken);
+            }
+            else
+            {
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                httpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"Mozilla/5.0 (Windows NT 10.0; Win64; x64) Reepax/{Update.AppUpdateService.AppCurrentVersion}");
+
+                foreach (var url in FilterListUrls)
                 {
-                    var content = await httpClient.GetStringAsync(url, cancellationToken);
-                    if (!string.IsNullOrWhiteSpace(content) && content.Length > 500 && (content.Contains("||") || content.Contains("! Title") || content.Contains("##")))
+                    try
                     {
-                        downloadedRules = content;
-                        break;
+                        var content = await httpClient.GetStringAsync(url, cancellationToken);
+                        if (!string.IsNullOrWhiteSpace(content) && content.Length > 500 && (content.Contains("||") || content.Contains("! Title") || content.Contains("##")))
+                        {
+                            downloadedRules = content;
+                            break;
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[AdBlockRustEngine] Failed to fetch filter list from {url}: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        AppLogger.Warn($"[AdBlockRustEngine] Failed to fetch filter list from {url}: {ex.Message}");
+                    }
                 }
             }
 
@@ -181,7 +273,7 @@ public class AdBlockRustEngine : IDisposable
             }
 
             var combinedRules = GetCoreFilterRules() + "\n\n" + downloadedRules;
-            var newEnginePtr = await Task.Run(() => AdBlockRustNative.CreateFromRules(combinedRules), cancellationToken);
+            newEnginePtr = await Task.Run(() => AdBlockRustNative.CreateFromRules(combinedRules), cancellationToken);
 
             if (newEnginePtr == IntPtr.Zero)
             {
@@ -189,13 +281,23 @@ public class AdBlockRustEngine : IDisposable
                 return FilterUpdateResult.Failed;
             }
 
+            OnEngineCompiledForTesting?.Invoke(newEnginePtr);
+
             lock (_lock)
             {
+                if (_isDisposed)
+                {
+                    SafeFreeNativeEngine(newEnginePtr);
+                    newEnginePtr = IntPtr.Zero;
+                    return FilterUpdateResult.Failed;
+                }
+
                 var oldEngine = _engine;
                 _engine = newEnginePtr;
+                newEnginePtr = IntPtr.Zero;
                 if (oldEngine != IntPtr.Zero)
                 {
-                    AdBlockRustNative.Free(oldEngine);
+                    SafeFreeNativeEngine(oldEngine);
                 }
             }
 
@@ -216,6 +318,11 @@ public class AdBlockRustEngine : IDisposable
         }
         catch (Exception ex)
         {
+            if (newEnginePtr != IntPtr.Zero)
+            {
+                SafeFreeNativeEngine(newEnginePtr);
+                newEnginePtr = IntPtr.Zero;
+            }
             AppLogger.Error("[AdBlockRustEngine] Filter list update encountered an error", ex);
             return FilterUpdateResult.Failed;
         }
@@ -225,18 +332,27 @@ public class AdBlockRustEngine : IDisposable
     {
         Task.Run(() =>
         {
+            byte[]? bytes = null;
             lock (_lock)
             {
-                if (_engine == IntPtr.Zero) return;
+                if (_isDisposed || _engine == IntPtr.Zero) return;
                 try
                 {
-                    var bytes = AdBlockRustNative.Serialize(_engine);
-                    if (bytes != null && bytes.Length > 0)
-                    {
-                        Directory.CreateDirectory(SettingsService.AppDataDirectory);
-                        File.WriteAllBytes(CacheFilePath, bytes);
-                        AppLogger.Info($"[AdBlockRustEngine] Saved compiled engine cache ({bytes.Length} bytes).");
-                    }
+                    bytes = AdBlockRustNative.Serialize(_engine);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn($"[AdBlockRustEngine] Failed to serialize cache: {ex.Message}");
+                }
+            }
+
+            if (bytes != null && bytes.Length > 0)
+            {
+                try
+                {
+                    Directory.CreateDirectory(SettingsService.AppDataDirectory);
+                    File.WriteAllBytes(CacheFilePath, bytes);
+                    AppLogger.Info($"[AdBlockRustEngine] Saved compiled engine cache ({bytes.Length} bytes).");
                 }
                 catch (Exception ex)
                 {
@@ -279,10 +395,18 @@ public class AdBlockRustEngine : IDisposable
                 return false;
         }
 
-        // Native Rust Brave adblock engine
+        // Native Rust adblock engine
         if (IsNativeAvailable)
         {
-            var res = AdBlockRustNative.CheckNetwork(_engine, url, sourceUrl ?? string.Empty, requestType);
+            IntPtr currentEngine;
+            lock (_lock)
+            {
+                if (_isDisposed || _engine == IntPtr.Zero)
+                    return false;
+                currentEngine = _engine;
+            }
+
+            var res = AdBlockRustNative.CheckNetwork(currentEngine, url, sourceUrl ?? string.Empty, requestType);
             if (res == 1) // Blocked
             {
                 RegisterBlocked(sourceUrl);
@@ -313,7 +437,15 @@ public class AdBlockRustEngine : IDisposable
 
         if (IsNativeAvailable)
         {
-            return AdBlockRustNative.GetCosmeticResources(_engine, url);
+            IntPtr currentEngine;
+            lock (_lock)
+            {
+                if (_isDisposed || _engine == IntPtr.Zero)
+                    return (string.Empty, string.Empty);
+                currentEngine = _engine;
+            }
+
+            return AdBlockRustNative.GetCosmeticResources(currentEngine, url);
         }
 
         return (BrowserSecurityGuard.GetCosmeticFilterCss(), string.Empty);
@@ -423,11 +555,11 @@ public class AdBlockRustEngine : IDisposable
 
     private static string GetCoreFilterRules()
     {
-        // Hand-crafted core filter list in standard uBlock Origin / EasyList syntax
+        // Hand-crafted core filter list in standard syntax
         // Includes major ad networks, tracking telemetry, video ads, cosmetic elements, and redirects.
         return @"! Title: Reepax Core Adblock Rules
 ! Version: 2026.1
-! Description: High-performance core rules compatible with uBlock Origin & EasyList
+! Description: High-performance core rules compatible with standard adblock engines
 
 ! === Display & Programmatic Ad Exchanges ===
 ||doubleclick.net^
@@ -586,7 +718,7 @@ youtube.com##ytd-display-ad-renderer
                 _isDisposed = true;
                 if (_engine != IntPtr.Zero)
                 {
-                    AdBlockRustNative.Free(_engine);
+                    SafeFreeNativeEngine(_engine);
                     _engine = IntPtr.Zero;
                 }
             }

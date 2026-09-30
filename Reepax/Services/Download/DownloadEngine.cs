@@ -243,8 +243,20 @@ public class DownloadEngine
                 var segState = LoadSegmentState(segMetaPath);
                 if (segState != null && File.Exists(tempFilePath))
                 {
-                    await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
-                    return;
+                    try
+                    {
+                        await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
+                        return;
+                    }
+                    catch (Exception ex) when (IsRangeNotSupported(ex))
+                    {
+                        await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, buffer, cancellationToken);
+                        return;
+                    }
+                }
+                else if (File.Exists(segMetaPath))
+                {
+                    try { File.Delete(segMetaPath); } catch { }
                 }
 
                 // 2. Fresh download: probe server for range support and chunk if supported
@@ -293,65 +305,21 @@ public class DownloadEngine
                         }
 
                         SaveSegmentState(segMetaPath, segState);
-                        await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
-                        return;
+                        try
+                        {
+                            await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
+                            return;
+                        }
+                        catch (Exception ex) when (IsRangeNotSupported(ex))
+                        {
+                            await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, buffer, cancellationToken);
+                            return;
+                        }
                     }
                 }
             }
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
-
-            if (!string.IsNullOrWhiteSpace(item.Cookies))
-            {
-                request.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
-            }
-
-            if (!string.IsNullOrWhiteSpace(item.UserAgent))
-            {
-                request.Headers.TryAddWithoutValidation("User-Agent", item.UserAgent);
-            }
-
-            if (!string.IsNullOrWhiteSpace(item.Referer))
-            {
-                request.Headers.TryAddWithoutValidation("Referer", item.Referer);
-            }
-
-            // Resume support with HTTP Range header
-            if (existingBytes > 0)
-            {
-                request.Headers.Range = new RangeHeaderValue(existingBytes, null);
-            }
-
-            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-            if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-            {
-                // Range invalid or file changed on server, restart file
-                existingBytes = 0;
-                if (File.Exists(tempFilePath))
-                {
-                    Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(tempFilePath);
-                }
-
-                using var freshRequest = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
-                if (!string.IsNullOrWhiteSpace(item.Cookies)) freshRequest.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
-                if (!string.IsNullOrWhiteSpace(item.UserAgent)) freshRequest.Headers.TryAddWithoutValidation("User-Agent", item.UserAgent);
-                if (!string.IsNullOrWhiteSpace(item.Referer)) freshRequest.Headers.TryAddWithoutValidation("Referer", item.Referer);
-
-                using var freshResponse = await _httpClient.SendAsync(freshRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-                freshResponse.EnsureSuccessStatusCode();
-                await ProcessResponseStreamAsync(item, freshResponse, tempFilePath, destinationPath, buffer, cancellationToken);
-                return;
-            }
-
-            response.EnsureSuccessStatusCode();
-
-            // If server returned 200 OK instead of 206 Partial Content, the server does not support ranges
-            // and sent the full file from byte 0. In that case, reset existingBytes to 0 and overwrite .part file.
-            bool isPartial = response.StatusCode == HttpStatusCode.PartialContent;
-            long effectiveInitialBytes = isPartial ? existingBytes : 0;
-
-            await ProcessResponseStreamAsync(item, response, tempFilePath, destinationPath, buffer, cancellationToken, effectiveInitialBytes);
+            await ExecuteSingleConnectionDownloadAsync(item, tempFilePath, cancellationToken, buffer);
         }
         catch (OperationCanceledException)
         {
@@ -384,6 +352,133 @@ public class DownloadEngine
             DownloadFailed?.Invoke(item, ex);
         }
     }
+
+    internal async Task ExecuteSingleConnectionDownloadAsync(
+        DownloadItem item, 
+        string tempFilePath, 
+        CancellationToken cancellationToken, 
+        byte[]? buffer = null)
+    {
+        buffer ??= new byte[256 * 1024];
+        var destinationPath = item.SaveFilePath;
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new InvalidOperationException("Destination path is not defined.");
+        }
+
+        long existingBytes = 0;
+        if (File.Exists(tempFilePath))
+        {
+            existingBytes = new FileInfo(tempFilePath).Length;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
+        ApplyRequestHeaders(request, item);
+
+        // Resume support with HTTP Range header
+        if (existingBytes > 0)
+        {
+            request.Headers.Range = new RangeHeaderValue(existingBytes, null);
+        }
+
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+        {
+            // Range invalid or file changed on server, restart file
+            existingBytes = 0;
+            if (File.Exists(tempFilePath))
+            {
+                Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(tempFilePath);
+            }
+
+            using var freshRequest = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
+            ApplyRequestHeaders(freshRequest, item);
+
+            using var freshResponse = await _httpClient.SendAsync(freshRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            freshResponse.EnsureSuccessStatusCode();
+            await ProcessResponseStreamAsync(item, freshResponse, tempFilePath, destinationPath, buffer, cancellationToken);
+            return;
+        }
+
+        response.EnsureSuccessStatusCode();
+
+        // If server returned 200 OK instead of 206 Partial Content, the server does not support ranges
+        // and sent the full file from byte 0. In that case, reset existingBytes to 0 and overwrite .part file.
+        bool isPartial = response.StatusCode == HttpStatusCode.PartialContent;
+        long effectiveInitialBytes = isPartial ? existingBytes : 0;
+
+        await ProcessResponseStreamAsync(item, response, tempFilePath, destinationPath, buffer, cancellationToken, effectiveInitialBytes);
+    }
+
+    private async Task FallbackToSingleConnectionDownloadAsync(
+        DownloadItem item, 
+        string tempFilePath, 
+        string segMetaPath, 
+        byte[] buffer, 
+        CancellationToken cancellationToken)
+    {
+        Services.Storage.AppLogger.Warn($"[DownloadEngine] Range requests refused by remote server for '{item.FileName}'. Falling back to clean single-connection stream.");
+
+        try
+        {
+            if (File.Exists(segMetaPath))
+            {
+                File.Delete(segMetaPath);
+            }
+        }
+        catch { }
+
+        try
+        {
+            if (File.Exists(tempFilePath))
+            {
+                using var fs = new FileStream(tempFilePath, FileMode.Truncate, FileAccess.Write, FileShare.None);
+            }
+        }
+        catch
+        {
+            try { File.Delete(tempFilePath); } catch { }
+        }
+
+        item.DownloadedBytes = 0;
+        item.ProgressPercentage = 0;
+        SafeInvokeAsync(() =>
+        {
+            item.DownloadedBytes = 0;
+            item.ProgressPercentage = 0;
+        });
+
+        await ExecuteSingleConnectionDownloadAsync(item, tempFilePath, cancellationToken, buffer);
+    }
+
+    private static bool IsRangeNotSupported(Exception ex)
+    {
+        if (ex is RangeNotSupportedException)
+            return true;
+
+        if (ex is AggregateException agg)
+        {
+            return agg.InnerExceptions.Any(IsRangeNotSupported);
+        }
+
+        if (ex.InnerException != null && IsRangeNotSupported(ex.InnerException))
+        {
+            return true;
+        }
+
+        var msg = ex.Message;
+        if (msg.Contains("Range requests not supported", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Server did not accept the range request", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("no 206 Partial Content", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Range not supported", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
 
     // ==================== Multi-Connection Chunking ====================
 
@@ -558,8 +653,36 @@ public class DownloadEngine
         try
         {
             using var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 256 * 1024, FileOptions.Asynchronous);
-            var tasks = segments.Select(seg => DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, cancellationToken));
-            await Task.WhenAll(tasks);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var tasks = segments.Select(async seg =>
+            {
+                try
+                {
+                    await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token);
+                }
+                catch (Exception ex) when (IsRangeNotSupported(ex))
+                {
+                    try { linkedCts.Cancel(); } catch { }
+                    throw;
+                }
+            });
+            var allTask = Task.WhenAll(tasks);
+            try
+            {
+                await allTask;
+            }
+            catch
+            {
+                if (allTask.Exception != null)
+                {
+                    var rangeEx = allTask.Exception.InnerExceptions.FirstOrDefault(IsRangeNotSupported);
+                    if (rangeEx != null)
+                    {
+                        throw rangeEx;
+                    }
+                }
+                throw;
+            }
         }
         finally
         {
@@ -652,11 +775,16 @@ public class DownloadEngine
                     return;
                 }
 
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    throw new RangeNotSupportedException("Server returned 200 OK instead of 206 Partial Content: Range requests not supported.");
+                }
+
                 response.EnsureSuccessStatusCode();
 
                 if (response.StatusCode != HttpStatusCode.PartialContent)
                 {
-                    throw new IOException("Server did not accept the range request (no 206 Partial Content).");
+                    throw new RangeNotSupportedException("Server did not accept the range request (no 206 Partial Content).");
                 }
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -682,6 +810,10 @@ public class DownloadEngine
                 return;
             }
             catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsRangeNotSupported(ex))
             {
                 throw;
             }
@@ -1073,4 +1205,11 @@ public class DownloadEngine
             try { action(); } catch { }
         }
     }
+}
+
+public class RangeNotSupportedException : Exception
+{
+    public RangeNotSupportedException() : base("Range requests not supported.") { }
+    public RangeNotSupportedException(string message) : base(message) { }
+    public RangeNotSupportedException(string message, Exception innerException) : base(message, innerException) { }
 }

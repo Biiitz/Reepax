@@ -1285,6 +1285,108 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ShowItemInExplorer_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetItemFromSender(sender);
+        if (item == null) return;
+
+        var path = item.SaveFilePath;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            var package = ViewModel.Packages.FirstOrDefault(p => p.Items.Contains(item));
+            if (package != null && !string.IsNullOrWhiteSpace(package.SaveDirectory) && !string.IsNullOrWhiteSpace(item.FileName))
+            {
+                path = Path.Combine(package.SaveDirectory, item.FileName);
+            }
+            else if (package != null && !string.IsNullOrWhiteSpace(package.SaveDirectory))
+            {
+                path = package.SaveDirectory;
+            }
+        }
+
+        if (!ShowFileInExplorer(path) && ViewModel != null)
+        {
+            ViewModel.StatusSummary = Loc.Format("Status_CannotOpenFolder", path ?? item.FileName);
+        }
+    }
+
+    internal static bool ShowFileInExplorer(string? filePath, Action<System.Diagnostics.ProcessStartInfo>? processLauncher = null)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return false;
+
+        try
+        {
+            var cleanPath = filePath.Trim().Trim('\"');
+            if (string.IsNullOrWhiteSpace(cleanPath))
+                return false;
+
+            string? targetDirectory = null;
+            bool selectFile = false;
+
+            if (File.Exists(cleanPath))
+            {
+                selectFile = true;
+            }
+            else if (Directory.Exists(cleanPath))
+            {
+                targetDirectory = cleanPath;
+            }
+            else
+            {
+                try
+                {
+                    var parentDir = Path.GetDirectoryName(cleanPath);
+                    if (!string.IsNullOrWhiteSpace(parentDir) && Directory.Exists(parentDir))
+                    {
+                        targetDirectory = parentDir;
+                    }
+                }
+                catch
+                {
+                    // Invalid path format
+                }
+            }
+
+            if (!selectFile && targetDirectory == null)
+            {
+                return false;
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = selectFile
+                    ? $"/select,\"{Path.GetFullPath(cleanPath)}\""
+                    : $"\"{Path.GetFullPath(targetDirectory!)}\"",
+                UseShellExecute = true
+            };
+
+            if (processLauncher != null)
+            {
+                processLauncher(psi);
+            }
+            else
+            {
+                try
+                {
+                    System.Diagnostics.Process.Start(psi);
+                }
+                catch
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", psi.Arguments);
+                }
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"[ShowFileInExplorer] Failed to open explorer for '{filePath}'", ex);
+            return false;
+        }
+    }
+
     private void DeleteItem_MenuItem_Click(object sender, RoutedEventArgs e)
     {
         var item = GetItemFromSender(sender);
@@ -2686,6 +2788,42 @@ public partial class MainWindow : Window
         QuickSettingsPopup.IsOpen = false;
         ViewModel.SwitchToSettingsTab();
     }
+
+    #region Status Filter Popup Handlers
+
+    private long _statusFilterClosedTimestamp = 0;
+
+    private void StatusFilterPopup_Closed(object? sender, EventArgs e)
+    {
+        _statusFilterClosedTimestamp = Environment.TickCount64;
+    }
+
+    private void StatusFilterButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (StatusFilterPopup.IsOpen || (Environment.TickCount64 - _statusFilterClosedTimestamp < 350))
+        {
+            StatusFilterPopup.IsOpen = false;
+            _statusFilterClosedTimestamp = Environment.TickCount64;
+            e.Handled = true;
+        }
+    }
+
+    private void StatusFilterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Environment.TickCount64 - _statusFilterClosedTimestamp < 350)
+        {
+            return;
+        }
+
+        StatusFilterPopup.IsOpen = !StatusFilterPopup.IsOpen;
+    }
+
+    private void StatusFilterOption_Click(object sender, RoutedEventArgs e)
+    {
+        StatusFilterPopup.IsOpen = false;
+    }
+
+    #endregion
 
     #region Quick Settings Smooth Numeric Roll Animation
 

@@ -1205,6 +1205,48 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
+    public void SettingsCategory_CanSelectGeneralCategory_AndCategorySelectionTriggersAreClean()
+    {
+        var vm = new MainViewModel();
+
+        // 1. Verify direct assignment
+        vm.SelectedSettingsCategory = SettingsCategory.DownloadConnections;
+        vm.SelectedSettingsCategory = SettingsCategory.General;
+        Assert.Equal(SettingsCategory.General, vm.SelectedSettingsCategory);
+
+        // 2. Verify SelectSettingsCategory by enum
+        vm.SelectSettingsCategory(SettingsCategory.Shortcuts);
+        vm.SelectSettingsCategory(SettingsCategory.General);
+        Assert.Equal(SettingsCategory.General, vm.SelectedSettingsCategory);
+
+        // 3. Verify SelectSettingsCategory by string parameter
+        vm.SelectSettingsCategory(SettingsCategory.About);
+        vm.SelectSettingsCategory("General");
+        Assert.Equal(SettingsCategory.General, vm.SelectedSettingsCategory);
+
+        // 4. Verify SettingsView.xaml sidebar triggers for General category are clean without legacy Notifications triggers
+        string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        string projectDir = Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\Reepax"));
+        if (!Directory.Exists(projectDir))
+        {
+            projectDir = Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\Reepax"));
+        }
+        string settingsViewPath = Path.Combine(projectDir, "Views", "SettingsView.xaml");
+        Assert.True(File.Exists(settingsViewPath), $"SettingsView.xaml not found at '{settingsViewPath}'");
+
+        string xaml = File.ReadAllText(settingsViewPath);
+        var generalButtonMatch = System.Text.RegularExpressions.Regex.Match(
+            xaml,
+            @"<Button[^>]*x:Name=""GeneralCategoryButton"".*?</Button>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        Assert.True(generalButtonMatch.Success, "GeneralCategoryButton not found in SettingsView.xaml");
+        string generalButtonXaml = generalButtonMatch.Value;
+        Assert.Contains(@"Value=""General""", generalButtonXaml);
+        Assert.DoesNotContain(@"Value=""Notifications""", generalButtonXaml);
+    }
+
+    [Fact]
     public void PortableMode_DisablesStartWithWindows()
     {
         var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;

@@ -42,6 +42,15 @@ public enum SettingsCategory
     About
 }
 
+public enum DownloadStatusFilter
+{
+    All,
+    Running,
+    Paused,
+    Completed,
+    Failed
+}
+
 public partial class MainViewModel : ObservableObject
 {
     private readonly QueueManager _queueManager = QueueManager.Instance;
@@ -64,6 +73,56 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<DownloadPackage> Packages => _queueManager.Packages;
     public ObservableCollection<DownloadPackage> RootPackages { get; } = new();
+
+    [ObservableProperty]
+    private string _searchFilterText = string.Empty;
+
+    [ObservableProperty]
+    private DownloadStatusFilter _selectedStatusFilter = DownloadStatusFilter.All;
+
+    public bool HasSearchFilterText => !string.IsNullOrWhiteSpace(SearchFilterText);
+    public bool IsStatusFilterActive => SelectedStatusFilter != DownloadStatusFilter.All;
+
+    public string SelectedStatusFilterText => SelectedStatusFilter switch
+    {
+        DownloadStatusFilter.Running => Loc.Get("Filter_Running"),
+        DownloadStatusFilter.Paused => Loc.Get("Filter_Paused"),
+        DownloadStatusFilter.Completed => Loc.Get("Filter_Completed"),
+        DownloadStatusFilter.Failed => Loc.Get("Filter_Failed"),
+        _ => Loc.Get("Filter_All")
+    };
+
+    partial void OnSearchFilterTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasSearchFilterText));
+        RefreshRootPackages();
+    }
+
+    partial void OnSelectedStatusFilterChanged(DownloadStatusFilter value)
+    {
+        OnPropertyChanged(nameof(IsStatusFilterActive));
+        OnPropertyChanged(nameof(SelectedStatusFilterText));
+        RefreshRootPackages();
+    }
+
+    [RelayCommand]
+    public void ClearSearchFilter()
+    {
+        SearchFilterText = string.Empty;
+    }
+
+    [RelayCommand]
+    public void SetStatusFilter(object? parameter)
+    {
+        if (parameter is DownloadStatusFilter filter)
+        {
+            SelectedStatusFilter = filter;
+        }
+        else if (parameter is string filterStr && Enum.TryParse<DownloadStatusFilter>(filterStr, true, out var parsed))
+        {
+            SelectedStatusFilter = parsed;
+        }
+    }
 
     public bool HasDownloads => Packages.Count > 0;
     public bool IsDownloadsEmpty => Packages.Count == 0;
@@ -1130,7 +1189,7 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(SortColumn) || !SortDirection.HasValue)
         {
             // Restore natural queue order
-            var naturalRoots = Packages.Where(p => !p.IsClipped).ToList();
+            var naturalRoots = Packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
             SyncOrder(RootPackages, naturalRoots);
 
             foreach (var pkg in Packages)
@@ -1300,7 +1359,7 @@ public partial class MainViewModel : ObservableObject
         for (int targetIndex = 0; targetIndex < targetOrder.Count; targetIndex++)
         {
             int currentIndex = collection.IndexOf(targetOrder[targetIndex]);
-            if (currentIndex >= 0 && currentIndex != targetIndex)
+            if (currentIndex >= 0 && targetIndex < collection.Count && currentIndex != targetIndex)
             {
                 collection.Move(currentIndex, targetIndex);
             }
@@ -1509,6 +1568,92 @@ public partial class MainViewModel : ObservableObject
     partial void OnDeletePar2AfterExtractionChanged(bool value)
     {
         _settingsService.Settings.DeletePar2AfterExtraction = value;
+        _settingsService.SaveSettings();
+    }
+
+    private string _newArchivePasswordInput = string.Empty;
+    public string NewArchivePasswordInput
+    {
+        get => _newArchivePasswordInput;
+        set
+        {
+            if (SetProperty(ref _newArchivePasswordInput, value))
+            {
+                OnPropertyChanged(nameof(HasNewArchivePasswordInput));
+            }
+        }
+    }
+
+    public bool HasNewArchivePasswordInput => !string.IsNullOrWhiteSpace(_newArchivePasswordInput);
+
+    private bool _isArchivePasswordsExpanded = false;
+    public bool IsArchivePasswordsExpanded
+    {
+        get => _isArchivePasswordsExpanded;
+        set
+        {
+            if (SetProperty(ref _isArchivePasswordsExpanded, value))
+            {
+                if (_settingsService?.Settings != null)
+                {
+                    _settingsService.Settings.IsArchivePasswordsExpanded = value;
+                    _settingsService.SaveSettings();
+                }
+            }
+        }
+    }
+
+    private RelayCommand? _toggleArchivePasswordsExpandedCommand;
+    public IRelayCommand ToggleArchivePasswordsExpandedCommand =>
+        _toggleArchivePasswordsExpandedCommand ??= new RelayCommand(ToggleArchivePasswordsExpanded);
+
+    public void ToggleArchivePasswordsExpanded()
+    {
+        IsArchivePasswordsExpanded = !IsArchivePasswordsExpanded;
+    }
+
+    public System.Collections.ObjectModel.ObservableCollection<string> ArchivePasswords { get; } = new();
+
+    public bool HasArchivePasswords => ArchivePasswords.Count > 0;
+
+    private RelayCommand? _addArchivePasswordCommand;
+    public IRelayCommand AddArchivePasswordCommand =>
+        _addArchivePasswordCommand ??= new RelayCommand(AddArchivePassword);
+
+    public void AddArchivePassword()
+    {
+        if (string.IsNullOrWhiteSpace(NewArchivePasswordInput))
+            return;
+
+        var pwd = NewArchivePasswordInput.Trim();
+        if (!ArchivePasswords.Contains(pwd, StringComparer.Ordinal))
+        {
+            ArchivePasswords.Add(pwd);
+            OnPropertyChanged(nameof(HasArchivePasswords));
+            SyncArchivePasswordsToSettings();
+        }
+        NewArchivePasswordInput = string.Empty;
+    }
+
+    private RelayCommand<string?>? _removeArchivePasswordCommand;
+    public IRelayCommand<string?> RemoveArchivePasswordCommand =>
+        _removeArchivePasswordCommand ??= new RelayCommand<string?>(RemoveArchivePassword);
+
+    public void RemoveArchivePassword(string? password)
+    {
+        if (string.IsNullOrEmpty(password))
+            return;
+
+        if (ArchivePasswords.Remove(password))
+        {
+            OnPropertyChanged(nameof(HasArchivePasswords));
+            SyncArchivePasswordsToSettings();
+        }
+    }
+
+    private void SyncArchivePasswordsToSettings()
+    {
+        _settingsService.Settings.ExtractionPasswords = ArchivePasswords.ToList();
         _settingsService.SaveSettings();
     }
 
@@ -1835,6 +1980,20 @@ public partial class MainViewModel : ObservableObject
         AutoPar2Repair = settings.AutoPar2Repair;
         DeletePar2AfterExtraction = settings.DeletePar2AfterExtraction;
 
+        ArchivePasswords.Clear();
+        if (settings.ExtractionPasswords != null)
+        {
+            foreach (var pwd in settings.ExtractionPasswords)
+            {
+                if (!string.IsNullOrWhiteSpace(pwd) && !ArchivePasswords.Contains(pwd.Trim(), StringComparer.Ordinal))
+                {
+                    ArchivePasswords.Add(pwd.Trim());
+                }
+            }
+        }
+        OnPropertyChanged(nameof(HasArchivePasswords));
+        IsArchivePasswordsExpanded = settings.IsArchivePasswordsExpanded;
+
         var targetDir = settings.DefaultDownloadDirectory;
         IsLowResourceRecommended = DriveHardwareDetector.IsLowResourceRecommended(targetDir);
         DriveStorageTypeDescription = DriveHardwareDetector.GetDriveStorageDescription(targetDir);
@@ -1884,6 +2043,7 @@ public partial class MainViewModel : ObservableObject
             UpdateDriveSpace(force: true);
             DriveStorageTypeDescription = DriveHardwareDetector.GetDriveStorageDescription(CurrentDownloadDirectory);
             ShortcutManager.RefreshLocalization();
+            OnPropertyChanged(nameof(SelectedStatusFilterText));
         };
 
         CurrentAccentColor = "#3B82F6";
@@ -3301,7 +3461,7 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        var roots = Packages.Where(p => !p.IsClipped).ToList();
+        var roots = Packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
 
         // Remove any items no longer in roots
         for (int i = RootPackages.Count - 1; i >= 0; i--)
@@ -3339,6 +3499,225 @@ public partial class MainViewModel : ObservableObject
 
         OnPropertyChanged(nameof(HasDownloads));
         OnPropertyChanged(nameof(IsDownloadsEmpty));
+    }
+
+    /// <summary>
+    /// Checks whether a package matches the active search text and status filters.
+    /// </summary>
+    public bool MatchesFilter(DownloadPackage pkg)
+    {
+        if (pkg == null) return false;
+
+        // 1. Status Filter
+        if (!MatchesStatusFilter(pkg, SelectedStatusFilter))
+            return false;
+
+        // 2. Search Text Filter
+        if (!MatchesSearchFilter(pkg, SearchFilterText))
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Checks whether a package or any of its items / clipped packages match the search query.
+    /// Matches case-insensitively against package name, item file name, and item hoster/URL.
+    /// </summary>
+    public static bool MatchesSearchFilter(DownloadPackage pkg, string? searchText)
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            return true;
+
+        var term = searchText.Trim();
+
+        // 1. Package Name
+        if (!string.IsNullOrEmpty(pkg.Name) && pkg.Name.Contains(term, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // 2. Package Items: file name, hoster, or URL
+        if (pkg.Items != null)
+        {
+            foreach (var item in pkg.Items)
+            {
+                if (!string.IsNullOrEmpty(item.FileName) && item.FileName.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                if (!string.IsNullOrEmpty(item.HosterName) && item.HosterName.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                if (!string.IsNullOrEmpty(item.OriginalUrl) && item.OriginalUrl.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                if (!string.IsNullOrEmpty(item.DirectDownloadUrl) && item.DirectDownloadUrl.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+
+        // 3. Clipped Sub-packages
+        if (pkg.ClippedPackages != null)
+        {
+            foreach (var clipped in pkg.ClippedPackages)
+            {
+                if (MatchesSearchFilter(clipped, term))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks whether a package matches the specified status filter.
+    /// </summary>
+    public static bool MatchesStatusFilter(DownloadPackage pkg, DownloadStatusFilter filter) => filter switch
+    {
+        DownloadStatusFilter.All => true,
+        DownloadStatusFilter.Running => IsRunningPackage(pkg),
+        DownloadStatusFilter.Paused => IsPausedPackage(pkg),
+        DownloadStatusFilter.Completed => IsCompletedPackage(pkg),
+        DownloadStatusFilter.Failed => IsFailedPackage(pkg),
+        _ => true
+    };
+
+    private static bool IsRunningPackage(DownloadPackage pkg)
+    {
+        if (pkg == null) return false;
+
+        if (pkg.Status == DownloadStatus.Downloading)
+            return true;
+
+        if (IsRunningStatus(pkg.StatusMessage))
+            return true;
+
+        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id))
+            return true;
+
+        if (pkg.NextTaskSteps != null && pkg.NextTaskSteps.Any(s => s.State == NextTaskStepState.Running))
+            return true;
+
+        if (pkg.Items != null && pkg.Items.Any(i => i.Status == DownloadStatus.Downloading || IsRunningStatus(i.StatusMessage)))
+            return true;
+
+        if (pkg.ClippedPackages != null && pkg.ClippedPackages.Any(IsRunningPackage))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsRunningStatus(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("Downloading", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Extracting", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Repairing", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Verifying", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Entpack", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Reparier", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Prüf", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPausedPackage(DownloadPackage pkg)
+    {
+        if (pkg == null) return false;
+
+        if (pkg.Status == DownloadStatus.Paused || pkg.Status == DownloadStatus.Aborted)
+            return true;
+
+        if (IsPausedStatus(pkg.StatusMessage))
+            return true;
+
+        if (pkg.Items != null && pkg.Items.Any(i => i.Status == DownloadStatus.Paused || i.Status == DownloadStatus.Aborted || IsPausedStatus(i.StatusMessage)))
+            return true;
+
+        if (pkg.ClippedPackages != null && pkg.ClippedPackages.Any(IsPausedPackage))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsPausedStatus(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("Paused", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Stopped", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Pausiert", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Gestoppt", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Aborted", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Abgebrochen", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Skipped", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Übersprungen", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCompletedPackage(DownloadPackage pkg)
+    {
+        if (pkg == null) return false;
+
+        if (pkg.Status == DownloadStatus.Failed || IsFailedStatus(pkg.StatusMessage))
+            return false;
+
+        if (pkg.Status == DownloadStatus.Completed)
+            return true;
+
+        if (pkg.CheckIsFullyCompleted() || pkg.IsFullyCompleted)
+            return true;
+
+        if (IsCompletedStatus(pkg.StatusMessage))
+            return true;
+
+        if (pkg.NextTaskSteps != null && pkg.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done))
+            return true;
+
+        if (pkg.ClippedPackages != null && pkg.ClippedPackages.Any(IsCompletedPackage))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsCompletedStatus(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("Completed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Extracted", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Fertiggestellt", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Fertig", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Entpackt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsFailedPackage(DownloadPackage pkg)
+    {
+        if (pkg == null) return false;
+
+        if (pkg.Status == DownloadStatus.Failed)
+            return true;
+
+        if (IsFailedStatus(pkg.StatusMessage))
+            return true;
+
+        if (pkg.Items != null && pkg.Items.Any(i => i.Status == DownloadStatus.Failed || IsFailedStatus(i.StatusMessage)))
+            return true;
+
+        if (pkg.ClippedPackages != null && pkg.ClippedPackages.Any(IsFailedPackage))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsFailedStatus(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        return message.Contains("Error", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("ExtractionFailed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Failed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Fehler", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Fehlgeschlagen", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -3422,7 +3801,7 @@ public partial class MainViewModel : ObservableObject
         packageToUnclip.ParentPackageId = null;
         packageToUnclip.ParentPackageName = null;
 
-        if (!RootPackages.Contains(packageToUnclip))
+        if (MatchesFilter(packageToUnclip) && !RootPackages.Contains(packageToUnclip))
         {
             RootPackages.Add(packageToUnclip);
         }

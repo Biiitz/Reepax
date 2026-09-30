@@ -51,6 +51,7 @@ public static class Strings_de
         // Package & Item Context Menus & Tooltips
         ["Menu_Rename"] = "Umbenennen (F2)",
         ["Menu_OpenPackageFolder"] = "Open Package",
+        ["Menu_ShowInExplorer"] = "Im Ordner anzeigen",
         ["Status_PackageFolderOpened"] = "Paketordner geöffnet: {0}",
         ["Dialog_AutoExtractAlreadyDone_ToolTip"] = "Die Extraktionsoptionen können nicht geändert werden, da die Extraktion für dieses Paket bereits abgeschlossen ist.",
         ["Dialog_PackageNameLocked_ToolTip"] = "Der Paketname ist festgelegt, da Links zu einem bestehenden Paket hinzugefügt werden.",
@@ -429,6 +430,29 @@ public static class Strings_de
         ["About_Developer_Value"] = "Biiitz",
         ["About_Links_Repository"] = "GitHub Repository",
         ["About_Links_Releases"] = "Changelog & Releases",
-        ["About_Links_Issues"] = "Fehler melden / Feedback"
+        ["About_Links_Issues"] = "Fehler melden / Feedback",
+
+        // Search & Filter Bar
+        ["Filter_Search_Placeholder"] = "Downloads durchsuchen",
+        ["Filter_Clear_ToolTip"] = "Suche zurücksetzen",
+        ["Filter_All"] = "Alle",
+        ["Filter_Running"] = "Laufend",
+        ["Filter_Paused"] = "Pausiert",
+        ["Filter_Completed"] = "Fertiggestellt",
+        ["Filter_Failed"] = "Fehler",
+
+        // Archive Password Prompt & Management
+        ["PasswordPrompt_Title"] = "Passwortgeschütztes Archiv",
+        ["PasswordPrompt_Message"] = "Dieses Archiv ist passwortgeschützt. Bitte gib das Kennwort ein, um es zu entpacken:",
+        ["PasswordPrompt_PasswordLabel"] = "Passwort:",
+        ["PasswordPrompt_Remember"] = "Passwort für zukünftige Archive merken",
+        ["PasswordPrompt_Extract"] = "Entpacken",
+        ["PasswordPrompt_Cancel"] = "Abbrechen",
+        ["Settings_Card_ArchivePasswords_Title"] = "Gespeicherte Archiv-Passwörter",
+        ["Settings_Card_ArchivePasswords_Subtitle"] = "Passwörter, die beim Entpacken automatisch nacheinander getestet werden",
+        ["Settings_ArchivePasswords_Add"] = "Hinzufügen",
+        ["Settings_ArchivePasswords_Placeholder"] = "Neues Passwort...",
+        ["Settings_ArchivePasswords_Remove"] = "Entfernen",
+        ["Settings_ArchivePasswords_Empty"] = "Keine gespeicherten Passwörter vorhanden."
     };
 }

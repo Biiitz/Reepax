@@ -548,4 +548,16 @@ public partial class SettingsView : UserControl
     }
 
     #endregion
+
+    private void NewArchivePasswordTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (ViewModel?.AddArchivePasswordCommand.CanExecute(null) == true)
+            {
+                ViewModel.AddArchivePasswordCommand.Execute(null);
+            }
+            e.Handled = true;
+        }
+    }
 }

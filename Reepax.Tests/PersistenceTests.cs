@@ -1,6 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
@@ -730,5 +734,190 @@ public class PersistenceTests
         {
             try { Directory.Delete(testDir, true); } catch { }
         }
+    }
+
+    [Fact]
+    public void CreateDtos_ConcurrentModificationOfPackages_DoesNotThrowAndReturnsSnapshot()
+    {
+        var packages = new ObservableCollection<DownloadPackage>();
+        for (int i = 0; i < 30; i++)
+        {
+            var p = new DownloadPackage { Name = $"Package_{i}" };
+            p.Items.Add(new DownloadItem { FileName = $"file_{i}.zip", TotalBytes = 1000 });
+            packages.Add(p);
+        }
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var mutationTask = Task.Run(async () =>
+        {
+            int counter = 100;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var extra = new DownloadPackage { Name = $"Dynamic_{counter++}" };
+                packages.Add(extra);
+                await Task.Yield();
+                packages.Remove(extra);
+                await Task.Yield();
+            }
+        });
+
+        for (int i = 0; i < 20; i++)
+        {
+            var dtos = DownloadPersistenceService.CreateDtos(packages);
+            Assert.NotNull(dtos);
+        }
+
+        cts.Cancel();
+        try { mutationTask.Wait(); } catch { }
+    }
+
+    [Fact]
+    public void CreateDtos_ConcurrentModificationOfPackageItems_DoesNotThrowAndReturnsSnapshot()
+    {
+        var pkg = new DownloadPackage { Name = "Busy_Package" };
+        for (int i = 0; i < 30; i++)
+        {
+            pkg.Items.Add(new DownloadItem { FileName = $"initial_{i}.bin", TotalBytes = 5000 });
+        }
+        var packages = new ObservableCollection<DownloadPackage> { pkg };
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var mutationTask = Task.Run(async () =>
+        {
+            int counter = 100;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var extraItem = new DownloadItem { FileName = $"dynamic_{counter++}.bin", TotalBytes = 2000 };
+                pkg.Items.Add(extraItem);
+                await Task.Yield();
+                pkg.Items.Remove(extraItem);
+                await Task.Yield();
+            }
+        });
+
+        for (int i = 0; i < 20; i++)
+        {
+            var dtos = DownloadPersistenceService.CreateDtos(packages);
+            Assert.NotNull(dtos);
+            Assert.Single(dtos);
+            Assert.NotNull(dtos[0].Items);
+        }
+
+        cts.Cancel();
+        try { mutationTask.Wait(); } catch { }
+    }
+
+    [Fact]
+    public void SafeSnapshotCollectionCore_TransientConcurrentModification_RecoversOnRetry()
+    {
+        var items = new List<DownloadItem>
+        {
+            new() { FileName = "item1.rar" },
+            new() { FileName = "item2.rar" }
+        };
+        var flakyEnumerable = new FlakyEnumerable<DownloadItem>(items, failCount: 2);
+
+        // Fail count is 2; maxRetries is 3. It will fail attempt 0 and 1, then succeed on attempt 2.
+        var snapshot = DownloadPersistenceService.SafeSnapshotCollectionCore(flakyEnumerable, maxRetries: 3);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(2, snapshot.Length);
+        Assert.Equal("item1.rar", snapshot[0].FileName);
+        Assert.Equal("item2.rar", snapshot[1].FileName);
+    }
+
+    [Fact]
+    public void SafeSnapshotCollectionCore_SimulatedContinuousConcurrentModification_ReturnsGracefullyWithoutThrowing()
+    {
+        var throwingEnumerable = new ThrowingEnumerable<DownloadPackage>();
+
+        // Always throws InvalidOperationException; should not crash or throw unhandled exception
+        var snapshot = DownloadPersistenceService.SafeSnapshotCollectionCore(throwingEnumerable, maxRetries: 3);
+
+        Assert.NotNull(snapshot);
+        Assert.Empty(snapshot);
+    }
+
+    [Fact]
+    public void SafeSnapshotCollectionCore_PartialEnumerationFailure_UsesItemsCapturedUpToFailure()
+    {
+        var items = new List<DownloadItem>
+        {
+            new() { FileName = "first.zip" },
+            new() { FileName = "second.zip" },
+            new() { FileName = "third.zip" }
+        };
+        var partialEnumerable = new PartialThrowingEnumerable<DownloadItem>(items);
+
+        var snapshot = DownloadPersistenceService.SafeSnapshotCollectionCore(partialEnumerable, maxRetries: 1);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(2, snapshot.Length);
+        Assert.Equal("first.zip", snapshot[0].FileName);
+        Assert.Equal("second.zip", snapshot[1].FileName);
+    }
+
+    [Fact]
+    public void CreateDtos_NullOrEmptyPackages_ReturnsEmptyListSafely()
+    {
+        var nullResult = DownloadPersistenceService.CreateDtos(null);
+        Assert.NotNull(nullResult);
+        Assert.Empty(nullResult);
+
+        var emptyResult = DownloadPersistenceService.CreateDtos(new List<DownloadPackage>());
+        Assert.NotNull(emptyResult);
+        Assert.Empty(emptyResult);
+    }
+
+    private class FlakyEnumerable<T> : IEnumerable<T>
+    {
+        private readonly List<T> _items;
+        private int _attempts = 0;
+        private readonly int _failCount;
+
+        public FlakyEnumerable(List<T> items, int failCount)
+        {
+            _items = items;
+            _failCount = failCount;
+        }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            if (_attempts++ < _failCount)
+            {
+                throw new InvalidOperationException("Collection was modified; enumeration operation may not execute.");
+            }
+            return _items.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private class ThrowingEnumerable<T> : IEnumerable<T>
+    {
+        public IEnumerator<T> GetEnumerator()
+        {
+            throw new InvalidOperationException("Collection was modified; enumeration operation may not execute.");
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private class PartialThrowingEnumerable<T> : IEnumerable<T>
+    {
+        private readonly List<T> _items;
+        public PartialThrowingEnumerable(List<T> items) => _items = items;
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            for (int i = 0; i < _items.Count; i++)
+            {
+                if (i == 2)
+                    throw new InvalidOperationException("Collection was modified; enumeration operation may not execute.");
+                yield return _items[i];
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

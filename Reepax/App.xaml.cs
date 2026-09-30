@@ -172,6 +172,16 @@ public partial class App : Application
         // Once a hoster favicon is downloaded, refresh all hoster icon bindings
         // so the real icon replaces the placeholder badge immediately.
         HosterIconService.IconUpdated += _ => RefreshHosterIconBindingsDebounced();
+
+        // Register archive password prompt dialog handler for password-protected extraction
+        Services.Extractor.ArchiveExtractionService.PasswordPromptHandler = async (archiveName) =>
+        {
+            if (Current?.Dispatcher != null && !Current.Dispatcher.CheckAccess())
+            {
+                return await Current.Dispatcher.InvokeAsync(() => Views.PasswordPromptDialog.ShowDialog(archiveName));
+            }
+            return Views.PasswordPromptDialog.ShowDialog(archiveName);
+        };
     }
 
     private static System.Windows.Threading.DispatcherTimer? _iconRefreshDebounceTimer;

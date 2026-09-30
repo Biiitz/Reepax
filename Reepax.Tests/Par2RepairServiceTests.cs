@@ -219,6 +219,9 @@ You need 4 more recovery blocks to be able to repair.
             // 3. Corrupt file1
             File.WriteAllText(file1, "CORRUPTED CONTENT REPLACED ALL ORIGINAL DATA", Encoding.UTF8);
 
+            var patchFile = Path.Combine(tempDir, "patch.1");
+            File.WriteAllText(patchFile, "legitimate patch content");
+
             // 4. Verify after corruption: should detect damaged file and repair possible
             var corruptVerify = await Par2RepairService.Instance.VerifyAsync(par2File);
             Assert.Equal(Par2VerificationStatus.RepairPossible, corruptVerify.Status);
@@ -226,6 +229,8 @@ You need 4 more recovery blocks to be able to repair.
             // 5. Repair
             var repairResult = await Par2RepairService.Instance.RepairAsync(par2File, purgeBackups: true);
             Assert.True(repairResult.Success, $"Repair should succeed. Error: {repairResult.ErrorMessage}");
+
+            Assert.True(File.Exists(patchFile), "patch.1 must be preserved after PAR2 repair cleanup");
 
             // 6. Verify restored file content
             var restoredContent1 = File.ReadAllText(file1, Encoding.UTF8);
@@ -282,5 +287,87 @@ You need 4 more recovery blocks to be able to repair.
         var settings = new AppSettings();
         Assert.False(settings.AutoPar2Repair);
         Assert.False(settings.DeletePar2AfterExtraction);
+    }
+
+    [Fact]
+    public void CleanBackupFiles_WhenSampleRarAndBackupExist_CleansUpBackupFile()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanBackupTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var baseFile = Path.Combine(tempDir, "sample.rar");
+            var backupFile = Path.Combine(tempDir, "sample.rar.1");
+            File.WriteAllText(baseFile, "sample archive content");
+            File.WriteAllText(backupFile, "damaged backup content");
+
+            Par2RepairService.CleanBackupFiles(tempDir);
+
+            Assert.True(File.Exists(baseFile), "Base file sample.rar must exist.");
+            Assert.False(File.Exists(backupFile), "Backup file sample.rar.1 must be cleaned up.");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CleanBackupFiles_WhenPatch1ExistsWithoutPatch_PreservesPatch1()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanBackupTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var patchFile = Path.Combine(tempDir, "patch.1");
+            File.WriteAllText(patchFile, "legitimate patch file data");
+
+            Par2RepairService.CleanBackupFiles(tempDir);
+
+            Assert.True(File.Exists(patchFile), "patch.1 must be preserved and not deleted when no base file exists.");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CleanBackupFiles_MixedFiles_OnlyDeletesMatchingBackups()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanBackupTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var sampleRar = Path.Combine(tempDir, "sample.rar");
+            var sampleRarBackup = Path.Combine(tempDir, "sample.rar.1");
+            var patchFile = Path.Combine(tempDir, "patch.1");
+            var updateFile = Path.Combine(tempDir, "game_update.1");
+            var part1Rar = Path.Combine(tempDir, "archive.part1.rar");
+            var part1RarBackup = Path.Combine(tempDir, "archive.part1.rar.1");
+
+            File.WriteAllText(sampleRar, "sample content");
+            File.WriteAllText(sampleRarBackup, "sample backup");
+            File.WriteAllText(part1Rar, "part1 content");
+            File.WriteAllText(part1RarBackup, "part1 backup");
+            File.WriteAllText(patchFile, "patch content");
+            File.WriteAllText(updateFile, "game update content");
+
+            Par2RepairService.CleanBackupFiles(tempDir);
+
+            Assert.True(File.Exists(sampleRar), "sample.rar must be preserved");
+            Assert.False(File.Exists(sampleRarBackup), "sample.rar.1 must be cleaned up");
+            Assert.True(File.Exists(part1Rar), "archive.part1.rar must be preserved");
+            Assert.False(File.Exists(part1RarBackup), "archive.part1.rar.1 must be cleaned up");
+            Assert.True(File.Exists(patchFile), "patch.1 must be preserved");
+            Assert.True(File.Exists(updateFile), "game_update.1 must be preserved");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
     }
 }
