@@ -34,20 +34,8 @@ public partial class App : Application
     {
         DispatcherUnhandledException += (s, e) =>
         {
-            LogCrash("DispatcherUnhandledException", e.Exception);
-            string title;
-            string message;
-            try
-            {
-                title = Loc.Get("Crash_UnexpectedErrorTitle");
-                message = Loc.Format("Crash_UnexpectedErrorMessage", e.Exception.Message);
-            }
-            catch
-            {
-                title = "Reepax Error";
-                message = $"An unexpected error occurred:\n\n{e.Exception.Message}\n\nDetails were saved to crash.log.";
-            }
-            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+            var result = CrashLogService.LogCrash("DispatcherUnhandledException", e.Exception);
+            Views.CrashReportDialog.ShowModal(e.Exception, result, isCritical: false);
             e.Handled = true;
         };
 
@@ -55,44 +43,16 @@ public partial class App : Application
         {
             if (e.ExceptionObject is Exception ex)
             {
-                LogCrash("AppDomain.UnhandledException", ex);
-                string title;
-                string message;
-                try
-                {
-                    title = Loc.Get("Crash_CriticalErrorTitle");
-                    message = Loc.Format("Crash_CriticalErrorMessage", ex.Message);
-                }
-                catch
-                {
-                    title = "Reepax Critical Error";
-                    message = $"Critical application error:\n\n{ex.Message}\n\nDetails were saved to crash.log.";
-                }
-                MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+                var result = CrashLogService.LogCrash("AppDomain.UnhandledException", ex);
+                Views.CrashReportDialog.ShowModal(ex, result, isCritical: true);
             }
         };
 
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, e) =>
         {
-            LogCrash("TaskScheduler.UnobservedTaskException", e.Exception);
+            CrashLogService.LogCrash("TaskScheduler.UnobservedTaskException", e.Exception);
             e.SetObserved();
         };
-    }
-
-    private static void LogCrash(string source, Exception ex)
-    {
-        try
-        {
-            var targetDir = SettingsService.AppDataDirectory;
-            if (!System.IO.Directory.Exists(targetDir))
-            {
-                System.IO.Directory.CreateDirectory(targetDir);
-            }
-            var logPath = System.IO.Path.Combine(targetDir, "crash.log");
-            var text = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{source}] {ex}\n\n";
-            System.IO.File.AppendAllText(logPath, text);
-        }
-        catch { }
     }
 
     [System.Runtime.InteropServices.DllImport("winmm.dll", EntryPoint = "timeBeginPeriod", SetLastError = true)]

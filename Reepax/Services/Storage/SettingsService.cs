@@ -18,9 +18,11 @@ public class SettingsService
         set => PortableModeOverride = value;
     }
 
-    public static string AppDataDirectory => IsPortableMode
+    public static string? AppDataDirectoryOverride { get; set; }
+
+    public static string AppDataDirectory => AppDataDirectoryOverride ?? (IsPortableMode
         ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data")
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax");
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax"));
 
     public static string LogsDirectory => AppLogger.LogsDirectory;
     public static string IconsDirectory => Path.Combine(AppDataDirectory, "Icons");
@@ -234,15 +236,33 @@ public class SettingsService
         AppLogger.IsLoggingEnabled = _currentSettings.EnableFileLogging;
         if (!_currentSettings.EnableFileLogging)
         {
-            try
-            {
-                if (Directory.Exists(LogsDirectory))
-                {
-                    Directory.Delete(LogsDirectory, true);
-                }
-            }
-            catch { }
+            CleanupLogFiles();
         }
+    }
+
+    /// <summary>
+    /// Removes rotating logs and crash log files from disk when file logging is disabled.
+    /// </summary>
+    public static void CleanupLogFiles()
+    {
+        try
+        {
+            if (Directory.Exists(LogsDirectory))
+            {
+                Directory.Delete(LogsDirectory, true);
+            }
+        }
+        catch { }
+
+        try
+        {
+            var appDataCrashLog = Path.Combine(AppDataDirectory, "crash.log");
+            if (File.Exists(appDataCrashLog))
+            {
+                File.Delete(appDataCrashLog);
+            }
+        }
+        catch { }
     }
 
     public void SaveSettings()
@@ -322,7 +342,7 @@ public class SettingsService
                 Directory.CreateDirectory(AppDataDirectory);
             }
             
-            string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json", "adblock_whitelist.txt" };
+            string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json" };
             foreach (var file in filesToMigrate)
             {
                 var src = Path.Combine(roamingDir, file);

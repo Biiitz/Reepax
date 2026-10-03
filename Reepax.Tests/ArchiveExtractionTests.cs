@@ -1141,6 +1141,97 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
+    public void PurgeTemporaryFilesInDirectory_DeletesOnlyTempFilesAndLeavesUserFiles()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PurgeTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var subDir = Path.Combine(testDir, "nested");
+        Directory.CreateDirectory(subDir);
+
+        try
+        {
+            var userFile = Path.Combine(testDir, "important_document.pdf");
+            var partFile = Path.Combine(testDir, "download.iso.part");
+            var segFile = Path.Combine(testDir, "download.iso.part.segments");
+            var tmpFile = Path.Combine(subDir, "cache.tmp");
+            var zeroFile = Path.Combine(subDir, "empty.txt");
+            var backupFile = Path.Combine(subDir, "repaired.rar.1");
+
+            File.WriteAllText(userFile, "real user data");
+            File.WriteAllBytes(partFile, new byte[] { 1, 2, 3 });
+            File.WriteAllText(segFile, "{}");
+            File.WriteAllText(tmpFile, "temp data");
+            File.WriteAllBytes(zeroFile, Array.Empty<byte>());
+            File.WriteAllText(backupFile, "backup corrupt data");
+
+            ArchiveExtractionService.PurgeTemporaryFilesInDirectory(testDir);
+
+            Assert.True(File.Exists(userFile), "User file should be kept untouched");
+            Assert.False(File.Exists(partFile), ".part file should be deleted");
+            Assert.False(File.Exists(segFile), ".part.segments file should be deleted");
+            Assert.False(File.Exists(tmpFile), ".tmp file should be deleted");
+            Assert.False(File.Exists(zeroFile), "Zero-byte file should be deleted");
+            Assert.False(File.Exists(backupFile), ".1 backup file should be deleted");
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CleanEmptySubdirectories_RemovesEmptyFoldersBottomUp()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanSubDirTest_" + Guid.NewGuid().ToString("N"));
+        var deepEmpty = Path.Combine(testDir, "a", "b", "c");
+        var nonEmpty = Path.Combine(testDir, "keep", "nested");
+        Directory.CreateDirectory(deepEmpty);
+        Directory.CreateDirectory(nonEmpty);
+
+        try
+        {
+            var keepFile = Path.Combine(nonEmpty, "file.txt");
+            File.WriteAllText(keepFile, "content");
+
+            ArchiveExtractionService.CleanEmptySubdirectories(testDir);
+
+            Assert.False(Directory.Exists(Path.Combine(testDir, "a")), "Empty tree should be removed");
+            Assert.True(Directory.Exists(nonEmpty), "Directory with files should be retained");
+            Assert.True(File.Exists(keepFile), "File should be retained");
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DeleteToRecycleBin_DirectoryWithOnlyTempFiles_DeletesDirectlyWithoutRecycleBin()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_OnlyTempDirTest_" + Guid.NewGuid().ToString("N"));
+        var subDir = Path.Combine(testDir, "sub");
+        Directory.CreateDirectory(subDir);
+
+        try
+        {
+            var partFile = Path.Combine(testDir, "file.zip.part");
+            var segFile = Path.Combine(testDir, "file.zip.part.segments");
+            var tmpFile = Path.Combine(subDir, "scratch.tmp");
+            File.WriteAllBytes(partFile, new byte[] { 10, 20 });
+            File.WriteAllText(segFile, "{}");
+            File.WriteAllText(tmpFile, "temp");
+
+            ArchiveExtractionService.DeleteToRecycleBin(testDir);
+
+            Assert.False(Directory.Exists(testDir), "Directory containing only temp files should be directly deleted");
+        }
+        finally
+        {
+            try { if (Directory.Exists(testDir)) Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void HasSufficientDiskSpace_WhenSpaceIsPlenty_ReturnsTrue()
     {
         var tempPath = Path.GetTempPath();
@@ -1186,6 +1277,394 @@ public class ArchiveExtractionTests
         Assert.True(resultNull);
         Assert.Equal(-1, available1);
         Assert.Equal(-1, available2);
+    }
+
+    [Fact]
+    public void HasExtractableArchives_DetectsArchivesInMixedPackages()
+    {
+        var service = ArchiveExtractionService.Instance;
+
+        var packageWithArchives = new DownloadPackage { Name = "Game Package" };
+        packageWithArchives.Items.Add(new DownloadItem { FileName = "game.part01.rar", SaveFilePath = @"C:\Downloads\game.part01.rar" });
+        packageWithArchives.Items.Add(new DownloadItem { FileName = "game.part02.rar", SaveFilePath = @"C:\Downloads\game.part02.rar" });
+        packageWithArchives.Items.Add(new DownloadItem { FileName = "fg-optional-voice.bin", SaveFilePath = @"C:\Downloads\fg-optional-voice.bin" });
+
+        Assert.True(service.HasExtractableArchives(packageWithArchives));
+
+        var packageWithoutArchives = new DownloadPackage { Name = "Bin Only Package" };
+        packageWithoutArchives.Items.Add(new DownloadItem { FileName = "setup.exe", SaveFilePath = @"C:\Downloads\setup.exe" });
+        packageWithoutArchives.Items.Add(new DownloadItem { FileName = "data.bin", SaveFilePath = @"C:\Downloads\data.bin" });
+
+        Assert.False(service.HasExtractableArchives(packageWithoutArchives));
+    }
+
+    [Fact]
+    public void PowerManagementService_AcquireAndRelease_ReferenceCountingWorks()
+    {
+        var service = Services.SystemIntegration.PowerManagementService.Instance;
+
+        service.ReleaseAll();
+        Assert.False(service.IsKeepAwakeActive);
+
+        service.AcquireKeepAwake("Test Operation 1");
+        Assert.True(service.IsKeepAwakeActive);
+
+        service.AcquireKeepAwake("Test Operation 2");
+        Assert.True(service.IsKeepAwakeActive);
+
+        service.ReleaseKeepAwake("Test Operation 1");
+        Assert.True(service.IsKeepAwakeActive);
+
+        service.ReleaseKeepAwake("Test Operation 2");
+        Assert.False(service.IsKeepAwakeActive);
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsync_WhenCancelled_ReturnsFalsePromptly()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_CancelTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        try
+        {
+            var zipPath = Path.Combine(testDir, "test_cancel.zip");
+            using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("dummy.dat");
+                using var writer = new BinaryWriter(entry.Open());
+                // Write 1 MB of dummy data
+                writer.Write(new byte[1024 * 1024]);
+            }
+
+            var outDir = Path.Combine(testDir, "extracted");
+            using var cts = new System.Threading.CancellationTokenSource();
+            cts.Cancel(); // Pre-cancelled
+
+            var result = await ArchiveExtractionService.Instance.ExtractArchiveAsync(
+                zipPath,
+                outDir,
+                cancellationToken: cts.Token);
+
+            Assert.False(result);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task CheckAndExtractPackage_WhenAutoExtractDisabled_WithForceTrue_ExtractsSuccessfully()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_ForceExtract_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        try
+        {
+            var zipPath = Path.Combine(testDir, "archive.zip");
+            using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("manual_extracted.txt");
+                using var writer = new StreamWriter(entry.Open());
+                writer.WriteLine("Hello manual extraction!");
+            }
+
+            var package = new DownloadPackage
+            {
+                Name = "ForcePackage",
+                SaveDirectory = testDir,
+                AutoExtractArchives = false
+            };
+
+            var item = new DownloadItem
+            {
+                FileName = "archive.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            };
+            package.Items.Add(item);
+
+            var success = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true);
+
+            Assert.True(success);
+            var extractedFile = Path.Combine(testDir, "manual_extracted.txt");
+            Assert.True(File.Exists(extractedFile));
+            var content = File.ReadAllText(extractedFile);
+            Assert.Contains("Hello manual extraction!", content);
+            Assert.Contains(package.NextTaskSteps, s => s.Key == "Extract" && s.State == NextTaskStepState.Done);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task ExtractArchiveAsync_WithPauseAndResume_ExtractsWithoutDataLoss()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PauseResumeTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        try
+        {
+            var zipPath = Path.Combine(testDir, "payload.zip");
+            var originalBytes = new byte[2 * 1024 * 1024]; // 2 MB
+            new Random(42).NextBytes(originalBytes);
+
+            using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("data.bin");
+                using var stream = entry.Open();
+                stream.Write(originalBytes, 0, originalBytes.Length);
+            }
+
+            var outDir = Path.Combine(testDir, "out");
+            using var pauseEvent = new System.Threading.ManualResetEventSlim(true);
+            bool wasPausedTriggered = false;
+
+            var extractTask = ArchiveExtractionService.Instance.ExtractArchiveAsync(
+                zipPath,
+                outDir,
+                pauseEvent: pauseEvent,
+                pauseStateChanged: paused =>
+                {
+                    if (paused) wasPausedTriggered = true;
+                });
+
+            // Pause extraction shortly after start
+            pauseEvent.Reset();
+            await Task.Delay(50);
+
+            // Resume extraction
+            pauseEvent.Set();
+            var success = await extractTask;
+
+            Assert.True(success);
+            Assert.True(wasPausedTriggered);
+            var extractedPath = Path.Combine(outDir, "data.bin");
+            Assert.True(File.Exists(extractedPath));
+            var extractedBytes = File.ReadAllBytes(extractedPath);
+            Assert.Equal(originalBytes.Length, extractedBytes.Length);
+            Assert.True(originalBytes.SequenceEqual(extractedBytes));
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DownloadPackage_AreDownloadsCompleted_CorrectlyDetectsCompletion()
+    {
+        var package = new DownloadPackage { Name = "TestPackage" };
+        var item1 = new DownloadItem { FileName = "part1.rar", Status = DownloadStatus.Completed, IsEnabled = true };
+        var item2 = new DownloadItem { FileName = "part2.rar", Status = DownloadStatus.Downloading, IsEnabled = true };
+        package.Items.Add(item1);
+        package.Items.Add(item2);
+
+        Assert.False(package.AreDownloadsCompleted);
+
+        item2.Status = DownloadStatus.Completed;
+        Assert.True(package.AreDownloadsCompleted);
+    }
+
+    [Fact]
+    public void ArchiveExtractionService_PauseAndResumeTracking_WorksCorrectly()
+    {
+        var packageId = Guid.NewGuid();
+        var service = ArchiveExtractionService.Instance;
+
+        Assert.False(service.IsPackageExtractionPaused(packageId));
+        service.PausePackageExtraction(packageId); // No-op for untracked ID, doesn't crash
+        Assert.False(service.IsPackageExtractionPaused(packageId));
+    }
+
+    [Fact]
+    public void DownloadPackage_IsExtracted_DetectsExtractionStatesAndPreservesExtractStep()
+    {
+        var package = new DownloadPackage { Name = "TestExtractedPackage", AutoExtractArchives = true };
+
+        // Initially not extracted
+        Assert.False(package.IsExtracted);
+
+        // When status message is completed & extracted
+        package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
+        Assert.True(package.IsExtracted);
+
+        // When NextTaskStep Extract is Done
+        package.StatusMessage = Loc.Get("Status_Queued");
+        package.EnsureNextTaskSteps();
+        var extractStep = package.NextTaskSteps.FirstOrDefault(s => s.Key == "Extract");
+        Assert.NotNull(extractStep);
+        extractStep!.State = NextTaskStepState.Done;
+        Assert.True(package.IsExtracted);
+
+        // CanEditPackage should be false when extracted
+        Assert.False(package.CanEditPackage);
+
+        // When AutoExtractArchives is turned off, EnsureNextTaskSteps preserves the Done Extract step
+        package.AutoExtractArchives = false;
+        package.EnsureNextTaskSteps();
+        var preservedExtractStep = package.NextTaskSteps.FirstOrDefault(s => s.Key == "Extract");
+        Assert.NotNull(preservedExtractStep);
+        Assert.Equal(NextTaskStepState.Done, preservedExtractStep!.State);
+        Assert.True(package.IsExtracted);
+    }
+
+    [Fact]
+    public async Task MainViewModel_ExtractPackageAsync_SkipsWhenAlreadyExtracted()
+    {
+        var vm = new Reepax.ViewModels.MainViewModel();
+        var package = new DownloadPackage { Name = "AlreadyExtractedPkg", IsExtracted = true };
+        vm.Packages.Add(package);
+
+        await vm.ExtractPackageAsync(package);
+
+        // StatusSummary should reflect that it is already completed and extracted
+        Assert.Equal(Loc.Get("Status_CompletedAndExtracted"), vm.StatusSummary);
+        Assert.False(ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
+    }
+
+    [Fact]
+    public async Task MainViewModel_ExtractPackageAsync_SkipsWhenCurrentlyExtracting()
+    {
+        var vm = new Reepax.ViewModels.MainViewModel();
+        var package = new DownloadPackage { Name = "ExtractingPkg", IsExtracting = true };
+        vm.Packages.Add(package);
+
+        // Calling ExtractPackageAsync when already extracting must not start a new extraction
+        await vm.ExtractPackageAsync(package);
+
+        Assert.False(ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
+    }
+
+    [Fact]
+    public async Task ArchiveExtractionService_CheckAndExtractPackageAsync_SkipsWhenAlreadyExtracted()
+    {
+        var package = new DownloadPackage { Name = "DirectExtractedPkg", IsExtracted = true };
+        var result = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true);
+
+        // Must return true immediately and not start extraction
+        Assert.True(result);
+        Assert.False(ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
+    }
+
+    [Fact]
+    public void AddLinksDialog_PrefillsExtractionSettingsFromGlobalDefaults()
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            var settings = SettingsService.Instance.Settings;
+            bool prevAuto = settings.AutoExtractArchives;
+            bool? prevLow = settings.LowResourceExtraction;
+            bool prevDel = settings.DeleteArchiveAfterExtraction;
+            bool prevRec = settings.MoveArchiveToRecycleBin;
+
+            try
+            {
+                settings.AutoExtractArchives = true;
+                settings.LowResourceExtraction = true;
+                settings.DeleteArchiveAfterExtraction = true;
+                settings.MoveArchiveToRecycleBin = false;
+
+                var dialog = new Reepax.Views.AddLinksDialog("https://rapidgator.net/file/123/file.part1.rar");
+                var autoBox = (System.Windows.Controls.CheckBox)dialog.FindName("AutoExtractCheckBox");
+                var lowBox = (System.Windows.Controls.CheckBox)dialog.FindName("LowResourceCheckBox");
+                var delBox = (System.Windows.Controls.CheckBox)dialog.FindName("DeleteArchivesCheckBox");
+                var recBox = (System.Windows.Controls.CheckBox)dialog.FindName("RecycleArchivesCheckBox");
+
+                Assert.True(autoBox.IsChecked == true);
+                Assert.True(lowBox.IsChecked == true);
+                Assert.True(delBox.IsChecked == true);
+                Assert.False(recBox.IsChecked == true);
+            }
+            finally
+            {
+                settings.AutoExtractArchives = prevAuto;
+                settings.LowResourceExtraction = prevLow;
+                settings.DeleteArchiveAfterExtraction = prevDel;
+                settings.MoveArchiveToRecycleBin = prevRec;
+            }
+        });
+        thread.SetApartmentState(System.Threading.ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+    }
+
+    [Fact]
+    public void AddLinksDialog_TogglingAutoExtractRestoresConfiguredDefaults()
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            var settings = SettingsService.Instance.Settings;
+            bool prevAuto = settings.AutoExtractArchives;
+            bool? prevLow = settings.LowResourceExtraction;
+            bool prevDel = settings.DeleteArchiveAfterExtraction;
+            bool prevRec = settings.MoveArchiveToRecycleBin;
+
+            try
+            {
+                settings.AutoExtractArchives = false;
+                settings.LowResourceExtraction = true;
+                settings.DeleteArchiveAfterExtraction = false;
+                settings.MoveArchiveToRecycleBin = true;
+
+                var dialog = new Reepax.Views.AddLinksDialog("https://rapidgator.net/file/123/file.part1.rar");
+                var autoBox = (System.Windows.Controls.CheckBox)dialog.FindName("AutoExtractCheckBox");
+                var lowBox = (System.Windows.Controls.CheckBox)dialog.FindName("LowResourceCheckBox");
+                var delBox = (System.Windows.Controls.CheckBox)dialog.FindName("DeleteArchivesCheckBox");
+                var recBox = (System.Windows.Controls.CheckBox)dialog.FindName("RecycleArchivesCheckBox");
+
+                Assert.False(autoBox.IsChecked == true);
+
+                // Now toggle on AutoExtract
+                autoBox.IsChecked = true;
+
+                Assert.True(lowBox.IsChecked == true);
+                Assert.False(delBox.IsChecked == true);
+                Assert.True(recBox.IsChecked == true);
+            }
+            finally
+            {
+                settings.AutoExtractArchives = prevAuto;
+                settings.LowResourceExtraction = prevLow;
+                settings.DeleteArchiveAfterExtraction = prevDel;
+                settings.MoveArchiveToRecycleBin = prevRec;
+            }
+        });
+        thread.SetApartmentState(System.Threading.ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+    }
+
+    [Fact]
+    public void MainViewModel_ArchiveExtractorSettings_PersistProperly()
+    {
+        var vm = new Reepax.ViewModels.MainViewModel();
+        var settings = SettingsService.Instance.Settings;
+
+        vm.AutoExtractArchives = true;
+        Assert.True(settings.AutoExtractArchives);
+
+        vm.LowResourceExtraction = true;
+        Assert.True(settings.LowResourceExtraction == true);
+
+        vm.DeleteArchiveAfterExtraction = true;
+        Assert.True(settings.DeleteArchiveAfterExtraction);
+        Assert.False(vm.MoveArchiveToRecycleBin);
+        Assert.False(settings.MoveArchiveToRecycleBin);
+
+        vm.MoveArchiveToRecycleBin = true;
+        Assert.True(settings.MoveArchiveToRecycleBin);
+        Assert.False(vm.DeleteArchiveAfterExtraction);
+        Assert.False(settings.DeleteArchiveAfterExtraction);
+
+        // When AutoExtractArchives is turned off, LowResourceExtraction is automatically reset to false
+        vm.AutoExtractArchives = false;
+        Assert.False(vm.AutoExtractArchives);
+        Assert.False(vm.LowResourceExtraction);
+        Assert.False(settings.LowResourceExtraction == true);
     }
 }
 

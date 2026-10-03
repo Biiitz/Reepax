@@ -750,7 +750,7 @@ public class DownloadEngine
         CancellationToken cancellationToken)
     {
         const int maxSegmentRetries = 3;
-        var buffer = new byte[128 * 1024];
+        var buffer = new byte[256 * 1024];
         long segmentLength = segment.End - segment.Start + 1;
 
         for (int attempt = 0; ; attempt++)
@@ -911,6 +911,16 @@ public class DownloadEngine
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan
         };
         using var fileStream = new FileStream(tempFilePath, fileStreamOptions);
+
+        if (totalBytes > 0 && initialDownloadedBytes == 0)
+        {
+            try
+            {
+                if (fileStream.Length != totalBytes)
+                    fileStream.SetLength(totalBytes);
+            }
+            catch { }
+        }
 
         long currentDownloaded = initialDownloadedBytes;
         var speedTracker = new RollingSpeedTracker(initialDownloadedBytes);
@@ -1177,9 +1187,8 @@ public class DownloadEngine
     }
 
     /// <summary>
-    /// Like SafeInvoke, but non-blocking (BeginInvoke with DataBind priority):
-    /// For pure progress and status updates where the download thread should not
-    /// wait for the UI thread.
+    /// Like SafeInvoke, but non-blocking (BeginInvoke with Background priority):
+    /// Ensures UI rendering and user inputs have priority so downloads never cause UI lag.
     /// </summary>
     private static void SafeInvokeAsync(Action action)
     {
@@ -1193,7 +1202,7 @@ public class DownloadEngine
                     app.Dispatcher.BeginInvoke(new Action(() =>
                     {
                         try { action(); } catch { }
-                    }), System.Windows.Threading.DispatcherPriority.DataBind);
+                    }), System.Windows.Threading.DispatcherPriority.Background);
                     return;
                 }
             }

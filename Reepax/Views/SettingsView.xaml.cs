@@ -31,6 +31,8 @@ public partial class SettingsView : UserControl
     {
         HookViewModel();
         UpdateGameInstallFolderVisibility(animate: false);
+        UpdateCompletionSoundVolumeVisibility(animate: false);
+        UpdateErrorSoundVolumeVisibility(animate: false);
 
         if (GeneralCategoryButton != null)
             GeneralCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
@@ -59,6 +61,8 @@ public partial class SettingsView : UserControl
     {
         HookViewModel();
         UpdateGameInstallFolderVisibility(animate: false);
+        UpdateCompletionSoundVolumeVisibility(animate: false);
+        UpdateErrorSoundVolumeVisibility(animate: false);
         Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: false)),
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
@@ -99,6 +103,14 @@ public partial class SettingsView : UserControl
         if (e.PropertyName == nameof(MainViewModel.CreateGameInstallFolder))
         {
             UpdateGameInstallFolderVisibility(animate: true);
+        }
+        else if (e.PropertyName == nameof(MainViewModel.EnableCompletionSound))
+        {
+            UpdateCompletionSoundVolumeVisibility(animate: true);
+        }
+        else if (e.PropertyName == nameof(MainViewModel.EnableErrorSound))
+        {
+            UpdateErrorSoundVolumeVisibility(animate: true);
         }
         else if (e.PropertyName == nameof(MainViewModel.SelectedSettingsCategory))
         {
@@ -560,4 +572,320 @@ public partial class SettingsView : UserControl
             e.Handled = true;
         }
     }
+
+    #region Sound Settings Popups, Volume Animation & Controls
+
+    private bool _isCompletionSoundVolumeExpanded;
+    private bool _isErrorSoundVolumeExpanded;
+
+    private long _completionSoundClosedTimestamp;
+    private long _errorSoundClosedTimestamp;
+
+    private void UpdateCompletionSoundVolumeVisibility(bool animate = true)
+    {
+        if (CompletionSoundVolumeContainer == null || CompletionSoundVolumeContent == null || CompletionSoundVolumeTranslate == null)
+            return;
+
+        bool isEnabled = ViewModel?.EnableCompletionSound == true;
+        AnimateExpander(CompletionSoundVolumeContainer, CompletionSoundVolumeContent, CompletionSoundVolumeTranslate, ref _isCompletionSoundVolumeExpanded, isEnabled, animate, 42.0);
+    }
+
+    private void UpdateErrorSoundVolumeVisibility(bool animate = true)
+    {
+        if (ErrorSoundVolumeContainer == null || ErrorSoundVolumeContent == null || ErrorSoundVolumeTranslate == null)
+            return;
+
+        bool isEnabled = ViewModel?.EnableErrorSound == true;
+        AnimateExpander(ErrorSoundVolumeContainer, ErrorSoundVolumeContent, ErrorSoundVolumeTranslate, ref _isErrorSoundVolumeExpanded, isEnabled, animate, 42.0);
+    }
+
+    private static void AnimateExpander(Border container, FrameworkElement content, TranslateTransform translate, ref bool isExpanded, bool targetExpanded, bool animate, double fallbackHeight)
+    {
+        if (container == null || content == null || translate == null)
+            return;
+
+        if (!animate)
+        {
+            isExpanded = targetExpanded;
+            container.BeginAnimation(FrameworkElement.HeightProperty, null);
+            content.BeginAnimation(UIElement.OpacityProperty, null);
+            translate.BeginAnimation(TranslateTransform.YProperty, null);
+
+            if (targetExpanded)
+            {
+                container.Visibility = Visibility.Visible;
+                container.Height = double.NaN;
+                content.Opacity = 1.0;
+                translate.Y = 0.0;
+            }
+            else
+            {
+                container.Visibility = Visibility.Collapsed;
+                container.Height = 0.0;
+                content.Opacity = 0.0;
+                translate.Y = -8.0;
+            }
+            return;
+        }
+
+        if (isExpanded == targetExpanded)
+            return;
+
+        isExpanded = targetExpanded;
+
+        if (targetExpanded)
+        {
+            container.Visibility = Visibility.Visible;
+            container.Height = double.NaN;
+            container.Measure(new Size(
+                container.ActualWidth > 0 ? container.ActualWidth : 500,
+                double.PositiveInfinity));
+            double targetHeight = container.DesiredSize.Height;
+            if (targetHeight <= 0) targetHeight = fallbackHeight;
+
+            container.Height = 0.0;
+            content.Opacity = 0.0;
+            translate.Y = -8.0;
+
+            var duration = TimeSpan.FromMilliseconds(280);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+            var heightAnim = new DoubleAnimation
+            {
+                From = 0.0,
+                To = targetHeight,
+                Duration = duration,
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            var opacityAnim = new DoubleAnimation
+            {
+                From = 0.0,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(240),
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            var slideAnim = new DoubleAnimation
+            {
+                From = -8.0,
+                To = 0.0,
+                Duration = duration,
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            heightAnim.Completed += (s, e) =>
+            {
+                container.BeginAnimation(FrameworkElement.HeightProperty, null);
+                container.Height = double.NaN;
+                content.BeginAnimation(UIElement.OpacityProperty, null);
+                content.Opacity = 1.0;
+                translate.BeginAnimation(TranslateTransform.YProperty, null);
+                translate.Y = 0.0;
+            };
+
+            container.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+            content.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+            translate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+        }
+        else
+        {
+            double startHeight = container.ActualHeight;
+            if (startHeight <= 0) startHeight = fallbackHeight;
+
+            var duration = TimeSpan.FromMilliseconds(240);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+            var heightAnim = new DoubleAnimation
+            {
+                From = startHeight,
+                To = 0.0,
+                Duration = duration,
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            var opacityAnim = new DoubleAnimation
+            {
+                From = content.Opacity,
+                To = 0.0,
+                Duration = TimeSpan.FromMilliseconds(180),
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            var slideAnim = new DoubleAnimation
+            {
+                From = 0.0,
+                To = -8.0,
+                Duration = duration,
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+
+            heightAnim.Completed += (s, e) =>
+            {
+                container.BeginAnimation(FrameworkElement.HeightProperty, null);
+                container.Height = 0.0;
+                container.Visibility = Visibility.Collapsed;
+                content.BeginAnimation(UIElement.OpacityProperty, null);
+                content.Opacity = 0.0;
+                translate.BeginAnimation(TranslateTransform.YProperty, null);
+                translate.Y = -8.0;
+            };
+
+            container.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+            content.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+            translate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+        }
+    }
+
+    private void CompletionSoundPopup_Closed(object? sender, EventArgs e)
+    {
+        _completionSoundClosedTimestamp = Environment.TickCount64;
+    }
+
+    private void CompletionSoundButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (CompletionSoundPopup.IsOpen || (Environment.TickCount64 - _completionSoundClosedTimestamp < 350))
+        {
+            CompletionSoundPopup.IsOpen = false;
+            _completionSoundClosedTimestamp = Environment.TickCount64;
+            e.Handled = true;
+        }
+    }
+
+    private void CompletionSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Environment.TickCount64 - _completionSoundClosedTimestamp < 350)
+            return;
+
+        CompletionSoundPopup.IsOpen = !CompletionSoundPopup.IsOpen;
+    }
+
+    private void CompletionSoundOption_Click(object sender, RoutedEventArgs e)
+    {
+        CompletionSoundPopup.IsOpen = false;
+    }
+
+    private void CompletionSound_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Down)
+        {
+            ViewModel?.CycleCompletionSound(true);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Up)
+        {
+            ViewModel?.CycleCompletionSound(false);
+            e.Handled = true;
+        }
+    }
+
+    private void CompletionSound_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta < 0)
+        {
+            ViewModel?.CycleCompletionSound(true);
+            e.Handled = true;
+        }
+        else if (e.Delta > 0)
+        {
+            ViewModel?.CycleCompletionSound(false);
+            e.Handled = true;
+        }
+    }
+
+    private void ErrorSoundPopup_Closed(object? sender, EventArgs e)
+    {
+        _errorSoundClosedTimestamp = Environment.TickCount64;
+    }
+
+    private void ErrorSoundButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ErrorSoundPopup.IsOpen || (Environment.TickCount64 - _errorSoundClosedTimestamp < 350))
+        {
+            ErrorSoundPopup.IsOpen = false;
+            _errorSoundClosedTimestamp = Environment.TickCount64;
+            e.Handled = true;
+        }
+    }
+
+    private void ErrorSoundButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Environment.TickCount64 - _errorSoundClosedTimestamp < 350)
+            return;
+
+        ErrorSoundPopup.IsOpen = !ErrorSoundPopup.IsOpen;
+    }
+
+    private void ErrorSoundOption_Click(object sender, RoutedEventArgs e)
+    {
+        ErrorSoundPopup.IsOpen = false;
+    }
+
+    private void ErrorSound_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Down)
+        {
+            ViewModel?.CycleErrorSound(true);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Up)
+        {
+            ViewModel?.CycleErrorSound(false);
+            e.Handled = true;
+        }
+    }
+
+    private void ErrorSound_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (e.Delta < 0)
+        {
+            ViewModel?.CycleErrorSound(true);
+            e.Handled = true;
+        }
+        else if (e.Delta > 0)
+        {
+            ViewModel?.CycleErrorSound(false);
+            e.Handled = true;
+        }
+    }
+
+    private void CompletionSoundVolumeSlider_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        ViewModel?.PreviewCompletionVolumeSound();
+    }
+
+    private void CompletionSoundVolumeSlider_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (ViewModel != null && ViewModel.EnableCompletionSound)
+        {
+            int delta = e.Delta > 0 ? 5 : -5;
+            ViewModel.CompletionSoundVolume = Math.Clamp(ViewModel.CompletionSoundVolume + delta, 0, 100);
+            ViewModel.PreviewCompletionVolumeSound();
+            e.Handled = true;
+        }
+    }
+
+    private void ErrorSoundVolumeSlider_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        ViewModel?.PreviewErrorVolumeSound();
+    }
+
+    private void ErrorSoundVolumeSlider_MouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (ViewModel != null && ViewModel.EnableErrorSound)
+        {
+            int delta = e.Delta > 0 ? 5 : -5;
+            ViewModel.ErrorSoundVolume = Math.Clamp(ViewModel.ErrorSoundVolume + delta, 0, 100);
+            ViewModel.PreviewErrorVolumeSound();
+            e.Handled = true;
+        }
+    }
+
+    #endregion
 }

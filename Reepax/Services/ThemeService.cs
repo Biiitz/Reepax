@@ -73,11 +73,7 @@ public class ThemeService
                 app.Resources["BorderHighlightBrush"] = accentBrush;
             }
 
-            if (save)
-            {
-                SettingsService.Instance.Settings.AccentColorHex = FixedAccentColorHex;
-                SettingsService.Instance.SaveSettings();
-            }
+
 
             AccentColorChanged?.Invoke(FixedAccentColorHex);
         }
@@ -129,7 +125,6 @@ public class ThemeService
             {
                 SettingsService.Instance.Settings.IsDarkMode = true;
                 SettingsService.Instance.Settings.EnableForcedDarkMode = true;
-                SettingsService.Instance.Settings.AccentColorHex = FixedAccentColorHex;
                 SettingsService.Instance.SaveSettings();
             }
 

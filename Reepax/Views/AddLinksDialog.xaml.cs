@@ -224,7 +224,7 @@ public partial class AddLinksDialog : Window
                 var extracted = LinkExtractor.ExtractLinks(clipboardText);
                 if (extracted.Count > 0)
                 {
-                    return LinkExtractor.NormalizeInputText(clipboardText);
+                    return string.Join(Environment.NewLine, extracted.Select(l => l.Url));
                 }
             }
         }
@@ -262,6 +262,29 @@ public partial class AddLinksDialog : Window
             if (!isExtractActive)
             {
                 RecycleArchivesCheckBox.IsChecked = false;
+            }
+        }
+
+        if (isExtractActive && _editingPackage == null)
+        {
+            var settings = SettingsService.Instance.Settings;
+            if (LowResourceCheckBox != null)
+            {
+                LowResourceCheckBox.IsChecked = settings.LowResourceExtraction == true;
+            }
+
+            if (DeleteArchivesCheckBox != null && RecycleArchivesCheckBox != null)
+            {
+                if (settings.DeleteArchiveAfterExtraction)
+                {
+                    DeleteArchivesCheckBox.IsChecked = true;
+                    RecycleArchivesCheckBox.IsChecked = false;
+                }
+                else if (settings.MoveArchiveToRecycleBin)
+                {
+                    RecycleArchivesCheckBox.IsChecked = true;
+                    DeleteArchivesCheckBox.IsChecked = false;
+                }
             }
         }
     }
@@ -354,7 +377,14 @@ public partial class AddLinksDialog : Window
         if (string.IsNullOrWhiteSpace(text))
             return;
 
-        var normalized = LinkExtractor.NormalizeInputText(text);
+        var extracted = LinkExtractor.ExtractLinks(text);
+        var normalized = extracted.Count > 0
+            ? string.Join(Environment.NewLine, extracted.Select(l => l.Url))
+            : LinkExtractor.NormalizeInputText(text);
+
+        if (string.IsNullOrWhiteSpace(normalized))
+            return;
+
         if (string.IsNullOrWhiteSpace(LinksTextBox.Text))
         {
             LinksTextBox.Text = normalized;

@@ -103,7 +103,7 @@ public class NavigationHistoryTests
         var manager = new NavigationHistoryManager();
         var s1 = new NavigationState(AppMainTab.Downloads, SettingsCategory.General);
         var s2 = new NavigationState(AppMainTab.Settings, SettingsCategory.General);
-        var s3 = new NavigationState(AppMainTab.Settings, SettingsCategory.Appearance);
+        var s3 = new NavigationState(AppMainTab.Settings, SettingsCategory.Shortcuts);
         var s4 = new NavigationState(AppMainTab.Downloads, SettingsCategory.General);
 
         manager.Record(s1);

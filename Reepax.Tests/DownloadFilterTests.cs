@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Collection("SharedQueue")]
 public class DownloadFilterTests : IDisposable
 {
     private readonly MainViewModel _viewModel;

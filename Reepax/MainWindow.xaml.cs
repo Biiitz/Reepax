@@ -103,6 +103,18 @@ public partial class MainWindow : Window
 
         Services.SystemIntegration.TrayIconService.Instance.Initialize(this);
 
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            var hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
+            hwndSource?.AddHook(WndProc);
+            Services.SystemIntegration.ClipboardMonitorService.Instance.Start(hwnd, OnClipboardLinksDetected);
+        }
+        catch (Exception ex)
+        {
+            Services.Storage.AppLogger.Warn($"[MainWindow] ClipboardMonitor start failed: {ex.Message}");
+        }
+
         var args = Environment.GetCommandLineArgs();
         if (args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase) || a.Equals("--autostart", StringComparison.OrdinalIgnoreCase)))
         {
@@ -375,10 +387,12 @@ public partial class MainWindow : Window
     }
 
     private bool _isForceExit;
+    private bool _bypassCloseConfirmation;
 
-    public void ForceExit()
+    public void ForceExit(bool bypassCloseConfirmation = true)
     {
         _isForceExit = true;
+        _bypassCloseConfirmation = bypassCloseConfirmation;
         Close();
     }
 
@@ -404,6 +418,9 @@ public partial class MainWindow : Window
     {
         base.OnClosing(e);
 
+        if (e.Cancel)
+            return;
+
         var settings = SettingsService.Instance.Settings;
         var minimizeToTray = ViewModel?.MinimizeToTrayOnClose ?? settings.MinimizeToTrayOnClose;
 
@@ -414,6 +431,24 @@ public partial class MainWindow : Window
             Hide();
             Services.SystemIntegration.TrayIconService.Instance.ShowTrayIcon();
             return;
+        }
+
+        // Active downloads confirmation check
+        if (!_bypassCloseConfirmation && Services.Download.QueueManager.Instance.HasActiveDownloads())
+        {
+            bool confirmed = Views.ConfirmDialog.Show(
+                Services.Localization.Loc.Get("Dialog_ConfirmExit_Title"),
+                Services.Localization.Loc.Get("Dialog_ConfirmExit_ActiveDownloads"),
+                owner: this,
+                isDanger: false);
+
+            if (!confirmed)
+            {
+                e.Cancel = true;
+                _isForceExit = false;
+                _bypassCloseConfirmation = false;
+                return;
+            }
         }
 
         try
@@ -454,9 +489,43 @@ public partial class MainWindow : Window
         ThemeService.Instance.ThemeChanged -= UpdateTitleBarTheme;
         try
         {
+            Services.SystemIntegration.ClipboardMonitorService.Instance.Stop();
+        }
+        catch { }
+        try
+        {
             Application.Current?.Shutdown();
         }
         catch { }
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == Services.SystemIntegration.ClipboardMonitorService.WM_CLIPBOARDUPDATE)
+        {
+            Services.SystemIntegration.ClipboardMonitorService.Instance.ProcessClipboardChange();
+        }
+        return IntPtr.Zero;
+    }
+
+    private void OnClipboardLinksDetected(List<string> urls)
+    {
+        if (urls == null || urls.Count == 0) return;
+        if (!ViewModel.EnableClipboardMonitor) return;
+
+        var prefill = string.Join(Environment.NewLine, urls);
+
+        if (!IsVisible)
+        {
+            Services.SystemIntegration.TrayIconService.Instance.RestoreMainWindow();
+        }
+        else if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+        ShowAddLinksDialog(prefill);
     }
 
     private void UpdateTitleBarTheme(bool isDark)
@@ -1025,6 +1094,59 @@ public partial class MainWindow : Window
             }
         }
 
+        var extractMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "ExtractPackageMenuItem" || (string?)m.Tag == "ExtractPackageMenuItem");
+        var pauseResumeMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "PauseResumeExtractionMenuItem" || (string?)m.Tag == "PauseResumeExtractionMenuItem");
+        var cancelExtractMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CancelExtractionMenuItem" || (string?)m.Tag == "CancelExtractionMenuItem");
+
+        if (pkg != null)
+        {
+            bool isExtracting = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id);
+            bool isPaused = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtractionPaused(pkg.Id);
+            bool hasArchives = Services.Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(pkg);
+            bool isFullyDownloaded = pkg.AreDownloadsCompleted;
+            bool isAlreadyExtracted = pkg.IsExtracted;
+
+            if (isExtracting)
+            {
+                if (extractMenuItem != null) extractMenuItem.Visibility = Visibility.Collapsed;
+
+                if (pauseResumeMenuItem != null)
+                {
+                    pauseResumeMenuItem.Visibility = Visibility.Visible;
+                    pauseResumeMenuItem.Header = isPaused ? Loc.Get("Menu_ResumeExtraction") : Loc.Get("Menu_PauseExtraction");
+                    if (pauseResumeMenuItem.Icon is System.Windows.Shapes.Path iconPath)
+                    {
+                        iconPath.Data = (Geometry)FindResource(isPaused ? "IconPlay" : "IconPause");
+                    }
+                }
+
+                if (cancelExtractMenuItem != null)
+                {
+                    cancelExtractMenuItem.Visibility = Visibility.Visible;
+                }
+            }
+            else
+            {
+                if (pauseResumeMenuItem != null) pauseResumeMenuItem.Visibility = Visibility.Collapsed;
+                if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = Visibility.Collapsed;
+
+                // Only show "Paket entpacken" if all downloads are 100% completed, package has archives,
+                // and the package has NOT already been extracted!
+                if (extractMenuItem != null)
+                {
+                    extractMenuItem.Visibility = (isFullyDownloaded && hasArchives && !isAlreadyExtracted)
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+                }
+            }
+        }
+        else
+        {
+            if (extractMenuItem != null) extractMenuItem.Visibility = Visibility.Collapsed;
+            if (pauseResumeMenuItem != null) pauseResumeMenuItem.Visibility = Visibility.Collapsed;
+            if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = Visibility.Collapsed;
+        }
+
         var verifyMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "VerifyBinFilesMenuItem" || (string?)m.Tag == "VerifyBinFilesMenuItem");
         if (verifyMenuItem != null)
         {
@@ -1056,9 +1178,10 @@ public partial class MainWindow : Window
         var verificationSep = menu.Items.OfType<Separator>().FirstOrDefault(s => (string?)s.Tag == "VerificationSeparator");
         if (verificationSep != null)
         {
+            bool hasExtractAction = (extractMenuItem?.Visibility == Visibility.Visible) || (pauseResumeMenuItem?.Visibility == Visibility.Visible);
             bool hasVerify = verifyMenuItem?.Visibility == Visibility.Visible;
             bool hasPar2 = par2MenuItem?.Visibility == Visibility.Visible;
-            verificationSep.Visibility = (hasVerify || hasPar2) ? Visibility.Visible : Visibility.Collapsed;
+            verificationSep.Visibility = (hasExtractAction || hasVerify || hasPar2) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         if (pkg == null) return;
@@ -1128,6 +1251,34 @@ public partial class MainWindow : Window
                 Loc.Get("Dialog_VerifyBinFilesErrorTitle"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+        }
+    }
+
+    private void ExtractPackage_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var package = GetPackageFromSender(sender);
+        if (package != null && ViewModel != null)
+        {
+            _ = ViewModel.ExtractPackageCommand.ExecuteAsync(package);
+        }
+    }
+
+    private void PauseResumeExtraction_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var package = GetPackageFromSender(sender);
+        if (package != null && ViewModel != null)
+        {
+            ViewModel.TogglePackagePause(package);
+        }
+    }
+
+    private void CancelExtraction_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var package = GetPackageFromSender(sender);
+        if (package != null)
+        {
+            Services.Extractor.ArchiveExtractionService.Instance.CancelPackageExtraction(package.Id);
+            ViewModel.StatusSummary = Loc.Format("Status_ExtractionCancelledForPackage", package.Name);
         }
     }
 
@@ -1282,6 +1433,39 @@ public partial class MainWindow : Window
         if (item != null)
         {
             ViewModel.CopyItemUrl(item);
+        }
+    }
+
+    private void ItemContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ContextMenu menu) return;
+        var item = (menu.PlacementTarget as FrameworkElement)?.DataContext as DownloadItem
+                  ?? ViewModel.SelectedItem;
+
+        var extractItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "ExtractArchiveItemMenuItem" || (string?)m.Tag == "ExtractArchiveItemMenuItem");
+        if (extractItem != null)
+        {
+            bool isArchive = item != null && (Services.Extractor.ArchiveExtractionService.Instance.IsArchiveFile(item.SaveFilePath) || Services.Extractor.ArchiveExtractionService.Instance.IsArchiveFile(item.FileName));
+            var package = item != null ? ViewModel.Packages.FirstOrDefault(p => p.Items.Contains(item)) : null;
+            bool isPkgExtracting = package != null && (package.IsExtracting || Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
+            bool isPkgExtracted = package != null && package.IsExtracted;
+            bool isItemCompleted = item != null && item.Status == DownloadStatus.Completed;
+
+            extractItem.Visibility = (isArchive && isItemCompleted && !isPkgExtracting && !isPkgExtracted) 
+                ? Visibility.Visible 
+                : Visibility.Collapsed;
+        }
+    }
+
+    private void ExtractItem_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetItemFromSender(sender);
+        if (item == null) return;
+
+        var package = ViewModel.Packages.FirstOrDefault(p => p.Items.Contains(item));
+        if (package != null && ViewModel != null)
+        {
+            _ = ViewModel.ExtractPackageCommand.ExecuteAsync(package);
         }
     }
 
@@ -1914,44 +2098,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void MaxDownloads_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Delta > 0)
-        {
-            ViewModel.IncrementMaxDownloads();
-        }
-        else if (e.Delta < 0)
-        {
-            ViewModel.DecrementMaxDownloads();
-        }
-        e.Handled = true;
-    }
-
-    private void Connections_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Delta > 0)
-        {
-            ViewModel.IncrementConnections();
-        }
-        else if (e.Delta < 0)
-        {
-            ViewModel.DecrementConnections();
-        }
-        e.Handled = true;
-    }
-
-    private void SpeedLimit_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Delta > 0)
-        {
-            ViewModel.IncrementSpeedLimit();
-        }
-        else if (e.Delta < 0)
-        {
-            ViewModel.DecrementSpeedLimit();
-        }
-        e.Handled = true;
-    }
 
     private void RenamePackage_MenuItem_Click(object sender, RoutedEventArgs e)
     {
@@ -2745,48 +2891,24 @@ public partial class MainWindow : Window
     }
 
     #endregion
-
-    private long _quickSettingsClosedTimestamp;
-
-    private void QuickSettingsPopup_Closed(object? sender, EventArgs e)
-    {
-        _quickSettingsClosedTimestamp = Environment.TickCount64;
-        ResetQuickSettingsNumericAnimations();
-    }
-
     private void QuickSettingsButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (QuickSettingsPopup.IsOpen || (Environment.TickCount64 - _quickSettingsClosedTimestamp < 350))
-        {
-            QuickSettingsPopup.IsOpen = false;
-            _quickSettingsClosedTimestamp = Environment.TickCount64;
-            e.Handled = true;
-        }
+        QuickSettingsPopup.HandlePreviewMouseDown(e);
     }
 
     private void QuickSettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Environment.TickCount64 - _quickSettingsClosedTimestamp < 350)
-        {
-            return;
-        }
-
-        if (QuickSettingsButton.ActualWidth > 0)
-        {
-            QuickSettingsPopup.HorizontalOffset = QuickSettingsButton.ActualWidth - 352;
-        }
-        else
-        {
-            QuickSettingsPopup.HorizontalOffset = -304;
-        }
-        QuickSettingsPopup.VerticalOffset = -13;
-        QuickSettingsPopup.IsOpen = !QuickSettingsPopup.IsOpen;
+        QuickSettingsPopup.Toggle(QuickSettingsButton);
     }
 
-    private void OpenAllSettings_Click(object sender, RoutedEventArgs e)
+    private void PostDownloadActionButton_Click(object sender, RoutedEventArgs e)
     {
-        QuickSettingsPopup.IsOpen = false;
-        ViewModel.SwitchToSettingsTab();
+        if (sender is Button btn && btn.ContextMenu != null)
+        {
+            btn.ContextMenu.PlacementTarget = btn;
+            btn.ContextMenu.Placement = PlacementMode.Bottom;
+            btn.ContextMenu.IsOpen = true;
+        }
     }
 
     #region Status Filter Popup Handlers
@@ -2825,147 +2947,4 @@ public partial class MainWindow : Window
 
     #endregion
 
-    #region Quick Settings Smooth Numeric Roll Animation
-
-    private string _lastQuickSpeedLimit = "";
-    private string _lastQuickMaxDownloads = "";
-    private string _lastQuickConnections = "";
-
-    private void QuickSpeedLimitBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        string newText = QuickSpeedLimitBox?.Text ?? "";
-        if (!string.IsNullOrEmpty(_lastQuickSpeedLimit) && _lastQuickSpeedLimit != newText &&
-            QuickSpeedLimitGhostText != null && QuickSpeedLimitTranslate != null && QuickSpeedLimitGhostTranslate != null)
-        {
-            AnimateNumericChange(QuickSpeedLimitBox!, QuickSpeedLimitGhostText, QuickSpeedLimitTranslate, QuickSpeedLimitGhostTranslate, _lastQuickSpeedLimit, newText);
-        }
-        _lastQuickSpeedLimit = newText;
-    }
-
-    private void QuickMaxDownloadsBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        string newText = QuickMaxDownloadsBox?.Text ?? "";
-        if (!string.IsNullOrEmpty(_lastQuickMaxDownloads) && _lastQuickMaxDownloads != newText &&
-            QuickMaxDownloadsGhostText != null && QuickMaxDownloadsTranslate != null && QuickMaxDownloadsGhostTranslate != null)
-        {
-            AnimateNumericChange(QuickMaxDownloadsBox!, QuickMaxDownloadsGhostText, QuickMaxDownloadsTranslate, QuickMaxDownloadsGhostTranslate, _lastQuickMaxDownloads, newText);
-        }
-        _lastQuickMaxDownloads = newText;
-    }
-
-    private void QuickConnectionsBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        string newText = QuickConnectionsBox?.Text ?? "";
-        if (!string.IsNullOrEmpty(_lastQuickConnections) && _lastQuickConnections != newText &&
-            QuickConnectionsGhostText != null && QuickConnectionsTranslate != null && QuickConnectionsGhostTranslate != null)
-        {
-            AnimateNumericChange(QuickConnectionsBox!, QuickConnectionsGhostText, QuickConnectionsTranslate, QuickConnectionsGhostTranslate, _lastQuickConnections, newText);
-        }
-        _lastQuickConnections = newText;
-    }
-
-    private void AnimateNumericChange(
-        TextBox textBox,
-        TextBlock ghostText,
-        TranslateTransform textTranslate,
-        TranslateTransform ghostTranslate,
-        string oldValStr,
-        string newValStr)
-    {
-        if (textBox.IsKeyboardFocused) return;
-        if (string.Equals(oldValStr, newValStr, StringComparison.Ordinal)) return;
-
-        if (!double.TryParse(oldValStr.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double oldVal) ||
-            !double.TryParse(newValStr.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out double newVal))
-        {
-            return;
-        }
-
-        if (Math.Abs(oldVal - newVal) < 0.0001) return;
-
-        bool isUp = newVal > oldVal;
-        double offset = 12.0;
-        double ghostTargetY = isUp ? -offset : offset;
-        double textStartY = isUp ? offset : -offset;
-
-        ghostText.Text = oldValStr;
-        ghostText.Opacity = 1.0;
-        ghostTranslate.Y = 0.0;
-
-        var duration = TimeSpan.FromMilliseconds(240);
-        var bounceEase = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.25 };
-        var smoothEase = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        // Animate ghost out
-        var ghostSlide = new DoubleAnimation(0.0, ghostTargetY, duration) { EasingFunction = smoothEase };
-        var ghostFade = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(180)) { EasingFunction = smoothEase };
-        ghostTranslate.BeginAnimation(TranslateTransform.YProperty, ghostSlide);
-        ghostText.BeginAnimation(UIElement.OpacityProperty, ghostFade);
-
-        // Animate textBox in with subtle bounce
-        var textSlide = new DoubleAnimation(textStartY, 0.0, duration) { EasingFunction = bounceEase };
-        var textFade = new DoubleAnimation(0.0, 1.0, duration) { EasingFunction = smoothEase };
-
-        textFade.Completed += (s, e) =>
-        {
-            textTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            textTranslate.Y = 0.0;
-            textBox.BeginAnimation(UIElement.OpacityProperty, null);
-            textBox.Opacity = 1.0;
-            ghostText.Opacity = 0.0;
-        };
-
-        textTranslate.BeginAnimation(TranslateTransform.YProperty, textSlide);
-        textBox.BeginAnimation(UIElement.OpacityProperty, textFade);
-    }
-
-    private void ResetQuickSettingsNumericAnimations()
-    {
-        if (QuickSpeedLimitTranslate != null)
-        {
-            QuickSpeedLimitTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            QuickSpeedLimitTranslate.Y = 0;
-        }
-        if (QuickSpeedLimitBox != null)
-        {
-            QuickSpeedLimitBox.BeginAnimation(UIElement.OpacityProperty, null);
-            QuickSpeedLimitBox.Opacity = 1.0;
-        }
-        if (QuickSpeedLimitGhostText != null)
-        {
-            QuickSpeedLimitGhostText.Opacity = 0;
-        }
-
-        if (QuickMaxDownloadsTranslate != null)
-        {
-            QuickMaxDownloadsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            QuickMaxDownloadsTranslate.Y = 0;
-        }
-        if (QuickMaxDownloadsBox != null)
-        {
-            QuickMaxDownloadsBox.BeginAnimation(UIElement.OpacityProperty, null);
-            QuickMaxDownloadsBox.Opacity = 1.0;
-        }
-        if (QuickMaxDownloadsGhostText != null)
-        {
-            QuickMaxDownloadsGhostText.Opacity = 0;
-        }
-
-        if (QuickConnectionsTranslate != null)
-        {
-            QuickConnectionsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            QuickConnectionsTranslate.Y = 0;
-        }
-        if (QuickConnectionsBox != null)
-        {
-            QuickConnectionsBox.BeginAnimation(UIElement.OpacityProperty, null);
-            QuickConnectionsBox.Opacity = 1.0;
-        }
-        if (QuickConnectionsGhostText != null)
-        {
-            QuickConnectionsGhostText.Opacity = 0;
-        }
-    }
-
-    #endregion
 }

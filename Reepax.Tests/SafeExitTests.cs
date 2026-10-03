@@ -4,6 +4,7 @@ using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
+using Reepax.Views;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -339,6 +340,144 @@ public class SafeExitTests
         finally
         {
             LocalizationService.Instance.CurrentLanguage = originalLang;
+        }
+    }
+
+    [Fact]
+    public void QueueManager_HasActiveDownloads_ReturnsFalse_WhenQueueEmptyOrAllPausedOrCompleted()
+    {
+        var queue = QueueManager.Instance;
+        queue.ActiveDownloadsCountOverride = () => 0;
+        queue.Packages.Clear();
+
+        try
+        {
+            Assert.False(queue.HasActiveDownloads());
+
+            var pkg = new DownloadPackage { Name = "TestPkg" };
+            pkg.Items.Add(new DownloadItem { FileName = "a.txt", Status = DownloadStatus.Completed, IsEnabled = true });
+            pkg.Items.Add(new DownloadItem { FileName = "b.txt", Status = DownloadStatus.Paused, IsEnabled = true });
+            queue.Packages.Add(pkg);
+
+            Assert.False(queue.HasActiveDownloads());
+        }
+        finally
+        {
+            queue.ActiveDownloadsCountOverride = null;
+            queue.Packages.Clear();
+        }
+    }
+
+    [Theory]
+    [InlineData(DownloadStatus.Downloading)]
+    [InlineData(DownloadStatus.InBrowser)]
+    [InlineData(DownloadStatus.InBrowserSlot1)]
+    [InlineData(DownloadStatus.InBrowserSlot2)]
+    [InlineData(DownloadStatus.SolvingCaptcha)]
+    [InlineData(DownloadStatus.WaitingForBrowser)]
+    public void QueueManager_HasActiveDownloads_ReturnsTrue_WhenItemIsActive(DownloadStatus status)
+    {
+        var queue = QueueManager.Instance;
+        queue.ActiveDownloadsCountOverride = () => 0;
+        queue.Packages.Clear();
+
+        try
+        {
+            var pkg = new DownloadPackage { Name = "ActivePkg" };
+            pkg.Items.Add(new DownloadItem { FileName = "active.bin", Status = status, IsEnabled = true });
+            queue.Packages.Add(pkg);
+
+            Assert.True(queue.HasActiveDownloads());
+        }
+        finally
+        {
+            queue.ActiveDownloadsCountOverride = null;
+            queue.Packages.Clear();
+        }
+    }
+
+    [Fact]
+    public void QueueManager_HasActiveDownloads_RespectsActiveDownloadsCountOverride()
+    {
+        var queue = QueueManager.Instance;
+        queue.Packages.Clear();
+        queue.ActiveDownloadsCountOverride = () => 2;
+
+        try
+        {
+            Assert.True(queue.HasActiveDownloads());
+        }
+        finally
+        {
+            queue.ActiveDownloadsCountOverride = null;
+            queue.Packages.Clear();
+        }
+    }
+
+    [Fact]
+    public void QueueManager_HasActiveDownloads_IgnoresDisabledPackagesAndItemsWhenNotRunning()
+    {
+        var queue = QueueManager.Instance;
+        queue.ActiveDownloadsCountOverride = () => 0;
+        queue.Packages.Clear();
+
+        try
+        {
+            var disabledPkg = new DownloadPackage { Name = "DisabledPkg", IsEnabled = false };
+            disabledPkg.Items.Add(new DownloadItem { FileName = "disabled.bin", Status = DownloadStatus.Queued, IsEnabled = true });
+            queue.Packages.Add(disabledPkg);
+
+            Assert.False(queue.HasActiveDownloads());
+
+            var enabledPkg = new DownloadPackage { Name = "EnabledPkg", IsEnabled = true };
+            enabledPkg.Items.Add(new DownloadItem { FileName = "disabled_item.bin", Status = DownloadStatus.Queued, IsEnabled = false });
+            queue.Packages.Add(enabledPkg);
+
+            Assert.False(queue.HasActiveDownloads());
+        }
+        finally
+        {
+            queue.ActiveDownloadsCountOverride = null;
+            queue.Packages.Clear();
+        }
+    }
+
+    [Fact]
+    public void Localization_ConfirmExit_KeysExistInBothLanguages()
+    {
+        var originalLang = LocalizationService.Instance.CurrentLanguage;
+        try
+        {
+            LocalizationService.Instance.CurrentLanguage = "de";
+            Assert.Equal("Beenden bestätigen", Loc.Get("Dialog_ConfirmExit_Title"));
+            Assert.Equal("Es laufen noch aktive Downloads. Möchtest du Reepax wirklich schließen? Alle Downloads werden pausiert.", Loc.Get("Dialog_ConfirmExit_ActiveDownloads"));
+
+            LocalizationService.Instance.CurrentLanguage = "en";
+            Assert.Equal("Confirm Exit", Loc.Get("Dialog_ConfirmExit_Title"));
+            Assert.Equal("There are active downloads in progress. Are you sure you want to exit Reepax? All downloads will be paused.", Loc.Get("Dialog_ConfirmExit_ActiveDownloads"));
+        }
+        finally
+        {
+            LocalizationService.Instance.CurrentLanguage = originalLang;
+        }
+    }
+
+    [Fact]
+    public void ConfirmDialog_ShowDialogOverrideForTesting_SimulatesUserResponses()
+    {
+        try
+        {
+            ConfirmDialog.ShowDialogOverrideForTesting = () => false;
+            var resultNo = ConfirmDialog.Show("Test", "Prompt", isDanger: false);
+            Assert.False(resultNo);
+
+            ConfirmDialog.ShowDialogOverrideForTesting = () => true;
+            var resultYes = ConfirmDialog.Show("Test", "Prompt", isDanger: false);
+            Assert.True(resultYes);
+        }
+        finally
+        {
+            ConfirmDialog.ShowDialogOverrideForTesting = null;
         }
     }
 }

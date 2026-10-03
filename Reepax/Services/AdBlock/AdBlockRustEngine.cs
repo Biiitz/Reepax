@@ -90,9 +90,7 @@ public class AdBlockRustEngine : IDisposable
     public int TotalBlockedCount { get; private set; }
 
     private static string CacheFilePath => Path.Combine(SettingsService.AppDataDirectory, "adblock_cache.dat");
-    private static string WhitelistFilePath => Path.Combine(SettingsService.AppDataDirectory, "adblock_whitelist.txt");
-    private static string RulesFilePath => Path.Combine(SettingsService.AppDataDirectory, "adblock_rules.txt");
-    private static string RulesHashFilePath => Path.Combine(SettingsService.AppDataDirectory, "adblock_rules.hash");
+    private static string? _lastRulesHash;
 
     private static readonly string[] FilterListUrls =
     [
@@ -102,12 +100,13 @@ public class AdBlockRustEngine : IDisposable
 
     public AdBlockRustEngine()
     {
-        LoadWhitelist();
         InitializeEngine();
     }
 
     private void InitializeEngine()
     {
+        CleanupLegacyFiles();
+
         lock (_lock)
         {
             if (_isDisposed)
@@ -159,22 +158,8 @@ public class AdBlockRustEngine : IDisposable
                 }
             }
 
-            // 2. Check if updated rules exist on disk, or fall back to core rules
+            // 2. Compile core filter rules into native engine
             string allRules = GetCoreFilterRules();
-            if (File.Exists(RulesFilePath))
-            {
-                try
-                {
-                    var downloaded = File.ReadAllText(RulesFilePath);
-                    if (!string.IsNullOrWhiteSpace(downloaded))
-                    {
-                        allRules = allRules + "\n\n" + downloaded;
-                    }
-                }
-                catch { }
-            }
-
-            // 3. Compile rules into native engine
             var createdEngine = AdBlockRustNative.CreateFromRules(allRules);
             if (createdEngine != IntPtr.Zero)
             {
@@ -259,17 +244,10 @@ public class AdBlockRustEngine : IDisposable
                 newHash = Convert.ToHexString(hashBytes);
             }
 
-            if (File.Exists(RulesHashFilePath))
+            if (!string.IsNullOrEmpty(_lastRulesHash) &&
+                string.Equals(_lastRulesHash, newHash, StringComparison.OrdinalIgnoreCase))
             {
-                try
-                {
-                    var currentHash = (await File.ReadAllTextAsync(RulesHashFilePath, cancellationToken)).Trim();
-                    if (string.Equals(currentHash, newHash, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return FilterUpdateResult.AlreadyUpToDate;
-                    }
-                }
-                catch { }
+                return FilterUpdateResult.AlreadyUpToDate;
             }
 
             var combinedRules = GetCoreFilterRules() + "\n\n" + downloadedRules;
@@ -301,17 +279,8 @@ public class AdBlockRustEngine : IDisposable
                 }
             }
 
-            try
-            {
-                Directory.CreateDirectory(SettingsService.AppDataDirectory);
-                await File.WriteAllTextAsync(RulesFilePath, downloadedRules, cancellationToken);
-                await File.WriteAllTextAsync(RulesHashFilePath, newHash, cancellationToken);
-                SaveCacheAsync();
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[AdBlockRustEngine] Failed to write updated rules files: {ex.Message}");
-            }
+            _lastRulesHash = newHash;
+            SaveCacheAsync();
 
             AppLogger.Info($"[AdBlockRustEngine] Successfully updated filter lists ({downloadedRules.Length} characters).");
             return FilterUpdateResult.NewFiltersApplied;
@@ -504,34 +473,22 @@ public class AdBlockRustEngine : IDisposable
                 _userWhitelistedDomains.TryRemove(regDomain, out _);
             }
         }
-        SaveWhitelist();
     }
 
-    private void LoadWhitelist()
+    private static void CleanupLegacyFiles()
     {
         try
         {
-            if (File.Exists(WhitelistFilePath))
+            string appData = SettingsService.AppDataDirectory;
+            string[] legacyFiles = ["adblock_whitelist.txt", "adblock_rules.txt", "adblock_rules.hash"];
+            foreach (var file in legacyFiles)
             {
-                foreach (var line in File.ReadAllLines(WhitelistFilePath))
+                var fullPath = Path.Combine(appData, file);
+                if (File.Exists(fullPath))
                 {
-                    var clean = line.Trim().ToLowerInvariant();
-                    if (!string.IsNullOrWhiteSpace(clean) && !clean.StartsWith("#"))
-                    {
-                        _userWhitelistedDomains[clean] = 1;
-                    }
+                    try { File.Delete(fullPath); } catch { }
                 }
             }
-        }
-        catch { }
-    }
-
-    private void SaveWhitelist()
-    {
-        try
-        {
-            Directory.CreateDirectory(SettingsService.AppDataDirectory);
-            File.WriteAllLines(WhitelistFilePath, _userWhitelistedDomains.Keys);
         }
         catch { }
     }

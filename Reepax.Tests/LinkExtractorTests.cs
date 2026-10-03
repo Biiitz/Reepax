@@ -175,4 +175,88 @@ SourceURL:https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#PengPong_Game.
         string rawToken = "y9PN0SnSOrlAL VPqdI HnfkzH7uS7rpsC8nKLtiMlZPDgPin0Ar-tWT9ZJ-fD6lDCMmQ3FhrA2B79qnCIhoC7LNv8IkTwElQaYaGMRKfHEXQkWCzJW8pfEf5MkNHb7TJ8xkKDkqG5dskmlx6s9jBU7m7yJLevY";
         Assert.True(LinkExtractor.IsPureNumericOrHash(rawToken));
     }
+
+    [Fact]
+    public void ExtractLinks_UnclosedAnchorTag_ExtractsTargetUrl()
+    {
+        // Malformed or fragmented HTML e.g. table cell with missing closing tag
+        string input = "<td><a href=\"https://rapidgator.net/file/999/unclosed.rar\">Download here</td>";
+        var links = LinkExtractor.ExtractLinks(input);
+
+        Assert.Single(links);
+        Assert.Equal("https://rapidgator.net/file/999/unclosed.rar", links[0].Url);
+    }
+
+    [Fact]
+    public void ExtractLinks_ExplicitHrefTextFormats_ExtractsAllLinks()
+    {
+        // Users or scripts copying lines like 'href: https://...' or 'href=""https://...""'
+        string text = @"
+href: https://rapidgator.net/file/111/part1.rar
+href=https://ddownload.com/222/part2.rar
+href=""https://1fichier.com/?333""
+href='https://katfile.com/444/part4.rar'
+";
+        var links = LinkExtractor.ExtractLinks(text);
+
+        Assert.Equal(4, links.Count);
+        Assert.Contains(links, l => l.Url == "https://rapidgator.net/file/111/part1.rar");
+        Assert.Contains(links, l => l.Url == "https://ddownload.com/222/part2.rar");
+        Assert.Contains(links, l => l.Url == "https://1fichier.com/?333");
+        Assert.Contains(links, l => l.Url == "https://katfile.com/444/part4.rar");
+    }
+
+    [Fact]
+    public void ExtractLinks_ProtocolRelativeAndFtpUrls_SupportedAndNormalized()
+    {
+        string text = @"
+//rapidgator.net/file/555/proto_relative.rar
+ftp://ftp.example.com/downloads/bigfile.iso
+";
+        var links = LinkExtractor.ExtractLinks(text);
+
+        Assert.Equal(2, links.Count);
+        Assert.Contains(links, l => l.Url == "https://rapidgator.net/file/555/proto_relative.rar");
+        Assert.Contains(links, l => l.Url == "ftp://ftp.example.com/downloads/bigfile.iso");
+    }
+
+    [Fact]
+    public void ExtractLinks_NonFilehosterUrls_AreFilteredOutByDefault()
+    {
+        string rawText = @"
+General web sites:
+https://google.com/search?q=test
+https://youtube.com/watch?v=12345
+https://github.com/torvalds/linux
+https://reddit.com/r/all
+
+Filehoster download:
+https://rapidgator.net/file/777/valid_archive.rar
+";
+
+        var links = LinkExtractor.ExtractLinks(rawText);
+
+        Assert.Single(links);
+        Assert.Equal("https://rapidgator.net/file/777/valid_archive.rar", links[0].Url);
+    }
+
+    [Theory]
+    [InlineData("https://rapidgator.net/file/123", true)]
+    [InlineData("https://ddownload.com/abc", true)]
+    [InlineData("https://filecrypt.cc/Container/123", true)]
+    [InlineData("https://1fichier.com/?abc", true)]
+    [InlineData("https://example.com/downloads/archive.rar", true)]
+    [InlineData("https://example.com/downloads/archive.zip", true)]
+    [InlineData("https://example.com/downloads/archive.7z", true)]
+    [InlineData("https://google.com", false)]
+    [InlineData("https://youtube.com/watch?v=123", false)]
+    [InlineData("https://github.com/test/repo", false)]
+    [InlineData("https://wikipedia.org/wiki/Test", false)]
+    [InlineData("https://spiegel.de/politik", false)]
+    public void IsFileHosterUrl_AccuratelyIdentifiesFilehostersAndArchives(string url, bool expected)
+    {
+        Assert.Equal(expected, Reepax.Models.HosterInfo.IsFileHosterUrl(url));
+    }
 }
+
+

@@ -635,4 +635,139 @@ public class QueueManagerTests
         Assert.False(item.IsTrickling);
         Assert.True(sw.ElapsedMilliseconds < 100, $"DemoteActiveItemToQueued took {sw.ElapsedMilliseconds} ms, expected non-blocking < 100 ms.");
     }
+
+    [Fact]
+    public async Task OnDownloadIntercepted_BlobUrl_BudgetFull_DoesNotDeadlockInQueue_ReactivatesWhenSlotAvailable()
+    {
+        // Arrange
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 2 };
+        var host = new FakeBrowserWindowHost();
+        queueManager.BrowserHost = host;
+        int simulatedActiveDownloads = 0;
+        queueManager.ActiveDownloadsCountOverride = () => simulatedActiveDownloads;
+
+        var packages = CreatePackages("https://ddownload.com/1/file1.rar");
+        queueManager.Packages.Clear();
+        foreach (var p in packages)
+        {
+            queueManager.Packages.Add(p);
+        }
+
+        queueManager.StartQueue();
+        Assert.Single(host.Windows);
+        var window1Id = queueManager.Packages[0].Items[0].CurrentSlot!.Value;
+        var item1 = queueManager.Packages[0].Items[0];
+
+        // Simulate that download slots are currently fully occupied
+        simulatedActiveDownloads = 2;
+
+        // Act: Intercept a blob: download while concurrent download limit is reached
+        await queueManager.OnDownloadInterceptedAsync(
+            window1Id,
+            "blob:https://ddownload.com/uuid-blob-12345",
+            "session=abc",
+            "Mozilla/5.0",
+            "https://ddownload.com/1/file1.rar",
+            "file1.rar");
+
+        // Assert: Browser window closed, item is queued without retaining dead in-memory blob URL
+        Assert.False(host.Windows.ContainsKey(window1Id));
+        Assert.Equal(DownloadStatus.Queued, item1.Status);
+        Assert.True(string.IsNullOrWhiteSpace(item1.DirectDownloadUrl));
+
+        // Act: Slot becomes available
+        simulatedActiveDownloads = 0;
+        queueManager.ProcessQueue();
+
+        // Assert: Item is NOT stuck in Queued forever; it reactivates in browser window
+        Assert.Equal(DownloadStatus.InBrowser, item1.Status);
+        Assert.Single(host.Windows);
+    }
+
+    [Fact]
+    public void FindNextBrowserItem_PicksUpItemWithStaleBlobUrlAndClearsIt()
+    {
+        // Arrange
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 2 };
+        var host = new FakeBrowserWindowHost();
+        queueManager.BrowserHost = host;
+        queueManager.ActiveDownloadsCountOverride = () => 0;
+
+        var pkg = new DownloadPackage { Name = "BlobTestPackage" };
+        var item = new DownloadItem
+        {
+            Id = Guid.NewGuid(),
+            FileName = "video.mp4",
+            OriginalUrl = "https://example.com/video.mp4",
+            DirectDownloadUrl = "blob:https://example.com/dead-blob-uuid",
+            Status = DownloadStatus.Queued
+        };
+        pkg.Items.Add(item);
+        queueManager.Packages.Clear();
+        queueManager.Packages.Add(pkg);
+
+        // Act
+        queueManager.StartQueue();
+
+        // Assert: The stale blob: URL was cleared and item was assigned to browser window
+        Assert.Null(item.DirectDownloadUrl);
+        Assert.Equal(DownloadStatus.InBrowser, item.Status);
+        Assert.Single(host.Windows);
+    }
+
+    [Fact]
+    public void ResumeItem_WithStaleBlobUrl_ClearsDirectUrlAndReactivatesBrowser()
+    {
+        // Arrange
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 2 };
+        var host = new FakeBrowserWindowHost();
+        queueManager.BrowserHost = host;
+        queueManager.ActiveDownloadsCountOverride = () => 0;
+
+        var pkg = new DownloadPackage { Name = "ResumeBlobPackage" };
+        var item = new DownloadItem
+        {
+            Id = Guid.NewGuid(),
+            FileName = "archive.zip",
+            OriginalUrl = "https://example.com/archive.zip",
+            DirectDownloadUrl = "blob:https://example.com/stale-session-blob",
+            Status = DownloadStatus.Paused
+        };
+        pkg.Items.Add(item);
+        queueManager.Packages.Clear();
+        queueManager.Packages.Add(pkg);
+
+        // Act: Resume paused item with stale blob URL
+        queueManager.ResumeItem(item);
+
+        // Assert: Stale blob URL cleared and item reassigned to browser window
+        Assert.Null(item.DirectDownloadUrl);
+        Assert.Equal(DownloadStatus.InBrowser, item.Status);
+        Assert.Single(host.Windows);
+    }
+
+    [Fact]
+    public void HasExtractableArchives_WhenPackageHasBinAsLastItem_RecognizesPackageArchives()
+    {
+        var pkg = new DownloadPackage 
+        { 
+            Name = "CONTROL Resonant", 
+            AutoExtractArchives = true 
+        };
+
+        var rar1 = new DownloadItem { FileName = "game.part01.rar", SaveFilePath = @"C:\Downloads\game.part01.rar" };
+        var rar2 = new DownloadItem { FileName = "game.part02.rar", SaveFilePath = @"C:\Downloads\game.part02.rar" };
+        var bin = new DownloadItem { FileName = "fg-optional-spanish-vo.bin", SaveFilePath = @"C:\Downloads\fg-optional-spanish-vo.bin" };
+
+        pkg.Items.Add(rar1);
+        pkg.Items.Add(rar2);
+        pkg.Items.Add(bin);
+
+        // Individual bin is not an archive
+        Assert.False(ArchiveExtractionService.Instance.IsArchiveFile(bin.SaveFilePath));
+
+        // But the package as a whole contains extractable archives!
+        Assert.True(ArchiveExtractionService.Instance.HasExtractableArchives(pkg));
+    }
 }
+

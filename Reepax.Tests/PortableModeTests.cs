@@ -380,6 +380,7 @@ public class PortableModeTests : IDisposable
 
             var testMessage = "Portable self-contained test log entry " + Guid.NewGuid().ToString("N");
             AppLogger.Info(testMessage);
+            AppLogger.Flush();
 
             var logFilePath = AppLogger.GetCurrentLogFilePath();
             Assert.True(File.Exists(logFilePath), $"Log file must exist at {logFilePath}");

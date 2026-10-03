@@ -53,8 +53,58 @@ public class HosterInfo
         new HosterInfo { Name = "dailyuploads", DisplayName = "Dailyuploads", IconKey = "Dailyuploads", Domain = "dailyuploads.net", DomainPattern = @"dailyuploads\.net", PrimaryColor = "#3B82F6" },
         new HosterInfo { Name = "userscloud", DisplayName = "Userscloud", IconKey = "Userscloud", Domain = "userscloud.com", DomainPattern = @"userscloud\.com", PrimaryColor = "#00ACC1" },
         new HosterInfo { Name = "dropapk", DisplayName = "Dropapk", IconKey = "Dropapk", Domain = "dropapk.to", DomainPattern = @"dropapk\.to", PrimaryColor = "#84CC16" },
-        new HosterInfo { Name = "uptobox", DisplayName = "UpToBox", IconKey = "UpToBox", Domain = "uptobox.com", DomainPattern = @"uptobox\.com|uptostream\.com", PrimaryColor = "#FF6F00" }
+        new HosterInfo { Name = "uptobox", DisplayName = "UpToBox", IconKey = "UpToBox", Domain = "uptobox.com", DomainPattern = @"uptobox\.com|uptostream\.com", PrimaryColor = "#FF6F00" },
+        new HosterInfo { Name = "filecrypt", DisplayName = "Filecrypt", IconKey = "Lock", Domain = "filecrypt.cc", DomainPattern = @"filecrypt\.(?:cc|co)", PrimaryColor = "#10B981" },
+        new HosterInfo { Name = "clicknupload", DisplayName = "ClicknUpload", IconKey = "Globe", Domain = "clicknupload.click", DomainPattern = @"clicknupload\.(?:click|org|net|to|download|cc)", PrimaryColor = "#059669" },
+        new HosterInfo { Name = "alfafile", DisplayName = "Alfafile", IconKey = "Globe", Domain = "alfafile.net", DomainPattern = @"alfafile\.net", PrimaryColor = "#2563EB" },
+        new HosterInfo { Name = "rosefile", DisplayName = "Rosefile", IconKey = "Globe", Domain = "rosefile.net", DomainPattern = @"rosefile\.net", PrimaryColor = "#E11D48" },
+        new HosterInfo { Name = "daofile", DisplayName = "Daofile", IconKey = "Globe", Domain = "daofile.com", DomainPattern = @"daofile\.com", PrimaryColor = "#D97706" },
+        new HosterInfo { Name = "fastfile", DisplayName = "Fastfile", IconKey = "Globe", Domain = "fastfile.cc", DomainPattern = @"fastfile\.cc", PrimaryColor = "#7C3AED" },
+        new HosterInfo { Name = "wdupload", DisplayName = "WDUpload", IconKey = "Globe", Domain = "wdupload.com", DomainPattern = @"wdupload\.com", PrimaryColor = "#4F46E5" },
+        new HosterInfo { Name = "mexashare", DisplayName = "Mexashare", IconKey = "Globe", Domain = "mexashare.com", DomainPattern = @"mexashare\.com|mexa\.sh", PrimaryColor = "#EA580C" },
+        new HosterInfo { Name = "depositfiles", DisplayName = "DepositFiles", IconKey = "Globe", Domain = "depositfiles.com", DomainPattern = @"depositfiles\.com|dfiles\.(?:eu|ru|com)", PrimaryColor = "#DC2626" },
+        new HosterInfo { Name = "modsfire", DisplayName = "Modsfire", IconKey = "Globe", Domain = "modsfire.com", DomainPattern = @"modsfire\.com", PrimaryColor = "#F97316" },
+        new HosterInfo { Name = "shareonline", DisplayName = "Share-Online", IconKey = "Globe", Domain = "share-online.is", DomainPattern = @"share-online\.is", PrimaryColor = "#0284C7" },
+        new HosterInfo { Name = "hexload", DisplayName = "Hexload", IconKey = "Globe", Domain = "hexload.com", DomainPattern = @"hexload\.com", PrimaryColor = "#8B5CF6" },
+        new HosterInfo { Name = "bowfile", DisplayName = "Bowfile", IconKey = "Globe", Domain = "bowfile.com", DomainPattern = @"bowfile\.com", PrimaryColor = "#10B981" },
+        new HosterInfo { Name = "oxycloud", DisplayName = "OxyCloud", IconKey = "Globe", Domain = "oxycloud.com", DomainPattern = @"oxycloud\.com|oxy\.(?:st|cloud)", PrimaryColor = "#06B6D4" },
+        new HosterInfo { Name = "filestore", DisplayName = "FileStore", IconKey = "Globe", Domain = "filestore.me", DomainPattern = @"filestore\.me", PrimaryColor = "#3B82F6" },
+        new HosterInfo { Name = "dropdownload", DisplayName = "DropDownload", IconKey = "Globe", Domain = "drop.download", DomainPattern = @"drop\.download", PrimaryColor = "#84CC16" },
+        new HosterInfo { Name = "vidoza", DisplayName = "Vidoza", IconKey = "Globe", Domain = "vidoza.net", DomainPattern = @"vidoza\.net", PrimaryColor = "#EF4444" },
+        new HosterInfo { Name = "upstream", DisplayName = "UpStream", IconKey = "Globe", Domain = "upstream.to", DomainPattern = @"upstream\.to", PrimaryColor = "#3B82F6" },
+        new HosterInfo { Name = "streamwish", DisplayName = "StreamWish", IconKey = "Globe", Domain = "streamwish.to", DomainPattern = @"streamwish\.(?:to|com)", PrimaryColor = "#8B5CF6" },
+        new HosterInfo { Name = "filemoon", DisplayName = "FileMoon", IconKey = "Globe", Domain = "filemoon.sx", DomainPattern = @"filemoon\.(?:sx|to|wf)", PrimaryColor = "#10B981" },
+        new HosterInfo { Name = "rapidcloud", DisplayName = "RapidCloud", IconKey = "Globe", Domain = "rapidcloud.cc", DomainPattern = @"rapidcloud\.(?:cc|co)", PrimaryColor = "#0284C7" },
+        new HosterInfo { Name = "mixloads", DisplayName = "MixLoads", IconKey = "Globe", Domain = "mixloads.com", DomainPattern = @"mixloads\.com", PrimaryColor = "#F59E0B" },
+        new HosterInfo { Name = "earn4files", DisplayName = "Earn4Files", IconKey = "Globe", Domain = "earn4files.com", DomainPattern = @"earn4files\.com", PrimaryColor = "#059669" },
+        new HosterInfo { Name = "mega4up", DisplayName = "Mega4Up", IconKey = "Globe", Domain = "mega4up.org", DomainPattern = @"mega4up\.(?:org|com)", PrimaryColor = "#6366F1" },
+        new HosterInfo { Name = "uploadio", DisplayName = "Up-Load", IconKey = "Globe", Domain = "up-load.io", DomainPattern = @"up-load\.io", PrimaryColor = "#EC4899" }
     };
+
+    private static readonly Regex DirectDownloadExtensionRegex = new(
+        @"(?i)\.(?:rar|zip|7z|tar|gz|bz2|xz|iso|bin|pkg|001|002|r\d{2})(?:$|[?#])",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Determines whether the URL is a recognized filehoster link, link container (Filecrypt),
+    /// or a direct download link with a downloadable archive/file extension.
+    /// Non-filehoster web URLs (general sites, search engines, social media, news, tracking) return false.
+    /// </summary>
+    public static bool IsFileHosterUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        // 1. Known filehoster / container domain pattern
+        if (IsKnownHoster(url))
+            return true;
+
+        // 2. Direct downloadable archive / payload file extension
+        if (DirectDownloadExtensionRegex.IsMatch(url))
+            return true;
+
+        return false;
+    }
 
     public static bool IsKnownHoster(string url)
     {

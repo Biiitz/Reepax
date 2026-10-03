@@ -691,9 +691,9 @@ https://other-hoster.net/dl/Movie.part01.rar
         Assert.Equal(SettingsCategory.Notifications, vm.SelectedSettingsCategory);
 
         // 4. Switch to Settings tab with category string
-        vm.SwitchToSettingsTab("Appearance");
+        vm.SwitchToSettingsTab("Shortcuts");
         Assert.Equal(AppMainTab.Settings, vm.SelectedMainTab);
-        Assert.Equal(SettingsCategory.Appearance, vm.SelectedSettingsCategory);
+        Assert.Equal(SettingsCategory.Shortcuts, vm.SelectedSettingsCategory);
 
         // 5. Switch back to Downloads tab
         vm.SwitchToDownloadsTab();
@@ -706,8 +706,8 @@ https://other-hoster.net/dl/Movie.part01.rar
         vm.SelectSettingsCategory("DownloadConnections");
         Assert.Equal(SettingsCategory.DownloadConnections, vm.SelectedSettingsCategory);
 
-        vm.SelectSettingsCategory((int)SettingsCategory.Appearance);
-        Assert.Equal(SettingsCategory.Appearance, vm.SelectedSettingsCategory);
+        vm.SelectSettingsCategory((int)SettingsCategory.Shortcuts);
+        Assert.Equal(SettingsCategory.Shortcuts, vm.SelectedSettingsCategory);
 
         vm.SelectSettingsCategory("0");
         Assert.Equal(SettingsCategory.General, vm.SelectedSettingsCategory);
@@ -811,6 +811,37 @@ https://rapidgator.net/file/103/game.part3.rar
 
         // Next tasks initialized
         Assert.True(pkg.HasNextTasks);
+    }
+
+    [Fact]
+    public void DownloadPackage_WhenAllItemsCompleted_SetsCompletedAt()
+    {
+        var pkg = new DownloadPackage { Name = "TestPkg" };
+        var completionTime = DateTime.Now.AddMinutes(-5);
+        var item1 = new DownloadItem
+        {
+            FileName = "item1.zip",
+            TotalBytes = 1000,
+            DownloadedBytes = 1000,
+            Status = DownloadStatus.Completed,
+            CompletedAt = completionTime
+        };
+        var item2 = new DownloadItem
+        {
+            FileName = "item2.zip",
+            TotalBytes = 2000,
+            DownloadedBytes = 2000,
+            Status = DownloadStatus.Completed,
+            CompletedAt = completionTime.AddMinutes(2)
+        };
+        pkg.Items.Add(item1);
+        pkg.Items.Add(item2);
+
+        pkg.RecalculateAggregates(force: true);
+
+        Assert.Equal(DownloadStatus.Completed, pkg.Status);
+        Assert.NotNull(pkg.CompletedAt);
+        Assert.Equal(completionTime.AddMinutes(2), pkg.CompletedAt);
     }
 
     [Fact]
@@ -1043,6 +1074,274 @@ https://rapidgator.net/file/202/archive.part2.rar
             Assert.Empty(vm.Packages);
             Assert.False(File.Exists(filePath), "Target file should be deleted from disk when deleteFilesFromDisk is true");
             Assert.False(File.Exists(partPath), "Target part file should be deleted from disk when deleteFilesFromDisk is true");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void RemovePackage_WithExtractedFilesAndSubfolders_DeletesEntirePackageFolder()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgExt_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var subDir = Path.Combine(tempDir, "GameFolder");
+        Directory.CreateDirectory(subDir);
+
+        try
+        {
+            var rarFile = Path.Combine(tempDir, "game.part1.rar");
+            var extractedExe = Path.Combine(subDir, "game.exe");
+            var extractedBin = Path.Combine(subDir, "data.bin");
+
+            File.WriteAllBytes(rarFile, new byte[100]);
+            File.WriteAllBytes(extractedExe, new byte[200]);
+            File.WriteAllBytes(extractedBin, new byte[300]);
+
+            var vm = new MainViewModel();
+            vm.Packages.Clear();
+
+            var pkg = new DownloadPackage { Name = "ExtractedGamePkg", SaveDirectory = tempDir };
+            pkg.Items.Add(new DownloadItem { FileName = "game.part1.rar", SaveFilePath = rarFile });
+            vm.Packages.Add(pkg);
+
+            var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
+            Assert.Contains(Path.GetFullPath(rarFile), filesOnDisk);
+            Assert.Contains(Path.GetFullPath(extractedExe), filesOnDisk);
+            Assert.Contains(Path.GetFullPath(extractedBin), filesOnDisk);
+
+            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+
+            Assert.Empty(vm.Packages);
+            Assert.False(File.Exists(rarFile));
+            Assert.False(File.Exists(extractedExe));
+            Assert.False(File.Exists(extractedBin));
+            Assert.False(Directory.Exists(subDir));
+            Assert.False(Directory.Exists(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void RemovePackage_WhenArchivesAlreadyDeletedPostExtraction_DeletesExtractedFilesAndFolder()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgNoArch_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var rarFile = Path.Combine(tempDir, "game.rar");
+            var extractedSetup = Path.Combine(tempDir, "setup.exe");
+            File.WriteAllBytes(extractedSetup, new byte[500]);
+
+            var vm = new MainViewModel();
+            vm.Packages.Clear();
+
+            var pkg = new DownloadPackage 
+            { 
+                Name = "GameAlreadyExtracted", 
+                SaveDirectory = tempDir, 
+                DeleteArchiveAfterExtraction = true,
+                IsExtracted = true 
+            };
+            pkg.Items.Add(new DownloadItem { FileName = "game.rar", SaveFilePath = rarFile });
+            vm.Packages.Add(pkg);
+
+            var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
+            Assert.Contains(Path.GetFullPath(extractedSetup), filesOnDisk);
+
+            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+
+            Assert.Empty(vm.Packages);
+            Assert.False(File.Exists(extractedSetup));
+            Assert.False(Directory.Exists(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void RemovePackage_AfterRename_DeletesRenamedFolder()
+    {
+        var parentDir = Path.Combine(Path.GetTempPath(), "ReepaxParent_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(parentDir);
+        var pkgDir = Path.Combine(parentDir, "OriginalName");
+        Directory.CreateDirectory(pkgDir);
+
+        try
+        {
+            var file = Path.Combine(pkgDir, "content.dat");
+            File.WriteAllBytes(file, new byte[250]);
+
+            var vm = new MainViewModel();
+            vm.Packages.Clear();
+
+            var pkg = new DownloadPackage { Name = "OriginalName", SaveDirectory = pkgDir };
+            pkg.Items.Add(new DownloadItem { FileName = "content.dat", SaveFilePath = file });
+            vm.Packages.Add(pkg);
+
+            pkg.Rename("NewPackageName");
+
+            var newDir = Path.Combine(parentDir, "NewPackageName");
+            var newFile = Path.Combine(newDir, "content.dat");
+
+            var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
+            Assert.NotEmpty(filesOnDisk);
+
+            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+
+            Assert.Empty(vm.Packages);
+            Assert.False(Directory.Exists(newDir));
+            Assert.False(Directory.Exists(pkgDir));
+        }
+        finally
+        {
+            if (Directory.Exists(parentDir))
+            {
+                try { Directory.Delete(parentDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void RemovePackage_InProtectedDirectory_DoesNotDeleteProtectedDirectoryOnlyPackageFiles()
+    {
+        var protectedDir = Path.Combine(Path.GetTempPath(), "ReepaxProtected_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(protectedDir);
+
+        try
+        {
+            var previousDefault = Services.Storage.SettingsService.Instance.Settings.DefaultDownloadDirectory;
+            Services.Storage.SettingsService.Instance.Settings.DefaultDownloadDirectory = protectedDir;
+
+            try
+            {
+                var pkgFile = Path.Combine(protectedDir, "package_file.zip");
+                var unrelatedFile = Path.Combine(protectedDir, "unrelated_user_file.txt");
+                File.WriteAllBytes(pkgFile, new byte[100]);
+                File.WriteAllBytes(unrelatedFile, new byte[200]);
+
+                var vm = new MainViewModel();
+                vm.Packages.Clear();
+
+                var pkg = new DownloadPackage { Name = "SharedPkg", SaveDirectory = protectedDir };
+                pkg.Items.Add(new DownloadItem { FileName = "package_file.zip", SaveFilePath = pkgFile });
+                vm.Packages.Add(pkg);
+
+                Assert.True(MainViewModel.IsProtectedDirectory(protectedDir));
+                Assert.False(MainViewModel.IsDedicatedPackageDirectory(pkg, protectedDir, vm.Packages));
+
+                vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+
+                Assert.Empty(vm.Packages);
+                Assert.False(File.Exists(pkgFile), "Package file should be deleted");
+                Assert.True(File.Exists(unrelatedFile), "Unrelated file in protected folder must NOT be deleted");
+                Assert.True(Directory.Exists(protectedDir), "Protected directory itself must NOT be deleted");
+            }
+            finally
+            {
+                Services.Storage.SettingsService.Instance.Settings.DefaultDownloadDirectory = previousDefault;
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(protectedDir))
+            {
+                try { Directory.Delete(protectedDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void RemovePackage_WithTempFiles_PurgesTempFilesDirectlyFromDisk()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgTempDel_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var userFile = Path.Combine(tempDir, "game.iso");
+            var partFile = Path.Combine(tempDir, "game.iso.part");
+            var segFile = Path.Combine(tempDir, "game.iso.part.segments");
+            var tmpFile = Path.Combine(tempDir, "cache.tmp");
+            var zeroFile = Path.Combine(tempDir, "empty.txt");
+            var backupFile = Path.Combine(tempDir, "archive.rar.1");
+
+            File.WriteAllBytes(userFile, new byte[500]);
+            File.WriteAllBytes(partFile, new byte[250]);
+            File.WriteAllText(segFile, "{}");
+            File.WriteAllText(tmpFile, "temp data");
+            File.WriteAllBytes(zeroFile, Array.Empty<byte>());
+            File.WriteAllText(backupFile, "backup");
+
+            var vm = new MainViewModel();
+            vm.Packages.Clear();
+
+            var pkg = new DownloadPackage { Name = "TempPkg", SaveDirectory = tempDir };
+            var item = new DownloadItem { FileName = "game.iso", SaveFilePath = userFile };
+            pkg.Items.Add(item);
+            vm.Packages.Add(pkg);
+
+            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+
+            Assert.Empty(vm.Packages);
+            Assert.False(File.Exists(userFile));
+            Assert.False(File.Exists(partFile));
+            Assert.False(File.Exists(segFile));
+            Assert.False(File.Exists(tmpFile));
+            Assert.False(File.Exists(zeroFile));
+            Assert.False(File.Exists(backupFile));
+            Assert.False(Directory.Exists(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                try { Directory.Delete(tempDir, true); } catch { }
+            }
+        }
+    }
+
+    [Fact]
+    public void RemovePackage_WithOnlyTempFiles_DeletesDirectoryDirectly()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgOnlyTemp_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var partFile = Path.Combine(tempDir, "unfinished.bin.part");
+            var segFile = Path.Combine(tempDir, "unfinished.bin.part.segments");
+            File.WriteAllBytes(partFile, new byte[100]);
+            File.WriteAllText(segFile, "{}");
+
+            var vm = new MainViewModel();
+            vm.Packages.Clear();
+
+            var pkg = new DownloadPackage { Name = "OnlyTempPkg", SaveDirectory = tempDir };
+            var item = new DownloadItem { FileName = "unfinished.bin", SaveFilePath = Path.Combine(tempDir, "unfinished.bin") };
+            pkg.Items.Add(item);
+            vm.Packages.Add(pkg);
+
+            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+
+            Assert.Empty(vm.Packages);
+            Assert.False(File.Exists(partFile));
+            Assert.False(File.Exists(segFile));
+            Assert.False(Directory.Exists(tempDir));
         }
         finally
         {

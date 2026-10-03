@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 
 namespace Reepax.Models;
 
@@ -60,6 +61,39 @@ public partial class DownloadPackage : ObservableObject
 
     [ObservableProperty]
     private bool _isEditing;
+
+    [ObservableProperty]
+    private bool _isExtracting;
+
+    [ObservableProperty]
+    private bool _isExtractionPaused;
+
+    [ObservableProperty]
+    private string? _extractionDirectory;
+
+    private bool _isExtracted;
+
+    /// <summary>
+    /// Indicates whether the package archives have already been extracted.
+    /// Returns true if manually set, if the 'Extract' NextTaskStep is Done,
+    /// or if the status message reflects completion & extraction.
+    /// </summary>
+    public bool IsExtracted
+    {
+        get => _isExtracted ||
+               (NextTaskSteps != null && NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done)) ||
+               StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
+               StatusMessage == "Fertig & Entpackt" ||
+               StatusMessage == "Completed & Extracted";
+        set
+        {
+            if (SetProperty(ref _isExtracted, value))
+            {
+                OnPropertyChanged(nameof(CanEditPackage));
+                OnPropertyChanged(nameof(IsFullyCompleted));
+            }
+        }
+    }
 
     /// <summary>ID of the parent package if this folder is clipped to another package.</summary>
     [ObservableProperty]
@@ -229,7 +263,18 @@ public partial class DownloadPackage : ObservableObject
 
         NextTaskSteps.Clear();
         if (!AutoExtractArchives)
+        {
+            if (IsExtracted || (existingStates.TryGetValue("Extract", out var preservedState) && preservedState == NextTaskStepState.Done))
+            {
+                NextTaskSteps.Add(new NextTaskStep
+                {
+                    Key = "Extract",
+                    Name = LowResourceExtraction ? Loc.Get("NextTask_ExtractLowResource") : Loc.Get("NextTask_Extract"),
+                    State = NextTaskStepState.Done
+                });
+            }
             return;
+        }
 
         if (par2Active)
         {
@@ -245,7 +290,9 @@ public partial class DownloadPackage : ObservableObject
         { 
             Key = "Extract",
             Name = LowResourceExtraction ? Loc.Get("NextTask_ExtractLowResource") : Loc.Get("NextTask_Extract"),
-            State = existingStates.TryGetValue("Extract", out var extState) ? extState : NextTaskStepState.Pending
+            State = (IsExtracted || (existingStates.TryGetValue("Extract", out var extState) && extState == NextTaskStepState.Done))
+                ? NextTaskStepState.Done
+                : (existingStates.TryGetValue("Extract", out var existingState) ? existingState : NextTaskStepState.Pending)
         });
 
         if (DeleteArchiveAfterExtraction)
@@ -303,6 +350,7 @@ public partial class DownloadPackage : ObservableObject
 
         if (stepKeyOrName == "Extract")
         {
+            IsExtracted = true;
             CheckAndRefreshVerifyBatFile();
         }
     }
@@ -682,6 +730,12 @@ public partial class DownloadPackage : ObservableObject
             Status = DownloadStatus.Completed;
             ProgressPercentage = 100;
             DownloadedBytes = TotalBytes;
+            var maxItemCompletedAt = itemsSnapshot
+                .Where(i => i.IsEnabled && i.CompletedAt.HasValue)
+                .Select(i => i.CompletedAt!.Value)
+                .DefaultIfEmpty(CompletedAt ?? DateTime.Now)
+                .Max();
+            CompletedAt = maxItemCompletedAt;
             if (NextTaskSteps.Count > 0 && NextTaskSteps.All(s => s.State == NextTaskStepState.Done))
             {
                 StatusMessage = Loc.Get("Status_CompletedAndExtracted");
@@ -690,7 +744,7 @@ public partial class DownloadPackage : ObservableObject
                      StatusMessage != "Fertig & Entpackt" &&
                      StatusMessage != "Completed & Extracted" &&
                      StatusMessage != Loc.Get("Status_CompletedExtractionError") &&
-                     !StatusMessage.StartsWith(Loc.Get("Status_ExtractionInsufficientDiskSpace").Split('(')[0].Trim()) &&
+                     !Services.Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(StatusMessage) &&
                      StatusMessage != Loc.Get("Status_Extracting"))
             {
                 StatusMessage = Loc.Get("Status_Completed");
@@ -705,21 +759,25 @@ public partial class DownloadPackage : ObservableObject
         }
         else if (hasActive)
         {
+            CompletedAt = null;
             Status = DownloadStatus.Downloading;
             StatusMessage = Loc.Get("Status_DownloadingPackage");
         }
         else if (hasCaptcha)
         {
+            CompletedAt = null;
             Status = DownloadStatus.SolvingCaptcha;
             StatusMessage = Loc.Get("Status_WaitingForCaptcha");
         }
         else if (hasError)
         {
+            CompletedAt = null;
             Status = DownloadStatus.Failed;
             StatusMessage = Loc.Get("Status_ErrorOccurred");
         }
         else if (itemsSnapshot.Where(i => i.IsEnabled && i.Status != DownloadStatus.Completed).All(i => i.Status == DownloadStatus.Paused))
         {
+            CompletedAt = null;
             Status = DownloadStatus.Paused;
             StatusMessage = Loc.Get("Status_Paused");
             SpeedBytesPerSecond = 0;
@@ -727,6 +785,7 @@ public partial class DownloadPackage : ObservableObject
         }
         else
         {
+            CompletedAt = null;
             Status = DownloadStatus.Queued;
             StatusMessage = Loc.Get("Status_Queued");
         }
@@ -762,11 +821,23 @@ public partial class DownloadPackage : ObservableObject
 
     public bool IsFullyCompleted => CheckIsFullyCompleted();
 
+    /// <summary>
+    /// Returns true if all enabled download items in this package are in Completed status.
+    /// </summary>
+    public bool AreDownloadsCompleted
+    {
+        get
+        {
+            var enabledItems = Items.Where(i => i.IsEnabled).ToList();
+            return enabledItems.Count > 0 && enabledItems.All(i => i.Status == DownloadStatus.Completed);
+        }
+    }
+
     public bool CanEditPackage
     {
         get
         {
-            if (Status == DownloadStatus.Completed || IsFullyCompleted)
+            if (Status == DownloadStatus.Completed || IsFullyCompleted || IsExtracted)
                 return false;
 
             var enabledItems = Items.Where(i => i.IsEnabled).ToList();
@@ -801,11 +872,22 @@ public partial class DownloadPackage : ObservableObject
         if (!string.IsNullOrWhiteSpace(parentDir))
         {
             var newSaveDir = System.IO.Path.Combine(parentDir, safeNewName);
-            SaveDirectory = newSaveDir;
 
             if (!string.IsNullOrWhiteSpace(oldSaveDir) && Directory.Exists(oldSaveDir) && !Directory.Exists(newSaveDir))
             {
-                try { Directory.Move(oldSaveDir, newSaveDir); } catch { }
+                try
+                {
+                    Directory.Move(oldSaveDir, newSaveDir);
+                    SaveDirectory = newSaveDir;
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn($"[DownloadPackage] Could not rename directory '{oldSaveDir}' to '{newSaveDir}': {ex.Message}");
+                }
+            }
+            else
+            {
+                SaveDirectory = newSaveDir;
             }
 
             UpdateItemSaveFilePaths();
@@ -832,13 +914,23 @@ public partial class DownloadPackage : ObservableObject
                 {
                     if (Directory.Exists(oldDir) && !Directory.Exists(newDir))
                     {
-                        try { Directory.Move(oldDir, newDir); } catch { }
+                        try
+                        {
+                            Directory.Move(oldDir, newDir);
+                            SaveDirectory = newDir;
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLogger.Warn($"[DownloadPackage] Could not rename directory '{oldDir}' to '{newDir}': {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        SaveDirectory = newDir;
                     }
 
-                    SaveDirectory = newDir;
+                    UpdateItemSaveFilePaths();
                 }
-
-                UpdateItemSaveFilePaths();
             }
         }
     }
@@ -906,6 +998,19 @@ public partial class DownloadPackage : ObservableObject
             {
                 if (Directory.EnumerateFileSystemEntries(SaveDirectory).Any() ||
                     Items.Any(i => !string.IsNullOrEmpty(i.SaveFilePath) && File.Exists(i.SaveFilePath)))
+                {
+                    return true;
+                }
+            }
+            catch { }
+        }
+
+        // 1b. Check if ExtractionDirectory exists and contains files
+        if (!string.IsNullOrWhiteSpace(ExtractionDirectory) && Directory.Exists(ExtractionDirectory))
+        {
+            try
+            {
+                if (Directory.EnumerateFileSystemEntries(ExtractionDirectory).Any())
                 {
                     return true;
                 }

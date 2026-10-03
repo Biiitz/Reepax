@@ -54,6 +54,17 @@ public class ArchiveExtractionService
         return _multiPartPattern.IsMatch(filePath);
     }
 
+    /// <summary>
+    /// Checks whether the package contains any extractable archive files (.zip, .rar, .7z, multi-part, etc.).
+    /// </summary>
+    public bool HasExtractableArchives(DownloadPackage? package)
+    {
+        if (package == null || package.Items == null)
+            return false;
+
+        return package.Items.Any(i => IsArchiveFile(i.SaveFilePath) || IsArchiveFile(i.FileName));
+    }
+
     public bool IsPrimaryArchivePart(string filePath)
     {
         if (!IsArchiveFile(filePath))
@@ -106,28 +117,130 @@ public class ArchiveExtractionService
     }
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, bool> _extractingPackages = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CancellationTokenSource> _packageCts = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Threading.ManualResetEventSlim> _packagePauseEvents = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, bool> _pausedPackages = new();
 
     public bool IsPackageExtracting(Guid packageId) => _extractingPackages.ContainsKey(packageId);
+    public bool IsPackageExtractionPaused(Guid packageId) => _pausedPackages.ContainsKey(packageId);
+    public bool IsAnyExtracting => !_extractingPackages.IsEmpty;
 
-    public async Task CheckAndExtractPackageAsync(DownloadPackage package)
+    /// <summary>
+    /// Pauses extraction for a specific package cleanly without losing data or aborting.
+    /// </summary>
+    public void PausePackageExtraction(Guid packageId)
+    {
+        if (_packagePauseEvents.TryGetValue(packageId, out var pe))
+        {
+            _pausedPackages[packageId] = true;
+            pe.Reset();
+            AppLogger.Info($"[ArchiveExtractor] Extraction for package ID {packageId} paused.");
+        }
+    }
+
+    /// <summary>
+    /// Resumes extraction for a specific package cleanly from the exact byte where it paused.
+    /// </summary>
+    public void ResumePackageExtraction(Guid packageId)
+    {
+        if (_packagePauseEvents.TryGetValue(packageId, out var pe))
+        {
+            _pausedPackages.TryRemove(packageId, out _);
+            pe.Set();
+            AppLogger.Info($"[ArchiveExtractor] Extraction for package ID {packageId} resumed.");
+        }
+    }
+
+    /// <summary>
+    /// Pauses all currently active package extractions.
+    /// </summary>
+    public void PauseAllExtractions()
+    {
+        foreach (var packageId in _extractingPackages.Keys)
+        {
+            PausePackageExtraction(packageId);
+        }
+    }
+
+    /// <summary>
+    /// Resumes all currently paused package extractions.
+    /// </summary>
+    public void ResumeAllExtractions()
+    {
+        foreach (var packageId in _extractingPackages.Keys)
+        {
+            ResumePackageExtraction(packageId);
+        }
+    }
+
+    /// <summary>
+    /// Cancels all active archive extractions immediately.
+    /// </summary>
+    public void CancelAllExtractions()
+    {
+        foreach (var kvp in _packageCts)
+        {
+            try { kvp.Value.Cancel(); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Cancels extraction for a specific package if currently extracting.
+    /// </summary>
+    public void CancelPackageExtraction(Guid packageId)
+    {
+        if (_packageCts.TryGetValue(packageId, out var cts))
+        {
+            try { cts.Cancel(); } catch { }
+        }
+    }
+
+    public async Task<bool> CheckAndExtractPackageAsync(DownloadPackage package, CancellationToken cancellationToken = default, bool force = false)
     {
         if (package == null)
-            return;
+            return false;
 
-        // 1. Strict Check: If auto-extract is turned off for this package, do NOTHING!
-        if (!package.AutoExtractArchives)
+        // 1. Strict Check: If already extracted, do NOTHING!
+        if (package.IsExtracted)
+        {
+            AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wurde bereits entpackt. Überspringe.");
+            return true;
+        }
+
+        // 1b. Strict Check: If auto-extract is turned off and not explicitly forced, do NOTHING!
+        if (!force && !package.AutoExtractArchives)
         {
             AppLogger.Info($"[ArchiveExtractor] Auto-extract ist für Paket '{package.Name}' deaktiviert. Überspringe.");
-            return;
+            return false;
         }
 
         // 2. Concurrency guard: Prevent multiple threads from extracting the same package simultaneously
-        if (!_extractingPackages.TryAdd(package.Id, true))
+        if (package.IsExtracting || !_extractingPackages.TryAdd(package.Id, true))
         {
             AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wird bereits entpackt.");
-            return;
+            return false;
         }
 
+        var pauseEvent = new System.Threading.ManualResetEventSlim(true);
+        _packagePauseEvents[package.Id] = pauseEvent;
+        _pausedPackages.TryRemove(package.Id, out _);
+
+        SafeInvoke(() =>
+        {
+            package.IsExtracting = true;
+            package.IsExtractionPaused = false;
+        });
+
+        var linkedCts = cancellationToken.CanBeCanceled
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : new CancellationTokenSource();
+
+        _packageCts[package.Id] = linkedCts;
+
+        var token = linkedCts.Token;
+        SystemIntegration.PowerManagementService.Instance.AcquireKeepAwake($"Extracting package '{package.Name}'");
+
+        bool allSuccess = false;
         try
         {
             // 3. Strict Package Completeness Verification:
@@ -135,13 +248,13 @@ public class ArchiveExtractionService
             // If even a single item is pending, downloading, queued, solving captcha or failed, DO NOT EXTRACT!
             var enabledItems = package.Items.Where(i => i.IsEnabled).ToList();
             if (enabledItems.Count == 0)
-                return;
+                return false;
 
             var pendingCount = enabledItems.Count(i => i.Status != DownloadStatus.Completed);
             if (pendingCount > 0)
             {
                 AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wartet noch auf {pendingCount} unvollständige Datei(en) ({enabledItems.Count - pendingCount}/{enabledItems.Count} abgeschlossen).");
-                return;
+                return false;
             }
 
             // 4. Strict File Presence and Non-Empty Verification:
@@ -151,14 +264,14 @@ public class ArchiveExtractionService
                 if (string.IsNullOrWhiteSpace(item.SaveFilePath) || !File.Exists(item.SaveFilePath))
                 {
                     AppLogger.Warn($"[ArchiveExtractor] Paket '{package.Name}' kann noch nicht entpackt werden: Datei '{item.SaveFilePath}' ist noch nicht auf der Festplatte vorhanden.");
-                    return;
+                    return false;
                 }
 
                 var fileInfo = new FileInfo(item.SaveFilePath);
                 if (fileInfo.Length == 0)
                 {
                     AppLogger.Warn($"[ArchiveExtractor] Paket '{package.Name}' kann noch nicht entpackt werden: Datei '{item.SaveFilePath}' hat 0 Bytes.");
-                    return;
+                    return false;
                 }
             }
 
@@ -176,20 +289,30 @@ public class ArchiveExtractionService
             if (primaryArchives.Count == 0)
             {
                 AppLogger.Info($"[ArchiveExtractor] No primary archive files found in package '{package.Name}'.");
-                return;
+                return false;
             }
 
             // 6. Give a small buffer (150ms) for background download file handles to be completely released
-            await Task.Delay(150);
+            await Task.Delay(150, token);
 
             SafeInvoke(() =>
             {
+                if (package.NextTaskSteps.All(s => s.Key != "Extract"))
+                {
+                    package.NextTaskSteps.Add(new NextTaskStep
+                    {
+                        Key = "Extract",
+                        Name = package.LowResourceExtraction ? Loc.Get("NextTask_ExtractLowResource") : Loc.Get("NextTask_Extract"),
+                        State = NextTaskStepState.Pending
+                    });
+                }
                 package.ResetNextTasks();
             });
 
             // 6b. Automatic PAR2 verification and repair before extraction
             if (package.AutoPar2Repair && SettingsService.Instance.Settings.AutoPar2Repair)
             {
+                token.ThrowIfCancellationRequested();
                 if (Verification.Par2RepairService.Instance.HasPar2Files(package, out _))
                 {
                     SafeInvoke(() =>
@@ -206,7 +329,7 @@ public class ArchiveExtractionService
                     if (!par2Success)
                     {
                         AppLogger.Warn($"[ArchiveExtractor] PAR2-Prüfung oder Reparatur für Paket '{package.Name}' war nicht erfolgreich. Entpacken abgebrochen.");
-                        return;
+                        return false;
                     }
 
                     SafeInvoke(() => package.SetNextTaskDone("Par2"));
@@ -218,11 +341,13 @@ public class ArchiveExtractionService
                 package.SetNextTaskRunning("Extract");
                 package.StatusMessage = Loc.Get("Status_Extracting");
             });
-            bool allSuccess = true;
+            allSuccess = true;
+            string? firstErrorStatus = null;
             var successfullyExtractedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             for (int archiveIndex = 0; archiveIndex < primaryArchives.Count; archiveIndex++)
             {
+                token.ThrowIfCancellationRequested();
                 var archivePath = primaryArchives[archiveIndex];
                 try
                 {
@@ -253,6 +378,7 @@ public class ArchiveExtractionService
                     {
                         Directory.CreateDirectory(targetDir);
                     }
+                    package.ExtractionDirectory = targetDir;
 
                     int currentIdx = archiveIndex;
                     var success = await ExtractArchiveAsync(
@@ -260,6 +386,10 @@ public class ArchiveExtractionService
                         targetDir, 
                         msg =>
                         {
+                            if (ExtractionErrorClassifier.IsExtractionErrorStatus(msg))
+                            {
+                                firstErrorStatus ??= msg;
+                            }
                             SafeInvoke(() => package.StatusMessage = msg);
                         }, 
                         lowResourceMode: package.LowResourceExtraction,
@@ -271,6 +401,12 @@ public class ArchiveExtractionService
 
                             string pctStr = overallPct.ToString("0.00");
                             SafeInvoke(() => package.StatusMessage = Loc.Format("Status_ExtractingProgress", pctStr));
+                        },
+                        cancellationToken: token,
+                        pauseEvent: pauseEvent,
+                        pauseStateChanged: isPaused =>
+                        {
+                            SafeInvoke(() => package.IsExtractionPaused = isPaused);
                         });
 
                     if (success)
@@ -291,6 +427,10 @@ public class ArchiveExtractionService
                         allSuccess = false;
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     AppLogger.Error($"[ArchiveExtractor] Extraction failed for {archivePath}", ex);
@@ -298,17 +438,28 @@ public class ArchiveExtractionService
                 }
             }
 
+            token.ThrowIfCancellationRequested();
+
             SafeInvoke(() => package.SetNextTaskDone("Extract"));
 
             if (allSuccess)
             {
-                SafeInvoke(() => package.StatusMessage = Loc.Get("Status_CompletedAndExtracted"));
+                SafeInvoke(() =>
+                {
+                    package.IsExtracted = true;
+                    package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
+                    package.CompletedAt ??= DateTime.Now;
+                });
             }
             else
             {
                 SafeInvoke(() =>
                 {
-                    if (string.IsNullOrWhiteSpace(package.StatusMessage) ||
+                    if (!string.IsNullOrWhiteSpace(firstErrorStatus))
+                    {
+                        package.StatusMessage = firstErrorStatus;
+                    }
+                    else if (string.IsNullOrWhiteSpace(package.StatusMessage) ||
                         package.StatusMessage == Loc.Get("Status_Completed") ||
                         package.StatusMessage == Loc.Get("Status_Extracting") ||
                         package.StatusMessage.StartsWith(Loc.Get("Status_Extracting") + " (") ||
@@ -341,7 +492,7 @@ public class ArchiveExtractionService
 
                 // 2-second cooldown to guarantee all extraction file handles are completely closed and flushed
                 var cooldownMs = DownloadPersistenceService.IsTestEnvironment ? 50 : 2000;
-                await Task.Delay(cooldownMs);
+                await Task.Delay(cooldownMs, token);
 
                 SafeInvoke(() => package.SetNextTaskRunning(cleanupStepName));
 
@@ -360,11 +511,50 @@ public class ArchiveExtractionService
                 Download.QueueManager.Instance.NotifyPackageCompletionIfEligible(package);
             });
         }
+        catch (OperationCanceledException)
+        {
+            AppLogger.Info($"[ArchiveExtractor] Extraction for package '{package.Name}' was canceled.");
+            SafeInvoke(() =>
+            {
+                package.IsExtracting = false;
+                package.IsExtractionPaused = false;
+                package.StatusMessage = Loc.Get("Status_Paused");
+                foreach (var step in package.NextTaskSteps)
+                {
+                    if (step.Key == "Extract" && step.State == NextTaskStepState.Running)
+                    {
+                        step.State = NextTaskStepState.Pending;
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error($"[ArchiveExtractor] Error during package extraction for '{package.Name}'", ex);
+        }
         finally
         {
+            SystemIntegration.PowerManagementService.Instance.ReleaseKeepAwake($"Finished extracting package '{package.Name}'");
+            if (_packageCts.TryRemove(package.Id, out var removedCts))
+            {
+                try { removedCts.Dispose(); } catch { }
+            }
+            if (_packagePauseEvents.TryRemove(package.Id, out var pe))
+            {
+                try { pe.Dispose(); } catch { }
+            }
+            _pausedPackages.TryRemove(package.Id, out _);
             _extractingPackages.TryRemove(package.Id, out _);
-            SafeInvoke(() => package.CheckAndRefreshVerifyBatFile());
+            SafeInvoke(() =>
+            {
+                package.IsExtracting = false;
+                package.IsExtractionPaused = false;
+                package.CheckAndRefreshVerifyBatFile();
+            });
+
+            SystemIntegration.PostDownloadActionService.Instance.Evaluate(Download.QueueManager.Instance.Packages);
         }
+        return allSuccess;
     }
 
     private static void SafeInvoke(Action action)
@@ -429,7 +619,10 @@ public class ArchiveExtractionService
         Action<string>? statusCallback = null,
         bool? lowResourceMode = null,
         Action<double>? progressCallback = null,
-        string? explicitPassword = null)
+        string? explicitPassword = null,
+        CancellationToken cancellationToken = default,
+        ManualResetEventSlim? pauseEvent = null,
+        Action<bool>? pauseStateChanged = null)
     {
         return Task.Run(async () =>
         {
@@ -437,23 +630,65 @@ public class ArchiveExtractionService
             var isLowResource = lowResourceMode
                 ?? DriveHardwareDetector.IsLowResourceRecommended(targetDirectory);
 
+            void WaitIfPaused()
+            {
+                if (pauseEvent != null && !pauseEvent.IsSet)
+                {
+                    pauseStateChanged?.Invoke(true);
+                    SystemIntegration.PowerManagementService.Instance.ReleaseKeepAwake($"Paused extracting archive '{Path.GetFileName(archiveFilePath)}'");
+                    statusCallback?.Invoke(Loc.Get("Status_ExtractionPaused"));
+                    pauseEvent.Wait(cancellationToken);
+                    SystemIntegration.PowerManagementService.Instance.AcquireKeepAwake($"Extracting archive '{Path.GetFileName(archiveFilePath)}'");
+                    pauseStateChanged?.Invoke(false);
+                    statusCallback?.Invoke(Loc.Get("Status_Extracting"));
+                }
+            }
+
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!File.Exists(archiveFilePath))
                     return false;
+
+                // 0. Multi-part completeness: report the exact missing follow-up part (e.g. ".part02.rar") up front
+                var missingVolume = ExtractionErrorClassifier.FindMissingVolume(archiveFilePath);
+                if (!string.IsNullOrEmpty(missingVolume))
+                {
+                    AppLogger.Warn($"[ArchiveExtractor] Missing archive part '{missingVolume}' for '{archiveFilePath}'. Extraction not started.");
+                    statusCallback?.Invoke(ExtractionErrorClassifier.BuildMissingVolumeStatus(missingVolume));
+                    return false;
+                }
 
                 // 1. Password detection and trial
                 string? passwordToUse = explicitPassword;
                 bool isArchiveEncrypted = false;
 
+                // Reports damaged / incomplete archives found by the initial probe (instead of wrongly treating them as encrypted)
+                bool ReportProbeFailureIfNotPasswordRelated(bool isEncrypted, Exception? probeFailure)
+                {
+                    if (probeFailure == null)
+                        return false;
+
+                    var probeKind = ExtractionErrorClassifier.Classify(probeFailure);
+                    if (probeKind == ExtractionErrorKind.WrongPassword || isEncrypted)
+                        return false;
+
+                    AppLogger.Warn($"[ArchiveExtractor] Archive '{archiveFilePath}' could not be opened ({probeKind}): {probeFailure.Message}");
+                    statusCallback?.Invoke(ExtractionErrorClassifier.BuildStatusMessage(probeKind, probeFailure, archiveFilePath));
+                    return true;
+                }
+
                 if (string.IsNullOrEmpty(passwordToUse))
                 {
-                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted) && !isArchiveEncrypted)
+                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted, out var probeFailure) && !isArchiveEncrypted)
                     {
                         passwordToUse = null;
                     }
                     else
                     {
+                        if (ReportProbeFailureIfNotPasswordRelated(isArchiveEncrypted, probeFailure))
+                            return false;
+
                         isArchiveEncrypted = true;
                         var savedPasswords = SettingsService.Instance.Settings.ExtractionPasswords;
                         if (savedPasswords != null)
@@ -472,12 +707,15 @@ public class ArchiveExtractionService
                 }
                 else
                 {
-                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted) && !isArchiveEncrypted)
+                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted, out var explicitProbeFailure) && !isArchiveEncrypted)
                     {
                         passwordToUse = null;
                     }
                     else
                     {
+                        if (ReportProbeFailureIfNotPasswordRelated(isArchiveEncrypted, explicitProbeFailure))
+                            return false;
+
                         isArchiveEncrypted = true;
                         if (!TryTestArchivePassword(archiveFilePath, passwordToUse, out _))
                         {
@@ -583,11 +821,13 @@ public class ArchiveExtractionService
 
                     long completedBytesZip = 0;
                     int completedEntriesZip = 0;
-                    byte[] buffer = new byte[81920];
+                    byte[] buffer = new byte[256 * 1024];
                     int chunkCount = 0;
 
                     foreach (var entry in validZipEntries)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        WaitIfPaused();
                         var destinationPath = Path.GetFullPath(Path.Combine(fullTarget, entry.FullName));
                         if (!destinationPath.StartsWith(fullTarget, StringComparison.OrdinalIgnoreCase))
                         {
@@ -601,32 +841,42 @@ public class ArchiveExtractionService
                         }
 
                         long entryExtractedBytes = 0;
-                        using (var entryStream = entry.Open())
-                        using (var outputStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                        try
                         {
-                            int bytesRead;
-                            while ((bytesRead = entryStream.Read(buffer, 0, buffer.Length)) > 0)
+                            using (var entryStream = entry.Open())
+                            using (var outputStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 256 * 1024, FileOptions.SequentialScan))
                             {
-                                outputStream.Write(buffer, 0, bytesRead);
-                                entryExtractedBytes += bytesRead;
+                                int bytesRead;
+                                while ((bytesRead = entryStream.Read(buffer, 0, buffer.Length)) > 0)
+                                {
+                                    cancellationToken.ThrowIfCancellationRequested();
+                                    WaitIfPaused();
+                                    outputStream.Write(buffer, 0, bytesRead);
+                                    entryExtractedBytes += bytesRead;
 
-                                if (totalBytesZip > 0)
-                                {
-                                    double pct = Math.Clamp((double)(completedBytesZip + entryExtractedBytes) / totalBytesZip * 100.0, 0.0, 100.0);
-                                    ReportCurrentProgress(pct);
-                                }
-                                else if (totalEntriesZip > 0)
-                                {
-                                    double entryFraction = entry.Length > 0 ? Math.Clamp((double)entryExtractedBytes / entry.Length, 0.0, 1.0) : 0.0;
-                                    double pct = Math.Clamp(((double)completedEntriesZip + entryFraction) / totalEntriesZip * 100.0, 0.0, 100.0);
-                                    ReportCurrentProgress(pct);
-                                }
+                                    if (totalBytesZip > 0)
+                                    {
+                                        double pct = Math.Clamp((double)(completedBytesZip + entryExtractedBytes) / totalBytesZip * 100.0, 0.0, 100.0);
+                                        ReportCurrentProgress(pct);
+                                    }
+                                    else if (totalEntriesZip > 0)
+                                    {
+                                        double entryFraction = entry.Length > 0 ? Math.Clamp((double)entryExtractedBytes / entry.Length, 0.0, 1.0) : 0.0;
+                                        double pct = Math.Clamp(((double)completedEntriesZip + entryFraction) / totalEntriesZip * 100.0, 0.0, 100.0);
+                                        ReportCurrentProgress(pct);
+                                    }
 
-                                if (isLowResource && (++chunkCount % 16 == 0))
-                                {
-                                    System.Threading.Thread.Sleep(2);
+                                    if (isLowResource && (++chunkCount % 16 == 0))
+                                    {
+                                        System.Threading.Thread.Sleep(2);
+                                    }
                                 }
                             }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            try { if (File.Exists(destinationPath)) File.Delete(destinationPath); } catch { }
+                            throw;
                         }
 
                         completedBytesZip += entry.Length > 0 ? entry.Length : entryExtractedBytes;
@@ -677,11 +927,13 @@ public class ArchiveExtractionService
 
                 long completedBytes = 0;
                 int completedEntries = 0;
-                byte[] sharpBuffer = new byte[81920];
+                byte[] sharpBuffer = new byte[256 * 1024];
                 int sharpChunkCount = 0;
 
                 foreach (var entry in validEntries)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    WaitIfPaused();
                     var destinationPath = Path.GetFullPath(Path.Combine(fullTarget, entry.Key!));
                     if (!destinationPath.StartsWith(fullTarget, StringComparison.OrdinalIgnoreCase))
                     {
@@ -695,32 +947,42 @@ public class ArchiveExtractionService
                     }
 
                     long entryExtractedBytes = 0;
-                    using (var entryStream = entry.OpenEntryStream())
-                    using (var outputStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    try
                     {
-                        int bytesRead;
-                        while ((bytesRead = entryStream.Read(sharpBuffer, 0, sharpBuffer.Length)) > 0)
+                        using (var entryStream = entry.OpenEntryStream())
+                        using (var outputStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 256 * 1024, FileOptions.SequentialScan))
                         {
-                            outputStream.Write(sharpBuffer, 0, bytesRead);
-                            entryExtractedBytes += bytesRead;
+                            int bytesRead;
+                            while ((bytesRead = entryStream.Read(sharpBuffer, 0, sharpBuffer.Length)) > 0)
+                            {
+                                cancellationToken.ThrowIfCancellationRequested();
+                                WaitIfPaused();
+                                outputStream.Write(sharpBuffer, 0, bytesRead);
+                                entryExtractedBytes += bytesRead;
 
-                            if (totalBytes > 0)
-                            {
-                                double pct = Math.Clamp((double)(completedBytes + entryExtractedBytes) / totalBytes * 100.0, 0.0, 100.0);
-                                ReportCurrentProgress(pct);
-                            }
-                            else if (totalEntries > 0)
-                            {
-                                double entryFraction = entry.Size > 0 ? Math.Clamp((double)entryExtractedBytes / entry.Size, 0.0, 1.0) : 0.0;
-                                double pct = Math.Clamp(((double)completedEntries + entryFraction) / totalEntries * 100.0, 0.0, 100.0);
-                                ReportCurrentProgress(pct);
-                            }
+                                if (totalBytes > 0)
+                                {
+                                    double pct = Math.Clamp((double)(completedBytes + entryExtractedBytes) / totalBytes * 100.0, 0.0, 100.0);
+                                    ReportCurrentProgress(pct);
+                                }
+                                else if (totalEntries > 0)
+                                {
+                                    double entryFraction = entry.Size > 0 ? Math.Clamp((double)entryExtractedBytes / entry.Size, 0.0, 1.0) : 0.0;
+                                    double pct = Math.Clamp(((double)completedEntries + entryFraction) / totalEntries * 100.0, 0.0, 100.0);
+                                    ReportCurrentProgress(pct);
+                                }
 
-                            if (isLowResource && (++sharpChunkCount % 16 == 0))
-                            {
-                                System.Threading.Thread.Sleep(2);
+                                if (isLowResource && (++sharpChunkCount % 16 == 0))
+                                {
+                                    System.Threading.Thread.Sleep(2);
+                                }
                             }
                         }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        try { if (File.Exists(destinationPath)) File.Delete(destinationPath); } catch { }
+                        throw;
                     }
 
                     completedBytes += entry.Size > 0 ? entry.Size : entryExtractedBytes;
@@ -742,6 +1004,12 @@ public class ArchiveExtractionService
                 statusCallback?.Invoke(Loc.Get("Status_ExtractionCompleted"));
                 return true;
             }
+            catch (OperationCanceledException)
+            {
+                AppLogger.Info($"[ArchiveExtractor] Extraction canceled for '{archiveFilePath}'.");
+                statusCallback?.Invoke(Loc.Get("Status_Paused"));
+                return false;
+            }
             catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException ||
                                        ex is SharpCompress.Common.CryptographicException)
             {
@@ -757,7 +1025,8 @@ public class ArchiveExtractionService
             catch (Exception ex)
             {
                 AppLogger.Error($"[ArchiveExtractor] Error during extraction: {archiveFilePath}", ex);
-                statusCallback?.Invoke(Loc.Format("Status_ExtractionFailed", ex.Message));
+                var errorKind = ExtractionErrorClassifier.Classify(ex);
+                statusCallback?.Invoke(ExtractionErrorClassifier.BuildStatusMessage(errorKind, ex, archiveFilePath));
                 return false;
             }
             finally
@@ -781,7 +1050,17 @@ public class ArchiveExtractionService
     /// </summary>
     public static bool TryTestArchivePassword(string archiveFilePath, string? password, out bool isEncrypted)
     {
+        return TryTestArchivePassword(archiveFilePath, password, out isEncrypted, out _);
+    }
+
+    /// <summary>
+    /// Same as <see cref="TryTestArchivePassword(string, string?, out bool)"/> but additionally returns the exception that
+    /// made the probe fail for reasons other than a missing/wrong password (e.g. damaged or incomplete archive).
+    /// </summary>
+    public static bool TryTestArchivePassword(string archiveFilePath, string? password, out bool isEncrypted, out Exception? probeFailure)
+    {
         isEncrypted = false;
+        probeFailure = null;
         try
         {
             var options = new SharpCompress.Readers.ReaderOptions { Password = password };
@@ -826,14 +1105,17 @@ public class ArchiveExtractionService
             isEncrypted = true;
             return false;
         }
-        catch (SharpCompress.Common.ArchiveException)
+        catch (SharpCompress.Common.ArchiveException aex)
         {
-            isEncrypted = true;
+            isEncrypted = aex.Message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                          aex.Message.Contains("encrypted", StringComparison.OrdinalIgnoreCase);
+            probeFailure = aex;
             return false;
         }
         catch (Exception ex)
         {
             AppLogger.Debug($"[ArchiveExtractor] Password test note for '{archiveFilePath}': {ex.Message}");
+            probeFailure = ex;
             return false;
         }
     }
@@ -869,6 +1151,14 @@ public class ArchiveExtractionService
             }
         }
 
+        if (package != null && !string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory))
+        {
+            if (!ViewModels.MainViewModel.IsProtectedDirectory(package.SaveDirectory))
+            {
+                PurgeTemporaryFilesInDirectory(package.SaveDirectory);
+            }
+        }
+
         foreach (var filePath in files)
         {
             try
@@ -899,7 +1189,7 @@ public class ArchiveExtractionService
     /// Such files must never be moved to the Windows Recycle Bin; they must be deleted directly
     /// or moved to the Windows Temp directory.
     /// </summary>
-    public static bool IsTempFile(string filePath)
+    public static bool IsTempFile(string filePath, bool allowTempDirectoryMatch = true)
     {
         if (string.IsNullOrWhiteSpace(filePath)) return false;
 
@@ -908,11 +1198,16 @@ public class ArchiveExtractionService
             var fileName = Path.GetFileName(filePath);
             if (string.IsNullOrWhiteSpace(fileName)) return false;
 
-            // 1. Files located within the standard Windows Temp directory
-            var winTemp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var fullPath = Path.GetFullPath(filePath);
-            if (fullPath.StartsWith(winTemp, StringComparison.OrdinalIgnoreCase))
-                return true;
+            // 1. Files located directly within the standard Windows Temp directory root
+            // (e.g. %TEMP%\tempfile.data, but not inside structured subdirectories where user packages might reside)
+            if (allowTempDirectoryMatch)
+            {
+                var winTemp = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var fullPath = Path.GetFullPath(filePath);
+                var fileDir = Path.GetDirectoryName(fullPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (!string.IsNullOrWhiteSpace(fileDir) && string.Equals(fileDir, winTemp, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
 
             // 2. Known temporary, partial, and sidecar extensions
             if (fileName.EndsWith(".part.segments", StringComparison.OrdinalIgnoreCase) ||
@@ -927,7 +1222,9 @@ public class ArchiveExtractionService
                 fileName.EndsWith(".aria2", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".1", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".cache", StringComparison.OrdinalIgnoreCase) ||
-                fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase))
+                fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith(".incomplete", StringComparison.OrdinalIgnoreCase) ||
+                fileName.EndsWith(".partial", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -935,6 +1232,7 @@ public class ArchiveExtractionService
             // 3. Patterns: temporary prefix (~, ~$), permission test files, or contains .tmp. / .temp.
             if (fileName.StartsWith("~") ||
                 fileName.StartsWith("__perm_test_", StringComparison.OrdinalIgnoreCase) ||
+                fileName.StartsWith("Reepax_del_", StringComparison.OrdinalIgnoreCase) ||
                 fileName.Contains(".tmp.", StringComparison.OrdinalIgnoreCase) ||
                 fileName.Contains(".temp.", StringComparison.OrdinalIgnoreCase))
             {
@@ -988,31 +1286,183 @@ public class ArchiveExtractionService
         }
     }
 
-    public static void DeleteToRecycleBin(string filePath)
+    /// <summary>
+    /// Recursively scans a directory and permanently deletes all temporary files
+    /// (e.g. .part, .part.segments, .tmp, .temp, .reepax_tmp, zero-byte files, etc.)
+    /// directly from disk using DeleteOrMoveToTemp, ensuring they never end up in
+    /// the Windows Recycle Bin.
+    /// </summary>
+    public static void PurgeTemporaryFilesInDirectory(string dirPath)
     {
-        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        if (string.IsNullOrWhiteSpace(dirPath) || !Directory.Exists(dirPath))
             return;
 
         try
+        {
+            var dirInfo = new DirectoryInfo(dirPath);
+            foreach (var file in dirInfo.EnumerateFiles("*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if (IsTempFile(file.FullName, allowTempDirectoryMatch: false))
+                    {
+                        if ((file.Attributes & FileAttributes.ReadOnly) != 0)
+                            file.Attributes &= ~FileAttributes.ReadOnly;
+
+                        DeleteOrMoveToTemp(file.FullName);
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Recursively removes all empty subdirectories in bottom-up order.
+    /// </summary>
+    public static void CleanEmptySubdirectories(string dirPath)
+    {
+        if (string.IsNullOrWhiteSpace(dirPath) || !Directory.Exists(dirPath))
+            return;
+
+        try
+        {
+            var dirInfo = new DirectoryInfo(dirPath);
+            var subDirs = dirInfo.EnumerateDirectories("*", SearchOption.AllDirectories)
+                                 .OrderByDescending(d => d.FullName.Length)
+                                 .ToList();
+
+            foreach (var subDir in subDirs)
+            {
+                try
+                {
+                    if (!Directory.EnumerateFileSystemEntries(subDir.FullName).Any())
+                    {
+                        if ((subDir.Attributes & FileAttributes.ReadOnly) != 0)
+                            subDir.Attributes &= ~FileAttributes.ReadOnly;
+
+                        subDir.Delete();
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    public static void StripReadOnlyAttributes(string dirPath)
+    {
+        try
+        {
+            var dirInfo = new DirectoryInfo(dirPath);
+            if ((dirInfo.Attributes & FileAttributes.ReadOnly) != 0)
+                dirInfo.Attributes &= ~FileAttributes.ReadOnly;
+
+            foreach (var file in dirInfo.EnumerateFiles("*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if ((file.Attributes & FileAttributes.ReadOnly) != 0)
+                        file.Attributes &= ~FileAttributes.ReadOnly;
+                }
+                catch { }
+            }
+
+            foreach (var subDir in dirInfo.EnumerateDirectories("*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if ((subDir.Attributes & FileAttributes.ReadOnly) != 0)
+                        subDir.Attributes &= ~FileAttributes.ReadOnly;
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
+
+    public static void DeleteToRecycleBin(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        bool isFile = File.Exists(path);
+        bool isDir = !isFile && Directory.Exists(path);
+        if (!isFile && !isDir)
+            return;
+
+        // In test environment, delete directly and never touch the user's real Windows Recycle Bin!
+        if (DownloadPersistenceService.IsTestEnvironment)
+        {
+            try
+            {
+                if (isDir) Directory.Delete(path, recursive: true);
+                else File.Delete(path);
+            }
+            catch { }
+            return;
+        }
+
+        if (isFile)
         {
             // 0-Byte-Dateien oder temporäre Dateien (.part, .segments, .tmp, .bak etc.)
             // enthalten keinerlei wiederherstellbaren Inhalt und gehören niemals in den
             // Windows-Papierkorb. Sie werden direkt rückstandslos gelöscht oder bei
             // Zugriffskonflikten in den Windows-Temp-Ordner verschoben.
-            if (IsTempFile(filePath))
+            if (IsTempFile(path))
             {
-                DeleteOrMoveToTemp(filePath);
+                DeleteOrMoveToTemp(path);
                 return;
             }
 
-            var fi = new FileInfo(filePath);
+            var fi = new FileInfo(path);
             if (fi.Length == 0)
             {
-                DeleteOrMoveToTemp(filePath);
+                DeleteOrMoveToTemp(path);
                 return;
             }
 
-            var fullPath = Path.GetFullPath(filePath);
+            try
+            {
+                if ((fi.Attributes & FileAttributes.ReadOnly) != 0)
+                    fi.Attributes &= ~FileAttributes.ReadOnly;
+            }
+            catch { }
+        }
+        else if (isDir)
+        {
+            if (ViewModels.MainViewModel.IsProtectedDirectory(path))
+            {
+                AppLogger.Warn($"[ArchiveExtractor] Prevented deleting protected directory to Recycle Bin: {path}");
+                return;
+            }
+
+            // 1. Permanently delete all temporary/partial/sidecar files directly
+            PurgeTemporaryFilesInDirectory(path);
+
+            // 2. Strip read-only attributes so files/directories can be manipulated cleanly
+            StripReadOnlyAttributes(path);
+
+            // 3. Clean up any empty subdirectories left behind by purged temp files
+            CleanEmptySubdirectories(path);
+
+            // 4. If the directory is now completely empty (it only contained temporary clutter),
+            // delete the directory directly without sending an empty shell to the Recycle Bin.
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(path).Any())
+                {
+                    Directory.Delete(path, recursive: true);
+                    return;
+                }
+            }
+            catch { }
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             var shf = new SHFILEOPSTRUCT
             {
                 wFunc = FO_DELETE,
@@ -1022,12 +1472,30 @@ public class ArchiveExtractionService
             int result = SHFileOperation(ref shf);
             if (result != 0)
             {
-                DeleteOrMoveToTemp(filePath);
+                if (isDir)
+                {
+                    Directory.Delete(fullPath, recursive: true);
+                }
+                else
+                {
+                    DeleteOrMoveToTemp(fullPath);
+                }
             }
         }
         catch
         {
-            DeleteOrMoveToTemp(filePath);
+            try
+            {
+                if (isDir)
+                {
+                    Directory.Delete(path, recursive: true);
+                }
+                else
+                {
+                    DeleteOrMoveToTemp(path);
+                }
+            }
+            catch { }
         }
     }
 

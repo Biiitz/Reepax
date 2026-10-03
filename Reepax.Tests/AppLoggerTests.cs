@@ -21,6 +21,7 @@ public class AppLoggerTests : IDisposable
 
     public void Dispose()
     {
+        AppLogger.Flush();
         AppLogger.LogsDirectory = null!;
         AppLogger.IsLoggingEnabled = false;
         try
@@ -39,6 +40,7 @@ public class AppLoggerTests : IDisposable
         Assert.False(Directory.Exists(_testLogsDirectory));
 
         AppLogger.Info("Test message 1");
+        AppLogger.Flush();
 
         Assert.True(Directory.Exists(_testLogsDirectory));
         var logFile = AppLogger.GetCurrentLogFilePath();
@@ -52,6 +54,7 @@ public class AppLoggerTests : IDisposable
         AppLogger.Info("Information notification");
         AppLogger.Warn("Warning notification");
         AppLogger.Error("Error notification");
+        AppLogger.Flush();
 
         var logFile = AppLogger.GetCurrentLogFilePath();
         var lines = File.ReadAllLines(logFile);
@@ -88,6 +91,7 @@ public class AppLoggerTests : IDisposable
         {
             AppLogger.Error("Operation failed", ex);
         }
+        AppLogger.Flush();
 
         var logFile = AppLogger.GetCurrentLogFilePath();
         var content = File.ReadAllText(logFile);
@@ -118,6 +122,7 @@ public class AppLoggerTests : IDisposable
         })).ToArray();
 
         await Task.WhenAll(tasks);
+        AppLogger.Flush();
 
         var logFile = AppLogger.GetCurrentLogFilePath();
         var writtenLines = File.ReadAllLines(logFile);
@@ -137,6 +142,7 @@ public class AppLoggerTests : IDisposable
             AppLogger.Info("This message should not be logged");
             AppLogger.Warn("Nor should this warning");
             AppLogger.Error("Nor this error");
+            AppLogger.Flush();
 
             Assert.False(Directory.Exists(_testLogsDirectory));
             Assert.False(File.Exists(AppLogger.GetCurrentLogFilePath()));
@@ -145,5 +151,26 @@ public class AppLoggerTests : IDisposable
         {
             AppLogger.IsLoggingEnabled = true;
         }
+    }
+
+    [Fact]
+    public void AppLogger_WhenFileIsLocked_DoesNotBlockCallingThread()
+    {
+        // Pre-create and lock the daily log file with exclusive access
+        Directory.CreateDirectory(_testLogsDirectory);
+        var logFile = AppLogger.GetCurrentLogFilePath();
+        using (var lockStream = new FileStream(logFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            AppLogger.Info("Non-blocking test entry while file is locked");
+            sw.Stop();
+
+            // Calling thread returns immediately without synchronous Thread.Sleep retries
+            Assert.True(sw.ElapsedMilliseconds < 50, $"AppLogger.Info took {sw.ElapsedMilliseconds} ms, expected non-blocking < 50 ms.");
+        }
+
+        // After releasing the lock, flush the background queue
+        AppLogger.Flush();
+        Assert.True(File.Exists(logFile));
     }
 }

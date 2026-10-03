@@ -33,17 +33,28 @@ public static class AppRestartService
         try
         {
             // 1. Prepare MainWindow state and column widths if UI is alive
-            if (Application.Current?.Dispatcher != null &&
+            if (!DownloadPersistenceService.IsTestEnvironment &&
+                Application.Current?.Dispatcher != null &&
                 !Application.Current.Dispatcher.HasShutdownStarted &&
                 !Application.Current.Dispatcher.HasShutdownFinished)
             {
-                Application.Current.Dispatcher.Invoke(() =>
+                if (Application.Current.Dispatcher.CheckAccess())
                 {
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
                         mw.PrepareForRestart();
                     }
-                });
+                }
+                else
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (Application.Current.MainWindow is MainWindow mw)
+                        {
+                            mw.PrepareForRestart();
+                        }
+                    });
+                }
             }
         }
         catch (Exception ex)

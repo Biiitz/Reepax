@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Localization;
 
@@ -251,19 +252,59 @@ public class TrayIconService : IDisposable
         {
             if (_mainWindow is MainWindow mw)
             {
-                mw.ForceExit();
+                mw.ForceExit(bypassCloseConfirmation: false);
             }
             else
             {
+                if (QueueManager.Instance.HasActiveDownloads())
+                {
+                    bool confirmed = Reepax.Views.ConfirmDialog.Show(
+                        Loc.Get("Dialog_ConfirmExit_Title"),
+                        Loc.Get("Dialog_ConfirmExit_ActiveDownloads"),
+                        isDanger: false);
+
+                    if (!confirmed)
+                        return;
+                }
+
                 QueueManager.PerformSafeShutdown();
                 Application.Current?.Shutdown();
             }
         };
 
+        var postActionMenu = new MenuItem { Header = Loc.Get("PostDownload_Menu_Header") };
+        void RefreshPostActionMenuItems()
+        {
+            postActionMenu.Items.Clear();
+            var current = PostDownloadActionService.Instance.CurrentAction;
+
+            var noneItem = new MenuItem { Header = Loc.Get("PostDownload_Action_None"), IsCheckable = true, IsChecked = current == PostDownloadAction.None };
+            noneItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.None;
+
+            var shutdownItem = new MenuItem { Header = Loc.Get("PostDownload_Action_Shutdown"), IsCheckable = true, IsChecked = current == PostDownloadAction.Shutdown };
+            shutdownItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.Shutdown;
+
+            var sleepItem = new MenuItem { Header = Loc.Get("PostDownload_Action_Sleep"), IsCheckable = true, IsChecked = current == PostDownloadAction.Sleep };
+            sleepItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.Sleep;
+
+            var exitAppItem = new MenuItem { Header = Loc.Get("PostDownload_Action_ExitApp"), IsCheckable = true, IsChecked = current == PostDownloadAction.ExitApp };
+            exitAppItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.ExitApp;
+
+            postActionMenu.Items.Add(noneItem);
+            postActionMenu.Items.Add(shutdownItem);
+            postActionMenu.Items.Add(sleepItem);
+            postActionMenu.Items.Add(exitAppItem);
+        }
+
+        postActionMenu.SubmenuOpened += (s, e) => RefreshPostActionMenuItems();
+        RefreshPostActionMenuItems();
+
         _contextMenu.Items.Add(openItem);
         _contextMenu.Items.Add(new Separator());
         _contextMenu.Items.Add(pauseAllItem);
         _contextMenu.Items.Add(resumeAllItem);
+        _contextMenu.Items.Add(new Separator());
+        _contextMenu.Items.Add(postActionMenu);
         _contextMenu.Items.Add(new Separator());
         _contextMenu.Items.Add(exitItem);
     }

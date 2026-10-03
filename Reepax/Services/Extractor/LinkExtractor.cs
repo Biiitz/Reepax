@@ -20,7 +20,7 @@ public class ExtractedLink
 public static partial class LinkExtractor
 {
     private static readonly Regex UrlRegex = new(
-        @"(?:https?:\/\/|(?:www\.)|(?:[a-zA-Z0-9\-]+\.(?:co|com|net|org|to|cc|io|sx|me|is|la|ws|su|party|tech|watch)\/))[a-zA-Z0-9\-\._~:\/\?#\[\]@!\$&'\(\)\*\+,;=%]+",
+        @"(?:https?:\/\/|ftp:\/\/|(?:www\.)|(?:[a-zA-Z0-9\-]+\.(?:co|com|net|org|to|cc|io|sx|me|is|la|ws|su|party|tech|watch)\/))[a-zA-Z0-9\-\._~:\/\?#\[\]@!\$&'\(\)\*\+,;=%]+",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex TrailingPunctuationRegex = new(
@@ -34,6 +34,10 @@ public static partial class LinkExtractor
     private static readonly Regex HrefAnchorRegex = new(
         @"<a\b[^>]*?href\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</a>",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    private static readonly Regex GenericHrefRegex = new(
+        @"(?:<a\b[^>]*?\bhref\s*=\s*[""']?([^""'\s>]+)|(?:\bhref\s*[:=]\s*[""']?([^\s""'>]+)))",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex HtmlTagRegex = new(
         @"<[^>]+>",
@@ -56,7 +60,7 @@ public static partial class LinkExtractor
         RegexOptions.Compiled);
 
 
-    public static List<ExtractedLink> ExtractLinks(string rawText)
+    public static List<ExtractedLink> ExtractLinks(string rawText, bool fileHostersOnly = true)
     {
         var result = new List<ExtractedLink>();
         if (string.IsNullOrWhiteSpace(rawText))
@@ -74,7 +78,11 @@ public static partial class LinkExtractor
         {
             var cleanedUrl = CleanUrl(anchor.Groups[1].Value);
             if (string.IsNullOrWhiteSpace(cleanedUrl) ||
-                !cleanedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                (!cleanedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
+                 !cleanedUrl.StartsWith("ftp", StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            if (fileHostersOnly && !HosterInfo.IsFileHosterUrl(cleanedUrl))
                 continue;
 
             if (seenUrls.Add(cleanedUrl))
@@ -96,6 +104,34 @@ public static partial class LinkExtractor
                     Url = cleanedUrl,
                     RawFileName = ExtractFileNameFromUrl(cleanedUrl),
                     ContextTitle = title,
+                    Hoster = HosterInfo.DetectHoster(cleanedUrl)
+                });
+            }
+        }
+
+        // 1b. Extract any remaining href attributes or explicit "href:" prefixes
+        // (handles unclosed <a> tags, HTML tables, href: text formats, href="...")
+        foreach (Match match in GenericHrefRegex.Matches(rawText))
+        {
+            var rawHref = match.Groups[1].Success && !string.IsNullOrWhiteSpace(match.Groups[1].Value)
+                ? match.Groups[1].Value
+                : match.Groups[2].Value;
+
+            var cleanedUrl = CleanUrl(rawHref);
+            if (string.IsNullOrWhiteSpace(cleanedUrl) ||
+                (!cleanedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
+                 !cleanedUrl.StartsWith("ftp", StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            if (fileHostersOnly && !HosterInfo.IsFileHosterUrl(cleanedUrl))
+                continue;
+
+            if (seenUrls.Add(cleanedUrl))
+            {
+                result.Add(new ExtractedLink
+                {
+                    Url = cleanedUrl,
+                    RawFileName = ExtractFileNameFromUrl(cleanedUrl),
                     Hoster = HosterInfo.DetectHoster(cleanedUrl)
                 });
             }
@@ -129,6 +165,9 @@ public static partial class LinkExtractor
                 {
                     var cleanedUrl = CleanUrl(match.Value);
                     if (string.IsNullOrWhiteSpace(cleanedUrl))
+                        continue;
+
+                    if (fileHostersOnly && !HosterInfo.IsFileHosterUrl(cleanedUrl))
                         continue;
 
                     if (seenUrls.Add(cleanedUrl))
@@ -222,8 +261,14 @@ public static partial class LinkExtractor
         // Remove html entities if any
         url = WebUtility.HtmlDecode(url);
 
+        if (url.StartsWith("//"))
+        {
+            url = "https:" + url;
+        }
+
         if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase))
         {
             url = "https://" + url;
         }

@@ -181,6 +181,7 @@ public class QueueManager
             }
         }
         ProcessQueue();
+        SystemIntegration.PostDownloadActionService.Instance.NotifyWorkStarted();
     }
 
     private static int _shutdownState = 0;
@@ -190,6 +191,27 @@ public class QueueManager
         Interlocked.Exchange(ref _shutdownState, 0);
     }
 
+    private static int _powerLockAcquired = 0;
+
+    private void UpdatePowerState()
+    {
+        bool hasActive = GetCurrentlyActiveItems().Count > 0;
+        if (hasActive)
+        {
+            if (Interlocked.CompareExchange(ref _powerLockAcquired, 1, 0) == 0)
+            {
+                SystemIntegration.PowerManagementService.Instance.AcquireKeepAwake("Active Downloads");
+            }
+        }
+        else
+        {
+            if (Interlocked.CompareExchange(ref _powerLockAcquired, 0, 1) == 1)
+            {
+                SystemIntegration.PowerManagementService.Instance.ReleaseKeepAwake("No Active Downloads");
+            }
+        }
+    }
+
     public static void PerformSafeShutdown()
     {
         if (Interlocked.Exchange(ref _shutdownState, 1) != 0)
@@ -197,11 +219,23 @@ public class QueueManager
 
         try
         {
+            Extractor.ArchiveExtractionService.Instance.CancelAllExtractions();
+        }
+        catch { }
+
+        try
+        {
+            SystemIntegration.PowerManagementService.Instance.ReleaseAll();
+        }
+        catch { }
+
+        try
+        {
             Instance.StopQueue(isExiting: true);
         }
         catch (Exception ex)
         {
-            Storage.AppLogger.Error("[QueueManager] Fehler bei StopQueue während Shutdown", ex);
+            Storage.AppLogger.Error("[QueueManager] Error during StopQueue in SafeShutdown", ex);
         }
 
         try
@@ -224,6 +258,20 @@ public class QueueManager
             IsRunning = false;
         }
 
+        if (Interlocked.CompareExchange(ref _powerLockAcquired, 0, 1) == 1)
+        {
+            SystemIntegration.PowerManagementService.Instance.ReleaseKeepAwake("Queue Stopped");
+        }
+
+        if (isExiting)
+        {
+            try
+            {
+                Extractor.ArchiveExtractionService.Instance.CancelAllExtractions();
+            }
+            catch { }
+        }
+
         CloseAllBrowserWindows();
         DownloadEngine.Instance.PauseAll(waitForCompletion: isExiting, timeoutMs: 3000);
 
@@ -238,6 +286,7 @@ public class QueueManager
                     DownloadStatus.InBrowserSlot1 or 
                     DownloadStatus.InBrowserSlot2 or 
                     DownloadStatus.SolvingCaptcha or 
+                    DownloadStatus.WaitingForBrowser or
                     DownloadStatus.Queued)
                 {
                     item.IsTrickling = false;
@@ -291,7 +340,10 @@ public class QueueManager
         lock (_lock)
         {
             if (!IsRunning)
+            {
+                UpdatePowerState();
                 return;
+            }
         }
 
         // 1. Ensure active downloads do not exceed limit (e.g. after reducing the limit)
@@ -303,6 +355,34 @@ public class QueueManager
         // 3. Scenario B + C: browser windows (FastHost -> hidden/auto-resolving,
         //    other hosters -> visible with captcha)
         AssignBrowserWindows();
+
+        // 4. Check for completed packages that have pending auto-extractions
+        CheckPendingExtractions();
+
+        // 5. Update power management keep-awake state
+        UpdatePowerState();
+    }
+
+    /// <summary>
+    /// Checks for packages where all downloads are finished and auto-extraction is pending.
+    /// Ensures extraction starts automatically even after app restarts or if the last file was not an archive.
+    /// </summary>
+    private void CheckPendingExtractions()
+    {
+        var packageSnapshot = Packages.ToArray();
+        foreach (var pkg in packageSnapshot)
+        {
+            if (pkg.AutoExtractArchives &&
+                !pkg.IsExtracted &&
+                pkg.Items.Count > 0 &&
+                pkg.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed) &&
+                pkg.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Pending) &&
+                !Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id) &&
+                Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(pkg))
+            {
+                _ = Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(pkg);
+            }
+        }
     }
 
     /// <summary>
@@ -370,7 +450,51 @@ public class QueueManager
         return result;
     }
 
-    private bool IsItemActive(DownloadItem item)
+    /// <summary>
+    /// Checks whether any download is currently actively streaming, waiting in a browser slot,
+    /// solving captcha, or waiting in the active queue to be processed, or if an archive extraction is actively running.
+    /// </summary>
+    public bool HasActiveDownloads()
+    {
+        if (GetActiveDownloadsCount() > 0)
+            return true;
+
+        if (GetCurrentlyActiveItems().Count > 0)
+            return true;
+
+        if (Extractor.ArchiveExtractionService.Instance.IsAnyExtracting)
+            return true;
+
+        var packageSnapshot = Packages.ToArray();
+        foreach (var pkg in packageSnapshot)
+        {
+            if (!pkg.IsEnabled)
+                continue;
+
+            if (pkg.IsExtracting || Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id))
+                return true;
+
+            if (pkg.Status == DownloadStatus.Downloading)
+                return true;
+
+            var itemsSnapshot = pkg.Items.ToArray();
+            foreach (var item in itemsSnapshot)
+            {
+                if (!item.IsEnabled)
+                    continue;
+
+                if (IsItemActive(item))
+                    return true;
+
+                if (IsRunning && (item.Status == DownloadStatus.Queued || item.Status == DownloadStatus.WaitingForBrowser))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal bool IsItemActive(DownloadItem item)
     {
         if (item.Status == DownloadStatus.Queued ||
             item.Status == DownloadStatus.Paused ||
@@ -385,7 +509,8 @@ public class QueueManager
                               DownloadStatus.InBrowser or
                               DownloadStatus.InBrowserSlot1 or
                               DownloadStatus.InBrowserSlot2 or
-                              DownloadStatus.SolvingCaptcha ||
+                              DownloadStatus.SolvingCaptcha or
+                              DownloadStatus.WaitingForBrowser ||
                DownloadEngine.Instance.IsDownloading(item.Id);
     }
 
@@ -552,9 +677,17 @@ public class QueueManager
                 if (!item.IsEnabled)
                     continue;
 
-                // Item needs browser loading if it is queued and has no direct download URL yet
-                if (item.Status == DownloadStatus.Queued && string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
+                // Item needs browser loading if it is queued and has no direct download URL yet,
+                // or if its direct URL is a blob: URL (which only exists in browser memory and cannot be fetched via HttpClient).
+                bool isBlob = item.DirectDownloadUrl?.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) == true;
+                if (item.Status == DownloadStatus.Queued && (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) || isBlob))
                 {
+                    if (isBlob)
+                    {
+                        // Invalidate stale in-memory blob URL so the browser worker re-resolves the original page cleanly
+                        item.DirectDownloadUrl = null;
+                    }
+
                     bool hidden = package.AutoResolveHostLinks &&
                                   FastHostResolver.IsFastHostUrl(item.OriginalUrl) &&
                                   !item.FastHostResolveFailed;
@@ -586,10 +719,13 @@ public class QueueManager
             _windowItems.Remove(windowId);
         }
 
+        bool isBlob = directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase);
+
         // Update item details on UI thread
         SafeInvoke(() =>
         {
-            item.DirectDownloadUrl = directUrl;
+            // Ephemeral in-memory blob URLs cannot be requested via standard HTTP clients; keep direct URL unset if blob
+            item.DirectDownloadUrl = isBlob ? null : directUrl;
             item.Cookies = cookies;
             item.UserAgent = userAgent;
             item.Referer = referer;
@@ -605,8 +741,8 @@ public class QueueManager
             }
         });
 
-        // Check concurrent downloads limit
-        if (GetActiveDownloadsCount() < MaxConcurrentDownloads)
+        // Check concurrent downloads limit (blob: downloads cannot be fetched via HttpClient and must not be passed to DownloadEngine)
+        if (!isBlob && GetActiveDownloadsCount() < MaxConcurrentDownloads)
         {
             _ = DownloadEngine.Instance.StartDownloadAsync(item, directUrl, cookies, userAgent, referer, suggestedFileName);
         }
@@ -859,6 +995,10 @@ public class QueueManager
         {
             SafeInvoke(() =>
             {
+                if (item.DirectDownloadUrl?.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    item.DirectDownloadUrl = null;
+                }
                 item.Status = DownloadStatus.Queued;
                 item.StatusMessage = Loc.Get("Status_Queued");
                 item.CurrentSlot = null;
@@ -1092,6 +1232,11 @@ public class QueueManager
                             {
                                 Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(tempFile);
                             }
+                            var segFile = item.SaveFilePath + ".part.segments";
+                            if (File.Exists(segFile))
+                            {
+                                Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segFile);
+                            }
 
                             SafeInvoke(() =>
                             {
@@ -1146,12 +1291,13 @@ public class QueueManager
                     item.CurrentSlot = null;
                 });
 
-                // Trigger Auto-Extract if enabled in settings and all package items are fully completed
+                // Trigger Auto-Extract if enabled in settings and package contains extractable archives
                 var packagesSnapshot = Packages.ToArray();
                 var package = packagesSnapshot.FirstOrDefault(p => p.Id == item.PackageId || p.Items.ToArray().Contains(item));
                 if (package != null)
                 {
-                    if (package.AutoExtractArchives && Extractor.ArchiveExtractionService.Instance.IsArchiveFile(item.SaveFilePath))
+                    bool hasArchives = Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(package);
+                    if (package.AutoExtractArchives && hasArchives && !package.IsExtracted)
                     {
                         await Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
                     }
@@ -1240,10 +1386,6 @@ public class QueueManager
     /// </summary>
     private static bool CanReResolve(DownloadItem item)
     {
-        // blob: URLs exist only in browser context and cannot be re-resolved
-        if (item.DirectDownloadUrl?.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) == true)
-            return false;
-
         return !string.IsNullOrWhiteSpace(item.OriginalUrl) &&
                !string.Equals(item.OriginalUrl, item.DirectDownloadUrl, StringComparison.OrdinalIgnoreCase);
     }
@@ -1279,12 +1421,15 @@ public class QueueManager
     {
         try
         {
-            var app = Application.Current;
-            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+            if (!Storage.DownloadPersistenceService.IsTestEnvironment)
             {
-                if (!app.Dispatcher.CheckAccess())
+                var app = Application.Current;
+                if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
                 {
-                    return app.Dispatcher.Invoke(func);
+                    if (!app.Dispatcher.CheckAccess())
+                    {
+                        return app.Dispatcher.Invoke(func);
+                    }
                 }
             }
         }
@@ -1318,7 +1463,10 @@ public class QueueManager
             _ = Task.Delay(2500).ContinueWith(_ => SafeInvoke(() => package.IsNewlyCompleted = false));
         });
 
-        // 1a. Automatic game install folder & clipboard
+        // 1a. Post-download action evaluation (auto-shutdown/sleep/exit)
+        SystemIntegration.PostDownloadActionService.Instance.Evaluate(Packages);
+
+        // 1b. Automatic game install folder & clipboard
         string? createdInstallDir = null;
         if (SettingsService.Instance.Settings.CreateGameInstallFolder)
         {

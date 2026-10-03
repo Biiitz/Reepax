@@ -24,13 +24,74 @@ public class AppSettings
     public long SpeedLimitBytesPerSecond { get; set; } = 0; // 0 = unlimited
     public bool AutoStartDownloads { get; set; } = false;
     public bool EnableAutoHostResolver { get; set; } = false;
-    public string AccentColorHex { get; set; } = "#3B82F6";
-    public bool IsColorPaletteExpanded { get; set; } = true;
     public bool MinimizeToTrayOnClose { get; set; } = false;
     public bool StartWithWindows { get; set; } = false;
     public bool EnableCompletionNotifications { get; set; } = false;
+    public bool EnableCompletionSound { get; set; } = true;
+    public string SelectedCompletionSound { get; set; } = "1.mp3";
+
+    private int _completionSoundVolume = 80;
+    public int CompletionSoundVolume
+    {
+        get => _completionSoundVolume;
+        set
+        {
+            _completionSoundVolume = value;
+            _hasExplicitCompletionVolume = true;
+        }
+    }
+
+    public bool EnableErrorSound { get; set; } = true;
+    public string SelectedErrorSound { get; set; } = "1.mp3";
+
+    private int _errorSoundVolume = 80;
+    public int ErrorSoundVolume
+    {
+        get => _errorSoundVolume;
+        set
+        {
+            _errorSoundVolume = value;
+            _hasExplicitErrorVolume = true;
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    private bool _hasExplicitCompletionVolume;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    private bool _hasExplicitErrorVolume;
+
+    [System.Text.Json.Serialization.JsonPropertyName("SoundVolume")]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? LegacySoundVolume
+    {
+        get => null;
+        set
+        {
+            if (value.HasValue)
+            {
+                if (!_hasExplicitCompletionVolume)
+                    _completionSoundVolume = value.Value;
+                if (!_hasExplicitErrorVolume)
+                    _errorSoundVolume = value.Value;
+            }
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int SoundVolume
+    {
+        get => CompletionSoundVolume;
+        set
+        {
+            CompletionSoundVolume = value;
+            ErrorSoundVolume = value;
+        }
+    }
     public bool AutoCollapseCompletedPackages { get; set; } = true;
     public bool EnableFileLogging { get; set; } = false;
+    public bool EnableClipboardMonitor { get; set; } = false;
+    public PostDownloadAction PostDownloadAction { get; set; } = PostDownloadAction.None;
     public string Language { get; set; } = "en"; // "en" (default) or "de"
     public Dictionary<string, string> CustomShortcuts { get; set; } = new();
 
@@ -177,4 +238,12 @@ public class AppSettings
         }
         return list;
     }
+}
+
+public enum PostDownloadAction
+{
+    None = 0,
+    Shutdown = 1,
+    Sleep = 2,
+    ExitApp = 3
 }

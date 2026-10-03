@@ -81,7 +81,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Path Grid.Column="0" Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextSecondaryBrush}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="2,0,10,0" />
+                <Path Grid.Column="0" Data="{DynamicResource IconFolderOpen}" Fill="{DynamicResource TextSecondaryBrush}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="2,0,10,0" />
                 <TextBox Grid.Column="1" x:Name="DownloadPathTextBox" FontSize="11.5" Padding="6,4" VerticalAlignment="Center"
                          Background="{DynamicResource BgInputBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}"
                          TextChanged="DownloadPathTextBox_TextChanged" />
@@ -96,7 +96,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Path Grid.Column="0" Data="{StaticResource IconFile}" Fill="{DynamicResource TextSecondaryBrush}" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" Margin="3,0,10,0" />
+                <Path Grid.Column="0" Data="{DynamicResource IconFile}" Fill="{DynamicResource TextSecondaryBrush}" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" Margin="3,0,10,0" />
                 <Grid Grid.Column="1">
                     <TextBox x:Name="PackageNameTextBox" FontSize="12" FontWeight="SemiBold" Padding="6,4" VerticalAlignment="Center"
                              Background="{DynamicResource BgInputBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}"
@@ -119,7 +119,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Path Grid.Column="0" Data="{StaticResource IconSettings}" Fill="{DynamicResource TextSecondaryBrush}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="3,0,12,0" />
+                <Path Grid.Column="0" Data="{DynamicResource IconSettings}" Fill="{DynamicResource TextSecondaryBrush}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" Margin="3,0,12,0" />
                 
                 <WrapPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- 1. Automatic Extraction Checkbox with Delayed Tooltip (Default: Off) -->

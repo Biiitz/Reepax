@@ -485,6 +485,13 @@ public class BrowserWindowController : IDisposable
         // 1. Direct download links: Intercept directly into Reepax Queue without navigating main window away!
         if (BrowserSecurityGuard.IsDirectDownloadUrl(url))
         {
+            if (url.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+            {
+                AppLogger.Info($"[Browser Window {_windowId}] Direct blob download intercepted from popup: {url}");
+                _webView.CoreWebView2?.Navigate(url);
+                return;
+            }
+
             AppLogger.Info($"[Browser Window {_windowId}] Direct download intercepted from popup: {url}");
             try
             {
@@ -729,6 +736,13 @@ public class BrowserWindowController : IDisposable
                     var directUrl = urlProp.GetString();
                     if (!string.IsNullOrWhiteSpace(directUrl))
                     {
+                        if (directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AppLogger.Info($"[Browser Window {_windowId}] Direct blob URL extracted, triggering native download: {directUrl}");
+                            _webView.CoreWebView2?.Navigate(directUrl);
+                            return;
+                        }
+
                         var userAgent = !string.IsNullOrWhiteSpace(_webView.CoreWebView2.Settings.UserAgent) 
                             ? _webView.CoreWebView2.Settings.UserAgent 
                             : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
@@ -756,6 +770,13 @@ public class BrowserWindowController : IDisposable
                     {
                         if (BrowserSecurityGuard.IsDirectDownloadUrl(targetUrl))
                         {
+                            if (targetUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+                            {
+                                AppLogger.Info($"[Browser Window {_windowId}] Direct blob URL intercepted from open_url, triggering native download: {targetUrl}");
+                                _webView.CoreWebView2?.Navigate(targetUrl);
+                                return;
+                            }
+
                             AppLogger.Info($"[Browser Window {_windowId}] Direct download intercepted from open_url: {targetUrl}");
                             var userAgent = !string.IsNullOrWhiteSpace(_webView.CoreWebView2.Settings.UserAgent) 
                                 ? _webView.CoreWebView2.Settings.UserAgent 

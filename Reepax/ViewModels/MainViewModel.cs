@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -37,7 +37,6 @@ public enum SettingsCategory
     General,
     DownloadConnections,
     Notifications,
-    Appearance,
     Shortcuts,
     About
 }
@@ -55,7 +54,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly QueueManager _queueManager = QueueManager.Instance;
     private readonly SettingsService _settingsService = SettingsService.Instance;
-    private readonly System.Windows.Threading.DispatcherTimer _statsTimer;
+    private readonly System.Windows.Threading.DispatcherTimer? _statsTimer;
     private readonly System.Windows.Threading.DispatcherTimer? _updateTimer;
     private int _lastCommandStateActiveCount = -1;
     private bool _lastCommandStateQueueRunning = false;
@@ -215,19 +214,6 @@ public partial class MainViewModel : ObservableObject
         GoForwardCommand.NotifyCanExecuteChanged();
     }
 
-    public static readonly string[] PresetAccentColors = new[]
-    {
-        "#3B82F6", // Blue (Default)
-        "#10B981", // Emerald
-        "#8B5CF6", // Purple
-        "#F59E0B", // Amber
-        "#EF4444", // Red
-        "#06B6D4", // Cyan
-        "#EC4899", // Pink
-        "#6B7280"  // Slate
-    };
-
-    public IReadOnlyList<string> AccentColorPresets => PresetAccentColors;
 
     [RelayCommand]
     public void SwitchToDownloadsTab()
@@ -372,227 +358,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _diskSpaceWarningMessage = string.Empty;
 
-    [ObservableProperty]
-    private int _maxConcurrentDownloads = 2;
+    // Connection limits, concurrent downloads, and speed limiter settings have been moved to MainViewModel.Settings.cs
 
-    [ObservableProperty]
-    private string _maxConcurrentDownloadsText = "2";
-
-    [ObservableProperty]
-    private int _connectionsPerDownload = 5;
-
-    [ObservableProperty]
-    private string _connectionsPerDownloadText = "5";
-
-    partial void OnConnectionsPerDownloadChanged(int value)
-    {
-        int clamped = Math.Clamp(value, 1, 20);
-        if (_connectionsPerDownload != clamped)
-        {
-            _connectionsPerDownload = clamped;
-        }
-        if (_connectionsPerDownloadText != clamped.ToString())
-        {
-            ConnectionsPerDownloadText = clamped.ToString();
-        }
-        DownloadEngine.Instance.MaxConnectionsPerDownload = clamped;
-        _settingsService.Settings.ConnectionsPerDownload = clamped;
-        _settingsService.SaveSettings();
-    }
-
-    partial void OnConnectionsPerDownloadTextChanged(string value)
-    {
-        if (int.TryParse(value.Trim(), out int parsed))
-        {
-            int clamped = Math.Clamp(parsed, 1, 20);
-            if (parsed > 20 || parsed < 1)
-            {
-                // Snap directly to 20 (or 1) if user types higher/lower
-                ConnectionsPerDownload = clamped;
-                ConnectionsPerDownloadText = clamped.ToString();
-                return;
-            }
-
-            if (_connectionsPerDownload != clamped)
-            {
-                ConnectionsPerDownload = clamped;
-            }
-        }
-    }
-
-    [RelayCommand]
-    public void IncrementConnections()
-    {
-        if (ConnectionsPerDownload < 20)
-        {
-            ConnectionsPerDownload++;
-        }
-        else
-        {
-            ConnectionsPerDownloadText = "20";
-        }
-    }
-
-    [RelayCommand]
-    public void DecrementConnections()
-    {
-        if (ConnectionsPerDownload > 1)
-        {
-            ConnectionsPerDownload--;
-        }
-        else
-        {
-            ConnectionsPerDownloadText = "1";
-        }
-    }
-
-    partial void OnMaxConcurrentDownloadsChanged(int value)
-    {
-        int clamped = Math.Clamp(value, 1, 10);
-        if (_maxConcurrentDownloads != clamped)
-        {
-            _maxConcurrentDownloads = clamped;
-        }
-        if (_maxConcurrentDownloadsText != clamped.ToString())
-        {
-            MaxConcurrentDownloadsText = clamped.ToString();
-        }
-        _queueManager.MaxConcurrentDownloads = clamped;
-        _settingsService.Settings.MaxConcurrentBackgroundDownloads = clamped;
-        _settingsService.SaveSettings();
-        if (IsQueueRunning)
-        {
-            StatusSummary = $"Queue aktiv (Max {clamped} zeitgleiche Downloads)";
-            _queueManager.ProcessQueue();
-        }
-        RecalculateGlobalStats();
-    }
-
-    partial void OnMaxConcurrentDownloadsTextChanged(string value)
-    {
-        if (int.TryParse(value.Trim(), out int parsed))
-        {
-            int clamped = Math.Clamp(parsed, 1, 10);
-            if (parsed > 10 || parsed < 1)
-            {
-                // Snap directly to 10 (or 1) if user types higher/lower
-                MaxConcurrentDownloads = clamped;
-                MaxConcurrentDownloadsText = clamped.ToString();
-                return;
-            }
-
-            if (_maxConcurrentDownloads != clamped)
-            {
-                MaxConcurrentDownloads = clamped;
-            }
-        }
-    }
-
-    [RelayCommand]
-    public void IncrementMaxDownloads()
-    {
-        if (MaxConcurrentDownloads < 10)
-        {
-            MaxConcurrentDownloads++;
-        }
-        else
-        {
-            MaxConcurrentDownloadsText = "10";
-        }
-    }
-
-    [RelayCommand]
-    public void DecrementMaxDownloads()
-    {
-        if (MaxConcurrentDownloads > 1)
-        {
-            MaxConcurrentDownloads--;
-        }
-        else
-        {
-            MaxConcurrentDownloadsText = "1";
-        }
-    }
-
-    [ObservableProperty]
-    private double _speedLimitMBps = 0;
-
-    [ObservableProperty]
-    private string _speedLimitText = "0";
-
-    partial void OnSpeedLimitMBpsChanged(double value)
-    {
-        long bytesPerSec = value > 0 ? (long)(value * 1024 * 1024) : 0;
-        _settingsService.Settings.SpeedLimitMBps = value;
-        _settingsService.Settings.SpeedLimitBytesPerSecond = bytesPerSec;
-        _settingsService.SaveSettings();
-        DownloadEngine.Instance.SetSpeedLimit(bytesPerSec);
-
-        if (!TryParseSpeedLimit(_speedLimitText, out double currentTextVal) || Math.Abs(currentTextVal - value) > 0.0001)
-        {
-            _speedLimitText = value > 0 ? value.ToString("0.##", CultureInfo.CurrentCulture) : "0";
-            OnPropertyChanged(nameof(SpeedLimitText));
-        }
-    }
-
-    partial void OnSpeedLimitTextChanged(string value)
-    {
-        if (TryParseSpeedLimit(value, out double parsed))
-        {
-            if (Math.Abs(_speedLimitMBps - parsed) > 0.0001)
-            {
-                _speedLimitMBps = parsed;
-                OnPropertyChanged(nameof(SpeedLimitMBps));
-                long bytesPerSec = parsed > 0 ? (long)(parsed * 1024 * 1024) : 0;
-                _settingsService.Settings.SpeedLimitMBps = parsed;
-                _settingsService.Settings.SpeedLimitBytesPerSecond = bytesPerSec;
-                _settingsService.SaveSettings();
-                DownloadEngine.Instance.SetSpeedLimit(bytesPerSec);
-            }
-            else
-            {
-                long bytesPerSec = parsed > 0 ? (long)(parsed * 1024 * 1024) : 0;
-                DownloadEngine.Instance.SetSpeedLimit(bytesPerSec);
-            }
-        }
-    }
-
-    [RelayCommand]
-    public void IncrementSpeedLimit()
-    {
-        double current = SpeedLimitMBps;
-        double next = Math.Floor(current) + 1;
-        if (next < 0) next = 0;
-        SpeedLimitMBps = next;
-        SpeedLimitText = next > 0 ? next.ToString("0.##", CultureInfo.CurrentCulture) : "0";
-    }
-
-    [RelayCommand]
-    public void DecrementSpeedLimit()
-    {
-        double current = SpeedLimitMBps;
-        double next = Math.Ceiling(current) - 1;
-        if (next < 0) next = 0;
-        SpeedLimitMBps = next;
-        SpeedLimitText = next > 0 ? next.ToString("0.##", CultureInfo.CurrentCulture) : "0";
-    }
-
-    public static bool TryParseSpeedLimit(string text, out double value)
-    {
-        value = 0;
-        if (string.IsNullOrWhiteSpace(text))
-            return true;
-
-        string normalized = text.Trim().Replace(',', '.');
-        if (double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out double result))
-        {
-            if (result < 0) result = 0;
-            value = Math.Round(result, 2);
-            return true;
-        }
-
-        return false;
-    }
 
     [ObservableProperty]
     private DownloadPackage? _selectedPackage;
@@ -610,1311 +377,11 @@ public partial class MainViewModel : ObservableObject
         DeleteSelectedCommand.NotifyCanExecuteChanged();
     }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthName))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthName = 220;
+    // TreeListView Column properties, sorting, slots, and widths are implemented in MainViewModel.Columns.cs
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthHoster))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthHoster = 75;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthSavePath))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthSavePath = 140;
+    // Application settings, themes, sounds, and archive passwords have been moved to MainViewModel.Settings.cs
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthSize))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthSize = 75;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthProgress))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthProgress = 110;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthSpeed))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthSpeed = 80;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthEta))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthEta = 65;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthStatus))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthStatus = 95;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthAddedDate))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthAddedDate = 95;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthCompletedDate))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthCompletedDate = 95;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthChecksum))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthChecksum = 90;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthActions))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthActions = 95;
-
-    // TreeListView Column Visibility
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthName))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColName = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthHoster))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColHoster = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthSavePath))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColSavePath = false;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthSize))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColSize = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthProgress))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColProgress = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthSpeed))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColSpeed = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthEta))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColEta = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthStatus))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColStatus = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthAddedDate))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColAddedDate = false;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthCompletedDate))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColCompletedDate = false;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthChecksum))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColChecksum = false;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthActions))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColActions = true;
-
-    // Computed Actual Column Widths (0 when column is hidden)
-    public double ActualColWidthName => ShowColName ? ColWidthName : 0;
-    public double ActualColWidthHoster => ShowColHoster ? ColWidthHoster : 0;
-    public double ActualColWidthSavePath => ShowColSavePath ? ColWidthSavePath : 0;
-    public double ActualColWidthSize => ShowColSize ? ColWidthSize : 0;
-    public double ActualColWidthProgress => ShowColProgress ? ColWidthProgress : 0;
-    public double ActualColWidthSpeed => ShowColSpeed ? ColWidthSpeed : 0;
-    public double ActualColWidthEta => ShowColEta ? ColWidthEta : 0;
-    public double ActualColWidthStatus => ShowColStatus ? ColWidthStatus : 0;
-    public double ActualColWidthAddedDate => ShowColAddedDate ? ColWidthAddedDate : 0;
-    public double ActualColWidthCompletedDate => ShowColCompletedDate ? ColWidthCompletedDate : 0;
-    public double ActualColWidthChecksum => ShowColChecksum ? ColWidthChecksum : 0;
-    public double ActualColWidthActions => ShowColActions ? ColWidthActions : 0;
-
-    /// <summary>
-    /// Total width of all currently visible columns in pixels.
-    /// Used as MinWidth on header and list controls to ensure horizontal scrollbar activates
-    /// whenever visible columns exceed the viewport width (even when the list is empty).
-    /// </summary>
-    public double TotalVisibleColumnsWidth =>
-        ActualColWidthName +
-        ActualColWidthHoster +
-        ActualColWidthSavePath +
-        ActualColWidthSize +
-        ActualColWidthProgress +
-        ActualColWidthSpeed +
-        ActualColWidthEta +
-        ActualColWidthStatus +
-        ActualColWidthAddedDate +
-        ActualColWidthCompletedDate +
-        ActualColWidthChecksum +
-        ActualColWidthActions;
-
-    public const double TrailingBreathingRoom = 0.0;
-
-    /// <summary>
-    /// Total width for visible columns.
-    /// </summary>
-    public double TotalContentMinWidth => TotalVisibleColumnsWidth + TrailingBreathingRoom;
-
-    // Column Right Dividers: Every visible column shows a right divider line with resize gripper
-    // so any column (including whichever column is at the right end) can be resized freely.
-    public bool ShowDividerName => ShowColName;
-    public bool ShowDividerHoster => ShowColHoster;
-    public bool ShowDividerSavePath => ShowColSavePath;
-    public bool ShowDividerSize => ShowColSize;
-    public bool ShowDividerProgress => ShowColProgress;
-    public bool ShowDividerSpeed => ShowColSpeed;
-    public bool ShowDividerEta => ShowColEta;
-    public bool ShowDividerStatus => ShowColStatus;
-    public bool ShowDividerAddedDate => ShowColAddedDate;
-    public bool ShowDividerCompletedDate => ShowColCompletedDate;
-    public bool ShowDividerChecksum => ShowColChecksum;
-    public bool ShowDividerActions => ShowColActions;
-
-    private static System.Windows.GridLength GetColumnGridLength(bool isVisible, double pixelWidth)
-    {
-        if (!isVisible || pixelWidth <= 0)
-            return new System.Windows.GridLength(0);
-
-        return new System.Windows.GridLength(pixelWidth, System.Windows.GridUnitType.Pixel);
-    }
-
-    public System.Windows.GridLength GridColWidthName => GetColumnGridLength(ShowColName, ColWidthName);
-    public System.Windows.GridLength GridColWidthHoster => GetColumnGridLength(ShowColHoster, ColWidthHoster);
-    public System.Windows.GridLength GridColWidthSavePath => GetColumnGridLength(ShowColSavePath, ColWidthSavePath);
-    public System.Windows.GridLength GridColWidthSize => GetColumnGridLength(ShowColSize, ColWidthSize);
-    public System.Windows.GridLength GridColWidthProgress => GetColumnGridLength(ShowColProgress, ColWidthProgress);
-    public System.Windows.GridLength GridColWidthSpeed => GetColumnGridLength(ShowColSpeed, ColWidthSpeed);
-    public System.Windows.GridLength GridColWidthEta => GetColumnGridLength(ShowColEta, ColWidthEta);
-    public System.Windows.GridLength GridColWidthStatus => GetColumnGridLength(ShowColStatus, ColWidthStatus);
-    public System.Windows.GridLength GridColWidthAddedDate => GetColumnGridLength(ShowColAddedDate, ColWidthAddedDate);
-    public System.Windows.GridLength GridColWidthCompletedDate => GetColumnGridLength(ShowColCompletedDate, ColWidthCompletedDate);
-    public System.Windows.GridLength GridColWidthChecksum => GetColumnGridLength(ShowColChecksum, ColWidthChecksum);
-    public System.Windows.GridLength GridColWidthActions => GetColumnGridLength(ShowColActions, ColWidthActions);
-
-    public event EventHandler? ColumnLayoutChanged;
-
-    public void NotifyDividerChanges()
-    {
-        OnPropertyChanged(nameof(ShowDividerName));
-        OnPropertyChanged(nameof(ShowDividerHoster));
-        OnPropertyChanged(nameof(ShowDividerSavePath));
-        OnPropertyChanged(nameof(ShowDividerSize));
-        OnPropertyChanged(nameof(ShowDividerProgress));
-        OnPropertyChanged(nameof(ShowDividerSpeed));
-        OnPropertyChanged(nameof(ShowDividerEta));
-        OnPropertyChanged(nameof(ShowDividerStatus));
-        OnPropertyChanged(nameof(ShowDividerAddedDate));
-        OnPropertyChanged(nameof(ShowDividerCompletedDate));
-        OnPropertyChanged(nameof(ShowDividerChecksum));
-        OnPropertyChanged(nameof(ShowDividerActions));
-
-        OnPropertyChanged(nameof(GridColWidthName));
-        OnPropertyChanged(nameof(GridColWidthHoster));
-        OnPropertyChanged(nameof(GridColWidthSavePath));
-        OnPropertyChanged(nameof(GridColWidthSize));
-        OnPropertyChanged(nameof(GridColWidthProgress));
-        OnPropertyChanged(nameof(GridColWidthSpeed));
-        OnPropertyChanged(nameof(GridColWidthEta));
-        OnPropertyChanged(nameof(GridColWidthStatus));
-        OnPropertyChanged(nameof(GridColWidthAddedDate));
-        OnPropertyChanged(nameof(GridColWidthCompletedDate));
-        OnPropertyChanged(nameof(GridColWidthChecksum));
-        OnPropertyChanged(nameof(GridColWidthActions));
-
-        NotifySlotWidthChanges();
-
-        OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
-        OnPropertyChanged(nameof(TotalContentMinWidth));
-    }
-
-    #region Column Order & Slot Properties
-
-    [ObservableProperty]
-    private List<string> _columnOrder = new(AppSettings.DefaultColumnOrder);
-
-    public int ColIndexName => GetColumnIndex("Name");
-    public int ColIndexHoster => GetColumnIndex("Hoster");
-    public int ColIndexSavePath => GetColumnIndex("SavePath");
-    public int ColIndexSize => GetColumnIndex("Size");
-    public int ColIndexProgress => GetColumnIndex("Progress");
-    public int ColIndexSpeed => GetColumnIndex("Speed");
-    public int ColIndexEta => GetColumnIndex("Eta");
-    public int ColIndexStatus => GetColumnIndex("Status");
-    public int ColIndexAddedDate => GetColumnIndex("AddedDate");
-    public int ColIndexCompletedDate => GetColumnIndex("CompletedDate");
-    public int ColIndexChecksum => GetColumnIndex("Checksum");
-    public int ColIndexActions => GetColumnIndex("Actions");
-
-    public int GetColumnIndex(string column)
-    {
-        int idx = ColumnOrder.IndexOf(column);
-        return idx >= 0 ? idx : Array.IndexOf(AppSettings.DefaultColumnOrder, column);
-    }
-
-    public string GetColumnAtSlot(int slot)
-    {
-        if (slot >= 0 && slot < ColumnOrder.Count)
-            return ColumnOrder[slot];
-        if (slot >= 0 && slot < AppSettings.DefaultColumnOrder.Length)
-            return AppSettings.DefaultColumnOrder[slot];
-        return "Name";
-    }
-
-    public bool IsColumnVisible(string col) => col switch
-    {
-        "Name" => ShowColName,
-        "Hoster" => ShowColHoster,
-        "SavePath" => ShowColSavePath,
-        "Size" => ShowColSize,
-        "Progress" => ShowColProgress,
-        "Speed" => ShowColSpeed,
-        "Eta" => ShowColEta,
-        "Status" => ShowColStatus,
-        "AddedDate" => ShowColAddedDate,
-        "CompletedDate" => ShowColCompletedDate,
-        "Checksum" => ShowColChecksum,
-        "Actions" => ShowColActions,
-        _ => true
-    };
-
-    public double GetColumnPixelWidth(string col) => col switch
-    {
-        "Name" => ColWidthName,
-        "Hoster" => ColWidthHoster,
-        "SavePath" => ColWidthSavePath,
-        "Size" => ColWidthSize,
-        "Progress" => ColWidthProgress,
-        "Speed" => ColWidthSpeed,
-        "Eta" => ColWidthEta,
-        "Status" => ColWidthStatus,
-        "AddedDate" => ColWidthAddedDate,
-        "CompletedDate" => ColWidthCompletedDate,
-        "Checksum" => ColWidthChecksum,
-        "Actions" => ColWidthActions,
-        _ => 100
-    };
-
-    public System.Windows.GridLength GetSlotGridLength(int slot)
-    {
-        string col = GetColumnAtSlot(slot);
-        return GetColumnGridLength(IsColumnVisible(col), GetColumnPixelWidth(col));
-    }
-
-    public double GetSlotActualWidth(int slot)
-    {
-        string col = GetColumnAtSlot(slot);
-        return IsColumnVisible(col) ? GetColumnPixelWidth(col) : 0;
-    }
-
-    public System.Windows.GridLength GridColWidthSlot0 => GetSlotGridLength(0);
-    public System.Windows.GridLength GridColWidthSlot1 => GetSlotGridLength(1);
-    public System.Windows.GridLength GridColWidthSlot2 => GetSlotGridLength(2);
-    public System.Windows.GridLength GridColWidthSlot3 => GetSlotGridLength(3);
-    public System.Windows.GridLength GridColWidthSlot4 => GetSlotGridLength(4);
-    public System.Windows.GridLength GridColWidthSlot5 => GetSlotGridLength(5);
-    public System.Windows.GridLength GridColWidthSlot6 => GetSlotGridLength(6);
-    public System.Windows.GridLength GridColWidthSlot7 => GetSlotGridLength(7);
-    public System.Windows.GridLength GridColWidthSlot8 => GetSlotGridLength(8);
-    public System.Windows.GridLength GridColWidthSlot9 => GetSlotGridLength(9);
-    public System.Windows.GridLength GridColWidthSlot10 => GetSlotGridLength(10);
-    public System.Windows.GridLength GridColWidthSlot11 => GetSlotGridLength(11);
-
-    public double ActualColWidthSlot0 => GetSlotActualWidth(0);
-    public double ActualColWidthSlot1 => GetSlotActualWidth(1);
-    public double ActualColWidthSlot2 => GetSlotActualWidth(2);
-    public double ActualColWidthSlot3 => GetSlotActualWidth(3);
-    public double ActualColWidthSlot4 => GetSlotActualWidth(4);
-    public double ActualColWidthSlot5 => GetSlotActualWidth(5);
-    public double ActualColWidthSlot6 => GetSlotActualWidth(6);
-    public double ActualColWidthSlot7 => GetSlotActualWidth(7);
-    public double ActualColWidthSlot8 => GetSlotActualWidth(8);
-    public double ActualColWidthSlot9 => GetSlotActualWidth(9);
-    public double ActualColWidthSlot10 => GetSlotActualWidth(10);
-    public double ActualColWidthSlot11 => GetSlotActualWidth(11);
-
-    public void MoveColumn(string column, int targetSlotIndex)
-    {
-        if (string.IsNullOrEmpty(column)) return;
-        int currentIndex = ColumnOrder.IndexOf(column);
-        if (currentIndex < 0) return;
-
-        targetSlotIndex = Math.Clamp(targetSlotIndex, 0, ColumnOrder.Count - 1);
-        if (currentIndex == targetSlotIndex) return;
-
-        var newOrder = new List<string>(ColumnOrder);
-        newOrder.RemoveAt(currentIndex);
-        newOrder.Insert(targetSlotIndex, column);
-        ApplyNewColumnOrder(newOrder);
-    }
-
-    public void MoveColumnBefore(string column, string targetColumn)
-    {
-        if (string.IsNullOrEmpty(column) || string.IsNullOrEmpty(targetColumn) || column == targetColumn) return;
-        int currentIndex = ColumnOrder.IndexOf(column);
-        if (currentIndex < 0) return;
-
-        var newOrder = new List<string>(ColumnOrder);
-        newOrder.RemoveAt(currentIndex);
-        int targetIndex = newOrder.IndexOf(targetColumn);
-        if (targetIndex < 0) targetIndex = 0;
-        newOrder.Insert(targetIndex, column);
-        ApplyNewColumnOrder(newOrder);
-    }
-
-    public void MoveColumnAfter(string column, string targetColumn)
-    {
-        if (string.IsNullOrEmpty(column) || string.IsNullOrEmpty(targetColumn) || column == targetColumn) return;
-        int currentIndex = ColumnOrder.IndexOf(column);
-        if (currentIndex < 0) return;
-
-        var newOrder = new List<string>(ColumnOrder);
-        newOrder.RemoveAt(currentIndex);
-        int targetIndex = newOrder.IndexOf(targetColumn);
-        if (targetIndex < 0) targetIndex = newOrder.Count - 1;
-        newOrder.Insert(targetIndex + 1, column);
-        ApplyNewColumnOrder(newOrder);
-    }
-
-    private void ApplyNewColumnOrder(List<string> newOrder)
-    {
-        ColumnOrder = AppSettings.SanitizeColumnOrder(newOrder);
-        _settingsService.Settings.ColumnOrder = new List<string>(ColumnOrder);
-        _settingsService.SaveSettings();
-        NotifyColumnOrderChanges();
-    }
-
-    public void NotifyColumnOrderChanges()
-    {
-        OnPropertyChanged(nameof(ColIndexName));
-        OnPropertyChanged(nameof(ColIndexHoster));
-        OnPropertyChanged(nameof(ColIndexSavePath));
-        OnPropertyChanged(nameof(ColIndexSize));
-        OnPropertyChanged(nameof(ColIndexProgress));
-        OnPropertyChanged(nameof(ColIndexSpeed));
-        OnPropertyChanged(nameof(ColIndexEta));
-        OnPropertyChanged(nameof(ColIndexStatus));
-        OnPropertyChanged(nameof(ColIndexAddedDate));
-        OnPropertyChanged(nameof(ColIndexCompletedDate));
-        OnPropertyChanged(nameof(ColIndexChecksum));
-        OnPropertyChanged(nameof(ColIndexActions));
-
-        NotifySlotWidthChanges();
-    }
-
-    public void NotifySlotWidthChanges()
-    {
-        OnPropertyChanged(nameof(GridColWidthSlot0));
-        OnPropertyChanged(nameof(GridColWidthSlot1));
-        OnPropertyChanged(nameof(GridColWidthSlot2));
-        OnPropertyChanged(nameof(GridColWidthSlot3));
-        OnPropertyChanged(nameof(GridColWidthSlot4));
-        OnPropertyChanged(nameof(GridColWidthSlot5));
-        OnPropertyChanged(nameof(GridColWidthSlot6));
-        OnPropertyChanged(nameof(GridColWidthSlot7));
-        OnPropertyChanged(nameof(GridColWidthSlot8));
-        OnPropertyChanged(nameof(GridColWidthSlot9));
-        OnPropertyChanged(nameof(GridColWidthSlot10));
-        OnPropertyChanged(nameof(GridColWidthSlot11));
-
-        OnPropertyChanged(nameof(ActualColWidthSlot0));
-        OnPropertyChanged(nameof(ActualColWidthSlot1));
-        OnPropertyChanged(nameof(ActualColWidthSlot2));
-        OnPropertyChanged(nameof(ActualColWidthSlot3));
-        OnPropertyChanged(nameof(ActualColWidthSlot4));
-        OnPropertyChanged(nameof(ActualColWidthSlot5));
-        OnPropertyChanged(nameof(ActualColWidthSlot6));
-        OnPropertyChanged(nameof(ActualColWidthSlot7));
-        OnPropertyChanged(nameof(ActualColWidthSlot8));
-        OnPropertyChanged(nameof(ActualColWidthSlot9));
-        OnPropertyChanged(nameof(ActualColWidthSlot10));
-        OnPropertyChanged(nameof(ActualColWidthSlot11));
-
-        OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
-        OnPropertyChanged(nameof(TotalContentMinWidth));
-    }
-
-    #endregion
-
-    partial void OnShowColNameChanged(bool value) { _settingsService.Settings.ShowColName = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColHosterChanged(bool value) { _settingsService.Settings.ShowColHoster = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColSavePathChanged(bool value) { _settingsService.Settings.ShowColSavePath = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColSizeChanged(bool value) { _settingsService.Settings.ShowColSize = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColProgressChanged(bool value) { _settingsService.Settings.ShowColProgress = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColSpeedChanged(bool value) { _settingsService.Settings.ShowColSpeed = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColEtaChanged(bool value) { _settingsService.Settings.ShowColEta = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColStatusChanged(bool value) { _settingsService.Settings.ShowColStatus = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColAddedDateChanged(bool value) { _settingsService.Settings.ShowColAddedDate = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColCompletedDateChanged(bool value) { _settingsService.Settings.ShowColCompletedDate = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColChecksumChanged(bool value) { _settingsService.Settings.ShowColChecksum = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColActionsChanged(bool value) { _settingsService.Settings.ShowColActions = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-
-    partial void OnColumnOrderChanged(List<string> value)
-    {
-        NotifyColumnOrderChanges();
-    }
-
-    [ObservableProperty]
-    private bool _isDraggingColumnWidth;
-
-    partial void OnColWidthNameChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthName = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthHosterChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthHoster = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthSavePathChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSavePath = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthSizeChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSize = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthProgressChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthProgress = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthSpeedChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSpeed = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthEtaChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthEta = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthStatusChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthStatus = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthAddedDateChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthAddedDate = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthCompletedDateChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthCompletedDate = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthChecksumChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthChecksum = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthActionsChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthActions = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-
-    #region Column Sorting
-
-    [ObservableProperty]
-    private string? _sortColumn;
-
-    [ObservableProperty]
-    private ListSortDirection? _sortDirection;
-
-    public static bool IsDefaultSortDescending(string column) => column switch
-    {
-        "Size" => true,          // 1st click: larger (größer)
-        "Speed" => true,         // 1st click: faster
-        "Progress" => true,      // 1st click: higher %
-        "AddedDate" => true,     // 1st click: newer
-        "CompletedDate" => true, // 1st click: newer
-        "Status" => true,        // 1st click: active downloads first
-        "Actions" => true,       // 1st click: packages with most items first
-        _ => false               // Name, Hoster, SavePath, Checksum, Eta: 1st click Ascending (A-Z, shortest ETA)
-    };
-
-    public void ToggleColumnSort(string column)
-    {
-        if (string.IsNullOrEmpty(column)) return;
-
-        if (!string.Equals(SortColumn, column, StringComparison.OrdinalIgnoreCase))
-        {
-            // 1st click on a new column: activate default sort
-            SortColumn = column;
-            SortDirection = IsDefaultSortDescending(column)
-                ? ListSortDirection.Descending
-                : ListSortDirection.Ascending;
-        }
-        else
-        {
-            // Clicking on the SAME column: cycle: State 1 -> State 2 -> State 3 (Off)
-            bool defaultDesc = IsDefaultSortDescending(column);
-            var firstDir = defaultDesc ? ListSortDirection.Descending : ListSortDirection.Ascending;
-            var secondDir = defaultDesc ? ListSortDirection.Ascending : ListSortDirection.Descending;
-
-            if (SortDirection == firstDir)
-            {
-                SortDirection = secondDir;
-            }
-            else
-            {
-                SortColumn = null;
-                SortDirection = null;
-            }
-        }
-
-        ApplyCurrentSort();
-    }
-
-    public void ClearColumnSort()
-    {
-        if (SortColumn != null || SortDirection != null)
-        {
-            SortColumn = null;
-            SortDirection = null;
-            ApplyCurrentSort();
-        }
-    }
-
-    public void ApplyCurrentSort()
-    {
-        // Ensure original item order indices are initialized
-        foreach (var pkg in Packages)
-        {
-            for (int i = 0; i < pkg.Items.Count; i++)
-            {
-                if (pkg.Items[i].OriginalOrderIndex == 0)
-                {
-                    pkg.Items[i].OriginalOrderIndex = i + 1;
-                }
-            }
-        }
-
-        if (string.IsNullOrEmpty(SortColumn) || !SortDirection.HasValue)
-        {
-            // Restore natural queue order
-            var naturalRoots = Packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
-            SyncOrder(RootPackages, naturalRoots);
-
-            foreach (var pkg in Packages)
-            {
-                var naturalItems = pkg.Items.OrderBy(i => i.OriginalOrderIndex).ThenBy(i => i.CreatedAt).ToList();
-                SyncOrder(pkg.Items, naturalItems);
-                if (pkg.ClippedPackages.Count > 1)
-                {
-                    var naturalClipped = pkg.ClippedPackages.OrderBy(c => c.CreatedAt).ToList();
-                    SyncOrder(pkg.ClippedPackages, naturalClipped);
-                }
-            }
-            return;
-        }
-
-        string col = SortColumn;
-        ListSortDirection dir = SortDirection.Value;
-
-        // 1. Sort RootPackages
-        var sortedRoots = SortPackages(RootPackages.ToList(), col, dir);
-        SyncOrder(RootPackages, sortedRoots);
-
-        // 2. Sort Items and ClippedPackages inside each package
-        foreach (var pkg in Packages)
-        {
-            var sortedItems = SortItems(pkg.Items.ToList(), col, dir);
-            SyncOrder(pkg.Items, sortedItems);
-
-            if (pkg.ClippedPackages.Count > 1)
-            {
-                var sortedClipped = SortPackages(pkg.ClippedPackages.ToList(), col, dir);
-                SyncOrder(pkg.ClippedPackages, sortedClipped);
-            }
-        }
-    }
-
-    public static List<DownloadPackage> SortPackages(List<DownloadPackage> list, string column, ListSortDirection direction)
-    {
-        bool asc = direction == ListSortDirection.Ascending;
-        return column switch
-        {
-            "Name" => asc 
-                ? list.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "Hoster" => asc
-                ? list.OrderBy(p => p.Items.FirstOrDefault()?.HosterName ?? "", StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(p => p.Items.FirstOrDefault()?.HosterName ?? "", StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "SavePath" => asc
-                ? list.OrderBy(p => p.SaveDirectory, StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(p => p.SaveDirectory, StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "Size" => asc
-                ? list.OrderBy(p => p.TotalBytes).ToList()
-                : list.OrderByDescending(p => p.TotalBytes).ToList(),
-
-            "Progress" => asc
-                ? list.OrderBy(p => p.ProgressPercentage).ToList()
-                : list.OrderByDescending(p => p.ProgressPercentage).ToList(),
-
-            "Speed" => asc
-                ? list.OrderBy(p => p.SpeedBytesPerSecond).ToList()
-                : list.OrderByDescending(p => p.SpeedBytesPerSecond).ToList(),
-
-            "Eta" => asc
-                ? list.OrderBy(p => p.RemainingSeconds <= 0 ? double.MaxValue : p.RemainingSeconds).ToList()
-                : list.OrderByDescending(p => p.RemainingSeconds).ToList(),
-
-            "Status" => asc
-                ? list.OrderBy(p => GetStatusSortRank(p.Status)).ToList()
-                : list.OrderByDescending(p => GetStatusSortRank(p.Status)).ToList(),
-
-            "AddedDate" => asc
-                ? list.OrderBy(p => p.CreatedAt).ToList()
-                : list.OrderByDescending(p => p.CreatedAt).ToList(),
-
-            "CompletedDate" => asc
-                ? list.OrderBy(p => p.CompletedAt ?? DateTime.MinValue).ToList()
-                : list.OrderByDescending(p => p.CompletedAt ?? DateTime.MinValue).ToList(),
-
-            "Checksum" => asc
-                ? list.OrderBy(p => p.Items.FirstOrDefault()?.DisplayChecksum ?? "", StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(p => p.Items.FirstOrDefault()?.DisplayChecksum ?? "", StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "Actions" => asc
-                ? list.OrderBy(p => p.Items.Count).ToList()
-                : list.OrderByDescending(p => p.Items.Count).ToList(),
-
-            _ => list
-        };
-    }
-
-    public static List<DownloadItem> SortItems(List<DownloadItem> list, string column, ListSortDirection direction)
-    {
-        bool asc = direction == ListSortDirection.Ascending;
-        return column switch
-        {
-            "Name" => asc
-                ? list.OrderBy(i => i.FileName, StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(i => i.FileName, StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "Hoster" => asc
-                ? list.OrderBy(i => i.HosterName, StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(i => i.HosterName, StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "SavePath" => asc
-                ? list.OrderBy(i => i.SaveFilePath ?? "", StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(i => i.SaveFilePath ?? "", StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "Size" => asc
-                ? list.OrderBy(i => i.TotalBytes).ToList()
-                : list.OrderByDescending(i => i.TotalBytes).ToList(),
-
-            "Progress" => asc
-                ? list.OrderBy(i => i.ProgressPercentage).ToList()
-                : list.OrderByDescending(i => i.ProgressPercentage).ToList(),
-
-            "Speed" => asc
-                ? list.OrderBy(i => i.SpeedBytesPerSecond).ToList()
-                : list.OrderByDescending(i => i.SpeedBytesPerSecond).ToList(),
-
-            "Eta" => asc
-                ? list.OrderBy(i => i.RemainingSeconds <= 0 ? double.MaxValue : i.RemainingSeconds).ToList()
-                : list.OrderByDescending(i => i.RemainingSeconds).ToList(),
-
-            "Status" => asc
-                ? list.OrderBy(i => GetStatusSortRank(i.Status)).ToList()
-                : list.OrderByDescending(i => GetStatusSortRank(i.Status)).ToList(),
-
-            "AddedDate" => asc
-                ? list.OrderBy(i => i.CreatedAt).ToList()
-                : list.OrderByDescending(i => i.CreatedAt).ToList(),
-
-            "CompletedDate" => asc
-                ? list.OrderBy(i => i.CompletedAt ?? DateTime.MinValue).ToList()
-                : list.OrderByDescending(i => i.CompletedAt ?? DateTime.MinValue).ToList(),
-
-            "Checksum" => asc
-                ? list.OrderBy(i => i.DisplayChecksum ?? "", StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(i => i.DisplayChecksum ?? "", StringComparer.OrdinalIgnoreCase).ToList(),
-
-            "Actions" => asc
-                ? list.OrderBy(i => i.FileName, StringComparer.OrdinalIgnoreCase).ToList()
-                : list.OrderByDescending(i => i.FileName, StringComparer.OrdinalIgnoreCase).ToList(),
-
-            _ => list
-        };
-    }
-
-    private static int GetStatusSortRank(DownloadStatus status) => status switch
-    {
-        DownloadStatus.Downloading => 10,
-        DownloadStatus.SolvingCaptcha => 9,
-        DownloadStatus.WaitingForBrowser => 8,
-        DownloadStatus.InBrowser => 7,
-        DownloadStatus.Queued => 6,
-        DownloadStatus.Paused => 5,
-        DownloadStatus.Completed => 2,
-        DownloadStatus.Failed => 1,
-        DownloadStatus.Aborted => 0,
-        _ => 0
-    };
-
-    public static void SyncOrder<T>(ObservableCollection<T> collection, IList<T> targetOrder)
-    {
-        for (int targetIndex = 0; targetIndex < targetOrder.Count; targetIndex++)
-        {
-            int currentIndex = collection.IndexOf(targetOrder[targetIndex]);
-            if (currentIndex >= 0 && targetIndex < collection.Count && currentIndex != targetIndex)
-            {
-                collection.Move(currentIndex, targetIndex);
-            }
-        }
-    }
-
-    #endregion
-
-    [RelayCommand]
-    public void AutoFitColumns()
-    {
-        if (ShowColHoster) ColWidthHoster = 75;
-        if (ShowColSavePath) ColWidthSavePath = 140;
-        if (ShowColSize) ColWidthSize = 75;
-        if (ShowColProgress) ColWidthProgress = 110;
-        if (ShowColSpeed) ColWidthSpeed = 80;
-        if (ShowColEta) ColWidthEta = 65;
-        if (ShowColStatus) ColWidthStatus = 95;
-        if (ShowColAddedDate) ColWidthAddedDate = 95;
-        if (ShowColCompletedDate) ColWidthCompletedDate = 95;
-        if (ShowColChecksum) ColWidthChecksum = 90;
-        if (ShowColActions) ColWidthActions = 95;
-
-        _settingsService.Settings.ColWidthHoster = ColWidthHoster;
-        _settingsService.Settings.ColWidthSavePath = ColWidthSavePath;
-        _settingsService.Settings.ColWidthSize = ColWidthSize;
-        _settingsService.Settings.ColWidthProgress = ColWidthProgress;
-        _settingsService.Settings.ColWidthSpeed = ColWidthSpeed;
-        _settingsService.Settings.ColWidthEta = ColWidthEta;
-        _settingsService.Settings.ColWidthStatus = ColWidthStatus;
-        _settingsService.Settings.ColWidthAddedDate = ColWidthAddedDate;
-        _settingsService.Settings.ColWidthCompletedDate = ColWidthCompletedDate;
-        _settingsService.Settings.ColWidthChecksum = ColWidthChecksum;
-        _settingsService.Settings.ColWidthActions = ColWidthActions;
-        _settingsService.SaveSettings();
-        NotifyDividerChanges();
-    }
-
-    [RelayCommand]
-    public void ResetColumns()
-    {
-        ColWidthName = 220;
-        ColWidthHoster = 75;
-        ColWidthSavePath = 140;
-        ColWidthSize = 75;
-        ColWidthProgress = 110;
-        ColWidthSpeed = 80;
-        ColWidthEta = 65;
-        ColWidthStatus = 95;
-        ColWidthAddedDate = 95;
-        ColWidthCompletedDate = 95;
-        ColWidthChecksum = 90;
-        ColWidthActions = 95;
-
-        ShowColName = true;
-        ShowColHoster = true;
-        ShowColSavePath = false;
-        ShowColSize = true;
-        ShowColProgress = true;
-        ShowColSpeed = true;
-        ShowColEta = true;
-        ShowColStatus = true;
-        ShowColAddedDate = false;
-        ShowColCompletedDate = false;
-        ShowColChecksum = false;
-        ShowColActions = true;
-
-        var s = _settingsService.Settings;
-        s.ColWidthName = ColWidthName;
-        s.ColWidthHoster = ColWidthHoster;
-        s.ColWidthSavePath = ColWidthSavePath;
-        s.ColWidthSize = ColWidthSize;
-        s.ColWidthProgress = ColWidthProgress;
-        s.ColWidthSpeed = ColWidthSpeed;
-        s.ColWidthEta = ColWidthEta;
-        s.ColWidthStatus = ColWidthStatus;
-        s.ColWidthAddedDate = ColWidthAddedDate;
-        s.ColWidthCompletedDate = ColWidthCompletedDate;
-        s.ColWidthChecksum = ColWidthChecksum;
-        s.ColWidthActions = ColWidthActions;
-
-        s.ShowColName = ShowColName;
-        s.ShowColHoster = ShowColHoster;
-        s.ShowColSavePath = ShowColSavePath;
-        s.ShowColSize = ShowColSize;
-        s.ShowColProgress = ShowColProgress;
-        s.ShowColSpeed = ShowColSpeed;
-        s.ShowColEta = ShowColEta;
-        s.ShowColStatus = ShowColStatus;
-        s.ShowColAddedDate = ShowColAddedDate;
-        s.ShowColCompletedDate = ShowColCompletedDate;
-        s.ShowColChecksum = ShowColChecksum;
-        s.ShowColActions = ShowColActions;
-
-        NotifyDividerChanges();
-        ClearColumnSort();
-        _settingsService.SaveSettings();
-    }
-
-
-    [ObservableProperty]
-    private string _currentDownloadDirectory = string.Empty;
-
-    partial void OnCurrentDownloadDirectoryChanged(string value)
-    {
-        if (!string.IsNullOrWhiteSpace(value) && _settingsService.Settings.DefaultDownloadDirectory != value)
-        {
-            _settingsService.Settings.DefaultDownloadDirectory = value;
-            _settingsService.SaveSettings();
-        }
-        UpdateDriveSpace(force: true);
-    }
-
-    [ObservableProperty]
-    private string _appDataDirectoryPath = SettingsService.AppDataDirectory;
-
-    [ObservableProperty]
-    private bool _autoExtractArchives = false;
-
-    [ObservableProperty]
-    private bool _deleteArchiveAfterExtraction = false;
-
-    [ObservableProperty]
-    private bool _moveArchiveToRecycleBin = true;
-
-    [ObservableProperty]
-    private bool _lowResourceExtraction = false;
-
-    [ObservableProperty]
-    private bool _isLowResourceRecommended = false;
-
-    [ObservableProperty]
-    private string _driveStorageTypeDescription = string.Empty;
-
-    [ObservableProperty]
-    private bool _createGameInstallFolder;
-
-    partial void OnCreateGameInstallFolderChanged(bool value)
-    {
-        if (_settingsService.Settings.CreateGameInstallFolder != value)
-        {
-            _settingsService.Settings.CreateGameInstallFolder = value;
-            _settingsService.SaveSettings();
-        }
-    }
-
-    [ObservableProperty]
-    private string _gameInstallDirectory = string.Empty;
-
-    partial void OnGameInstallDirectoryChanged(string value)
-    {
-        if (!string.IsNullOrWhiteSpace(value) && _settingsService.Settings.GameInstallDirectory != value)
-        {
-            _settingsService.Settings.GameInstallDirectory = value.Trim();
-            _settingsService.SaveSettings();
-        }
-    }
-
-    [ObservableProperty]
-    private bool _isDarkMode = true;
-
-    partial void OnAutoExtractArchivesChanged(bool value)
-    {
-        _settingsService.Settings.AutoExtractArchives = value;
-        _settingsService.SaveSettings();
-    }
-
-    partial void OnDeleteArchiveAfterExtractionChanged(bool value)
-    {
-        if (value && MoveArchiveToRecycleBin)
-        {
-            MoveArchiveToRecycleBin = false;
-        }
-        _settingsService.Settings.DeleteArchiveAfterExtraction = value;
-        _settingsService.SaveSettings();
-    }
-
-    partial void OnMoveArchiveToRecycleBinChanged(bool value)
-    {
-        if (value && DeleteArchiveAfterExtraction)
-        {
-            DeleteArchiveAfterExtraction = false;
-        }
-        _settingsService.Settings.MoveArchiveToRecycleBin = value;
-        _settingsService.SaveSettings();
-    }
-
-    partial void OnLowResourceExtractionChanged(bool value)
-    {
-        _settingsService.Settings.LowResourceExtraction = value;
-        _settingsService.SaveSettings();
-    }
-
-    [ObservableProperty]
-    private bool _autoPar2Repair = false;
-
-    partial void OnAutoPar2RepairChanged(bool value)
-    {
-        _settingsService.Settings.AutoPar2Repair = value;
-        _settingsService.SaveSettings();
-    }
-
-    [ObservableProperty]
-    private bool _deletePar2AfterExtraction = false;
-
-    partial void OnDeletePar2AfterExtractionChanged(bool value)
-    {
-        _settingsService.Settings.DeletePar2AfterExtraction = value;
-        _settingsService.SaveSettings();
-    }
-
-    private string _newArchivePasswordInput = string.Empty;
-    public string NewArchivePasswordInput
-    {
-        get => _newArchivePasswordInput;
-        set
-        {
-            if (SetProperty(ref _newArchivePasswordInput, value))
-            {
-                OnPropertyChanged(nameof(HasNewArchivePasswordInput));
-            }
-        }
-    }
-
-    public bool HasNewArchivePasswordInput => !string.IsNullOrWhiteSpace(_newArchivePasswordInput);
-
-    private bool _isArchivePasswordsExpanded = false;
-    public bool IsArchivePasswordsExpanded
-    {
-        get => _isArchivePasswordsExpanded;
-        set
-        {
-            if (SetProperty(ref _isArchivePasswordsExpanded, value))
-            {
-                if (_settingsService?.Settings != null)
-                {
-                    _settingsService.Settings.IsArchivePasswordsExpanded = value;
-                    _settingsService.SaveSettings();
-                }
-            }
-        }
-    }
-
-    private RelayCommand? _toggleArchivePasswordsExpandedCommand;
-    public IRelayCommand ToggleArchivePasswordsExpandedCommand =>
-        _toggleArchivePasswordsExpandedCommand ??= new RelayCommand(ToggleArchivePasswordsExpanded);
-
-    public void ToggleArchivePasswordsExpanded()
-    {
-        IsArchivePasswordsExpanded = !IsArchivePasswordsExpanded;
-    }
-
-    public System.Collections.ObjectModel.ObservableCollection<string> ArchivePasswords { get; } = new();
-
-    public bool HasArchivePasswords => ArchivePasswords.Count > 0;
-
-    private RelayCommand? _addArchivePasswordCommand;
-    public IRelayCommand AddArchivePasswordCommand =>
-        _addArchivePasswordCommand ??= new RelayCommand(AddArchivePassword);
-
-    public void AddArchivePassword()
-    {
-        if (string.IsNullOrWhiteSpace(NewArchivePasswordInput))
-            return;
-
-        var pwd = NewArchivePasswordInput.Trim();
-        if (!ArchivePasswords.Contains(pwd, StringComparer.Ordinal))
-        {
-            ArchivePasswords.Add(pwd);
-            OnPropertyChanged(nameof(HasArchivePasswords));
-            SyncArchivePasswordsToSettings();
-        }
-        NewArchivePasswordInput = string.Empty;
-    }
-
-    private RelayCommand<string?>? _removeArchivePasswordCommand;
-    public IRelayCommand<string?> RemoveArchivePasswordCommand =>
-        _removeArchivePasswordCommand ??= new RelayCommand<string?>(RemoveArchivePassword);
-
-    public void RemoveArchivePassword(string? password)
-    {
-        if (string.IsNullOrEmpty(password))
-            return;
-
-        if (ArchivePasswords.Remove(password))
-        {
-            OnPropertyChanged(nameof(HasArchivePasswords));
-            SyncArchivePasswordsToSettings();
-        }
-    }
-
-    private void SyncArchivePasswordsToSettings()
-    {
-        _settingsService.Settings.ExtractionPasswords = ArchivePasswords.ToList();
-        _settingsService.SaveSettings();
-    }
-
-    partial void OnIsDarkModeChanged(bool value)
-    {
-        if (!value)
-        {
-            _isDarkMode = true;
-            OnPropertyChanged(nameof(IsDarkMode));
-        }
-        _settingsService.Settings.IsDarkMode = true;
-        _settingsService.Settings.EnableForcedDarkMode = true;
-        _settingsService.SaveSettings();
-        Services.ThemeService.Instance.ApplyTheme(true, save: true);
-    }
-
-    [ObservableProperty]
-    private bool _isColorPaletteExpanded = true;
-
-    partial void OnIsColorPaletteExpandedChanged(bool value)
-    {
-        _settingsService.Settings.IsColorPaletteExpanded = value;
-        _settingsService.SaveSettings();
-    }
-
-    [ObservableProperty]
-    private bool _minimizeToTrayOnClose = false;
-
-    partial void OnMinimizeToTrayOnCloseChanged(bool value)
-    {
-        _settingsService.Settings.MinimizeToTrayOnClose = value;
-        _settingsService.SaveSettings();
-    }
-
-    [ObservableProperty]
-    private bool _startWithWindows;
-
-    partial void OnStartWithWindowsChanged(bool value)
-    {
-        if (IsPortableMode)
-        {
-            _startWithWindows = false;
-            _settingsService.Settings.StartWithWindows = false;
-            _settingsService.SaveSettings();
-            return;
-        }
-
-        _settingsService.Settings.StartWithWindows = value;
-        _settingsService.SaveSettings();
-        if (!IsPortableMode)
-        {
-            Services.SystemIntegration.WindowsStartupService.SetAutostart(value);
-        }
-    }
-
-    [ObservableProperty]
-    private bool _enableCompletionNotifications = false;
-
-    partial void OnEnableCompletionNotificationsChanged(bool value)
-    {
-        _settingsService.Settings.EnableCompletionNotifications = value;
-        _settingsService.SaveSettings();
-    }
-
-    [ObservableProperty]
-    private bool _autoCollapseCompletedPackages = true;
-
-    partial void OnAutoCollapseCompletedPackagesChanged(bool value)
-    {
-        _settingsService.Settings.AutoCollapseCompletedPackages = value;
-        _settingsService.SaveSettings();
-    }
-
-    [ObservableProperty]
-    private bool _enableFileLogging = false;
-
-    partial void OnEnableFileLoggingChanged(bool value)
-    {
-        if (_settingsService?.Settings != null)
-        {
-            _settingsService.Settings.EnableFileLogging = value;
-            _settingsService.SaveSettings();
-        }
-        AppLogger.IsLoggingEnabled = value;
-
-        if (!value)
-        {
-            try
-            {
-                if (Directory.Exists(AppLogger.LogsDirectory))
-                {
-                    Directory.Delete(AppLogger.LogsDirectory, true);
-                }
-            }
-            catch { }
-        }
-    }
-
-    [ObservableProperty]
-    private string _currentAccentColor = "#3B82F6";
-
-    [ObservableProperty]
-    private string _customAccentColorHex = "#3B82F6";
-
-    [ObservableProperty]
-    private double _pickerHue = 217;
-
-    [ObservableProperty]
-    private double _pickerSaturation = 0.76;
-
-    [ObservableProperty]
-    private double _pickerValue = 0.965;
-
-    [ObservableProperty]
-    private SolidColorBrush _pureHueBrush = new(Color.FromRgb(0, 102, 255));
-
-    [ObservableProperty]
-    private byte _colorR = 59;
-
-    [ObservableProperty]
-    private byte _colorG = 130;
-
-    [ObservableProperty]
-    private byte _colorB = 246;
-
-    private bool _isUpdatingColorInternally;
-
-    partial void OnPickerHueChanged(double value)
-    {
-        if (_isUpdatingColorInternally) return;
-        UpdateFromHsv(value, PickerSaturation, PickerValue);
-    }
-
-    partial void OnCustomAccentColorHexChanged(string value)
-    {
-        if (_isUpdatingColorInternally || string.IsNullOrWhiteSpace(value)) return;
-        if (Helpers.ColorHelper.TryParseHex(value, out var color))
-        {
-            UpdateFromRgb(color.R, color.G, color.B, updateHexText: false);
-        }
-    }
-
-    partial void OnColorRChanged(byte value)
-    {
-        if (_isUpdatingColorInternally) return;
-        UpdateFromRgb(value, ColorG, ColorB);
-    }
-
-    partial void OnColorGChanged(byte value)
-    {
-        if (_isUpdatingColorInternally) return;
-        UpdateFromRgb(ColorR, value, ColorB);
-    }
-
-    partial void OnColorBChanged(byte value)
-    {
-        if (_isUpdatingColorInternally) return;
-        UpdateFromRgb(ColorR, ColorG, value);
-    }
-
-    public void UpdateFromHsv(double hue, double saturation, double value, bool updateHexText = true)
-    {
-        _isUpdatingColorInternally = true;
-        try
-        {
-            PickerHue = Math.Clamp(hue, 0, 360);
-            PickerSaturation = Math.Clamp(saturation, 0, 1);
-            PickerValue = Math.Clamp(value, 0, 1);
-
-            var color = Helpers.ColorHelper.FromHsv(PickerHue, PickerSaturation, PickerValue);
-            var pureColor = Helpers.ColorHelper.FromHsv(PickerHue, 1.0, 1.0);
-
-            ColorR = color.R;
-            ColorG = color.G;
-            ColorB = color.B;
-
-            var hex = Helpers.ColorHelper.ToHex(color);
-            CurrentAccentColor = hex;
-            if (updateHexText)
-            {
-                CustomAccentColorHex = hex;
-            }
-
-            var brush = new SolidColorBrush(pureColor);
-            brush.Freeze();
-            PureHueBrush = brush;
-
-            Services.ThemeService.Instance.SetAccentColor(hex, save: true);
-        }
-        finally
-        {
-            _isUpdatingColorInternally = false;
-        }
-    }
-
-    public void UpdateFromRgb(byte r, byte g, byte b, bool updateHexText = true)
-    {
-        _isUpdatingColorInternally = true;
-        try
-        {
-            ColorR = r;
-            ColorG = g;
-            ColorB = b;
-
-            var color = Color.FromRgb(r, g, b);
-            Helpers.ColorHelper.ToHsv(color, out double h, out double s, out double v);
-
-            PickerHue = h;
-            PickerSaturation = s;
-            PickerValue = v;
-
-            var pureColor = Helpers.ColorHelper.FromHsv(h, 1.0, 1.0);
-            var hex = Helpers.ColorHelper.ToHex(color);
-            CurrentAccentColor = hex;
-            if (updateHexText)
-            {
-                CustomAccentColorHex = hex;
-            }
-
-            var brush = new SolidColorBrush(pureColor);
-            brush.Freeze();
-            PureHueBrush = brush;
-
-            Services.ThemeService.Instance.SetAccentColor(hex, save: true);
-        }
-        finally
-        {
-            _isUpdatingColorInternally = false;
-        }
-    }
-
-    public void SyncAccentColorState(string hex)
-    {
-        if (Helpers.ColorHelper.TryParseHex(hex, out var color))
-        {
-            UpdateFromRgb(color.R, color.G, color.B);
-        }
-    }
-
-    [RelayCommand]
-    public void SelectAccentColor(string hex)
-    {
-        CurrentAccentColor = "#3B82F6";
-        CustomAccentColorHex = "#3B82F6";
-        Services.ThemeService.Instance.SetAccentColor("#3B82F6", save: true);
-    }
-
-    [RelayCommand]
-    public void ResetAccentColor()
-    {
-        CurrentAccentColor = "#3B82F6";
-        CustomAccentColorHex = "#3B82F6";
-        Services.ThemeService.Instance.SetAccentColor("#3B82F6", save: true);
-    }
-
-    [RelayCommand]
-    public void ToggleTheme()
-    {
-        // Dark mode only - theme cannot be toggled
-        IsDarkMode = true;
-    }
 
     public MainViewModel()
     {
@@ -1992,6 +459,7 @@ public partial class MainViewModel : ObservableObject
             }
         }
         OnPropertyChanged(nameof(HasArchivePasswords));
+        OnPropertyChanged(nameof(ArchivePasswordsCount));
         IsArchivePasswordsExpanded = settings.IsArchivePasswordsExpanded;
 
         var targetDir = settings.DefaultDownloadDirectory;
@@ -2020,13 +488,19 @@ public partial class MainViewModel : ObservableObject
         }
 
         IsDarkMode = true;
-        IsColorPaletteExpanded = settings.IsColorPaletteExpanded;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         StartWithWindows = IsPortableMode ? false : settings.StartWithWindows;
         EnableCompletionNotifications = settings.EnableCompletionNotifications;
+        EnableCompletionSound = settings.EnableCompletionSound;
+        SelectedCompletionSound = !string.IsNullOrWhiteSpace(settings.SelectedCompletionSound) ? settings.SelectedCompletionSound : "1.mp3";
+        CompletionSoundVolume = Math.Clamp(settings.CompletionSoundVolume, 0, 100);
+        EnableErrorSound = settings.EnableErrorSound;
+        SelectedErrorSound = !string.IsNullOrWhiteSpace(settings.SelectedErrorSound) ? settings.SelectedErrorSound : "1.mp3";
+        ErrorSoundVolume = Math.Clamp(settings.ErrorSoundVolume, 0, 100);
         AutoCollapseCompletedPackages = settings.AutoCollapseCompletedPackages;
         EnableFileLogging = settings.EnableFileLogging;
         AppLogger.IsLoggingEnabled = EnableFileLogging;
+        EnableClipboardMonitor = settings.EnableClipboardMonitor;
         CreateGameInstallFolder = settings.CreateGameInstallFolder;
         GameInstallDirectory = !string.IsNullOrWhiteSpace(settings.GameInstallDirectory)
             ? settings.GameInstallDirectory
@@ -2044,10 +518,9 @@ public partial class MainViewModel : ObservableObject
             DriveStorageTypeDescription = DriveHardwareDetector.GetDriveStorageDescription(CurrentDownloadDirectory);
             ShortcutManager.RefreshLocalization();
             OnPropertyChanged(nameof(SelectedStatusFilterText));
+            OnPropertyChanged(nameof(ClipboardMonitorTooltip));
+            OnPropertyChanged(nameof(PostDownloadActionTooltip));
         };
-
-        CurrentAccentColor = "#3B82F6";
-        CustomAccentColorHex = "#3B82F6";
         
         SpeedLimitMBps = settings.SpeedLimitMBps;
         if (SpeedLimitMBps <= 0 && settings.SpeedLimitBytesPerSecond > 0)
@@ -2056,17 +529,6 @@ public partial class MainViewModel : ObservableObject
         }
         SpeedLimitText = SpeedLimitMBps > 0 ? SpeedLimitMBps.ToString("0.##", CultureInfo.CurrentCulture) : "0";
         DownloadEngine.Instance.SetSpeedLimit(SpeedLimitMBps > 0 ? (long)(SpeedLimitMBps * 1024 * 1024) : 0);
-
-        ThemeService.Instance.AccentColorChanged += hex =>
-        {
-            if (_currentAccentColor != hex)
-            {
-                _currentAccentColor = hex;
-                _customAccentColorHex = hex;
-                OnPropertyChanged(nameof(CurrentAccentColor));
-                OnPropertyChanged(nameof(CustomAccentColorHex));
-            }
-        };
 
         ThemeService.Instance.ThemeChanged += dark =>
         {
@@ -2096,6 +558,7 @@ public partial class MainViewModel : ObservableObject
                 RecalculateGlobalStats();
                 StatusSummary = Loc.Format("Status_FileDownloadedSuccess", item.FileName);
             });
+            Services.Audio.AudioNotificationService.Instance.PlayCompletionSound();
         };
         DownloadEngine.Instance.DownloadFailed += (item, ex) =>
         {
@@ -2104,15 +567,19 @@ public partial class MainViewModel : ObservableObject
                 RecalculateGlobalStats();
                 StatusSummary = Loc.Format("Status_FileDownloadError", item.FileName, ex.Message);
             });
+            Services.Audio.AudioNotificationService.Instance.PlayErrorSound();
         };
 
         // Setup timer for periodic stats refresh
-        _statsTimer = new System.Windows.Threading.DispatcherTimer
+        if (!DownloadPersistenceService.IsTestEnvironment)
         {
-            Interval = TimeSpan.FromMilliseconds(500)
-        };
-        _statsTimer.Tick += (s, e) => RecalculateGlobalStats();
-        _statsTimer.Start();
+            _statsTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _statsTimer.Tick += (s, e) => RecalculateGlobalStats();
+            _statsTimer.Start();
+        }
 
         RefreshRootPackages();
         _queueManager.Packages.CollectionChanged += (s, e) =>
@@ -2134,378 +601,61 @@ public partial class MainViewModel : ObservableObject
 
         _navManager.Record(new NavigationState(SelectedMainTab, SelectedSettingsCategory));
         UpdateNavigationProperties();
-    }
 
-    [RelayCommand]
-    public void SelectSettingsCategory(object? parameter)
-    {
-        if (parameter is SettingsCategory cat)
+        PostDownloadActionService.Instance.StateChanged += () =>
         {
-            SelectedSettingsCategory = cat;
-        }
-        else if (parameter is string s && Enum.TryParse<SettingsCategory>(s, true, out var parsedCat))
-        {
-            SelectedSettingsCategory = parsedCat;
-        }
-        else if (parameter is string sIdx && int.TryParse(sIdx, out int idx))
-        {
-            if (Enum.IsDefined(typeof(SettingsCategory), idx))
+            SafeDispatch(() =>
             {
-                SelectedSettingsCategory = (SettingsCategory)idx;
-            }
-        }
-        else if (parameter is int intIdx)
-        {
-            if (Enum.IsDefined(typeof(SettingsCategory), intIdx))
-            {
-                SelectedSettingsCategory = (SettingsCategory)intIdx;
-            }
-        }
-    }
-
-    [RelayCommand]
-    public void BrowseDownloadDirectory()
-    {
-        var currentDir = _settingsService.Settings.DefaultDownloadDirectory;
-        var dialog = new Microsoft.Win32.OpenFolderDialog
-        {
-            Title = Loc.Get("Dialog_SelectDefaultDownloadDirTitle"),
-            InitialDirectory = Directory.Exists(currentDir) ? currentDir : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-        };
-
-        if (dialog.ShowDialog() == true)
-        {
-            _settingsService.Settings.DefaultDownloadDirectory = dialog.FolderName;
-            _settingsService.SaveSettings();
-            CurrentDownloadDirectory = dialog.FolderName;
-            StatusSummary = Loc.Format("Status_DownloadDirChanged", dialog.FolderName);
-        }
-    }
-
-    [RelayCommand]
-    public void BrowseGameInstallDirectory()
-    {
-        var currentDir = GameInstallDirectory;
-        var dialog = new Microsoft.Win32.OpenFolderDialog
-        {
-            Title = Loc.Get("Dialog_SelectGameInstallDirTitle"),
-            InitialDirectory = Directory.Exists(currentDir) ? currentDir : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-        };
-
-        if (dialog.ShowDialog() == true)
-        {
-            GameInstallDirectory = dialog.FolderName;
-            _settingsService.Settings.GameInstallDirectory = dialog.FolderName;
-            _settingsService.SaveSettings();
-        }
-    }
-
-    [RelayCommand]
-    public void OpenGameInstallDirectory()
-    {
-        try
-        {
-            var dir = GameInstallDirectory;
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                dir = GameInstallFolderService.GetEffectiveBaseDirectory();
-            }
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"\"{dir}\"",
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = dir,
-                    UseShellExecute = true
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("Failed to open game install directory", ex);
-        }
-    }
-
-    [RelayCommand]
-    public void CreateGameInstallFolderForPackage(DownloadPackage? package)
-    {
-        var pkg = package ?? SelectedPackage;
-        if (pkg == null) return;
-
-        var targetDir = GameInstallFolderService.CreateAndCopyGameInstallFolder(pkg, showNotification: true);
-        if (!string.IsNullOrWhiteSpace(targetDir))
-        {
-            StatusSummary = Loc.Format("Status_GameInstallFolderCreated", targetDir);
-        }
-    }
-
-    [RelayCommand]
-    public void OpenDownloadDirectoryInExplorer()
-    {
-        try
-        {
-            var dir = _settingsService.Settings.DefaultDownloadDirectory;
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                dir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            }
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"\"{dir}\"",
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = dir,
-                    UseShellExecute = true
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Download-Ordners: {ex.Message}");
-            StatusSummary = Loc.Format("Status_CannotOpenDownloadFolder", ex.Message);
-        }
-    }
-
-    [RelayCommand]
-    public void OpenSettingsFileInExplorer()
-    {
-        try
-        {
-            var file = Path.Combine(SettingsService.AppDataDirectory, "settings.json");
-            if (File.Exists(file))
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"/select,\"{file}\"",
-                    UseShellExecute = true
-                });
-            }
-            else
-            {
-                OpenAppDataFolderInExplorer();
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen der Konfigurationsdatei: {ex.Message}");
-            StatusSummary = Loc.Format("Status_CannotOpenSettingsFile", ex.Message);
-        }
-    }
-
-    [RelayCommand]
-    public void OpenAppDataFolderInExplorer()
-    {
-        try
-        {
-            var dir = SettingsService.AppDataDirectory;
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"\"{dir}\"",
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = dir,
-                    UseShellExecute = true
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des AppData-Ordners: {ex.Message}");
-            StatusSummary = Loc.Format("Status_CannotOpenAppDataFolder", ex.Message);
-        }
-    }
-
-    [RelayCommand]
-    public void OpenLogsFolderInExplorer()
-    {
-        try
-        {
-            var dir = SettingsService.LogsDirectory;
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"\"{dir}\"",
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = dir,
-                    UseShellExecute = true
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Log-Ordners: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    public void OpenGitHubRepository()
-    {
-        OpenBrowserUrl("https://github.com/Biiitz/Reepax");
-    }
-
-    [RelayCommand]
-    public void OpenGitHubReleases()
-    {
-        OpenBrowserUrl("https://github.com/Biiitz/Reepax/releases");
-    }
-
-    [RelayCommand]
-    public void OpenGitHubIssues()
-    {
-        OpenBrowserUrl("https://github.com/Biiitz/Reepax/issues");
-    }
-
-    [RelayCommand]
-    public void CopySystemDiagnosticInfo()
-    {
-        try
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("### Reepax Diagnostic Information");
-            sb.AppendLine($"- App Version: {AppVersion}");
-            sb.AppendLine($"- OS: {OperatingSystemInfo}");
-            sb.AppendLine($"- Architecture: {ArchitectureInfo}");
-            sb.AppendLine($"- .NET Runtime: {DotNetRuntimeInfo}");
-            sb.AppendLine($"- Native Engine: reepax_adblock.dll (Rust x86_64)");
-            sb.AppendLine($"- Archive Engine: SharpCompress & par2 (Parchive 2.0)");
-            sb.AppendLine($"- AppData Path: {AppDataFolderPath}");
-            sb.AppendLine($"- Logs Path: {LogsFolderPath}");
-            sb.AppendLine($"- Language: {LocalizationService.Instance.CurrentLanguage}");
-            Clipboard.SetText(sb.ToString());
-            StatusSummary = Loc.Get("About_DiagnosticCopied");
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Kopieren der Diagnose-Infos: {ex.Message}");
-        }
-    }
-
-    private static void OpenBrowserUrl(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
+                OnPropertyChanged(nameof(CurrentPostDownloadAction));
+                OnPropertyChanged(nameof(IsPostDownloadActionActive));
+                OnPropertyChanged(nameof(PostDownloadActionTooltip));
+                OnPropertyChanged(nameof(IsShutdownActionSelected));
+                OnPropertyChanged(nameof(IsSleepActionSelected));
+                OnPropertyChanged(nameof(IsExitAppActionSelected));
+                OnPropertyChanged(nameof(IsNoneActionSelected));
+                IsPostDownloadCountdownActive = PostDownloadActionService.Instance.IsCountdownActive;
+                PostDownloadRemainingSeconds = PostDownloadActionService.Instance.RemainingSeconds;
             });
-        }
-        catch (Exception ex)
+        };
+
+        PostDownloadActionService.Instance.CountdownTick += seconds =>
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen von '{url}': {ex.Message}");
-        }
+            SafeDispatch(() =>
+            {
+                IsPostDownloadCountdownActive = true;
+                PostDownloadRemainingSeconds = seconds;
+                var actionName = PostDownloadActionService.Instance.GetActionDisplayName(PostDownloadActionService.Instance.CurrentAction);
+                PostDownloadCountdownText = Loc.Format("PostDownload_Countdown_Banner", actionName, seconds);
+                StatusSummary = Loc.Format("PostDownload_Countdown_Status", actionName, seconds);
+            });
+        };
+
+        PostDownloadActionService.Instance.CountdownCancelled += manual =>
+        {
+            SafeDispatch(() =>
+            {
+                IsPostDownloadCountdownActive = false;
+                PostDownloadRemainingSeconds = 0;
+                if (manual)
+                {
+                    StatusSummary = Loc.Get("PostDownload_Countdown_Cancelled");
+                }
+            });
+        };
+
+        PostDownloadActionService.Instance.CountdownFinished += () =>
+        {
+            SafeDispatch(() =>
+            {
+                IsPostDownloadCountdownActive = false;
+                PostDownloadRemainingSeconds = 0;
+            });
+        };
     }
 
-    [RelayCommand]
-    public void ToggleAutoExtractArchives()
-    {
-        AutoExtractArchives = !AutoExtractArchives;
-    }
+    // Settings commands, directory browsers, and diagnostic actions have been moved to MainViewModel.Settings.cs
 
-    [RelayCommand]
-    public void ToggleDeleteArchiveAfterExtraction()
-    {
-        DeleteArchiveAfterExtraction = !DeleteArchiveAfterExtraction;
-    }
 
-    [RelayCommand]
-    public void ToggleMoveArchiveToRecycleBin()
-    {
-        MoveArchiveToRecycleBin = !MoveArchiveToRecycleBin;
-    }
-
-    [RelayCommand]
-    public void ToggleLowResourceExtraction()
-    {
-        LowResourceExtraction = !LowResourceExtraction;
-    }
-
-    [RelayCommand]
-    public void ResetColumnWidths()
-    {
-        ColWidthName = 220;
-        ColWidthHoster = 75;
-        ColWidthSavePath = 140;
-        ColWidthSize = 75;
-        ColWidthProgress = 110;
-        ColWidthSpeed = 80;
-        ColWidthEta = 65;
-        ColWidthStatus = 95;
-        ColWidthAddedDate = 95;
-        ColWidthCompletedDate = 95;
-        ColWidthChecksum = 90;
-        ColWidthActions = 95;
-
-        ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
-
-        var s = _settingsService.Settings;
-        s.ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
-        s.ColWidthName = ColWidthName;
-        s.ColWidthHoster = ColWidthHoster;
-        s.ColWidthSavePath = ColWidthSavePath;
-        s.ColWidthSize = ColWidthSize;
-        s.ColWidthProgress = ColWidthProgress;
-        s.ColWidthSpeed = ColWidthSpeed;
-        s.ColWidthEta = ColWidthEta;
-        s.ColWidthStatus = ColWidthStatus;
-        s.ColWidthAddedDate = ColWidthAddedDate;
-        s.ColWidthCompletedDate = ColWidthCompletedDate;
-        s.ColWidthChecksum = ColWidthChecksum;
-        s.ColWidthActions = ColWidthActions;
-        _settingsService.SaveSettings();
-        StatusSummary = Loc.Get("Status_ColumnWidthsReset");
-        NotifyDividerChanges();
-        NotifyColumnOrderChanges();
-    }
 
     public bool CanStartAll => SelectedMainTab == AppMainTab.Downloads &&
         Packages.Any(p => p.Items.Any(i => i.IsEnabled &&
@@ -2556,7 +706,9 @@ public partial class MainViewModel : ObservableObject
         {
             _queueManager.ResumePackage(pkg);
         }
+        Services.Extractor.ArchiveExtractionService.Instance.ResumeAllExtractions();
         _queueManager.StartQueue();
+        PostDownloadActionService.Instance.NotifyWorkStarted();
         StatusSummary = Loc.Format("Status_DownloadsStarted", MaxConcurrentDownloads);
         RecalculateGlobalStats();
     }
@@ -2565,6 +717,7 @@ public partial class MainViewModel : ObservableObject
     public void PauseAll()
     {
         if (SelectedMainTab != AppMainTab.Downloads) return;
+        Services.Extractor.ArchiveExtractionService.Instance.PauseAllExtractions();
         _queueManager.PauseAllTrickle();
         StatusSummary = Loc.Get("Status_AllDownloadsPaused");
         RecalculateGlobalStats();
@@ -2625,7 +778,30 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void TogglePackagePause(DownloadPackage? package)
     {
-        if (package == null || package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
+        if (package == null)
+            return;
+
+        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
+        {
+            if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtractionPaused(package.Id))
+            {
+                Services.Extractor.ArchiveExtractionService.Instance.ResumePackageExtraction(package.Id);
+                package.IsExtractionPaused = false;
+                package.SetNextTaskRunning("Extract");
+                package.StatusMessage = Loc.Get("Status_Extracting");
+                StatusSummary = Loc.Format("Status_ExtractionResumedForPackage", package.Name);
+            }
+            else
+            {
+                Services.Extractor.ArchiveExtractionService.Instance.PausePackageExtraction(package.Id);
+                package.IsExtractionPaused = true;
+                package.StatusMessage = Loc.Get("Status_ExtractionPaused");
+                StatusSummary = Loc.Format("Status_ExtractionPausedForPackage", package.Name);
+            }
+            return;
+        }
+
+        if (package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
             return;
 
         _queueManager.TogglePackagePause(package);
@@ -2635,7 +811,19 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void PausePackage(DownloadPackage? package)
     {
-        if (package == null || package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
+        if (package == null)
+            return;
+
+        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
+        {
+            Services.Extractor.ArchiveExtractionService.Instance.PausePackageExtraction(package.Id);
+            package.IsExtractionPaused = true;
+            package.StatusMessage = Loc.Get("Status_ExtractionPaused");
+            StatusSummary = Loc.Format("Status_ExtractionPausedForPackage", package.Name);
+            return;
+        }
+
+        if (package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
             return;
 
         _queueManager.PausePackage(package);
@@ -2645,448 +833,28 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void ResumePackage(DownloadPackage? package)
     {
-        if (package == null || package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
-            return;
-
-        _queueManager.ResumePackage(package);
-        RecalculateGlobalStats();
-    }
-
-    [RelayCommand]
-    public void RemovePackage(DownloadPackage? package)
-    {
-        RemovePackage(package, null);
-    }
-
-    public void RemovePackage(DownloadPackage? package, bool? deleteFilesFromDisk)
-    {
         if (package == null)
             return;
 
-        bool deleteFiles = false;
-
-        if (deleteFilesFromDisk.HasValue)
+        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
         {
-            deleteFiles = deleteFilesFromDisk.Value;
-        }
-        else
-        {
-            var filesOnDisk = GetPackageFilesOnDisk(package);
-            string? optionText = null;
-
-            if (filesOnDisk.Count == 1)
-            {
-                long size = GetTotalFilesSizeOnDisk(filesOnDisk);
-                optionText = Loc.Format("Dialog_DeletePackageOptionSingleFile", BytesToHumanReadableConverter.FormatBytes(size));
-            }
-            else if (filesOnDisk.Count > 1)
-            {
-                long size = GetTotalFilesSizeOnDisk(filesOnDisk);
-                optionText = Loc.Format("Dialog_DeletePackageOptionFiles", filesOnDisk.Count, BytesToHumanReadableConverter.FormatBytes(size));
-            }
-
-            if (!Views.ConfirmDialog.ShowWithOption(
-                Loc.Get("Dialog_DeletePackageTitle"),
-                Loc.Format("Dialog_DeletePackageMessage", package.Name),
-                optionText,
-                out deleteFiles,
-                defaultOptionChecked: false,
-                Loc.Get("Common_Yes"),
-                Loc.Get("Common_No")))
-            {
-                return;
-            }
-        }
-
-        foreach (var item in package.Items)
-        {
-            DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
-        }
-
-        if (deleteFiles)
-        {
-            DeletePackageFilesFromDisk(package);
-        }
-
-        // Unclip any attached children so they are promoted to root and not lost
-        foreach (var child in package.ClippedPackages.ToList())
-        {
-            child.ParentPackageId = null;
-            child.ParentPackageName = null;
-            package.ClippedPackages.Remove(child);
-            if (!RootPackages.Contains(child))
-            {
-                RootPackages.Add(child);
-            }
-        }
-
-        if (package.ParentPackageId.HasValue)
-        {
-            var parent = Packages.FirstOrDefault(p => p.Id == package.ParentPackageId.Value);
-            parent?.ClippedPackages.Remove(package);
-        }
-
-        Packages.Remove(package);
-        RootPackages.Remove(package);
-
-        if (SelectedPackage == package)
-        {
-            SelectedPackage = null;
-        }
-        RecalculateGlobalStats();
-        DownloadPersistenceService.Instance.RequestSave();
-    }
-
-    [RelayCommand]
-    public void RemoveItem(DownloadItem? item)
-    {
-        RemoveItem(item, null);
-    }
-
-    public void RemoveItem(DownloadItem? item, bool? deleteFilesFromDisk)
-    {
-        if (item == null)
-            return;
-
-        DownloadPackage? parentPackage = null;
-        foreach (var p in Packages)
-        {
-            if (p.Items.Contains(item))
-            {
-                parentPackage = p;
-                break;
-            }
-        }
-
-        bool deleteFiles = false;
-
-        if (deleteFilesFromDisk.HasValue)
-        {
-            deleteFiles = deleteFilesFromDisk.Value;
-        }
-        else
-        {
-            var filesOnDisk = GetItemFilesOnDisk(item, parentPackage?.SaveDirectory);
-            string? optionText = null;
-
-            if (filesOnDisk.Count > 0)
-            {
-                long size = GetTotalFilesSizeOnDisk(filesOnDisk);
-                optionText = Loc.Format("Dialog_DeleteItemOptionFiles", BytesToHumanReadableConverter.FormatBytes(size));
-            }
-
-            if (!Views.ConfirmDialog.ShowWithOption(
-                Loc.Get("Dialog_DeleteItemTitle"),
-                Loc.Format("Dialog_DeleteItemMessage", item.FileName),
-                optionText,
-                out deleteFiles,
-                defaultOptionChecked: false,
-                Loc.Get("Common_Yes"),
-                Loc.Get("Common_No")))
-            {
-                return;
-            }
-        }
-
-        DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
-
-        if (deleteFiles)
-        {
-            DeleteItemFilesFromDisk(item, parentPackage?.SaveDirectory);
-        }
-
-        foreach (var package in Packages.ToList())
-        {
-            if (package.Items.Contains(item))
-            {
-                package.Items.Remove(item);
-                if (package.Items.Count == 0)
-                {
-                    Packages.Remove(package);
-                    if (SelectedPackage == package)
-                    {
-                        SelectedPackage = null;
-                    }
-                }
-                else
-                {
-                    package.RecalculateAggregates();
-                }
-                break;
-            }
-        }
-
-        if (SelectedItem == item)
-        {
-            SelectedItem = null;
-        }
-
-        RecalculateGlobalStats();
-    }
-
-    #region Disk Cleanup Helpers
-
-    public static List<string> GetPackageFilesOnDisk(DownloadPackage package)
-    {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var item in package.Items)
-        {
-            var itemFiles = GetItemFilesOnDisk(item, package.SaveDirectory);
-            foreach (var f in itemFiles)
-            {
-                result.Add(f);
-            }
-        }
-
-        // Also clean up any orphaned temporary files (.part, .segments, .tmp) in the package directory
-        if (!string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory) && !IsProtectedDirectory(package.SaveDirectory))
-        {
-            try
-            {
-                foreach (var f in Directory.GetFiles(package.SaveDirectory, "*", SearchOption.TopDirectoryOnly))
-                {
-                    if (ArchiveExtractionService.IsTempFile(f))
-                    {
-                        result.Add(f);
-                    }
-                }
-            }
-            catch { }
-        }
-
-        return result.ToList();
-    }
-
-    public static List<string> GetItemFilesOnDisk(DownloadItem item, string? fallbackDir = null)
-    {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var candidatePaths = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
-        {
-            candidatePaths.Add(item.SaveFilePath);
-            if (!Path.IsPathRooted(item.SaveFilePath) && !string.IsNullOrWhiteSpace(fallbackDir))
-            {
-                candidatePaths.Add(Path.Combine(fallbackDir, item.SaveFilePath));
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(fallbackDir) && !string.IsNullOrWhiteSpace(item.FileName))
-        {
-            candidatePaths.Add(Path.Combine(fallbackDir, item.FileName));
-        }
-
-        foreach (var basePath in candidatePaths)
-        {
-            try
-            {
-                // 1. Direct file
-                if (File.Exists(basePath))
-                {
-                    result.Add(Path.GetFullPath(basePath));
-                }
-
-                // 2. Part file
-                var partPath = basePath + ".part";
-                if (File.Exists(partPath))
-                {
-                    result.Add(Path.GetFullPath(partPath));
-                }
-
-                // 3. Part segments file
-                var segmentsPath = partPath + ".segments";
-                if (File.Exists(segmentsPath))
-                {
-                    result.Add(Path.GetFullPath(segmentsPath));
-                }
-
-                // If basePath was already ending with .part or .part.segments
-                if (basePath.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
-                {
-                    var segPath = basePath + ".segments";
-                    if (File.Exists(segPath))
-                    {
-                        result.Add(Path.GetFullPath(segPath));
-                    }
-                    var stripped = basePath.Substring(0, basePath.Length - 5);
-                    if (File.Exists(stripped))
-                    {
-                        result.Add(Path.GetFullPath(stripped));
-                    }
-                }
-                else if (basePath.EndsWith(".part.segments", StringComparison.OrdinalIgnoreCase))
-                {
-                    var stripped = basePath.Substring(0, basePath.Length - 14);
-                    if (File.Exists(stripped))
-                    {
-                        result.Add(Path.GetFullPath(stripped));
-                    }
-                    var strippedPart = basePath.Substring(0, basePath.Length - 9);
-                    if (File.Exists(strippedPart))
-                    {
-                        result.Add(Path.GetFullPath(strippedPart));
-                    }
-                }
-            }
-            catch { }
-        }
-
-        return result.ToList();
-    }
-
-    public static long GetTotalFilesSizeOnDisk(IEnumerable<string> filePaths)
-    {
-        long total = 0;
-        foreach (var p in filePaths)
-        {
-            try
-            {
-                var fi = new FileInfo(p);
-                if (fi.Exists)
-                {
-                    total += fi.Length;
-                }
-            }
-            catch { }
-        }
-        return total;
-    }
-
-    public static void DeletePackageFilesFromDisk(DownloadPackage package)
-    {
-        var files = GetPackageFilesOnDisk(package);
-        foreach (var file in files)
-        {
-            try
-            {
-                if (ArchiveExtractionService.IsTempFile(file))
-                {
-                    ArchiveExtractionService.DeleteOrMoveToTemp(file);
-                }
-                else
-                {
-                    ArchiveExtractionService.DeleteToRecycleBin(file);
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[MainViewModel] Could not delete package file {file}: {ex.Message}");
-            }
-        }
-
-        // Clean up package save directory if it's now empty and not a protected system/root folder
-        try
-        {
-            var dir = package.SaveDirectory;
-            if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir) && !IsProtectedDirectory(dir))
-            {
-                if (!Directory.EnumerateFileSystemEntries(dir).Any())
-                {
-                    Directory.Delete(dir);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[MainViewModel] Could not delete empty package directory: {ex.Message}");
-        }
-    }
-
-    public static void DeleteItemFilesFromDisk(DownloadItem item, string? fallbackDir = null)
-    {
-        var files = GetItemFilesOnDisk(item, fallbackDir);
-        foreach (var file in files)
-        {
-            try
-            {
-                if (ArchiveExtractionService.IsTempFile(file))
-                {
-                    ArchiveExtractionService.DeleteOrMoveToTemp(file);
-                }
-                else
-                {
-                    ArchiveExtractionService.DeleteToRecycleBin(file);
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[MainViewModel] Could not delete item file {file}: {ex.Message}");
-            }
-        }
-    }
-
-    private static bool IsProtectedDirectory(string path)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var root = Path.GetPathRoot(fullPath)?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            if (string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            var defaultDir = SettingsService.Instance?.Settings?.DefaultDownloadDirectory;
-            if (!string.IsNullOrWhiteSpace(defaultDir))
-            {
-                var fullDefault = Path.GetFullPath(defaultDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                if (string.Equals(fullPath, fullDefault, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            var specialFolders = new[]
-            {
-                Environment.SpecialFolder.UserProfile,
-                Environment.SpecialFolder.DesktopDirectory,
-                Environment.SpecialFolder.MyDocuments,
-                Environment.SpecialFolder.ProgramFiles,
-                Environment.SpecialFolder.ProgramFilesX86,
-                Environment.SpecialFolder.Windows,
-                Environment.SpecialFolder.System
-            };
-
-            foreach (var sf in specialFolders)
-            {
-                var folderPath = Environment.GetFolderPath(sf);
-                if (!string.IsNullOrWhiteSpace(folderPath))
-                {
-                    var fullSpecial = Path.GetFullPath(folderPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    if (string.Equals(fullPath, fullSpecial, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
-            }
-
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrWhiteSpace(userProfile))
-            {
-                var userDownloads = Path.Combine(userProfile, "Downloads").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                if (string.Equals(fullPath, Path.GetFullPath(userDownloads), StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-        }
-        catch { }
-
-        return false;
-    }
-
-    #endregion
-
-    [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
-    public void DeleteSelected()
-    {
-        if (SelectedMainTab != AppMainTab.Downloads) return;
-        var itemToDelete = SelectedItem ?? Packages.SelectMany(p => p.Items).FirstOrDefault(i => i.IsSelected);
-        if (itemToDelete != null)
-        {
-            RemoveItem(itemToDelete);
+            Services.Extractor.ArchiveExtractionService.Instance.ResumePackageExtraction(package.Id);
+            package.IsExtractionPaused = false;
+            package.SetNextTaskRunning("Extract");
+            package.StatusMessage = Loc.Get("Status_Extracting");
+            StatusSummary = Loc.Format("Status_ExtractionResumedForPackage", package.Name);
             return;
         }
 
-        var packageToDelete = SelectedPackage ?? Packages.FirstOrDefault(p => p.IsSelected);
-        if (packageToDelete != null)
-        {
-            RemovePackage(packageToDelete);
-        }
+        if (package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
+            return;
+
+        _queueManager.ResumePackage(package);
+        PostDownloadActionService.Instance.NotifyWorkStarted();
+        RecalculateGlobalStats();
     }
+
+    // Package & item removal commands and disk cleanup helpers have been moved to MainViewModel.DiskCleanup.cs
 
     [RelayCommand(CanExecute = nameof(CanExpandCollapseAll))]
     public void ExpandAll()
@@ -3168,6 +936,39 @@ public partial class MainViewModel : ObservableObject
             AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Paketordners: {ex.Message}");
             StatusSummary = Loc.Format("Status_CannotOpenFolder", ex.Message);
         }
+    }
+
+    [RelayCommand]
+    public async Task ExtractPackageAsync(DownloadPackage? package)
+    {
+        package ??= SelectedPackage;
+        if (package == null) return;
+
+        if (package.IsExtracted)
+        {
+            StatusSummary = Loc.Get("Status_CompletedAndExtracted");
+            return;
+        }
+
+        if (package.IsExtracting || Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
+        {
+            return;
+        }
+
+        if (!Services.Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(package))
+        {
+            StatusSummary = Loc.Get("Status_NoExtractableArchivesFound");
+            return;
+        }
+
+        if (!package.AreDownloadsCompleted)
+        {
+            StatusSummary = Loc.Get("Status_ExtractionWaitingForDownloads");
+            return;
+        }
+
+        StatusSummary = Loc.Format("Status_ExtractingPackage", package.Name);
+        await Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true);
     }
 
     [RelayCommand]
@@ -3332,6 +1133,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            ClipboardMonitorService.RegisterInternalCopy(text);
             Clipboard.SetText(text);
             StatusSummary = successMessage;
         }
@@ -3717,7 +1519,8 @@ public partial class MainViewModel : ObservableObject
                message.Contains("ExtractionFailed", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("Failed", StringComparison.OrdinalIgnoreCase) ||
                message.Contains("Fehler", StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("Fehlgeschlagen", StringComparison.OrdinalIgnoreCase);
+               message.Contains("Fehlgeschlagen", StringComparison.OrdinalIgnoreCase) ||
+               Services.Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(message);
     }
 
     /// <summary>
@@ -4367,6 +2170,7 @@ public partial class MainViewModel : ObservableObject
         OverallProgressText = Loc.Format("StatusBar_OverallProgress", (int)Math.Round(OverallProgressPercentage));
 
         UpdateDriveSpace();
+        PostDownloadActionService.Instance.Evaluate(Packages);
 
         // Adaptive timer frequency: 500 ms when active, 2000 ms when idle
         if (_statsTimer != null)
@@ -4495,106 +2299,8 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    public void ToggleMinimizeToTrayOnClose()
-    {
-        MinimizeToTrayOnClose = !MinimizeToTrayOnClose;
-    }
+    // General settings toggles and keyboard shortcuts have been moved to MainViewModel.Settings.cs
 
-    [RelayCommand]
-    public void ToggleStartWithWindows()
-    {
-        if (IsPortableMode) return;
-        StartWithWindows = !StartWithWindows;
-    }
-
-    [RelayCommand]
-    public void ToggleCompletionNotifications()
-    {
-        EnableCompletionNotifications = !EnableCompletionNotifications;
-    }
-
-    [RelayCommand]
-    public void ToggleAutoCollapseCompletedPackages()
-    {
-        AutoCollapseCompletedPackages = !AutoCollapseCompletedPackages;
-    }
-
-    // ==================== KEYBOARD SHORTCUTS & SELECTION ====================
-    public KeyboardShortcutManager ShortcutManager => KeyboardShortcutManager.Instance;
-    public ObservableCollection<KeyboardShortcut> Shortcuts => ShortcutManager.Shortcuts;
-
-    [ObservableProperty]
-    private KeyboardShortcut? _recordingShortcut;
-
-    [RelayCommand]
-    public void StartRecordingShortcut(KeyboardShortcut? shortcut)
-    {
-        foreach (var s in Shortcuts) s.IsRecording = false;
-        if (shortcut != null)
-        {
-            shortcut.IsRecording = true;
-            RecordingShortcut = shortcut;
-        }
-    }
-
-    [RelayCommand]
-    public void CancelRecordingShortcut()
-    {
-        if (RecordingShortcut != null)
-        {
-            RecordingShortcut.IsRecording = false;
-            RecordingShortcut = null;
-        }
-    }
-
-    public void FinishRecordingShortcut(Key key, ModifierKeys modifiers)
-    {
-        if (RecordingShortcut == null) return;
-
-        var pureModifiers = modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift | ModifierKeys.Windows);
-
-        // Conflict handling: if another shortcut already has this combination, clear it
-        var existing = Shortcuts.FirstOrDefault(s => s != RecordingShortcut && s.Key == key && s.Modifiers == pureModifiers);
-        if (existing != null)
-        {
-            existing.Key = Key.None;
-            existing.Modifiers = ModifierKeys.None;
-        }
-
-        RecordingShortcut.Key = key;
-        RecordingShortcut.Modifiers = pureModifiers;
-        RecordingShortcut.IsRecording = false;
-        RecordingShortcut = null;
-
-        SaveCustomShortcuts();
-    }
-
-    [RelayCommand]
-    public void ResetShortcut(KeyboardShortcut? shortcut)
-    {
-        shortcut?.ResetToDefault();
-        SaveCustomShortcuts();
-    }
-
-    [RelayCommand]
-    public void ResetAllShortcuts()
-    {
-        ShortcutManager.ResetAll();
-        SaveCustomShortcuts();
-    }
-
-    [RelayCommand]
-    public void RestartApplication()
-    {
-        AppRestartService.Restart();
-    }
-
-    private void SaveCustomShortcuts()
-    {
-        _settingsService.Settings.CustomShortcuts = ShortcutManager.ExportCustomShortcuts();
-        _settingsService.SaveSettings();
-    }
 
     [RelayCommand]
     public void SelectAll()
@@ -4755,5 +2461,3 @@ public partial class MainViewModel : ObservableObject
         return $"{len:0.#} {suffixes[order]}";
     }
 }
-
-

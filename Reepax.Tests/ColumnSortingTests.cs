@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Collection("SharedQueue")]
 public class ColumnSortingTests
 {
     [Fact]

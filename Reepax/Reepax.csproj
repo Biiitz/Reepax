@@ -9,9 +9,9 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>Reepax</AssemblyName>
     <RootNamespace>Reepax</RootNamespace>
-    <Version>26.9.3</Version>
-    <AssemblyVersion>26.9.3.0</AssemblyVersion>
-    <FileVersion>26.9.3.0</FileVersion>
+    <Version>26.10.1</Version>
+    <AssemblyVersion>26.10.1.0</AssemblyVersion>
+    <FileVersion>26.10.1.0</FileVersion>
     <Product>Reepax</Product>
     <Company>Biiitz</Company>
     <Authors>Biiitz</Authors>
@@ -40,6 +40,12 @@
     </Content>
     <Resource Include="Assets\R.png" />
     <Content Include="Assets\R.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\sounds_done\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\sounds_error\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <None Include="reepax_adblock.dll">

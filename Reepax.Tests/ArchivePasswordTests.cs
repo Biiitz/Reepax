@@ -336,7 +336,9 @@ public class ArchivePasswordTests : IDisposable
     [Fact]
     public void ArchivePasswords_ExpandCollapse_TogglesProperly()
     {
+        SettingsService.Instance.Settings.IsArchivePasswordsExpanded = false;
         var vm = new Reepax.ViewModels.MainViewModel();
+        vm.IsArchivePasswordsExpanded = false;
         Assert.False(vm.IsArchivePasswordsExpanded);
 
         vm.ToggleArchivePasswordsExpandedCommand.Execute(null);
@@ -360,5 +362,62 @@ public class ArchivePasswordTests : IDisposable
         Assert.Contains("MySecretPass_UnitTesting", vm.ArchivePasswords);
         Assert.Equal(string.Empty, vm.NewArchivePasswordInput);
         Assert.False(vm.HasNewArchivePasswordInput);
+    }
+
+    [Fact]
+    public void ArchivePasswords_Count_TracksCollectionChanges()
+    {
+        var vm = new Reepax.ViewModels.MainViewModel();
+        vm.ArchivePasswords.Clear();
+        Assert.Equal(0, vm.ArchivePasswordsCount);
+
+        vm.NewArchivePasswordInput = "Pass1";
+        vm.AddArchivePasswordCommand.Execute(null);
+        Assert.Equal(1, vm.ArchivePasswordsCount);
+
+        vm.NewArchivePasswordInput = "Pass2";
+        vm.AddArchivePasswordCommand.Execute(null);
+        Assert.Equal(2, vm.ArchivePasswordsCount);
+
+        vm.RemoveArchivePasswordCommand.Execute("Pass1");
+        Assert.Equal(1, vm.ArchivePasswordsCount);
+    }
+
+    [Fact]
+    public void ArchivePasswords_CopyCommand_CopiesToClipboardSafely()
+    {
+        var vm = new Reepax.ViewModels.MainViewModel();
+
+        // Null/empty does not throw or crash
+        var exNull = Record.Exception(() => vm.CopyArchivePasswordCommand.Execute(null));
+        Assert.Null(exNull);
+
+        var exEmpty = Record.Exception(() => vm.CopyArchivePasswordCommand.Execute(""));
+        Assert.Null(exEmpty);
+
+        // Copy valid string
+        var exValid = Record.Exception(() => vm.CopyArchivePasswordCommand.Execute("test_password_123"));
+        Assert.Null(exValid);
+    }
+
+    [Theory]
+    [InlineData("Settings_Card_ArchivePasswords_Title")]
+    [InlineData("Settings_Card_ArchivePasswords_Subtitle")]
+    [InlineData("Settings_ArchivePasswords_Badge_Label")]
+    [InlineData("Settings_ArchivePasswords_Add")]
+    [InlineData("Settings_ArchivePasswords_Placeholder")]
+    [InlineData("Settings_ArchivePasswords_Remove")]
+    [InlineData("Settings_ArchivePasswords_Copy")]
+    [InlineData("Settings_ArchivePasswords_Copied")]
+    [InlineData("Settings_ArchivePasswords_Empty")]
+    [InlineData("Settings_ArchivePasswords_Empty_Detail")]
+    [InlineData("Settings_ArchivePasswords_Toggle_ToolTip")]
+    public void ArchivePasswords_LocalizationKeys_ExistInBothLanguages(string key)
+    {
+        Assert.True(Strings_de.Map.ContainsKey(key), $"Key '{key}' missing in Strings_de");
+        Assert.False(string.IsNullOrWhiteSpace(Strings_de.Map[key]), $"Value for '{key}' is empty in Strings_de");
+
+        Assert.True(Strings_en.Map.ContainsKey(key), $"Key '{key}' missing in Strings_en");
+        Assert.False(string.IsNullOrWhiteSpace(Strings_en.Map[key]), $"Value for '{key}' is empty in Strings_en");
     }
 }

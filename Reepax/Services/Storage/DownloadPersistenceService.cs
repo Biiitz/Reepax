@@ -62,6 +62,7 @@ public class DownloadPackageDto
     public bool LowResourceExtraction { get; set; } = false;
     public bool DeleteArchiveAfterExtraction { get; set; } = false;
     public bool MoveArchiveToRecycleBin { get; set; } = false;
+    public string? ExtractionDirectory { get; set; }
     public bool AutoResolveHostLinks { get; set; } = true;
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
@@ -76,6 +77,7 @@ public class DownloadPackageDto
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public long ElapsedDurationMs { get; set; }
+    public bool IsExtracted { get; set; } = false;
     public List<NextTaskStepDto> NextTaskSteps { get; set; } = new();
     public List<DownloadItemDto> Items { get; set; } = new();
 }
@@ -876,6 +878,7 @@ public class DownloadPersistenceService : IDisposable
                     LowResourceExtraction = pkg.LowResourceExtraction,
                     DeleteArchiveAfterExtraction = pkg.DeleteArchiveAfterExtraction,
                     MoveArchiveToRecycleBin = pkg.MoveArchiveToRecycleBin,
+                    ExtractionDirectory = pkg.ExtractionDirectory,
                     AutoResolveHostLinks = pkg.AutoResolveHostLinks,
                     IsExpanded = pkg.IsExpanded,
                     PackageIconKey = pkg.PackageIconKey,
@@ -884,6 +887,7 @@ public class DownloadPersistenceService : IDisposable
                     ProgressPercentage = pkgProgress,
                     Status = pkgStatus,
                     StatusMessage = pkgStatusMsg,
+                    IsExtracted = pkg.IsExtracted,
                     CreatedAt = pkg.CreatedAt,
                     StartedAt = pkg.StartedAt,
                     CompletedAt = pkg.CompletedAt,
@@ -1404,6 +1408,7 @@ public class DownloadPersistenceService : IDisposable
                     LowResourceExtraction = pkgDto.LowResourceExtraction,
                     DeleteArchiveAfterExtraction = pkgDto.DeleteArchiveAfterExtraction,
                     MoveArchiveToRecycleBin = pkgDto.MoveArchiveToRecycleBin,
+                    ExtractionDirectory = pkgDto.ExtractionDirectory,
                     AutoResolveHostLinks = ResolveHostLinksOption(pkgDto),
                     IsExpanded = pkgDto.IsExpanded,
                     PackageIconKey = pkgDto.PackageIconKey,
@@ -1463,23 +1468,29 @@ public class DownloadPersistenceService : IDisposable
                         var step = package.NextTaskSteps.FirstOrDefault(s => s.Key == stepDto.Key);
                         if (step != null)
                         {
-                            step.State = stepDto.State;
+                            // If app was closed or crashed while running, restore as Pending so it can be resumed
+                            step.State = stepDto.State == NextTaskStepState.Running ? NextTaskStepState.Pending : stepDto.State;
                         }
                     }
                 }
 
-                bool isExtracted = (pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
-                                    pkgDto.StatusMessage == "Fertig & Entpackt" ||
-                                    pkgDto.StatusMessage == "Completed & Extracted" ||
-                                    (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)));
+                bool isAllDone = (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)) ||
+                                 pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
+                                 pkgDto.StatusMessage == "Fertig & Entpackt" ||
+                                 pkgDto.StatusMessage == "Completed & Extracted";
 
-                if (isExtracted && package.AutoExtractArchives)
+                if (isAllDone && package.AutoExtractArchives)
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
                     foreach (var step in package.NextTaskSteps)
                     {
                         step.State = NextTaskStepState.Done;
                     }
+                }
+                else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) &&
+                         Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(pkgDto.StatusMessage))
+                {
+                    package.StatusMessage = pkgDto.StatusMessage;
                 }
                 else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) && 
                          (pkgDto.StatusMessage == Loc.Get("Status_CompletedExtractionError") || 
@@ -1488,6 +1499,10 @@ public class DownloadPersistenceService : IDisposable
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
                 }
+
+                package.IsExtracted = pkgDto.IsExtracted ||
+                                      (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done)) ||
+                                      isAllDone;
 
                 if (package.CheckIsFullyCompleted())
                 {
@@ -1635,6 +1650,7 @@ public class DownloadPersistenceService : IDisposable
                     LowResourceExtraction = pkgDto.LowResourceExtraction,
                     DeleteArchiveAfterExtraction = pkgDto.DeleteArchiveAfterExtraction,
                     MoveArchiveToRecycleBin = pkgDto.MoveArchiveToRecycleBin,
+                    ExtractionDirectory = pkgDto.ExtractionDirectory,
                     AutoResolveHostLinks = ResolveHostLinksOption(pkgDto),
                     IsExpanded = pkgDto.IsExpanded,
                     PackageIconKey = pkgDto.PackageIconKey,
@@ -1745,23 +1761,29 @@ public class DownloadPersistenceService : IDisposable
                         var step = package.NextTaskSteps.FirstOrDefault(s => s.Key == stepDto.Key);
                         if (step != null)
                         {
-                            step.State = stepDto.State;
+                            // If app was closed or crashed while running, restore as Pending so it can be resumed
+                            step.State = stepDto.State == NextTaskStepState.Running ? NextTaskStepState.Pending : stepDto.State;
                         }
                     }
                 }
 
-                bool isExtracted = (pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
-                                    pkgDto.StatusMessage == "Fertig & Entpackt" ||
-                                    pkgDto.StatusMessage == "Completed & Extracted" ||
-                                    (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)));
+                bool isAllDone = (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)) ||
+                                 pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
+                                 pkgDto.StatusMessage == "Fertig & Entpackt" ||
+                                 pkgDto.StatusMessage == "Completed & Extracted";
 
-                if (isExtracted && package.AutoExtractArchives)
+                if (isAllDone && package.AutoExtractArchives)
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
                     foreach (var step in package.NextTaskSteps)
                     {
                         step.State = NextTaskStepState.Done;
                     }
+                }
+                else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) &&
+                         Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(pkgDto.StatusMessage))
+                {
+                    package.StatusMessage = pkgDto.StatusMessage;
                 }
                 else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) && 
                          (pkgDto.StatusMessage == Loc.Get("Status_CompletedExtractionError") || 
@@ -1770,6 +1792,10 @@ public class DownloadPersistenceService : IDisposable
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
                 }
+
+                package.IsExtracted = pkgDto.IsExtracted ||
+                                      (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done)) ||
+                                      isAllDone;
 
                 if (package.CheckIsFullyCompleted())
                 {
