@@ -11,24 +11,47 @@ namespace Reepax.Tests;
 
 public class QuickSettingsPopupTests
 {
+    private static Dispatcher? _staDispatcher;
+    private static readonly object _staLock = new();
+
     private static void RunInSta(Action action)
     {
-        var tcs = new TaskCompletionSource<bool>();
-        var thread = new Thread(() =>
+        lock (_staLock)
         {
-            try
+            if (_staDispatcher == null || _staDispatcher.Thread?.IsAlive != true)
             {
-                action();
-                tcs.SetResult(true);
+                using var readyEvent = new ManualResetEventSlim(false);
+                var thread = new Thread(() =>
+                {
+
+                    _staDispatcher = Dispatcher.CurrentDispatcher;
+                    readyEvent.Set();
+                    Dispatcher.Run();
+                });
+                thread.SetApartmentState(ApartmentState.STA);
+                thread.IsBackground = true;
+                thread.Start();
+                readyEvent.Wait();
             }
-            catch (Exception ex)
+
+            Exception? caughtEx = null;
+            _staDispatcher!.Invoke(() =>
             {
-                tcs.SetException(ex);
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    caughtEx = ex;
+                }
+            });
+
+            if (caughtEx != null)
+            {
+                throw new AggregateException(caughtEx);
             }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        tcs.Task.GetAwaiter().GetResult();
+        }
     }
 
     [Fact]
@@ -36,12 +59,6 @@ public class QuickSettingsPopupTests
     {
         RunInSta(() =>
         {
-            if (Application.Current == null)
-            {
-                var app = new App();
-                app.InitializeComponent();
-            }
-
             var vm = new MainViewModel();
             var popup = new QuickSettingsPopupView
             {
@@ -84,6 +101,7 @@ public class QuickSettingsPopupTests
             Assert.Equal("25", vm.SpeedLimitText);
 
             popup.IsOpen = false;
+            popup.DataContext = null;
         });
     }
 }

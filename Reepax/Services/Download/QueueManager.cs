@@ -1510,7 +1510,11 @@ public class QueueManager
         try
         {
             var app = Application.Current;
-            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+            if (!Storage.DownloadPersistenceService.IsTestEnvironment &&
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished)
             {
                 if (!app.Dispatcher.CheckAccess())
                 {

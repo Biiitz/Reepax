@@ -551,9 +551,15 @@ public partial class DownloadPackage : ObservableObject
     {
         try
         {
-            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            var app = System.Windows.Application.Current;
+            if (!Services.Storage.DownloadPersistenceService.IsTestEnvironment &&
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished &&
+                !app.Dispatcher.CheckAccess())
             {
-                System.Windows.Application.Current.Dispatcher.Invoke(action);
+                app.Dispatcher.Invoke(action);
             }
             else
             {

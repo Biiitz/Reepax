@@ -111,6 +111,9 @@ public partial class CrashReportDialog : Window
     /// </summary>
     public static void ShowModal(Exception ex, CrashLogResult result, bool isCritical = false)
     {
+        if (DownloadPersistenceService.IsTestEnvironment)
+            return;
+
         try
         {
             if (Application.Current != null && Application.Current.Dispatcher != null && !Application.Current.Dispatcher.HasShutdownStarted)

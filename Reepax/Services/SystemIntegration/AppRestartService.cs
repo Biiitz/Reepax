@@ -33,23 +33,25 @@ public static class AppRestartService
         try
         {
             // 1. Prepare MainWindow state and column widths if UI is alive
+            var app = Application.Current;
             if (!DownloadPersistenceService.IsTestEnvironment &&
-                Application.Current?.Dispatcher != null &&
-                !Application.Current.Dispatcher.HasShutdownStarted &&
-                !Application.Current.Dispatcher.HasShutdownFinished)
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished)
             {
-                if (Application.Current.Dispatcher.CheckAccess())
+                if (app.Dispatcher.CheckAccess())
                 {
-                    if (Application.Current.MainWindow is MainWindow mw)
+                    if (app.MainWindow is MainWindow mw)
                     {
                         mw.PrepareForRestart();
                     }
                 }
                 else
                 {
-                    Application.Current.Dispatcher.Invoke(() =>
+                    app.Dispatcher.Invoke(() =>
                     {
-                        if (Application.Current.MainWindow is MainWindow mw)
+                        if (app.MainWindow is MainWindow mw)
                         {
                             mw.PrepareForRestart();
                         }
@@ -152,13 +154,14 @@ public static class AppRestartService
         // 8. Terminate current process
         try
         {
-            Application.Current?.Dispatcher?.Invoke(() =>
+            var app = Application.Current;
+            app?.Dispatcher?.Invoke(() =>
             {
-                if (Application.Current.MainWindow is MainWindow mw)
+                if (app.MainWindow is MainWindow mw)
                 {
                     mw.ForceExit();
                 }
-                Application.Current.Shutdown();
+                app.Shutdown();
             });
         }
         catch { }

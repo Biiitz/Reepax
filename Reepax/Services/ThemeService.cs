@@ -45,7 +45,10 @@ public class ThemeService
     private void ApplyAccentColor(string hexColor, bool save)
     {
         var app = Application.Current;
-        if (app != null && app.Dispatcher != null && !app.Dispatcher.CheckAccess())
+        if (!Storage.DownloadPersistenceService.IsTestEnvironment &&
+            app != null && app.Dispatcher != null &&
+            app.Dispatcher.Thread?.IsAlive == true &&
+            !app.Dispatcher.CheckAccess())
         {
             app.Dispatcher.Invoke(() => ApplyAccentColor(hexColor, save));
             return;
@@ -86,7 +89,10 @@ public class ThemeService
     public void ApplyTheme(bool isDark, bool save = true)
     {
         var app = Application.Current;
-        if (app != null && app.Dispatcher != null && !app.Dispatcher.CheckAccess())
+        if (!Storage.DownloadPersistenceService.IsTestEnvironment &&
+            app != null && app.Dispatcher != null &&
+            app.Dispatcher.Thread?.IsAlive == true &&
+            !app.Dispatcher.CheckAccess())
         {
             app.Dispatcher.Invoke(() => ApplyTheme(isDark, save));
             return;
@@ -219,7 +225,10 @@ public class ThemeService
             var app = Application.Current;
             if (app != null)
             {
-                if (app.Dispatcher != null && !app.Dispatcher.CheckAccess())
+                if (!Storage.DownloadPersistenceService.IsTestEnvironment &&
+                    app.Dispatcher != null &&
+                    app.Dispatcher.Thread?.IsAlive == true &&
+                    !app.Dispatcher.CheckAccess())
                 {
                     app.Dispatcher.Invoke(() => UpdateAllOpenWindowsTitleBar(isDark));
                     return;

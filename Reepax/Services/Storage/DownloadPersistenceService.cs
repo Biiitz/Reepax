@@ -728,20 +728,23 @@ public class DownloadPersistenceService : IDisposable
     {
         if (packages == null) return new List<DownloadPackageDto>();
 
-        var app = System.Windows.Application.Current;
-        if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
+        if (!IsTestEnvironment)
         {
-            try
+            var app = System.Windows.Application.Current;
+            if (app?.Dispatcher != null && app.Dispatcher.Thread?.IsAlive == true && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
             {
-                var op = app.Dispatcher.InvokeAsync(() => CreateDtosInternal(packages));
-                if (op.Task.Wait(TimeSpan.FromMilliseconds(500)))
+                try
                 {
-                    return op.Result;
+                    var op = app.Dispatcher.InvokeAsync(() => CreateDtosInternal(packages));
+                    if (op.Task.Wait(TimeSpan.FromMilliseconds(500)))
+                    {
+                        return op.Result;
+                    }
                 }
-            }
-            catch
-            {
-                // Fall back to direct snapshot
+                catch
+                {
+                    // Fall back to direct snapshot
+                }
             }
         }
 
@@ -909,20 +912,23 @@ public class DownloadPersistenceService : IDisposable
     {
         if (source == null) return Array.Empty<T>();
 
-        var app = System.Windows.Application.Current;
-        if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
+        if (!IsTestEnvironment)
         {
-            try
+            var app = System.Windows.Application.Current;
+            if (app?.Dispatcher != null && app.Dispatcher.Thread?.IsAlive == true && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
             {
-                var op = app.Dispatcher.InvokeAsync(() => SafeSnapshotCollectionCore(source, maxRetries));
-                if (op.Task.Wait(TimeSpan.FromMilliseconds(500)))
+                try
                 {
-                    return op.Result;
+                    var op = app.Dispatcher.InvokeAsync(() => SafeSnapshotCollectionCore(source, maxRetries));
+                    if (op.Task.Wait(TimeSpan.FromMilliseconds(500)))
+                    {
+                        return op.Result;
+                    }
                 }
-            }
-            catch
-            {
-                // Fall back to direct snapshot with retries
+                catch
+                {
+                    // Fall back to direct snapshot with retries
+                }
             }
         }
 
@@ -1042,16 +1048,19 @@ public class DownloadPersistenceService : IDisposable
 
     public static List<DownloadPackageDto> SnapshotDtos(IEnumerable<DownloadPackage> packages)
     {
-        var app = System.Windows.Application.Current;
-        if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
+        if (!IsTestEnvironment)
         {
-            try
+            var app = System.Windows.Application.Current;
+            if (app?.Dispatcher != null && app.Dispatcher.Thread?.IsAlive == true && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
             {
-                return app.Dispatcher.Invoke(() => CreateDtos(packages));
-            }
-            catch
-            {
-                return CreateDtos(packages);
+                try
+                {
+                    return app.Dispatcher.Invoke(() => CreateDtos(packages));
+                }
+                catch
+                {
+                    return CreateDtos(packages);
+                }
             }
         }
 

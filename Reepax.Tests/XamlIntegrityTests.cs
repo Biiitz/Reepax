@@ -83,6 +83,8 @@ public class XamlIntegrityTests
             string xamlContent = File.ReadAllText(xamlPath);
             var matches = locRegex.Matches(xamlContent);
 
+        try
+        {
             foreach (Match m in matches)
             {
                 string key = m.Groups[1].Value;
@@ -103,6 +105,11 @@ public class XamlIntegrityTests
                     missingKeys.Add($"DE: '{key}' in {Path.GetFileName(xamlPath)}");
                 }
             }
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
         }
 
         Assert.True(missingKeys.Count == 0,

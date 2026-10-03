@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -1148,9 +1148,15 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            var app = Application.Current;
+            if (!DownloadPersistenceService.IsTestEnvironment &&
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished &&
+                !app.Dispatcher.CheckAccess())
             {
-                Application.Current.Dispatcher.Invoke(action);
+                app.Dispatcher.Invoke(action);
             }
             else
             {
@@ -1170,7 +1176,11 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var app = Application.Current;
-            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+            if (!DownloadPersistenceService.IsTestEnvironment &&
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished)
             {
                 if (!app.Dispatcher.CheckAccess())
                 {

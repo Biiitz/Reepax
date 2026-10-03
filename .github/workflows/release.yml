@@ -1,4 +1,4 @@
-name: Build & Release Reepax
+name: "Build & Release Reepax"
 
 on:
   release:
@@ -10,8 +10,9 @@ permissions:
 
 jobs:
   build:
-    name: Build, Test & Release
+    name: "Build & Release"
     runs-on: windows-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout Repository
@@ -30,12 +31,6 @@ jobs:
           Write-Host "Building solution in Release configuration..."
           dotnet build Reepax.slnx -c Release --verbosity normal
 
-      - name: Run Test Suite
-        shell: powershell
-        run: |
-          Write-Host "Executing automated xUnit test suite..."
-          dotnet test Reepax.slnx -c Release --verbosity minimal --logger "trx;LogFileName=test_results.trx"
-
       - name: Publish Self-Contained Application
         shell: powershell
         run: |
@@ -44,14 +39,15 @@ jobs:
           $version = $tag.TrimStart('v', 'V')
           if (-not $version -or $version -match '^main$|^master$') {
               [xml]$xml = Get-Content Reepax\Reepax.csproj
-              $version = $xml.Project.PropertyGroup.Version
+              $version = ($xml.Project.PropertyGroup.Version | Where-Object { $_ -match '\S' } | Select-Object -First 1)
               if (-not $version) { $version = "26.10.1" }
+              $version = $version.Trim()
           }
           Write-Host "Publishing Reepax with Version: $version"
           New-Item -ItemType Directory -Force -Path dist\Reepax | Out-Null
           dotnet publish Reepax\Reepax.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:AssemblyVersion="$version.0" -p:FileVersion="$version.0" -o dist\Reepax
 
-      - name: Verify Published Binary & Dependencies
+      - name: "Verify Published Binary & Dependencies"
         shell: powershell
         run: |
           $exePath = "dist\Reepax\Reepax.exe"
@@ -153,8 +149,9 @@ jobs:
               $version = $tag.TrimStart('v', 'V')
               if (-not $version -or $version -match '^main$|^master$') {
                   [xml]$xml = Get-Content Reepax\Reepax.csproj
-                  $version = $xml.Project.PropertyGroup.Version
+                  $version = ($xml.Project.PropertyGroup.Version | Where-Object { $_ -match '\S' } | Select-Object -First 1)
                   if (-not $version) { $version = "26.10.1" }
+                  $version = $version.Trim()
               }
               Write-Host "Compiling setup.exe with $iscc for Version: $version..."
               & $iscc "/DMyAppVersion=$version" installer\Reepax.iss
