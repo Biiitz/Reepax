@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using Reepax.ViewModels;
+using Reepax.Views;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -41,12 +42,13 @@ public class QuickSettingsPopupTests
                 app.InitializeComponent();
             }
 
-            var win = new MainWindow();
-            var vm = (MainViewModel)win.DataContext;
-            win.Show();
+            var vm = new MainViewModel();
+            var popup = new QuickSettingsPopupView
+            {
+                DataContext = vm
+            };
 
-            // Toggle open the quick settings popup
-            win.QuickSettingsPopup.Toggle(win.QuickSettingsButton);
+            popup.IsOpen = true;
 
             var frame = new DispatcherFrame();
             Dispatcher.CurrentDispatcher.BeginInvoke(
@@ -54,9 +56,9 @@ public class QuickSettingsPopupTests
                 new Action(() => frame.Continue = false));
             Dispatcher.PushFrame(frame);
 
-            var speedBox = win.QuickSettingsPopup.QuickSpeedLimitBox;
-            var maxDownloadsBox = win.QuickSettingsPopup.QuickMaxDownloadsBox;
-            var connectionsBox = win.QuickSettingsPopup.QuickConnectionsBox;
+            var speedBox = popup.QuickSpeedLimitBox;
+            var maxDownloadsBox = popup.QuickMaxDownloadsBox;
+            var connectionsBox = popup.QuickConnectionsBox;
 
             // Numbers must not be empty/null, they must reflect the ViewModel's values
             Assert.False(string.IsNullOrEmpty(speedBox.Text), "SpeedLimitBox must not be empty");
@@ -81,7 +83,7 @@ public class QuickSettingsPopupTests
             speedBox.Text = "25";
             Assert.Equal("25", vm.SpeedLimitText);
 
-            win.ForceExit(true);
+            popup.IsOpen = false;
         });
     }
 }

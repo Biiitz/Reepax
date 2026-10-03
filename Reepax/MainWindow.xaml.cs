@@ -103,16 +103,19 @@ public partial class MainWindow : Window
 
         Services.SystemIntegration.TrayIconService.Instance.Initialize(this);
 
-        try
+        if (!DownloadPersistenceService.IsTestEnvironment)
         {
-            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            var hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
-            hwndSource?.AddHook(WndProc);
-            Services.SystemIntegration.ClipboardMonitorService.Instance.Start(hwnd, OnClipboardLinksDetected);
-        }
-        catch (Exception ex)
-        {
-            Services.Storage.AppLogger.Warn($"[MainWindow] ClipboardMonitor start failed: {ex.Message}");
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                var hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
+                hwndSource?.AddHook(WndProc);
+                Services.SystemIntegration.ClipboardMonitorService.Instance.Start(hwnd, OnClipboardLinksDetected);
+            }
+            catch (Exception ex)
+            {
+                Services.Storage.AppLogger.Warn($"[MainWindow] ClipboardMonitor start failed: {ex.Message}");
+            }
         }
 
         var args = Environment.GetCommandLineArgs();
@@ -489,12 +492,25 @@ public partial class MainWindow : Window
         ThemeService.Instance.ThemeChanged -= UpdateTitleBarTheme;
         try
         {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                var hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
+                hwndSource?.RemoveHook(WndProc);
+            }
+        }
+        catch { }
+        try
+        {
             Services.SystemIntegration.ClipboardMonitorService.Instance.Stop();
         }
         catch { }
         try
         {
-            Application.Current?.Shutdown();
+            if (!DownloadPersistenceService.IsTestEnvironment)
+            {
+                Application.Current?.Shutdown();
+            }
         }
         catch { }
     }
