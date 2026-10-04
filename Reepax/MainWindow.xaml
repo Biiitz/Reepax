@@ -1,4 +1,4 @@
-﻿<Window x:Class="Reepax.MainWindow"
+<Window x:Class="Reepax.MainWindow"
         x:Name="RootWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -2459,36 +2459,8 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Right Section: Overall Download Summary + Extensions folder + Settings Button + Popup -->
+                <!-- Right Section: Extensions folder + Settings Button + Popup -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Overall Download Summary -->
-                    <Border Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
-                            CornerRadius="4" 
-                            Padding="10,0"
-                            Height="28"
-                            Margin="0,0,8,0"
-                            VerticalAlignment="Center"
-                            Visibility="{Binding HasDownloads, Converter={StaticResource BoolToVisConverter}}">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <!-- Speed: no icon, normal font weight -->
-                            <TextBlock Text="{Binding OverallSpeedText}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-
-                            <!-- Bullet separator -->
-                            <TextBlock Text="â€¢" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0" VerticalAlignment="Center" />
-
-                            <!-- Active Count -->
-                            <TextBlock Text="{Binding OverallActiveDownloadsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-
-                            <!-- Bullet separator -->
-                            <TextBlock Text="â€¢" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0" VerticalAlignment="Center" />
-
-                            <!-- Total Progress -->
-                            <TextBlock Text="{Binding OverallProgressText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Border>
-
                     <!-- Open extensions folder -->
                     <Button Command="{Binding OpenExtensionsFolderCommand}"
                             Width="32" Height="28" Padding="0" Margin="0,0,8,0"
@@ -2738,7 +2710,7 @@
                            StaysOpen="False"
                            AllowsTransparency="True"
                            PopupAnimation="Fade"
-                           VerticalOffset="-6"
+                           VerticalOffset="-12"
                            Closed="StatusFilterPopup_Closed">
                         <Border Background="{DynamicResource BgCardBrush}" 
                                 BorderBrush="{DynamicResource BorderDarkBrush}" 
