@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 
 namespace Reepax.Models;
 
@@ -17,6 +18,14 @@ public partial class DownloadItem : ObservableObject
 
     [ObservableProperty]
     private string _fileName = string.Empty;
+
+    private bool _isCustomName;
+
+    public bool IsCustomName
+    {
+        get => _isCustomName;
+        set => SetProperty(ref _isCustomName, value);
+    }
 
     [ObservableProperty]
     private string _hosterName = "Unknown";
@@ -202,23 +211,61 @@ public partial class DownloadItem : ObservableObject
         }
     }
 
-    public void Rename(string newName)
+    public void Rename(string newName, bool isUserAction = true)
     {
         if (string.IsNullOrWhiteSpace(newName))
             return;
 
-        FileName = newName.Trim();
-        if (!string.IsNullOrWhiteSpace(SaveFilePath))
+        if (isUserAction)
         {
-            var dir = System.IO.Path.GetDirectoryName(SaveFilePath);
-            if (!string.IsNullOrWhiteSpace(dir))
+            IsCustomName = true;
+        }
+
+        var trimmed = newName.Trim();
+        var oldSavePath = SaveFilePath;
+
+        if (!string.Equals(FileName, trimmed, StringComparison.Ordinal))
+        {
+            FileName = trimmed;
+        }
+        else
+        {
+            UpdateFilePathForFileName(trimmed);
+        }
+
+        var newSavePath = SaveFilePath;
+        if (!string.IsNullOrWhiteSpace(oldSavePath) && !string.IsNullOrWhiteSpace(newSavePath) &&
+            !string.Equals(oldSavePath, newSavePath, StringComparison.OrdinalIgnoreCase))
+        {
+            try
             {
-                SaveFilePath = System.IO.Path.Combine(dir, FileName);
+                if (System.IO.File.Exists(oldSavePath) && !System.IO.File.Exists(newSavePath))
+                {
+                    System.IO.File.Move(oldSavePath, newSavePath);
+                }
+                var oldPart = oldSavePath + ".part";
+                var newPart = newSavePath + ".part";
+                if (System.IO.File.Exists(oldPart) && !System.IO.File.Exists(newPart))
+                {
+                    System.IO.File.Move(oldPart, newPart);
+                }
+                var oldSegments = oldPart + ".segments";
+                var newSegments = newPart + ".segments";
+                if (System.IO.File.Exists(oldSegments) && !System.IO.File.Exists(newSegments))
+                {
+                    System.IO.File.Move(oldSegments, newSegments);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"[DownloadItem] Could not move files during rename: {ex.Message}");
             }
         }
+
+        Services.Storage.DownloadPersistenceService.Instance.RequestSave();
     }
 
-    partial void OnFileNameChanged(string value)
+    private void UpdateFilePathForFileName(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
         if (!string.IsNullOrWhiteSpace(SaveFilePath))
@@ -229,6 +276,11 @@ public partial class DownloadItem : ObservableObject
                 SaveFilePath = System.IO.Path.Combine(dir, value.Trim());
             }
         }
+    }
+
+    partial void OnFileNameChanged(string value)
+    {
+        UpdateFilePathForFileName(value);
     }
 
     partial void OnIsEnabledChanged(bool value)

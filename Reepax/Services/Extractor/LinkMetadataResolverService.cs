@@ -304,6 +304,8 @@ public class LinkMetadataResolverService
 
     private static void ApplyContentDispositionFileName(DownloadItem item, HttpResponseMessage response)
     {
+        if (item.IsCustomName) return;
+
         var contentDisposition = response.Content.Headers.ContentDisposition;
         string? name = null;
         if (contentDisposition?.FileNameStar != null)
@@ -317,7 +319,7 @@ public class LinkMetadataResolverService
 
         if (!string.IsNullOrWhiteSpace(name))
         {
-            SafeInvoke(() => item.Rename(name));
+            SafeInvoke(() => item.Rename(name, isUserAction: false));
         }
     }
 
@@ -393,13 +395,14 @@ public class LinkMetadataResolverService
 
             // Extract filename from HTML if current item filename is generic/cryptic or placeholder
             var probedFileName = ExtractFileNameFromHtml(html, pageUrl);
-            if (!string.IsNullOrWhiteSpace(probedFileName) &&
+            if (!item.IsCustomName &&
+                !string.IsNullOrWhiteSpace(probedFileName) &&
                 (PackageGrouper.IsGenericOrCrypticName(item.FileName) || 
                  item.FileName.StartsWith("download_file", StringComparison.OrdinalIgnoreCase) ||
                  item.FileName.Contains(".part") ||
                  item.FileName.Contains("Package (")))
             {
-                SafeInvoke(() => item.Rename(probedFileName));
+                SafeInvoke(() => item.Rename(probedFileName, isUserAction: false));
             }
 
             // 1. Check data-size / json-size in HTML
@@ -595,7 +598,7 @@ public class LinkMetadataResolverService
 
     public static void TryUpdatePackageName(DownloadPackage package)
     {
-        if (package == null)
+        if (package == null || package.IsCustomName)
             return;
 
         var itemsSnapshot = package.Items.ToArray();
@@ -644,7 +647,7 @@ public class LinkMetadataResolverService
             {
                 SafeInvoke(() =>
                 {
-                    package.Rename(bestUpdatePkgName);
+                    package.Rename(bestUpdatePkgName, isUserAction: false);
                     package.AutoResolveHostLinks = false;
                 });
                 Services.Storage.DownloadPersistenceService.Instance.RequestSave();
@@ -681,7 +684,7 @@ public class LinkMetadataResolverService
                 {
                     if (!string.Equals(package.Name, bestName, StringComparison.OrdinalIgnoreCase) || isDirNameGeneric)
                     {
-                        SafeInvoke(() => package.Rename(bestName));
+                        SafeInvoke(() => package.Rename(bestName, isUserAction: false));
                         Services.Storage.DownloadPersistenceService.Instance.RequestSave();
                     }
                 }
@@ -689,7 +692,7 @@ public class LinkMetadataResolverService
             else if (isDirNameGeneric && !isPkgNameGeneric)
             {
                 // Directory name was a cryptic token, but package name is already clean!
-                SafeInvoke(() => package.Rename(package.Name));
+                SafeInvoke(() => package.Rename(package.Name, isUserAction: false));
                 Services.Storage.DownloadPersistenceService.Instance.RequestSave();
             }
         }

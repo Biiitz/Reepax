@@ -1837,14 +1837,14 @@ public partial class MainViewModel : ObservableObject
             var trimmedName = newPackageName.Trim();
             if (!string.Equals(package.Name, trimmedName, StringComparison.Ordinal))
             {
-                package.Name = trimmedName;
+                package.Rename(trimmedName, isUserAction: true);
             }
         }
 
         if (!string.IsNullOrWhiteSpace(newDownloadDirectory))
         {
             var trimmedDir = newDownloadDirectory.Trim();
-            trimmedDir = DownloadPersistenceService.SanitizeSavedPackageDirectory(trimmedDir, package.Name);
+            trimmedDir = DownloadPersistenceService.SanitizeSavedPackageDirectory(trimmedDir, package.Name, package.IsCustomName);
 
             if (!string.Equals(package.SaveDirectory, trimmedDir, StringComparison.OrdinalIgnoreCase))
             {

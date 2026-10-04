@@ -663,9 +663,12 @@ public class BrowserWindowController : IDisposable
         item.StatusMessage = "Wird heruntergeladen...";
         if (!string.IsNullOrWhiteSpace(targetPath))
         {
-            item.Rename(Path.GetFileName(targetPath));
+            if (!item.IsCustomName)
+            {
+                item.Rename(Path.GetFileName(targetPath), isUserAction: false);
+            }
             var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-            if (pkg != null)
+            if (pkg != null && !pkg.IsCustomName)
             {
                 Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
             }

@@ -418,7 +418,7 @@
                             </TextBlock>
 
                             <!-- Inline Edit TextBox -->
-                            <TextBox Text="{Binding FileName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" 
+                            <TextBox Text="{Binding FileName, Mode=TwoWay, UpdateSourceTrigger=Explicit}" 
                                      FontSize="11" 
                                      Background="{DynamicResource BgInputBrush}" 
                                      Foreground="{DynamicResource TextPrimaryBrush}"
@@ -858,7 +858,7 @@
                                     </TextBlock>
 
                                     <!-- Inline Edit TextBox -->
-                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" 
+                                    <TextBox Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=Explicit}" 
                                              FontWeight="Bold"
                                              Background="{DynamicResource BgInputBrush}" 
                                              Foreground="{DynamicResource TextPrimaryBrush}"
@@ -968,50 +968,9 @@
                         <Border Grid.Column="{Binding DataContext.ColIndexProgress, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
                                 BorderThickness="{Binding DataContext.ShowDividerProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="4,0,8,0"
                                 Visibility="{Binding DataContext.ShowColProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                            <Grid HorizontalAlignment="Right" VerticalAlignment="Center">
-                                <!-- Base Text -->
-                                <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}" 
-                                           FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis" />
-                                <!-- Neon Shimmer Layer (glides over % digits when active) -->
-                                <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}" 
-                                           FontWeight="SemiBold" FontSize="11" IsHitTestVisible="False">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                            <Setter Property="Foreground">
-                                                <Setter.Value>
-                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                                        <LinearGradientBrush.RelativeTransform>
-                                                            <TranslateTransform X="-1.8" />
-                                                        </LinearGradientBrush.RelativeTransform>
-                                                        <GradientStop Color="Transparent" Offset="0.0" />
-                                                        <GradientStop Color="#4538BDF8" Offset="0.25" />
-                                                        <GradientStop Color="#EFFFFFFF" Offset="0.5" />
-                                                        <GradientStop Color="#4538BDF8" Offset="0.75" />
-                                                        <GradientStop Color="Transparent" Offset="1.0" />
-                                                    </LinearGradientBrush>
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Status}" Value="Downloading">
-                                                    <Setter Property="Visibility" Value="Visible" />
-                                                    <DataTrigger.EnterActions>
-                                                        <BeginStoryboard x:Name="PackagePercentShimmerStoryboard">
-                                                            <Storyboard RepeatBehavior="Forever">
-                                                                <DoubleAnimation Storyboard.TargetProperty="(TextBlock.Foreground).(LinearGradientBrush.RelativeTransform).(TranslateTransform.X)"
-                                                                                 From="-1.8" To="1.8" Duration="0:0:1.8" />
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </DataTrigger.EnterActions>
-                                                    <DataTrigger.ExitActions>
-                                                        <StopStoryboard BeginStoryboardName="PackagePercentShimmerStoryboard" />
-                                                    </DataTrigger.ExitActions>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Grid>
+                            <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}" 
+                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="11" 
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         </Border>
 
                         <!-- 5: Aggregated Speed -->

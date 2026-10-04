@@ -57,7 +57,9 @@ public static class PackageGrouper
         // If user specified a custom package name (from dialog), put all into 1 package
         if (!string.IsNullOrWhiteSpace(customPackageName))
         {
-            packages.Add(CreatePackage(customPackageName, linksList, baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks));
+            var pkg = CreatePackage(customPackageName, linksList, baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks);
+            pkg.IsCustomName = true;
+            packages.Add(pkg);
             return packages;
         }
 

@@ -207,7 +207,7 @@ public class DownloadEngine
             SafeInvoke(() =>
             {
                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                if (pkg != null && (Extractor.PackageGrouper.IsGenericOrCrypticName(pkg.Name) || Extractor.UpdateDetector.IsUpdate(item.FileName)))
+                if (pkg != null && !pkg.IsCustomName && (Extractor.PackageGrouper.IsGenericOrCrypticName(pkg.Name) || Extractor.UpdateDetector.IsUpdate(item.FileName)))
                 {
                     Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
                 }
@@ -272,15 +272,16 @@ public class DownloadEngine
                         segState = CreateSegments(probe.TotalBytes, segmentCount);
 
                         // Adopt filename from Content-Disposition of probe response
-                        if (!string.IsNullOrWhiteSpace(probe.FileName) &&
+                        if (!item.IsCustomName &&
+                            !string.IsNullOrWhiteSpace(probe.FileName) &&
                             !string.Equals(item.FileName, probe.FileName, StringComparison.OrdinalIgnoreCase))
                         {
                             var oldTemp = tempFilePath;
                             SafeInvoke(() =>
                             {
-                                item.Rename(probe.FileName);
+                                item.Rename(probe.FileName, isUserAction: false);
                                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                                if (pkg != null)
+                                if (pkg != null && !pkg.IsCustomName)
                                 {
                                     Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
                                 }
@@ -865,10 +866,10 @@ public class DownloadEngine
         // Try extracting Content-Disposition filename with sanitization & fallback
         string? extractedFileName = ExtractContentDispositionFileName(response);
 
-        if (!string.IsNullOrWhiteSpace(extractedFileName) && !string.Equals(item.FileName, extractedFileName, StringComparison.OrdinalIgnoreCase))
+        if (!item.IsCustomName && !string.IsNullOrWhiteSpace(extractedFileName) && !string.Equals(item.FileName, extractedFileName, StringComparison.OrdinalIgnoreCase))
         {
             var oldTempPath = tempFilePath;
-            SafeInvoke(() => item.Rename(extractedFileName));
+            SafeInvoke(() => item.Rename(extractedFileName, isUserAction: false));
             var newTempPath = item.SaveFilePath + ".part";
 
             if (!string.Equals(oldTempPath, newTempPath, StringComparison.OrdinalIgnoreCase) && File.Exists(oldTempPath))
@@ -885,7 +886,7 @@ public class DownloadEngine
             try
             {
                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                if (pkg != null)
+                if (pkg != null && !pkg.IsCustomName)
                 {
                     Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
                 }

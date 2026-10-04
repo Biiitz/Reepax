@@ -730,11 +730,11 @@ public class QueueManager
             item.UserAgent = userAgent;
             item.Referer = referer;
 
-            if (!string.IsNullOrWhiteSpace(suggestedFileName) && !suggestedFileName.Equals("download", StringComparison.OrdinalIgnoreCase))
+            if (!item.IsCustomName && !string.IsNullOrWhiteSpace(suggestedFileName) && !suggestedFileName.Equals("download", StringComparison.OrdinalIgnoreCase))
             {
-                item.Rename(suggestedFileName);
+                item.Rename(suggestedFileName, isUserAction: false);
                 var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                if (pkg != null)
+                if (pkg != null && !pkg.IsCustomName)
                 {
                     Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
                 }
@@ -1158,9 +1158,12 @@ public class QueueManager
             {
                 if (!string.IsNullOrWhiteSpace(filePath))
                 {
-                    item.Rename(Path.GetFileName(filePath));
+                    if (!item.IsCustomName)
+                    {
+                        item.Rename(Path.GetFileName(filePath), isUserAction: false);
+                    }
                     var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                    if (pkg != null)
+                    if (pkg != null && !pkg.IsCustomName)
                     {
                         Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
                     }

@@ -18,6 +18,14 @@ public partial class DownloadPackage : ObservableObject
     [ObservableProperty]
     private string _name = string.Empty;
 
+    private bool _isCustomName;
+
+    public bool IsCustomName
+    {
+        get => _isCustomName;
+        set => SetProperty(ref _isCustomName, value);
+    }
+
     [ObservableProperty]
     private string _saveDirectory = string.Empty;
 
@@ -518,7 +526,10 @@ public partial class DownloadPackage : ObservableObject
 
         if (e.PropertyName is nameof(DownloadItem.FileName))
         {
-            Reepax.Services.Extractor.LinkMetadataResolverService.TryUpdatePackageName(this);
+            if (!IsCustomName)
+            {
+                Reepax.Services.Extractor.LinkMetadataResolverService.TryUpdatePackageName(this);
+            }
             return;
         }
 
@@ -862,72 +873,78 @@ public partial class DownloadPackage : ObservableObject
         }
     }
 
-    public void Rename(string newName)
+    public void Rename(string newName, bool isUserAction = true)
     {
         if (string.IsNullOrWhiteSpace(newName))
             return;
 
-        var safeNewName = Services.Extractor.PackageGrouper.MakeSafeDirectoryName(newName.Trim());
-        if (string.IsNullOrWhiteSpace(safeNewName))
-            safeNewName = newName.Trim();
-
-        var oldSaveDir = SaveDirectory;
-        Name = newName.Trim();
-
-        var parentDir = System.IO.Path.GetDirectoryName(oldSaveDir);
-        if (!string.IsNullOrWhiteSpace(parentDir))
+        if (isUserAction)
         {
-            var newSaveDir = System.IO.Path.Combine(parentDir, safeNewName);
+            IsCustomName = true;
+        }
 
-            if (!string.IsNullOrWhiteSpace(oldSaveDir) && Directory.Exists(oldSaveDir) && !Directory.Exists(newSaveDir))
-            {
-                try
-                {
-                    Directory.Move(oldSaveDir, newSaveDir);
-                    SaveDirectory = newSaveDir;
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[DownloadPackage] Could not rename directory '{oldSaveDir}' to '{newSaveDir}': {ex.Message}");
-                }
-            }
-            else
-            {
-                SaveDirectory = newSaveDir;
-            }
-
-            UpdateItemSaveFilePaths();
+        var trimmed = newName.Trim();
+        if (!string.Equals(Name, trimmed, StringComparison.Ordinal))
+        {
+            Name = trimmed;
+        }
+        else
+        {
+            UpdateDirectoryForName(trimmed);
         }
 
         Services.Storage.DownloadPersistenceService.Instance.RequestSave();
     }
 
-    partial void OnNameChanged(string value)
+    private void UpdateDirectoryForName(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return;
         if (!string.IsNullOrWhiteSpace(SaveDirectory))
         {
-            var parentDir = System.IO.Path.GetDirectoryName(SaveDirectory);
+            var normalizedDir = SaveDirectory.TrimEnd('\\', '/');
+            var parentDir = System.IO.Path.GetDirectoryName(normalizedDir);
             if (!string.IsNullOrWhiteSpace(parentDir))
             {
                 var safeDir = Services.Extractor.PackageGrouper.MakeSafeDirectoryName(value.Trim());
                 if (string.IsNullOrWhiteSpace(safeDir)) safeDir = value.Trim();
 
-                var oldDir = SaveDirectory;
+                var oldDir = normalizedDir;
                 var newDir = System.IO.Path.Combine(parentDir, safeDir);
 
-                if (!string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(oldDir, newDir, StringComparison.Ordinal))
                 {
-                    if (Directory.Exists(oldDir) && !Directory.Exists(newDir))
+                    if (Directory.Exists(oldDir))
                     {
-                        try
+                        if (!Directory.Exists(newDir))
                         {
-                            Directory.Move(oldDir, newDir);
-                            SaveDirectory = newDir;
+                            try
+                            {
+                                Directory.Move(oldDir, newDir);
+                                SaveDirectory = newDir;
+                            }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Warn($"[DownloadPackage] Could not rename directory '{oldDir}' to '{newDir}': {ex.Message}");
+                            }
                         }
-                        catch (Exception ex)
+                        else if (string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase) && !string.Equals(oldDir, newDir, StringComparison.Ordinal))
                         {
-                            AppLogger.Warn($"[DownloadPackage] Could not rename directory '{oldDir}' to '{newDir}': {ex.Message}");
+                            try
+                            {
+                                var tempDir = oldDir + "_case_rename_" + Guid.NewGuid().ToString("N")[..8];
+                                Directory.Move(oldDir, tempDir);
+                                Directory.Move(tempDir, newDir);
+                                SaveDirectory = newDir;
+                            }
+                            catch (Exception ex)
+                            {
+                                AppLogger.Warn($"[DownloadPackage] Could not case-rename directory '{oldDir}' to '{newDir}': {ex.Message}");
+                                SaveDirectory = newDir;
+                            }
+                        }
+                        else
+                        {
+                            SaveDirectory = newDir;
                         }
                     }
                     else
@@ -939,6 +956,11 @@ public partial class DownloadPackage : ObservableObject
                 }
             }
         }
+    }
+
+    partial void OnNameChanged(string value)
+    {
+        UpdateDirectoryForName(value);
     }
 
     partial void OnIsEnabledChanged(bool value)

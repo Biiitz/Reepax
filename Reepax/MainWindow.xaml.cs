@@ -2051,15 +2051,20 @@ public partial class MainWindow : Window
             if (e.Key == Key.Enter)
             {
                 var tb = sender as TextBox;
-                if (tb != null)
+                if (tb != null && !string.IsNullOrWhiteSpace(tb.Text))
                 {
-                    pkg.Rename(tb.Text);
+                    pkg.Rename(tb.Text, isUserAction: true);
                 }
                 pkg.IsEditing = false;
                 e.Handled = true;
             }
             else if (e.Key == Key.Escape)
             {
+                var tb = sender as TextBox;
+                if (tb != null)
+                {
+                    tb.Text = pkg.Name;
+                }
                 pkg.IsEditing = false;
                 e.Handled = true;
             }
@@ -2071,9 +2076,9 @@ public partial class MainWindow : Window
         if ((sender as TextBox)?.DataContext is DownloadPackage pkg)
         {
             var tb = sender as TextBox;
-            if (tb != null)
+            if (tb != null && !string.IsNullOrWhiteSpace(tb.Text) && tb.Text.Trim() != pkg.Name)
             {
-                pkg.Rename(tb.Text);
+                pkg.Rename(tb.Text, isUserAction: true);
             }
             pkg.IsEditing = false;
         }
@@ -2086,15 +2091,20 @@ public partial class MainWindow : Window
             if (e.Key == Key.Enter)
             {
                 var tb = sender as TextBox;
-                if (tb != null)
+                if (tb != null && !string.IsNullOrWhiteSpace(tb.Text))
                 {
-                    item.Rename(tb.Text);
+                    item.Rename(tb.Text, isUserAction: true);
                 }
                 item.IsEditing = false;
                 e.Handled = true;
             }
             else if (e.Key == Key.Escape)
             {
+                var tb = sender as TextBox;
+                if (tb != null)
+                {
+                    tb.Text = item.FileName;
+                }
                 item.IsEditing = false;
                 e.Handled = true;
             }
@@ -2106,9 +2116,9 @@ public partial class MainWindow : Window
         if ((sender as TextBox)?.DataContext is DownloadItem item)
         {
             var tb = sender as TextBox;
-            if (tb != null)
+            if (tb != null && !string.IsNullOrWhiteSpace(tb.Text) && tb.Text.Trim() != item.FileName)
             {
-                item.Rename(tb.Text);
+                item.Rename(tb.Text, isUserAction: true);
             }
             item.IsEditing = false;
         }

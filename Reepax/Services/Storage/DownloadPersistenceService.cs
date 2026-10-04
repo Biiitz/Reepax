@@ -42,6 +42,7 @@ public class DownloadItemDto
     public long ElapsedDurationMs { get; set; }
     public string? ExpectedChecksum { get; set; }
     public string? CalculatedChecksum { get; set; }
+    public bool IsCustomName { get; set; }
 }
 
 public class NextTaskStepDto
@@ -56,6 +57,7 @@ public class DownloadPackageDto
     public Guid Id { get; set; }
     public Guid? ParentPackageId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public bool IsCustomName { get; set; }
     public string SaveDirectory { get; set; } = string.Empty;
     public bool IsEnabled { get; set; } = true;
     public bool AutoExtractArchives { get; set; } = false;
@@ -828,7 +830,8 @@ public class DownloadPersistenceService : IDisposable
                         CompletedAt = item.CompletedAt,
                         ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
                         ExpectedChecksum = item.ExpectedChecksum,
-                        CalculatedChecksum = item.CalculatedChecksum
+                        CalculatedChecksum = item.CalculatedChecksum,
+                        IsCustomName = item.IsCustomName
                     });
                 }
 
@@ -875,6 +878,7 @@ public class DownloadPersistenceService : IDisposable
                     Id = pkg.Id,
                     ParentPackageId = pkg.ParentPackageId,
                     Name = pkg.Name,
+                    IsCustomName = pkg.IsCustomName,
                     SaveDirectory = pkg.SaveDirectory,
                     IsEnabled = pkg.IsEnabled,
                     AutoExtractArchives = pkg.AutoExtractArchives,
@@ -1405,12 +1409,13 @@ public class DownloadPersistenceService : IDisposable
 
             foreach (var pkgDto in dtos)
             {
-                var cleanSaveDir = SanitizeSavedPackageDirectory(pkgDto.SaveDirectory, pkgDto.Name);
+                var cleanSaveDir = SanitizeSavedPackageDirectory(pkgDto.SaveDirectory, pkgDto.Name, pkgDto.IsCustomName);
                 var package = new DownloadPackage
                 {
                     Id = pkgDto.Id,
                     ParentPackageId = pkgDto.ParentPackageId,
                     Name = pkgDto.Name,
+                    IsCustomName = pkgDto.IsCustomName,
                     SaveDirectory = cleanSaveDir,
                     IsEnabled = pkgDto.IsEnabled,
                     AutoExtractArchives = pkgDto.AutoExtractArchives,
@@ -1443,6 +1448,7 @@ public class DownloadPersistenceService : IDisposable
                         OriginalUrl = itemDto.OriginalUrl,
                         DirectDownloadUrl = itemDto.DirectDownloadUrl,
                         FileName = itemDto.FileName,
+                        IsCustomName = itemDto.IsCustomName,
                         HosterName = itemDto.HosterName,
                         HosterIconKey = itemDto.HosterIconKey,
                         TotalBytes = itemDto.TotalBytes,
@@ -1647,12 +1653,13 @@ public class DownloadPersistenceService : IDisposable
 
             foreach (var pkgDto in dtos)
             {
-                var cleanSaveDir = SanitizeSavedPackageDirectory(pkgDto.SaveDirectory, pkgDto.Name);
+                var cleanSaveDir = SanitizeSavedPackageDirectory(pkgDto.SaveDirectory, pkgDto.Name, pkgDto.IsCustomName);
                 var package = new DownloadPackage
                 {
                     Id = pkgDto.Id,
                     ParentPackageId = pkgDto.ParentPackageId,
                     Name = pkgDto.Name,
+                    IsCustomName = pkgDto.IsCustomName,
                     SaveDirectory = cleanSaveDir,
                     IsEnabled = pkgDto.IsEnabled,
                     AutoExtractArchives = pkgDto.AutoExtractArchives,
@@ -1685,6 +1692,7 @@ public class DownloadPersistenceService : IDisposable
                         OriginalUrl = itemDto.OriginalUrl,
                         DirectDownloadUrl = itemDto.DirectDownloadUrl,
                         FileName = itemDto.FileName,
+                        IsCustomName = itemDto.IsCustomName,
                         HosterName = itemDto.HosterName,
                         HosterIconKey = itemDto.HosterIconKey,
                         TotalBytes = itemDto.TotalBytes,
@@ -1861,8 +1869,11 @@ public class DownloadPersistenceService : IDisposable
         }
     }
 
-    public static string SanitizeSavedPackageDirectory(string? savedDir, string? packageName)
+    public static string SanitizeSavedPackageDirectory(string? savedDir, string? packageName, bool isCustomName = false)
     {
+        if (isCustomName)
+            return savedDir ?? string.Empty;
+
         if (string.IsNullOrWhiteSpace(savedDir))
             return string.Empty;
 
