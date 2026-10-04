@@ -92,6 +92,7 @@ public class AppSettings
     public bool EnableFileLogging { get; set; } = false;
     public bool EnableClipboardMonitor { get; set; } = false;
     public PostDownloadAction PostDownloadAction { get; set; } = PostDownloadAction.None;
+    public DownloadStatusFilter SelectedStatusFilter { get; set; } = DownloadStatusFilter.All;
     public string Language { get; set; } = "en"; // "en" (default) or "de"
     public Dictionary<string, string> CustomShortcuts { get; set; } = new();
 

@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using System.Text.Json;
 using Reepax.Models;
+using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Xunit;
 
@@ -397,5 +399,66 @@ public class DownloadFilterTests : IDisposable
         Assert.Equal(2, _viewModel.RootPackages.Count);
         Assert.Equal("Beta Update", _viewModel.RootPackages[0].Name);
         Assert.Equal("Alpha Update", _viewModel.RootPackages[1].Name);
+    }
+
+    [Fact]
+    public void SelectedStatusFilter_WhenChanged_PersistsToSettings()
+    {
+        // Act: change filter directly on viewmodel
+        _viewModel.SelectedStatusFilter = DownloadStatusFilter.Running;
+
+        // Assert: settings are updated
+        Assert.Equal(DownloadStatusFilter.Running, SettingsService.Instance.Settings.SelectedStatusFilter);
+
+        // Act: change via command with string parameter
+        _viewModel.SetStatusFilterCommand.Execute("Completed");
+
+        // Assert: settings are updated
+        Assert.Equal(DownloadStatusFilter.Completed, SettingsService.Instance.Settings.SelectedStatusFilter);
+        Assert.Equal(DownloadStatusFilter.Completed, _viewModel.SelectedStatusFilter);
+
+        // Act: reset back to All
+        _viewModel.SetStatusFilterCommand.Execute(DownloadStatusFilter.All);
+        Assert.Equal(DownloadStatusFilter.All, SettingsService.Instance.Settings.SelectedStatusFilter);
+    }
+
+    [Fact]
+    public void MainViewModel_OnInitialization_RestoresSavedFilterFromSettings()
+    {
+        try
+        {
+            // Arrange
+            SettingsService.Instance.Settings.SelectedStatusFilter = DownloadStatusFilter.Paused;
+
+            // Act
+            var freshVm = new MainViewModel();
+
+            // Assert
+            Assert.Equal(DownloadStatusFilter.Paused, freshVm.SelectedStatusFilter);
+            Assert.True(freshVm.IsStatusFilterActive);
+        }
+        finally
+        {
+            SettingsService.Instance.Settings.SelectedStatusFilter = DownloadStatusFilter.All;
+        }
+    }
+
+    [Fact]
+    public void AppSettings_SerializesAndDeserializesSelectedStatusFilter_AsString()
+    {
+        // Arrange
+        var settings = new AppSettings
+        {
+            SelectedStatusFilter = DownloadStatusFilter.Failed
+        };
+
+        // Act
+        var json = JsonSerializer.Serialize(settings);
+        var deserialized = JsonSerializer.Deserialize<AppSettings>(json);
+
+        // Assert
+        Assert.NotNull(deserialized);
+        Assert.Contains("\"SelectedStatusFilter\":\"Failed\"", json);
+        Assert.Equal(DownloadStatusFilter.Failed, deserialized.SelectedStatusFilter);
     }
 }

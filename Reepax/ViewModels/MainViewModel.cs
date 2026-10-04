@@ -41,15 +41,6 @@ public enum SettingsCategory
     About
 }
 
-public enum DownloadStatusFilter
-{
-    All,
-    Running,
-    Paused,
-    Completed,
-    Failed
-}
-
 public partial class MainViewModel : ObservableObject
 {
     private readonly QueueManager _queueManager = QueueManager.Instance;
@@ -99,6 +90,12 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedStatusFilterChanged(DownloadStatusFilter value)
     {
+        if (_settingsService.Settings.SelectedStatusFilter != value)
+        {
+            _settingsService.Settings.SelectedStatusFilter = value;
+            _settingsService.SaveSettings();
+        }
+
         OnPropertyChanged(nameof(IsStatusFilterActive));
         OnPropertyChanged(nameof(SelectedStatusFilterText));
         RefreshRootPackages();
@@ -441,6 +438,7 @@ public partial class MainViewModel : ObservableObject
         ConnectionsPerDownloadText = ConnectionsPerDownload.ToString();
         DownloadEngine.Instance.MaxConnectionsPerDownload = ConnectionsPerDownload;
         CurrentDownloadDirectory = settings.DefaultDownloadDirectory;
+        SelectedStatusFilter = settings.SelectedStatusFilter;
         AutoExtractArchives = settings.AutoExtractArchives;
         DeleteArchiveAfterExtraction = settings.DeleteArchiveAfterExtraction;
         MoveArchiveToRecycleBin = settings.MoveArchiveToRecycleBin;
