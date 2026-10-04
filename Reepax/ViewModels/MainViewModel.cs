@@ -490,6 +490,7 @@ public partial class MainViewModel : ObservableObject
         StartWithWindows = IsPortableMode ? false : settings.StartWithWindows;
         EnableCompletionNotifications = settings.EnableCompletionNotifications;
         EnableCompletionSound = settings.EnableCompletionSound;
+        CompletionSoundTrigger = settings.CompletionSoundTrigger;
         SelectedCompletionSound = !string.IsNullOrWhiteSpace(settings.SelectedCompletionSound) ? settings.SelectedCompletionSound : "1.mp3";
         CompletionSoundVolume = Math.Clamp(settings.CompletionSoundVolume, 0, 100);
         EnableErrorSound = settings.EnableErrorSound;
@@ -556,7 +557,10 @@ public partial class MainViewModel : ObservableObject
                 RecalculateGlobalStats();
                 StatusSummary = Loc.Format("Status_FileDownloadedSuccess", item.FileName);
             });
-            Services.Audio.AudioNotificationService.Instance.PlayCompletionSound();
+            if (_settingsService.Settings.CompletionSoundTrigger == CompletionSoundTrigger.IndividualFiles)
+            {
+                Services.Audio.AudioNotificationService.Instance.PlayCompletionSound();
+            }
         };
         DownloadEngine.Instance.DownloadFailed += (item, ex) =>
         {

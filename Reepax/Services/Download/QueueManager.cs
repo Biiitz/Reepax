@@ -1483,6 +1483,12 @@ public class QueueManager
             }
         }
 
+        // 1c. Play Completion Sound if configured for entire package completion
+        if (SettingsService.Instance.Settings.CompletionSoundTrigger == CompletionSoundTrigger.EntirePackage)
+        {
+            Audio.AudioNotificationService.Instance.PlayCompletionSound();
+        }
+
         // 2. Windows notification: Disabled in settings?
         if (!SettingsService.Instance.Settings.EnableCompletionNotifications)
             return;

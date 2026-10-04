@@ -587,7 +587,7 @@ public partial class SettingsView : UserControl
             return;
 
         bool isEnabled = ViewModel?.EnableCompletionSound == true;
-        AnimateExpander(CompletionSoundVolumeContainer, CompletionSoundVolumeContent, CompletionSoundVolumeTranslate, ref _isCompletionSoundVolumeExpanded, isEnabled, animate, 42.0);
+        AnimateExpander(CompletionSoundVolumeContainer, CompletionSoundVolumeContent, CompletionSoundVolumeTranslate, ref _isCompletionSoundVolumeExpanded, isEnabled, animate, 78.0);
     }
 
     private void UpdateErrorSoundVolumeVisibility(bool animate = true)

@@ -141,6 +141,11 @@ public class SettingsService
             _backupFilePath = Path.Combine(AppDataDirectory, "settings.json.bak");
         }
 
+        if (!_isCustomPath)
+        {
+            MigratePortableSettingsIfNeeded();
+        }
+
         LoadSettings();
     }
 
@@ -169,6 +174,7 @@ public class SettingsService
                         {
                             loaded.ColumnOrder = AppSettings.SanitizeColumnOrder(loaded.ColumnOrder);
                             loaded.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(loaded.ExtractionPasswords);
+                            AppSettings.SanitizeSoundSettings(loaded);
                             _currentSettings = loaded;
                             loadedSuccessfully = true;
                         }
@@ -202,6 +208,7 @@ public class SettingsService
                         {
                             loadedFromBackup.ColumnOrder = AppSettings.SanitizeColumnOrder(loadedFromBackup.ColumnOrder);
                             loadedFromBackup.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(loadedFromBackup.ExtractionPasswords);
+                            AppSettings.SanitizeSoundSettings(loadedFromBackup);
                             _currentSettings = loadedFromBackup;
                             loadedSuccessfully = true;
                             AppLogger.Warn("Einstellungen erfolgreich aus Backup wiederhergestellt.");
@@ -218,6 +225,7 @@ public class SettingsService
             {
                 _currentSettings = new AppSettings();
             }
+            AppSettings.SanitizeSoundSettings(_currentSettings);
         }
 
         // Ensure default download directory is set (NOT created eagerly – folders are
@@ -394,6 +402,45 @@ public class SettingsService
         catch (Exception ex)
         {
             AppLogger.Debug($"[SettingsService] Roaming migration note: {ex.Message}");
+        }
+    }
+
+    private void MigratePortableSettingsIfNeeded()
+    {
+        if (!IsPortableMode || DownloadPersistenceService.IsTestEnvironment)
+            return;
+
+        try
+        {
+            if (File.Exists(_settingsFilePath))
+                return;
+
+            var localAppDataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Reepax"
+            );
+
+            if (!Directory.Exists(localAppDataDir))
+                return;
+
+            string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json" };
+            foreach (var file in filesToMigrate)
+            {
+                var src = Path.Combine(localAppDataDir, file);
+                var dest = Path.Combine(AppDataDirectory, file);
+                if (File.Exists(src) && !File.Exists(dest))
+                {
+                    try
+                    {
+                        File.Copy(src, dest, overwrite: false);
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"[SettingsService] Fehler beim Migrieren bestehender Einstellungen in Portabel-Modus: {ex.Message}");
         }
     }
 

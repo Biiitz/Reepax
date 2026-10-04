@@ -28,6 +28,7 @@ public class AppSettings
     public bool StartWithWindows { get; set; } = false;
     public bool EnableCompletionNotifications { get; set; } = false;
     public bool EnableCompletionSound { get; set; } = true;
+    public CompletionSoundTrigger CompletionSoundTrigger { get; set; } = CompletionSoundTrigger.EntirePackage;
     public string SelectedCompletionSound { get; set; } = "1.mp3";
 
     private int _completionSoundVolume = 80;
@@ -239,6 +240,62 @@ public class AppSettings
         }
         return list;
     }
+
+    public static readonly string[] ValidCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3"];
+    public static readonly string[] ValidErrorSounds = ["1.mp3", "2.mp3", "3.mp3"];
+
+    public static void SanitizeSoundSettings(AppSettings? settings)
+    {
+        if (settings == null) return;
+
+        // Completion sound normalization
+        if (string.IsNullOrWhiteSpace(settings.SelectedCompletionSound))
+        {
+            settings.SelectedCompletionSound = "1.mp3";
+        }
+        else
+        {
+            var raw = settings.SelectedCompletionSound.Trim();
+            if (!raw.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                raw += ".mp3";
+            }
+            if (ValidCompletionSounds.Contains(raw, StringComparer.OrdinalIgnoreCase))
+            {
+                settings.SelectedCompletionSound = ValidCompletionSounds.First(s => string.Equals(s, raw, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                settings.SelectedCompletionSound = "1.mp3";
+            }
+        }
+
+        // Error sound normalization
+        if (string.IsNullOrWhiteSpace(settings.SelectedErrorSound))
+        {
+            settings.SelectedErrorSound = "1.mp3";
+        }
+        else
+        {
+            var raw = settings.SelectedErrorSound.Trim();
+            if (!raw.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
+            {
+                raw += ".mp3";
+            }
+            if (ValidErrorSounds.Contains(raw, StringComparer.OrdinalIgnoreCase))
+            {
+                settings.SelectedErrorSound = ValidErrorSounds.First(s => string.Equals(s, raw, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                settings.SelectedErrorSound = "1.mp3";
+            }
+        }
+
+        // Volume clamping
+        settings.CompletionSoundVolume = Math.Clamp(settings.CompletionSoundVolume, 0, 100);
+        settings.ErrorSoundVolume = Math.Clamp(settings.ErrorSoundVolume, 0, 100);
+    }
 }
 
 public enum PostDownloadAction
@@ -247,4 +304,10 @@ public enum PostDownloadAction
     Shutdown = 1,
     Sleep = 2,
     ExitApp = 3
+}
+
+public enum CompletionSoundTrigger
+{
+    EntirePackage = 0,
+    IndividualFiles = 1
 }

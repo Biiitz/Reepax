@@ -543,6 +543,41 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
+    private CompletionSoundTrigger _completionSoundTrigger = CompletionSoundTrigger.EntirePackage;
+
+    partial void OnCompletionSoundTriggerChanged(CompletionSoundTrigger value)
+    {
+        _settingsService.Settings.CompletionSoundTrigger = value;
+        _settingsService.SaveSettings();
+        OnPropertyChanged(nameof(IsCompletionSoundEntirePackage));
+        OnPropertyChanged(nameof(IsCompletionSoundIndividualFiles));
+    }
+
+    public bool IsCompletionSoundEntirePackage
+    {
+        get => CompletionSoundTrigger == CompletionSoundTrigger.EntirePackage;
+        set
+        {
+            if (value && CompletionSoundTrigger != CompletionSoundTrigger.EntirePackage)
+            {
+                CompletionSoundTrigger = CompletionSoundTrigger.EntirePackage;
+            }
+        }
+    }
+
+    public bool IsCompletionSoundIndividualFiles
+    {
+        get => CompletionSoundTrigger == CompletionSoundTrigger.IndividualFiles;
+        set
+        {
+            if (value && CompletionSoundTrigger != CompletionSoundTrigger.IndividualFiles)
+            {
+                CompletionSoundTrigger = CompletionSoundTrigger.IndividualFiles;
+            }
+        }
+    }
+
+    [ObservableProperty]
     private string _selectedCompletionSound = "1.mp3";
 
     partial void OnSelectedCompletionSoundChanged(string value)

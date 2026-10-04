@@ -117,6 +117,10 @@ public class AudioNotificationTests
     [InlineData("Settings_Sound_Volume_Subtitle")]
     [InlineData("Settings_Sound_Completion_Title")]
     [InlineData("Settings_Sound_Completion_Subtitle")]
+    [InlineData("Settings_Sound_Trigger_Title")]
+    [InlineData("Settings_Sound_Trigger_Subtitle")]
+    [InlineData("Settings_Sound_Trigger_EntirePackage")]
+    [InlineData("Settings_Sound_Trigger_IndividualFiles")]
     [InlineData("Settings_Sound_Error_Title")]
     [InlineData("Settings_Sound_Error_Subtitle")]
     [InlineData("Settings_Sound_Chip_ToolTip")]
@@ -271,5 +275,74 @@ public class AudioNotificationTests
 
         var ex2 = Record.Exception(() => vm.PreviewErrorVolumeSound());
         Assert.Null(ex2);
+    }
+
+    [Fact]
+    public void AppSettings_CompletionSoundTrigger_DefaultIsEntirePackage()
+    {
+        var settings = new AppSettings();
+        Assert.Equal(CompletionSoundTrigger.EntirePackage, settings.CompletionSoundTrigger);
+    }
+
+    [Fact]
+    public void AppSettings_CompletionSoundTrigger_JsonRoundTrip()
+    {
+        var settings = new AppSettings
+        {
+            CompletionSoundTrigger = CompletionSoundTrigger.IndividualFiles
+        };
+
+        string json = JsonSerializer.Serialize(settings);
+        var deserialized = JsonSerializer.Deserialize<AppSettings>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(CompletionSoundTrigger.IndividualFiles, deserialized.CompletionSoundTrigger);
+    }
+
+    [Fact]
+    public void AppSettings_AudioProperties_Sanitization_FixesMissingExtensionsAndClampsVolume()
+    {
+        var settings = new AppSettings
+        {
+            SelectedCompletionSound = "3",
+            SelectedErrorSound = "2",
+            CompletionSoundVolume = 150,
+            ErrorSoundVolume = -25
+        };
+
+        AppSettings.SanitizeSoundSettings(settings);
+
+        Assert.Equal("3.mp3", settings.SelectedCompletionSound);
+        Assert.Equal("2.mp3", settings.SelectedErrorSound);
+        Assert.Equal(100, settings.CompletionSoundVolume);
+        Assert.Equal(0, settings.ErrorSoundVolume);
+
+        // Fallback for invalid sound names
+        settings.SelectedCompletionSound = "invalid_sound.mp3";
+        settings.SelectedErrorSound = "non_existent.wav";
+        AppSettings.SanitizeSoundSettings(settings);
+
+        Assert.Equal("1.mp3", settings.SelectedCompletionSound);
+        Assert.Equal("1.mp3", settings.SelectedErrorSound);
+    }
+
+    [Fact]
+    public void MainViewModel_CompletionSoundTrigger_TogglesAndPersists()
+    {
+        var vm = new ViewModels.MainViewModel();
+
+        vm.CompletionSoundTrigger = CompletionSoundTrigger.EntirePackage;
+        Assert.True(vm.IsCompletionSoundEntirePackage);
+        Assert.False(vm.IsCompletionSoundIndividualFiles);
+
+        vm.IsCompletionSoundIndividualFiles = true;
+        Assert.Equal(CompletionSoundTrigger.IndividualFiles, vm.CompletionSoundTrigger);
+        Assert.False(vm.IsCompletionSoundEntirePackage);
+        Assert.True(vm.IsCompletionSoundIndividualFiles);
+
+        vm.IsCompletionSoundEntirePackage = true;
+        Assert.Equal(CompletionSoundTrigger.EntirePackage, vm.CompletionSoundTrigger);
+        Assert.True(vm.IsCompletionSoundEntirePackage);
+        Assert.False(vm.IsCompletionSoundIndividualFiles);
     }
 }
