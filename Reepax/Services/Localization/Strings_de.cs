@@ -111,7 +111,7 @@ public static class Strings_de
         ["Settings_Sound_Completion_Subtitle"] = "Spielt einen Ton ab, wenn ein Download erfolgreich abgeschlossen wurde",
         ["Settings_Sound_Trigger_Title"] = "Sound abspielen bei",
         ["Settings_Sound_Trigger_Subtitle"] = "Legt fest, ob der Ton erst nach vollständiger Fertigstellung des gesamten Pakets (inkl. Entpacken/PAR2) ertönt oder nach jeder einzelnen Datei",
-        ["Settings_Sound_Trigger_EntirePackage"] = "Gesamtes Paket (100% fertig)",
+        ["Settings_Sound_Trigger_EntirePackage"] = "Gesamtes Paket",
         ["Settings_Sound_Trigger_IndividualFiles"] = "Einzelne Dateien",
         ["Settings_Sound_Error_Title"] = "Fehlgeschlagen-Sound",
         ["Settings_Sound_Error_Subtitle"] = "Spielt einen Ton ab, wenn ein Download fehlschlägt oder abbricht",

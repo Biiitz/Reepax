@@ -62,6 +62,9 @@ public class ReepaxPackageDto
     [JsonPropertyName("autoResolveHostLinks")]
     public bool AutoResolveHostLinks { get; set; } = true;
 
+    [JsonPropertyName("autoPar2Repair")]
+    public bool AutoPar2Repair { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
@@ -116,6 +119,7 @@ public static class PackageExportImportService
             DeleteArchiveAfterExtraction = package.DeleteArchiveAfterExtraction,
             MoveArchiveToRecycleBin = package.MoveArchiveToRecycleBin,
             AutoResolveHostLinks = package.AutoResolveHostLinks,
+            AutoPar2Repair = package.AutoPar2Repair,
             Items = new List<ReepaxPackageItemDto>()
         };
 
@@ -202,6 +206,7 @@ public static class PackageExportImportService
             DeleteArchiveAfterExtraction = dto.DeleteArchiveAfterExtraction,
             MoveArchiveToRecycleBin = dto.MoveArchiveToRecycleBin,
             AutoResolveHostLinks = ResolveHostLinksOption(dto),
+            AutoPar2Repair = dto.AutoPar2Repair,
             Status = DownloadStatus.Queued,
             StatusMessage = Loc.Get("Status_Queued"),
             DownloadedBytes = 0,

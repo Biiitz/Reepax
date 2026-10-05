@@ -66,6 +66,7 @@ public class DownloadPackageDto
     public bool MoveArchiveToRecycleBin { get; set; } = false;
     public string? ExtractionDirectory { get; set; }
     public bool AutoResolveHostLinks { get; set; } = true;
+    public bool AutoPar2Repair { get; set; } = false;
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
     public bool IsExpanded { get; set; } = true;
@@ -887,6 +888,7 @@ public class DownloadPersistenceService : IDisposable
                     MoveArchiveToRecycleBin = pkg.MoveArchiveToRecycleBin,
                     ExtractionDirectory = pkg.ExtractionDirectory,
                     AutoResolveHostLinks = pkg.AutoResolveHostLinks,
+                    AutoPar2Repair = pkg.AutoPar2Repair,
                     IsExpanded = pkg.IsExpanded,
                     PackageIconKey = pkg.PackageIconKey,
                     TotalBytes = pkgTotal > 0 ? pkgTotal : pkg.TotalBytes,
@@ -1424,6 +1426,7 @@ public class DownloadPersistenceService : IDisposable
                     MoveArchiveToRecycleBin = pkgDto.MoveArchiveToRecycleBin,
                     ExtractionDirectory = pkgDto.ExtractionDirectory,
                     AutoResolveHostLinks = ResolveHostLinksOption(pkgDto),
+                    AutoPar2Repair = pkgDto.AutoPar2Repair,
                     IsExpanded = pkgDto.IsExpanded,
                     PackageIconKey = pkgDto.PackageIconKey,
                     CreatedAt = pkgDto.CreatedAt,
@@ -1668,6 +1671,7 @@ public class DownloadPersistenceService : IDisposable
                     MoveArchiveToRecycleBin = pkgDto.MoveArchiveToRecycleBin,
                     ExtractionDirectory = pkgDto.ExtractionDirectory,
                     AutoResolveHostLinks = ResolveHostLinksOption(pkgDto),
+                    AutoPar2Repair = pkgDto.AutoPar2Repair,
                     IsExpanded = pkgDto.IsExpanded,
                     PackageIconKey = pkgDto.PackageIconKey,
                     CreatedAt = pkgDto.CreatedAt,

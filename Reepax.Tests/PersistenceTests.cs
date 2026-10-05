@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Xunit;
@@ -867,6 +868,91 @@ public class PersistenceTests
         var emptyResult = DownloadPersistenceService.CreateDtos(new List<DownloadPackage>());
         Assert.NotNull(emptyResult);
         Assert.Empty(emptyResult);
+    }
+
+    [Fact]
+    public void CreateDtos_And_LoadDownloads_PreservesAutoPar2Repair()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_Par2Persist_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            var service = new DownloadPersistenceService(testFile);
+            var pkg1 = new DownloadPackage
+            {
+                Name = "PkgWithPar2",
+                SaveDirectory = @"C:\Downloads\PkgWithPar2",
+                AutoPar2Repair = true
+            };
+            var pkg2 = new DownloadPackage
+            {
+                Name = "PkgWithoutPar2",
+                SaveDirectory = @"C:\Downloads\PkgWithoutPar2",
+                AutoPar2Repair = false
+            };
+
+            var dtos = DownloadPersistenceService.CreateDtos(new[] { pkg1, pkg2 });
+            Assert.Equal(2, dtos.Count);
+            Assert.True(dtos[0].AutoPar2Repair);
+            Assert.False(dtos[1].AutoPar2Repair);
+
+            service.SaveDownloads(new[] { pkg1, pkg2 });
+            var loaded = service.LoadDownloads();
+
+            Assert.Equal(2, loaded.Count);
+            Assert.True(loaded[0].AutoPar2Repair);
+            Assert.False(loaded[1].AutoPar2Repair);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void PackageExportImport_PreservesAutoPar2Repair()
+    {
+        var pkg = new DownloadPackage
+        {
+            Name = "ExportPar2Pkg",
+            AutoPar2Repair = true
+        };
+
+        var dto = PackageExportImportService.CreateDto(pkg);
+        Assert.True(dto.AutoPar2Repair);
+
+        var json = PackageExportImportService.ExportToJson(pkg);
+        var imported = PackageExportImportService.ImportFromJson(json);
+        Assert.True(imported.AutoPar2Repair);
+    }
+
+    [Fact]
+    public void PackageGrouper_GroupLinksIntoPackages_RespectsAutoPar2Repair()
+    {
+        var link = new ExtractedLink
+        {
+            Url = "https://example.com/test.rar",
+            RawFileName = "test.rar",
+            Hoster = new HosterInfo { DisplayName = "Direct" }
+        };
+
+        var pkgsEnabled = PackageGrouper.GroupLinksIntoPackages(
+            new[] { link },
+            @"C:\Downloads",
+            autoPar2Repair: true);
+
+        Assert.Single(pkgsEnabled);
+        Assert.True(pkgsEnabled[0].AutoPar2Repair);
+
+        var pkgsDisabled = PackageGrouper.GroupLinksIntoPackages(
+            new[] { link },
+            @"C:\Downloads",
+            autoPar2Repair: false);
+
+        Assert.Single(pkgsDisabled);
+        Assert.False(pkgsDisabled[0].AutoPar2Repair);
     }
 
     private class FlakyEnumerable<T> : IEnumerable<T>

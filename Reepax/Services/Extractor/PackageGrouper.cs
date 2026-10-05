@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Reepax.Models;
 using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 
 namespace Reepax.Services.Extractor;
 
@@ -46,7 +47,8 @@ public static class PackageGrouper
         bool? lowResourceExtraction = null,
         bool deleteArchiveAfterExtraction = false,
         bool moveArchiveToRecycleBin = false,
-        bool autoResolveHostLinks = false)
+        bool autoResolveHostLinks = false,
+        bool? autoPar2Repair = null)
     {
         var packages = new List<DownloadPackage>();
         var linksList = extractedLinks.ToList();
@@ -57,7 +59,7 @@ public static class PackageGrouper
         // If user specified a custom package name (from dialog), put all into 1 package
         if (!string.IsNullOrWhiteSpace(customPackageName))
         {
-            var pkg = CreatePackage(customPackageName, linksList, baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks);
+            var pkg = CreatePackage(customPackageName, linksList, baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks, autoPar2Repair);
             pkg.IsCustomName = true;
             packages.Add(pkg);
             return packages;
@@ -77,14 +79,14 @@ public static class PackageGrouper
             foreach (var grp in contextGroups)
             {
                 var pkgName = DetermineBestPackageName(grp.ToList());
-                packages.Add(CreatePackage(pkgName, grp.ToList(), baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks));
+                packages.Add(CreatePackage(pkgName, grp.ToList(), baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks, autoPar2Repair));
             }
             return packages;
         }
 
         // Default behavior: Put all links from this drop/paste into ONE package
         var bestName = DetermineBestPackageName(linksList);
-        packages.Add(CreatePackage(bestName, linksList, baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks));
+        packages.Add(CreatePackage(bestName, linksList, baseDownloadFolder, autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks, autoPar2Repair));
         return packages;
     }
 
@@ -167,7 +169,8 @@ public static class PackageGrouper
         bool? lowResourceExtraction = null,
         bool deleteArchiveAfterExtraction = false,
         bool moveArchiveToRecycleBin = false,
-        bool autoResolveHostLinks = false)
+        bool autoResolveHostLinks = false,
+        bool? autoPar2Repair = null)
     {
         // Updates require host auto-resolver to be disabled and proper naming
         bool isUpdate = UpdateDetector.IsUpdate(packageName) || 
@@ -213,6 +216,7 @@ public static class PackageGrouper
             DeleteArchiveAfterExtraction = deleteArchiveAfterExtraction,
             MoveArchiveToRecycleBin = moveArchiveToRecycleBin,
             AutoResolveHostLinks = autoResolveHostLinks,
+            AutoPar2Repair = autoPar2Repair ?? SettingsService.Instance.Settings.AutoPar2Repair,
             PackageIconKey = links.Any(l => IsArchiveName(l.RawFileName)) ? "Archive" : "Folder",
             Status = DownloadStatus.Queued
         };
