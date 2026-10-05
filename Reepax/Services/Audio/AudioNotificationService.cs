@@ -111,6 +111,11 @@ public sealed class AudioNotificationService
         return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", folder, fileName);
     }
 
+    public static double ConvertToMediaPlayerVolume(int volumePercent)
+    {
+        return Math.Clamp((volumePercent * 0.99) / 100.0, 0.0, 0.99);
+    }
+
     private void PlaySoundInternal(string folder, string fileName, int volumePercent, bool isPreview)
     {
         lock (_lock)
@@ -156,7 +161,7 @@ public sealed class AudioNotificationService
                         _mediaPlayer.Close();
                     }
 
-                    double clampedVolume = Math.Clamp(volumePercent / 100.0, 0.0, 1.0);
+                    double clampedVolume = ConvertToMediaPlayerVolume(volumePercent);
                     _mediaPlayer.Volume = clampedVolume;
                     _mediaPlayer.Open(new Uri(resolvedPath, UriKind.Absolute));
                     _mediaPlayer.Play();

@@ -345,4 +345,33 @@ public class AudioNotificationTests
         Assert.True(vm.IsCompletionSoundEntirePackage);
         Assert.False(vm.IsCompletionSoundIndividualFiles);
     }
+
+    [Fact]
+    public void AudioNotificationService_ConvertToMediaPlayerVolume_ScaleAndMonotonicity()
+    {
+        // 0% maps to 0.0
+        Assert.Equal(0.0, AudioNotificationService.ConvertToMediaPlayerVolume(0));
+
+        // Clamping boundaries
+        Assert.Equal(0.0, AudioNotificationService.ConvertToMediaPlayerVolume(-10));
+        Assert.Equal(0.99, AudioNotificationService.ConvertToMediaPlayerVolume(150));
+
+        // 100% must map to 0.99 (wpfgfx native 99, avoiding 100% drop to 50% default volume)
+        Assert.Equal(0.99, AudioNotificationService.ConvertToMediaPlayerVolume(100));
+
+        // 99% must be strictly less than 100%
+        double vol99 = AudioNotificationService.ConvertToMediaPlayerVolume(99);
+        double vol100 = AudioNotificationService.ConvertToMediaPlayerVolume(100);
+        Assert.True(vol100 > vol99, $"100% ({vol100}) should be strictly greater than 99% ({vol99})");
+
+        // Monotonic non-decreasing across entire 0..100 range
+        double prev = 0.0;
+        for (int p = 0; p <= 100; p++)
+        {
+            double current = AudioNotificationService.ConvertToMediaPlayerVolume(p);
+            Assert.True(current >= prev, $"Volume at {p}% ({current}) must be >= previous ({prev})");
+            Assert.True(current <= 0.99, $"Volume at {p}% ({current}) must never exceed 0.99");
+            prev = current;
+        }
+    }
 }
