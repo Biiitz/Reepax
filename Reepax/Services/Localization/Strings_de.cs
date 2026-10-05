@@ -298,6 +298,8 @@ public static class Strings_de
         ["Dialog_RemoveExtensionMessage"] = "Möchtest du \"{0}\" wirklich entfernen? Der Ordner wird endgültig gelöscht.",
         ["Dialog_DownloadsLoadFailedTitle"] = "Warnung – Downloads-Datei gesperrt",
         ["Dialog_DownloadsLoadFailedMessage"] = "Die Download-Liste ('downloads.json') konnte nicht geladen werden, da die Datei gesperrt oder beschädigt ist.\n\nUm Datenverlust zu verhindern, wurde das automatische Überschreiben der Datei deaktiviert.\nBitte stellen Sie sicher, dass keine andere Anwendung (wie ein Virenscanner oder Editor) die Datei sperrt, und starten Sie Reepax neu.",
+        ["Dialog_SettingsLoadFailedTitle"] = "Warnung – Einstellungs-Datei gesperrt",
+        ["Dialog_SettingsLoadFailedMessage"] = "Die Einstellungen ('settings.json') konnten nicht geladen werden, da die Datei gesperrt oder beschädigt ist.\n\nUm Datenverlust zu verhindern, wurde das automatische Überschreiben der Einstellungen deaktiviert.\nBitte stellen Sie sicher, dass keine andere Anwendung (wie ein Virenscanner oder Editor) die Datei sperrt, und starten Sie Reepax neu.",
         ["Dialog_ConfirmExit_Title"] = "Beenden bestätigen",
         ["Dialog_ConfirmExit_ActiveDownloads"] = "Es laufen noch aktive Downloads. Möchtest du Reepax wirklich schließen? Alle Downloads werden pausiert.",
 

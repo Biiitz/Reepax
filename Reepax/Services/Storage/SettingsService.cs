@@ -84,6 +84,10 @@ public class SettingsService
     private readonly bool _isCustomPath;
     private readonly object _fileLock = new();
     private AppSettings _currentSettings = new();
+    private volatile bool _hasSettingsLoadFailed;
+
+    public bool HasSettingsLoadFailed => _hasSettingsLoadFailed;
+    public static event Action<string>? OnSettingsWarning;
 
     public AppSettings Settings => _currentSettings;
 
@@ -154,18 +158,21 @@ public class SettingsService
         if (!_isCustomPath && DownloadPersistenceService.IsTestEnvironment)
         {
             _currentSettings = new AppSettings();
+            _hasSettingsLoadFailed = false;
             return;
         }
 
         lock (_fileLock)
         {
             bool loadedSuccessfully = false;
+            bool primaryExists = File.Exists(_settingsFilePath);
+            bool backupExists = File.Exists(_backupFilePath);
 
-            if (File.Exists(_settingsFilePath))
+            if (primaryExists)
             {
                 try
                 {
-                    var raw = File.ReadAllText(_settingsFilePath);
+                    var raw = DownloadPersistenceService.ReadFileWithRetry(_settingsFilePath);
                     if (!string.IsNullOrWhiteSpace(raw))
                     {
                         var json = SecureAppDataStorage.DecryptString(raw);
@@ -195,11 +202,11 @@ public class SettingsService
             }
 
             // If loading primary settings failed or file did not exist, attempt to load from last known good backup
-            if (!loadedSuccessfully && File.Exists(_backupFilePath))
+            if (!loadedSuccessfully && backupExists)
             {
                 try
                 {
-                    var backupRaw = File.ReadAllText(_backupFilePath);
+                    var backupRaw = DownloadPersistenceService.ReadFileWithRetry(_backupFilePath);
                     if (!string.IsNullOrWhiteSpace(backupRaw))
                     {
                         var backupJson = SecureAppDataStorage.DecryptString(backupRaw);
@@ -221,10 +228,23 @@ public class SettingsService
                 }
             }
 
-            if (!loadedSuccessfully && !File.Exists(_settingsFilePath) && !File.Exists(_backupFilePath))
+            if (loadedSuccessfully)
             {
+                _hasSettingsLoadFailed = false;
+            }
+            else if (primaryExists || backupExists)
+            {
+                _hasSettingsLoadFailed = true;
+                _currentSettings = new AppSettings();
+                AppLogger.Error("[SettingsService] KRITISCHER FEHLER / CRITICAL ERROR: settings.json oder Backup existiert, konnte aber nicht geladen werden. Speichern wird blockiert, um Datenverlust zu verhindern. / settings.json or backup exists but could not be read. Saving blocked to prevent data loss.");
+                NotifyUserLoadFailure();
+            }
+            else
+            {
+                _hasSettingsLoadFailed = false;
                 _currentSettings = new AppSettings();
             }
+
             AppSettings.SanitizeSoundSettings(_currentSettings);
         }
 
@@ -273,14 +293,32 @@ public class SettingsService
         catch { }
     }
 
-    public void SaveSettings()
+    public void SaveSettings(bool force = false)
     {
         if (!_isCustomPath && DownloadPersistenceService.IsTestEnvironment) return;
 
-        AppLogger.IsLoggingEnabled = _currentSettings.EnableFileLogging;
-
         lock (_fileLock)
         {
+            if (_hasSettingsLoadFailed && !force && (File.Exists(_settingsFilePath) || File.Exists(_backupFilePath)))
+            {
+                AppLogger.Warn("[SettingsService] Speichern abgebrochen: Initiales Laden der Einstellungen ist fehlgeschlagen. Vorhandene Einstellungsdateien werden geschützt und nicht überschrieben. / Save aborted: Initial settings load failed. Existing settings files are protected and will not be overwritten.");
+                return;
+            }
+
+            // If a force save was explicitly requested after a previous failure, create an emergency backup before overwriting
+            if (_hasSettingsLoadFailed && force && File.Exists(_settingsFilePath))
+            {
+                try
+                {
+                    var emergencyBak = _settingsFilePath + $".emergency_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
+                    File.Copy(_settingsFilePath, emergencyBak, overwrite: true);
+                    _hasSettingsLoadFailed = false;
+                }
+                catch { }
+            }
+
+            AppLogger.IsLoggingEnabled = _currentSettings.EnableFileLogging;
+
             string? tempFile = null;
             try
             {
@@ -315,6 +353,8 @@ public class SettingsService
                 {
                     File.Move(tempFile, _settingsFilePath, overwrite: true);
                 }
+
+                _hasSettingsLoadFailed = false;
             }
             catch (Exception ex)
             {
@@ -328,6 +368,51 @@ public class SettingsService
                 }
             }
         }
+    }
+
+    private static void NotifyUserLoadFailure()
+    {
+        if (DownloadPersistenceService.IsTestEnvironment) return;
+
+        try
+        {
+            var title = Localization.Loc.Get("Dialog_SettingsLoadFailedTitle");
+            var message = Localization.Loc.Get("Dialog_SettingsLoadFailedMessage");
+
+            if (string.IsNullOrWhiteSpace(title) || title == "Dialog_SettingsLoadFailedTitle")
+            {
+                title = "Reepax - Warnung – Einstellungs-Datei gesperrt";
+            }
+            if (string.IsNullOrWhiteSpace(message) || message == "Dialog_SettingsLoadFailedMessage")
+            {
+                message = "Die Einstellungen ('settings.json') konnten nicht geladen werden, da die Datei gesperrt oder beschädigt ist.\n\n" +
+                          "Um Datenverlust zu verhindern, wurde das automatische Überschreiben der Einstellungen deaktiviert.\n" +
+                          "Bitte stellen Sie sicher, dass keine andere Anwendung (wie ein Virenscanner oder Editor) die Datei sperrt, und starten Sie Reepax neu.\n\n" +
+                          "The settings ('settings.json') could not be loaded because the file is locked or corrupt.\n\n" +
+                          "To prevent data loss, automatic overwriting of settings has been disabled.\n" +
+                          "Please ensure no other application is locking the file, and restart Reepax.";
+            }
+
+            OnSettingsWarning?.Invoke(message);
+
+            var app = System.Windows.Application.Current;
+            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
+            {
+                app.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        System.Windows.MessageBox.Show(
+                            message,
+                            title,
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Warning);
+                    }
+                    catch { }
+                }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            }
+        }
+        catch { }
     }
 
     private static void MigrateFromRoamingIfNeeded()

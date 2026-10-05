@@ -298,6 +298,8 @@ public static class Strings_en
         ["Dialog_RemoveExtensionMessage"] = "Are you sure you want to remove \"{0}\"? The folder will be permanently deleted.",
         ["Dialog_DownloadsLoadFailedTitle"] = "Warning – Downloads File Locked",
         ["Dialog_DownloadsLoadFailedMessage"] = "The downloads list ('downloads.json') could not be loaded because the file is locked or corrupt.\n\nTo prevent data loss, automatic overwriting of the file has been disabled.\nPlease ensure no other application (such as an antivirus scanner or editor) is locking the file, and restart Reepax.",
+        ["Dialog_SettingsLoadFailedTitle"] = "Warning – Settings File Locked",
+        ["Dialog_SettingsLoadFailedMessage"] = "The settings ('settings.json') could not be loaded because the file is locked or corrupt.\n\nTo prevent data loss, automatic overwriting of settings has been disabled.\nPlease ensure no other application (such as an antivirus scanner or editor) is locking the file, and restart Reepax.",
         ["Dialog_ConfirmExit_Title"] = "Confirm Exit",
         ["Dialog_ConfirmExit_ActiveDownloads"] = "There are active downloads in progress. Are you sure you want to exit Reepax? All downloads will be paused.",
 
