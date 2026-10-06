@@ -1220,7 +1220,6 @@ public class ArchiveExtractionService
                 fileName.EndsWith(".download", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".reepax_tmp", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".aria2", StringComparison.OrdinalIgnoreCase) ||
-                fileName.EndsWith(".1", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".cache", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
                 fileName.EndsWith(".incomplete", StringComparison.OrdinalIgnoreCase) ||
@@ -1237,16 +1236,6 @@ public class ArchiveExtractionService
                 fileName.Contains(".temp.", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
-            }
-
-            // 4. Zero-byte files have no recoverable value and are considered temporary clutter
-            if (File.Exists(filePath))
-            {
-                var fi = new FileInfo(filePath);
-                if (fi.Length == 0)
-                {
-                    return true;
-                }
             }
         }
         catch { }
@@ -1288,7 +1277,7 @@ public class ArchiveExtractionService
 
     /// <summary>
     /// Recursively scans a directory and permanently deletes all temporary files
-    /// (e.g. .part, .part.segments, .tmp, .temp, .reepax_tmp, zero-byte files, etc.)
+    /// (e.g. .part, .part.segments, .tmp, .temp, .reepax_tmp, etc.)
     /// directly from disk using DeleteOrMoveToTemp, ensuring they never end up in
     /// the Windows Recycle Bin.
     /// </summary>

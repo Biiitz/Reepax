@@ -1057,7 +1057,6 @@ public class ArchiveExtractionTests
     [InlineData("file.crdownload")]
     [InlineData("file.reepax_tmp")]
     [InlineData("file.aria2")]
-    [InlineData("file.1")]
     [InlineData("~lockfile")]
     [InlineData("__perm_test_abc.tmp")]
     public void IsTempFile_RecognizesTemporaryExtensionsAndPrefixes(string relativeName)
@@ -1072,10 +1071,62 @@ public class ArchiveExtractionTests
     [InlineData("installer.exe")]
     [InlineData("video.mp4")]
     [InlineData("document.pdf")]
+    [InlineData("file.1")]
+    [InlineData("tool.1")]
+    [InlineData("__init__.py")]
+    [InlineData(".gitkeep")]
     public void IsTempFile_RejectsStandardUserFiles(string relativeName)
     {
         var path = Path.Combine(@"C:\FakeDownloads", relativeName);
         Assert.False(ArchiveExtractionService.IsTempFile(path));
+    }
+
+    [Fact]
+    public void PurgeTemporaryFilesInDirectory_PreservesZeroByteAndDotOneFiles_DeletesTempFiles()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PurgeTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        try
+        {
+            var partFile = Path.Combine(testDir, "video.mp4.part");
+            var segFile = Path.Combine(testDir, "video.mp4.part.segments");
+            var tmpFile = Path.Combine(testDir, "download.tmp");
+            var crFile = Path.Combine(testDir, "archive.zip.crdownload");
+
+            var dotOneFile = Path.Combine(testDir, "manual.1");
+            var zeroBytePy = Path.Combine(testDir, "__init__.py");
+            var zeroByteGitkeep = Path.Combine(testDir, ".gitkeep");
+            var normalFile = Path.Combine(testDir, "readme.txt");
+
+            File.WriteAllBytes(partFile, new byte[] { 1, 2, 3 });
+            File.WriteAllText(segFile, "segments");
+            File.WriteAllBytes(tmpFile, new byte[] { 4, 5 });
+            File.WriteAllBytes(crFile, new byte[] { 6 });
+
+            File.WriteAllText(dotOneFile, "man page content");
+            File.WriteAllBytes(zeroBytePy, Array.Empty<byte>());
+            File.WriteAllBytes(zeroByteGitkeep, Array.Empty<byte>());
+            File.WriteAllText(normalFile, "hello");
+
+            ArchiveExtractionService.PurgeTemporaryFilesInDirectory(testDir);
+
+            // Temp files must be purged
+            Assert.False(File.Exists(partFile));
+            Assert.False(File.Exists(segFile));
+            Assert.False(File.Exists(tmpFile));
+            Assert.False(File.Exists(crFile));
+
+            // Legitimate files (including .1 and zero-byte files) must NOT be deleted!
+            Assert.True(File.Exists(dotOneFile));
+            Assert.True(File.Exists(zeroBytePy));
+            Assert.True(File.Exists(zeroByteGitkeep));
+            Assert.True(File.Exists(normalFile));
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
     }
 
     [Fact]
@@ -1170,8 +1221,8 @@ public class ArchiveExtractionTests
             Assert.False(File.Exists(partFile), ".part file should be deleted");
             Assert.False(File.Exists(segFile), ".part.segments file should be deleted");
             Assert.False(File.Exists(tmpFile), ".tmp file should be deleted");
-            Assert.False(File.Exists(zeroFile), "Zero-byte file should be deleted");
-            Assert.False(File.Exists(backupFile), ".1 backup file should be deleted");
+            Assert.True(File.Exists(zeroFile), "Zero-byte file should be kept untouched");
+            Assert.True(File.Exists(backupFile), ".1 file should be kept untouched by generic purge");
         }
         finally
         {
