@@ -1320,6 +1320,25 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
+    public void PowerManagementService_EnableShutdownPrivilege_SucceedsOnWindows()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            bool success = Services.SystemIntegration.PowerManagementService.EnableShutdownPrivilege();
+            Assert.True(success, "EnableShutdownPrivilege should succeed and enable SeShutdownPrivilege on Windows.");
+        }
+    }
+
+    [Fact]
+    public void PowerManagementService_ExecuteSleepOrHibernate_InTestEnvironment_DoesNotThrow()
+    {
+        var service = Services.SystemIntegration.PowerManagementService.Instance;
+        // In test environment, shutdown/sleep is suppressed, must safely return without throwing
+        service.ExecuteSleepOrHibernate();
+        service.ExecuteShutdown();
+    }
+
+    [Fact]
     public async Task ExtractArchiveAsync_WhenCancelled_ReturnsFalsePromptly()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_CancelTest_" + Guid.NewGuid().ToString("N"));

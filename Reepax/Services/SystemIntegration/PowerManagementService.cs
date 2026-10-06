@@ -30,10 +30,122 @@ public sealed class PowerManagementService
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID
+    {
+        public uint LowPart;
+        public int HighPart;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct LUID_AND_ATTRIBUTES
+    {
+        public LUID Luid;
+        public uint Attributes;
+    }
+
+    private struct TOKEN_PRIVILEGES
+    {
+        public int PrivilegeCount;
+        public LUID_AND_ATTRIBUTES Privileges;
+    }
+
+    private const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
+    private const uint TOKEN_QUERY = 0x0008;
+    private const uint SE_PRIVILEGE_ENABLED = 0x00000002;
+    private const string SE_SHUTDOWN_NAME = "SeShutdownPrivilege";
+
+    [DllImport("advapi32.dll", SetLastError = true, ExactSpelling = true)]
+    private static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    private static extern bool LookupPrivilegeValue(string? lpSystemName, string lpName, out LUID lpLuid);
+
+    [DllImport("advapi32.dll", SetLastError = true, ExactSpelling = true)]
+    private static extern bool AdjustTokenPrivileges(
+        IntPtr TokenHandle,
+        [MarshalAs(UnmanagedType.Bool)] bool DisableAllPrivileges,
+        ref TOKEN_PRIVILEGES NewState,
+        uint BufferLength,
+        IntPtr PreviousState,
+        IntPtr ReturnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true, ExactSpelling = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetCurrentProcess();
+
     private int _keepAwakeCount;
     private readonly object _lock = new();
 
     private PowerManagementService() { }
+
+    /// <summary>
+    /// Enables the SeShutdownPrivilege in the current process access token.
+    /// Required by Windows for SetSuspendState and other shutdown/power operations.
+    /// </summary>
+    public static bool EnableShutdownPrivilege()
+    {
+        if (!OperatingSystem.IsWindows())
+            return false;
+
+        IntPtr tokenHandle = IntPtr.Zero;
+        try
+        {
+            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out tokenHandle))
+            {
+                var error = Marshal.GetLastWin32Error();
+                AppLogger.Warn($"[PowerManagement] OpenProcessToken failed with error: {error}");
+                return false;
+            }
+
+            if (!LookupPrivilegeValue(null, SE_SHUTDOWN_NAME, out var luid))
+            {
+                var error = Marshal.GetLastWin32Error();
+                AppLogger.Warn($"[PowerManagement] LookupPrivilegeValue failed with error: {error}");
+                return false;
+            }
+
+            var tp = new TOKEN_PRIVILEGES
+            {
+                PrivilegeCount = 1,
+                Privileges = new LUID_AND_ATTRIBUTES
+                {
+                    Luid = luid,
+                    Attributes = SE_PRIVILEGE_ENABLED
+                }
+            };
+
+            if (!AdjustTokenPrivileges(tokenHandle, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero))
+            {
+                var error = Marshal.GetLastWin32Error();
+                AppLogger.Warn($"[PowerManagement] AdjustTokenPrivileges failed with error: {error}");
+                return false;
+            }
+
+            var win32Err = Marshal.GetLastWin32Error();
+            if (win32Err != 0)
+            {
+                AppLogger.Warn($"[PowerManagement] AdjustTokenPrivileges completed with status code: {win32Err}");
+            }
+
+            AppLogger.Info("[PowerManagement] Successfully enabled SeShutdownPrivilege.");
+            return win32Err == 0;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("[PowerManagement] Failed to enable SeShutdownPrivilege", ex);
+            return false;
+        }
+        finally
+        {
+            if (tokenHandle != IntPtr.Zero)
+            {
+                CloseHandle(tokenHandle);
+            }
+        }
+    }
 
     /// <summary>
     /// Executes a clean Windows system shutdown.
@@ -53,6 +165,8 @@ public sealed class PowerManagementService
 
             if (OperatingSystem.IsWindows())
             {
+                EnableShutdownPrivilege();
+
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/s /t 0 /f")
                 {
                     CreateNoWindow = true,
@@ -85,7 +199,36 @@ public sealed class PowerManagementService
             if (OperatingSystem.IsWindows())
             {
                 ReleaseAll();
-                SetSuspendState(false, false, false);
+
+                bool privilegeEnabled = EnableShutdownPrivilege();
+                if (!privilegeEnabled)
+                {
+                    AppLogger.Warn("[PowerManagement] Could not enable SeShutdownPrivilege; SetSuspendState might fail.");
+                }
+
+                bool success = SetSuspendState(false, false, false);
+                if (!success)
+                {
+                    int win32Error = Marshal.GetLastWin32Error();
+                    AppLogger.Warn($"[PowerManagement] SetSuspendState returned false with Win32 error code {win32Error}. Attempting fallback via rundll32...");
+
+                    try
+                    {
+                        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0")
+                        {
+                            CreateNoWindow = true,
+                            UseShellExecute = false
+                        });
+                    }
+                    catch (Exception fallbackEx)
+                    {
+                        AppLogger.Error("[PowerManagement] Fallback to rundll32 failed", fallbackEx);
+                    }
+                }
+                else
+                {
+                    AppLogger.Info("[PowerManagement] SetSuspendState successfully initiated system sleep/standby.");
+                }
             }
         }
         catch (Exception ex)
