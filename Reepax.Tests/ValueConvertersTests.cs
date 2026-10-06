@@ -225,6 +225,32 @@ public class ValueConvertersTests
             StatusMessage = Loc.Get("Status_Paused")
         };
         Assert.Equal(Loc.Get("Menu_Resume"), converter.Convert(item4, typeof(string), null, CultureInfo.InvariantCulture));
+
+        // Completed -> Returns empty string as action is not applicable
+        var item5 = new DownloadItem
+        {
+            Status = DownloadStatus.Completed
+        };
+        Assert.Equal(string.Empty, converter.Convert(item5, typeof(string), null, CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void ItemActionMenuGeometryConverter_HandlesAllStatuses()
+    {
+        var converter = new ItemActionMenuGeometryConverter();
+
+        var completedItem = new DownloadItem { Status = DownloadStatus.Completed };
+        var failedItem = new DownloadItem { Status = DownloadStatus.Failed };
+        var downloadingItem = new DownloadItem { Status = DownloadStatus.Downloading };
+        var pausedItem = new DownloadItem { Status = DownloadStatus.Paused };
+
+        // Completed returns null
+        Assert.Null(converter.Convert(completedItem, typeof(object), null, CultureInfo.InvariantCulture));
+
+        // Test environment has no Application.Current resources, so verify other branches don't throw
+        _ = converter.Convert(failedItem, typeof(object), null, CultureInfo.InvariantCulture);
+        _ = converter.Convert(downloadingItem, typeof(object), null, CultureInfo.InvariantCulture);
+        _ = converter.Convert(pausedItem, typeof(object), null, CultureInfo.InvariantCulture);
     }
 
     [Fact]

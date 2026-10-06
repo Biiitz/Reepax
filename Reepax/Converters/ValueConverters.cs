@@ -267,11 +267,6 @@ public class ItemActionMenuHeaderConverter : IValueConverter
                 return Loc.Get("Menu_Pause");
             }
 
-            if (item.Status == DownloadStatus.Completed)
-            {
-                return Loc.Get("Menu_RestartDownload");
-            }
-
             return Loc.Get("Menu_Resume");
         }
 
@@ -297,7 +292,7 @@ public class ItemActionMenuGeometryConverter : IValueConverter
                                    msg.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) ||
                                    msg.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase);
 
-            if (isBrowserClosed || item.Status == DownloadStatus.Failed || item.Status == DownloadStatus.Completed)
+            if (isBrowserClosed || item.Status == DownloadStatus.Failed)
             {
                 return Application.Current?.TryFindResource("IconRefresh");
             }
