@@ -1117,7 +1117,7 @@ public class DownloadEngineTests
             Assert.True(engine.IsDownloading(item.Id));
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            engine.CancelOrPauseDownload(item.Id, waitForCompletion: false);
+            _ = engine.CancelOrPauseDownload(item.Id, waitForCompletion: false);
             sw.Stop();
 
             Assert.True(sw.ElapsedMilliseconds < 50, $"CancelOrPauseDownload took {sw.ElapsedMilliseconds} ms, expected non-blocking.");
@@ -1327,6 +1327,114 @@ public class DownloadEngineTests
             Assert.True(segmentAttempts > 0);
             Assert.True(fallbackRequests > 0);
             Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ActiveCount_IsZeroWhenDownloadFailedDispatched()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_ActiveCountTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "fail.bin");
+            var item = new DownloadItem
+            {
+                FileName = "fail.bin",
+                SaveFilePath = destinationFile
+            };
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                return Task.FromException<HttpResponseMessage>(new HttpRequestException("Server error"));
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            int activeCountInHandler = -1;
+            bool isDownloadingInHandler = true;
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                {
+                    activeCountInHandler = engine.ActiveDownloadsCount;
+                    isDownloadingInHandler = engine.IsDownloading(failedItem.Id);
+                    tcs.TrySetResult(true);
+                }
+            };
+
+            await engine.StartDownloadAsync(item, "https://example.com/fail.bin", null, null, null, null);
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+            Assert.Same(tcs.Task, completedTask);
+
+            Assert.Equal(0, activeCountInHandler);
+            Assert.False(isDownloadingInHandler);
+            Assert.Equal(0, engine.ActiveDownloadsCount);
+            Assert.False(engine.IsDownloading(item.Id));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ActiveCount_IsZeroWhenDownloadCompletedDispatched()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_ActiveCountComplete_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "complete.bin");
+            var item = new DownloadItem
+            {
+                FileName = "complete.bin",
+                SaveFilePath = destinationFile
+            };
+            var testData = new byte[] { 1, 2, 3, 4, 5 };
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(testData)
+                };
+                response.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(response);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            int activeCountInHandler = -1;
+            bool isDownloadingInHandler = true;
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            engine.DownloadCompleted += downloadedItem =>
+            {
+                if (downloadedItem.Id == item.Id)
+                {
+                    activeCountInHandler = engine.ActiveDownloadsCount;
+                    isDownloadingInHandler = engine.IsDownloading(downloadedItem.Id);
+                    tcs.TrySetResult(true);
+                }
+            };
+
+            await engine.StartDownloadAsync(item, "https://example.com/complete.bin", null, null, null, null);
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+            Assert.Same(tcs.Task, completedTask);
+
+            Assert.Equal(0, activeCountInHandler);
+            Assert.False(isDownloadingInHandler);
+            Assert.Equal(0, engine.ActiveDownloadsCount);
+            Assert.False(engine.IsDownloading(item.Id));
         }
         finally
         {

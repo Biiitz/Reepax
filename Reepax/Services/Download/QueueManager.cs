@@ -115,6 +115,7 @@ public class QueueManager
     {
         DownloadEngine.Instance.DownloadCompleted += OnBackgroundDownloadCompleted;
         DownloadEngine.Instance.DownloadFailed += OnBackgroundDownloadFailed;
+        DownloadEngine.Instance.DownloadCancelled += OnBackgroundDownloadCancelled;
 
         // Restore saved download packages, items, progress, and selection states from AppData
         try
@@ -528,7 +529,11 @@ public class QueueManager
 
         if (DownloadEngine.Instance.IsDownloading(item.Id))
         {
-            DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: false);
+            var pauseTask = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: false);
+            if (pauseTask != null && !pauseTask.IsCompleted)
+            {
+                _ = pauseTask.ContinueWith(_ => ProcessQueue(), TaskScheduler.Default);
+            }
         }
 
         int? windowIdToClose = null;
@@ -793,7 +798,7 @@ public class QueueManager
                 {
                     // Pause: engine cancels the download and persists progress
                     item.IsTrickling = false;
-                    DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+                    _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
                     SafeInvoke(() =>
                     {
                         item.Status = DownloadStatus.Paused;
@@ -918,7 +923,7 @@ public class QueueManager
         _ = hardStop;
 
         item.IsTrickling = false;
-        DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+        var pauseTask = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
 
         int? windowIdToClose = null;
         lock (_lock)
@@ -945,7 +950,14 @@ public class QueueManager
             item.CurrentSlot = null;
         });
 
-        ProcessQueue();
+        if (pauseTask != null && !pauseTask.IsCompleted)
+        {
+            _ = pauseTask.ContinueWith(_ => ProcessQueue(), TaskScheduler.Default);
+        }
+        else
+        {
+            ProcessQueue();
+        }
     }
 
     public void ResumeItem(DownloadItem? item)
@@ -1358,6 +1370,11 @@ public class QueueManager
             item.CurrentSlot = null;
         });
 
+        ProcessQueue();
+    }
+
+    private void OnBackgroundDownloadCancelled(DownloadItem item)
+    {
         ProcessQueue();
     }
 

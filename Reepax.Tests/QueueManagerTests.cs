@@ -769,5 +769,111 @@ public class QueueManagerTests
         // But the package as a whole contains extractable archives!
         Assert.True(ArchiveExtractionService.Instance.HasExtractableArchives(pkg));
     }
+
+    [Fact]
+    public void QueueManager_WhenDownloadFails_StartsNextQueuedDirectDownloadWithoutStall()
+    {
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 1 };
+        queueManager.Packages.Clear();
+
+        var pkg = new DownloadPackage { Name = "TestPackage", IsEnabled = true };
+        var item1 = new DownloadItem
+        {
+            FileName = "item1.bin",
+            DirectDownloadUrl = "https://dl.example.com/item1.bin",
+            Status = DownloadStatus.Downloading,
+            IsEnabled = true
+        };
+        var item2 = new DownloadItem
+        {
+            FileName = "item2.bin",
+            DirectDownloadUrl = "https://dl.example.com/item2.bin",
+            Status = DownloadStatus.Queued,
+            IsEnabled = true
+        };
+        pkg.Items.Add(item1);
+        pkg.Items.Add(item2);
+        queueManager.Packages.Add(pkg);
+
+        bool item2Started = false;
+        item2.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadItem.Status) && item2.Status == DownloadStatus.Downloading)
+            {
+                item2Started = true;
+            }
+        };
+
+        try
+        {
+            queueManager.StartQueue();
+
+            // Simulate failure of item1 via DownloadEngine singleton event
+            DownloadEngine.Instance.TriggerDownloadFailedForTesting(item1, new Exception("500 Internal Server Error"));
+
+            // item1 must be Failed, and item2 must have been started (transitioned to Downloading)
+            Assert.Equal(DownloadStatus.Failed, item1.Status);
+            Assert.True(item2Started || item2.Status == DownloadStatus.Downloading, "Item 2 should have transitioned to Downloading.");
+        }
+        finally
+        {
+            queueManager.StopQueue();
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item1.Id);
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item2.Id);
+        }
+    }
+
+    [Fact]
+    public void QueueManager_WhenItemPaused_StartsNextQueuedDirectDownload()
+    {
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 1 };
+        queueManager.Packages.Clear();
+
+        var pkg = new DownloadPackage { Name = "TestPackage", IsEnabled = true };
+        var item1 = new DownloadItem
+        {
+            FileName = "item1.bin",
+            DirectDownloadUrl = "https://dl.example.com/item1.bin",
+            Status = DownloadStatus.Downloading,
+            IsEnabled = true
+        };
+        var item2 = new DownloadItem
+        {
+            FileName = "item2.bin",
+            DirectDownloadUrl = "https://dl.example.com/item2.bin",
+            Status = DownloadStatus.Queued,
+            IsEnabled = true
+        };
+        pkg.Items.Add(item1);
+        pkg.Items.Add(item2);
+        queueManager.Packages.Add(pkg);
+
+        bool item2Started = false;
+        item2.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadItem.Status) && item2.Status == DownloadStatus.Downloading)
+            {
+                item2Started = true;
+            }
+        };
+
+        try
+        {
+            queueManager.StartQueue();
+
+            // Pause item1
+            queueManager.PauseItem(item1);
+
+            // item1 must be Paused, and item2 must automatically transition to Downloading
+            Assert.Equal(DownloadStatus.Paused, item1.Status);
+            Assert.True(item2Started || item2.Status == DownloadStatus.Downloading, "Item 2 should have transitioned to Downloading.");
+        }
+        finally
+        {
+            queueManager.StopQueue();
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item1.Id);
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item2.Id);
+        }
+    }
 }
 

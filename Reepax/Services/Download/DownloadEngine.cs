@@ -22,12 +22,30 @@ public class DownloadEngine
     public static DownloadEngine Instance => _instance.Value;
 
     private readonly HttpClient _httpClient;
-    private readonly ConcurrentDictionary<Guid, (CancellationTokenSource Cts, Task Task)> _activeDownloads = new();
+    private readonly ConcurrentDictionary<Guid, (CancellationTokenSource Cts, TaskCompletionSource<bool> Tcs)> _activeDownloads = new();
     private readonly BandwidthThrottler _throttler = new();
 
     public int ActiveDownloadsCount => _activeDownloads.Count;
     public bool IsDownloading(Guid itemId) => _activeDownloads.ContainsKey(itemId);
     public long CurrentSpeedLimit => _throttler.MaxBytesPerSecond;
+
+    private void CompleteAndRemoveActiveDownload(Guid itemId)
+    {
+        if (_activeDownloads.TryRemove(itemId, out var entry))
+        {
+            try { entry.Cts.Dispose(); } catch { }
+            entry.Tcs.TrySetResult(true);
+        }
+    }
+
+    public Task? GetDownloadTask(Guid itemId)
+    {
+        if (_activeDownloads.TryGetValue(itemId, out var entry))
+        {
+            return entry.Tcs.Task;
+        }
+        return null;
+    }
 
     /// <summary>
     /// Number of parallel connections (chunks) per download (1-20, default 5).
@@ -46,6 +64,7 @@ public class DownloadEngine
 
     public event Action<DownloadItem>? DownloadCompleted;
     public event Action<DownloadItem, Exception>? DownloadFailed;
+    public event Action<DownloadItem>? DownloadCancelled;
     public event Action<DownloadItem>? DownloadProgressUpdated;
 
     /// <summary>
@@ -62,6 +81,14 @@ public class DownloadEngine
     internal void TriggerDownloadFailedForTesting(DownloadItem item, Exception ex)
     {
         DownloadFailed?.Invoke(item, ex);
+    }
+
+    /// <summary>
+    /// For unit tests: triggers DownloadCancelled event directly.
+    /// </summary>
+    internal void TriggerDownloadCancelledForTesting(DownloadItem item)
+    {
+        DownloadCancelled?.Invoke(item);
     }
 
     public DownloadEngine(HttpClient? httpClient = null)
@@ -89,7 +116,7 @@ public class DownloadEngine
         var cts = new CancellationTokenSource();
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (!_activeDownloads.TryAdd(item.Id, (cts, tcs.Task)))
+        if (!_activeDownloads.TryAdd(item.Id, (cts, tcs)))
         {
             cts.Dispose();
             return;
@@ -122,14 +149,12 @@ public class DownloadEngine
                     item.StatusMessage = Loc.Get("Status_ErrorStarting");
                     item.ErrorMessage = ex.Message;
                 });
+                CompleteAndRemoveActiveDownload(item.Id);
+                DownloadFailed?.Invoke(item, ex);
             }
             finally
             {
-                if (_activeDownloads.TryRemove(item.Id, out var removedEntry))
-                {
-                    try { removedEntry.Cts.Dispose(); } catch { }
-                }
-                tcs.TrySetResult(true);
+                CompleteAndRemoveActiveDownload(item.Id);
             }
         });
 
@@ -144,7 +169,7 @@ public class DownloadEngine
         var cts = new CancellationTokenSource();
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (!_activeDownloads.TryAdd(item.Id, (cts, tcs.Task)))
+        if (!_activeDownloads.TryAdd(item.Id, (cts, tcs)))
         {
             cts.Dispose();
             return;
@@ -172,14 +197,12 @@ public class DownloadEngine
                     item.StatusMessage = Loc.Get("Status_ErrorResuming");
                     item.ErrorMessage = ex.Message;
                 });
+                CompleteAndRemoveActiveDownload(item.Id);
+                DownloadFailed?.Invoke(item, ex);
             }
             finally
             {
-                if (_activeDownloads.TryRemove(item.Id, out var removedEntry))
-                {
-                    try { removedEntry.Cts.Dispose(); } catch { }
-                }
-                tcs.TrySetResult(true);
+                CompleteAndRemoveActiveDownload(item.Id);
             }
         });
 
@@ -338,6 +361,9 @@ public class DownloadEngine
                     item.ProgressPercentage = Math.Clamp((double)item.DownloadedBytes / item.TotalBytes * 100.0, 0, 100);
                 }
             });
+
+            CompleteAndRemoveActiveDownload(item.Id);
+            DownloadCancelled?.Invoke(item);
         }
         catch (Exception ex)
         {
@@ -350,6 +376,7 @@ public class DownloadEngine
                 item.RemainingSeconds = 0;
             });
 
+            CompleteAndRemoveActiveDownload(item.Id);
             DownloadFailed?.Invoke(item, ex);
         }
     }
@@ -736,6 +763,7 @@ public class DownloadEngine
             }
         });
 
+        CompleteAndRemoveActiveDownload(item.Id);
         DownloadCompleted?.Invoke(item);
     }
 
@@ -1012,6 +1040,7 @@ public class DownloadEngine
             }
         });
 
+        CompleteAndRemoveActiveDownload(item.Id);
         DownloadCompleted?.Invoke(item);
     }
 
@@ -1066,16 +1095,18 @@ public class DownloadEngine
         return extractedFileName;
     }
 
-    public void CancelOrPauseDownload(Guid itemId, bool waitForCompletion = false, int timeoutMs = 2000)
+    public Task? CancelOrPauseDownload(Guid itemId, bool waitForCompletion = false, int timeoutMs = 2000)
     {
         if (_activeDownloads.TryGetValue(itemId, out var entry))
         {
             try { entry.Cts.Cancel(); } catch { }
             if (waitForCompletion)
             {
-                try { entry.Task.Wait(TimeSpan.FromMilliseconds(timeoutMs)); } catch { }
+                try { entry.Tcs.Task.Wait(TimeSpan.FromMilliseconds(timeoutMs)); } catch { }
             }
+            return entry.Tcs.Task;
         }
+        return null;
     }
 
     public void PauseAll(bool waitForCompletion = false, int timeoutMs = 3000)
@@ -1090,7 +1121,7 @@ public class DownloadEngine
         {
             try
             {
-                var tasks = entries.Select(e => e.Task).ToArray();
+                var tasks = entries.Select(e => e.Tcs.Task).ToArray();
                 Task.WaitAll(tasks, TimeSpan.FromMilliseconds(timeoutMs));
             }
             catch { }
@@ -1109,7 +1140,7 @@ public class DownloadEngine
         {
             try
             {
-                var tasks = entries.Select(e => e.Task).ToArray();
+                var tasks = entries.Select(e => e.Tcs.Task).ToArray();
                 await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(timeoutMs));
             }
             catch { }

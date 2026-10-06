@@ -1891,7 +1891,7 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var item in itemsToRemove)
         {
-            DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
             package.Items.Remove(item);
         }
 

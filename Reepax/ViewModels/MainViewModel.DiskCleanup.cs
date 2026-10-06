@@ -70,7 +70,7 @@ public partial class MainViewModel
 
         foreach (var item in package.Items)
         {
-            DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
         }
 
         if (deleteFiles)
@@ -158,7 +158,7 @@ public partial class MainViewModel
             }
         }
 
-        DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
+        _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
 
         if (deleteFiles)
         {
