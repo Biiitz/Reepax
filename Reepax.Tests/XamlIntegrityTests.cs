@@ -117,6 +117,55 @@ public class XamlIntegrityTests
     }
 
     [Fact]
+    public void AllCSharpLocCalls_ExistInLocalizationDictionaries()
+    {
+        string projectDir = GetReepaxProjectDir();
+        var csFiles = Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories);
+
+        var locRegex = new Regex(@"Loc\.(?:Get|Format)\s*\(\s*""([^""]+)""", RegexOptions.Compiled);
+        var missingKeys = new List<string>();
+        var loc = LocalizationService.Instance;
+
+        try
+        {
+            foreach (var csPath in csFiles)
+            {
+                if (csPath.Contains(@"\bin\") || csPath.Contains(@"\obj\"))
+                    continue;
+
+                string csContent = File.ReadAllText(csPath);
+                var matches = locRegex.Matches(csContent);
+
+                foreach (Match m in matches)
+                {
+                    string key = m.Groups[1].Value;
+
+                    loc.CurrentLanguage = "en";
+                    string enVal = loc[key];
+                    if (string.IsNullOrWhiteSpace(enVal) || enVal == key)
+                    {
+                        missingKeys.Add($"EN: '{key}' in {Path.GetFileName(csPath)}");
+                    }
+
+                    loc.CurrentLanguage = "de";
+                    string deVal = loc[key];
+                    if (string.IsNullOrWhiteSpace(deVal) || deVal == key)
+                    {
+                        missingKeys.Add($"DE: '{key}' in {Path.GetFileName(csPath)}");
+                    }
+                }
+            }
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
+
+        Assert.True(missingKeys.Count == 0,
+            $"Missing localization keys referenced in C# files:\n{string.Join("\n", missingKeys)}");
+    }
+
+    [Fact]
     public void AllXamlFiles_AreValidXml()
     {
         string projectDir = GetReepaxProjectDir();

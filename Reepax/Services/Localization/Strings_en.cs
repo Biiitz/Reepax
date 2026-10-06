@@ -211,6 +211,7 @@ public static class Strings_en
         ["Status_BrowserWindowWaiting"] = "Browser window {0} (Waiting for download)",
         ["Status_BrowserWindowClosed"] = "Browser window closed",
         ["Status_BrowserDownloadFailed"] = "Browser download failed ({0})",
+        ["Status_LoadingError"] = "Loading error: {0}",
         ["Status_WaitingForCaptcha"] = "Waiting for Captcha / Download",
         ["Status_VerifyingChecksum"] = "Verifying checksum & integrity",
         ["Status_RetryingAfterChecksumError"] = "Retry ({0}/{1}) after checksum mismatch",
@@ -256,11 +257,13 @@ public static class Strings_en
         ["Status_ExtractionResumedForPackage"] = "Extraction of '{0}' resumed.",
         ["Status_ExtractionCancelledForPackage"] = "Extraction of '{0}' cancelled.",
         ["Status_NoExtractableArchivesFound"] = "No extractable archives found in package.",
+        ["Status_ExtractionWaitingForDownloads"] = "Waiting for all downloads to complete before extraction...",
         ["Status_ExtractionInsufficientDiskSpace"] = "Insufficient disk space for extraction ({0} required, {1} available)",
         ["Status_ExtractionInsufficientDiskSpaceDetail"] = "Not enough free disk space on drive {0} for extraction ({1} required, {2} available).",
         ["Status_ErrorPrefix"] = "Error: {0}",
 
         // Dialogs
+        ["Dialog_ErrorTitle"] = "Error",
         ["Dialog_DeletePackageTitle"] = "Delete Package",
         ["Dialog_DeletePackageMessage"] = "Are you sure you want to remove package \"{0}\" from Reepax?",
         ["Dialog_DeletePackageOptionFiles"] = "Also delete all {0} associated files from disk ({1})",

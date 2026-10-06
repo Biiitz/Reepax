@@ -211,6 +211,7 @@ public static class Strings_de
         ["Status_BrowserWindowWaiting"] = "Browser-Fenster {0} (Warte auf Download)",
         ["Status_BrowserWindowClosed"] = "Browser-Fenster geschlossen",
         ["Status_BrowserDownloadFailed"] = "Browser-Download fehlgeschlagen ({0})",
+        ["Status_LoadingError"] = "Ladefehler: {0}",
         ["Status_WaitingForCaptcha"] = "Warte auf Captcha / Download",
         ["Status_VerifyingChecksum"] = "Prüfe Prüfsumme & Integrität",
         ["Status_RetryingAfterChecksumError"] = "Wiederholung ({0}/{1}) nach Prüfsummenfehler",
@@ -256,11 +257,13 @@ public static class Strings_de
         ["Status_ExtractionResumedForPackage"] = "Entpacken von '{0}' fortgesetzt.",
         ["Status_ExtractionCancelledForPackage"] = "Entpacken von '{0}' abgebrochen.",
         ["Status_NoExtractableArchivesFound"] = "Keine entpackbaren Archive im Paket gefunden.",
+        ["Status_ExtractionWaitingForDownloads"] = "Warte auf Abschluss aller Downloads vor dem Entpacken...",
         ["Status_ExtractionInsufficientDiskSpace"] = "Zu wenig Speicherplatz zum Entpacken ({0} benötigt, {1} frei)",
         ["Status_ExtractionInsufficientDiskSpaceDetail"] = "Nicht genügend freier Speicherplatz auf Laufwerk {0} zum Entpacken ({1} benötigt, {2} verfügbar).",
         ["Status_ErrorPrefix"] = "Fehler: {0}",
 
         // Dialogs
+        ["Dialog_ErrorTitle"] = "Fehler",
         ["Dialog_DeletePackageTitle"] = "Paket löschen",
         ["Dialog_DeletePackageMessage"] = "Möchtest du das Paket \"{0}\" wirklich aus Reepax entfernen?",
         ["Dialog_DeletePackageOptionFiles"] = "Auch alle {0} zugehörigen Dateien von der Festplatte löschen ({1})",

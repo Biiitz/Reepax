@@ -253,6 +253,28 @@ public class LocalizationTests
             loc.CurrentLanguage = "en";
         }
     }
+
+    [Fact]
+    public void LocalizationService_ErrorTitleAndStatusKeysExistInBothLanguages()
+    {
+        var loc = LocalizationService.Instance;
+        try
+        {
+            loc.CurrentLanguage = "de";
+            Assert.Equal("Fehler", loc["Dialog_ErrorTitle"]);
+            Assert.Equal("Ladefehler: 404 Not Found", Loc.Format("Status_LoadingError", "404 Not Found"));
+            Assert.Equal("Warte auf Abschluss aller Downloads vor dem Entpacken...", loc["Status_ExtractionWaitingForDownloads"]);
+
+            loc.CurrentLanguage = "en";
+            Assert.Equal("Error", loc["Dialog_ErrorTitle"]);
+            Assert.Equal("Loading error: 404 Not Found", Loc.Format("Status_LoadingError", "404 Not Found"));
+            Assert.Equal("Waiting for all downloads to complete before extraction...", loc["Status_ExtractionWaitingForDownloads"]);
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
+    }
 }
 
 
