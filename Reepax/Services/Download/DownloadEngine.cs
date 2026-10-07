@@ -113,6 +113,9 @@ public class DownloadEngine
         string? referer,
         string? suggestedFileName)
     {
+        if (string.IsNullOrWhiteSpace(directUrl))
+            return;
+
         var cts = new CancellationTokenSource();
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -122,12 +125,15 @@ public class DownloadEngine
             return;
         }
 
+        // Synchronously assign network request parameters before launching the download loop
+        // to prevent an asynchronous race condition with ExecuteDownloadLoopAsync on the ThreadPool.
+        item.DirectDownloadUrl = directUrl;
+        item.Cookies = cookieHeader;
+        item.UserAgent = userAgent;
+        item.Referer = referer;
+
         SafeInvokeAsync(() =>
         {
-            item.DirectDownloadUrl = directUrl;
-            item.Cookies = cookieHeader;
-            item.UserAgent = userAgent;
-            item.Referer = referer;
             item.StartedAt ??= DateTime.Now;
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_Connecting");

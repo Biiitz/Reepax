@@ -1441,6 +1441,67 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task StartDownloadAsync_EmptyOrNullDirectUrl_ReturnsImmediatelyWithoutActiveDownload(string? invalidUrl)
+    {
+        var engine = new DownloadEngine();
+        var item = new DownloadItem { FileName = "test.bin" };
+
+        await engine.StartDownloadAsync(item, invalidUrl!, null, null, null, null);
+
+        Assert.False(engine.IsDownloading(item.Id));
+        Assert.Equal(0, engine.ActiveDownloadsCount);
+    }
+
+    [Fact]
+    public async Task StartDownloadAsync_SetsParametersSynchronouslyBeforeTaskStarts()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_SyncParams_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+        try
+        {
+            var item = new DownloadItem
+            {
+                FileName = "test.bin",
+                SaveFilePath = Path.Combine(tempFolder, "test.bin")
+            };
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                var res = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[10]) };
+                res.Content.Headers.ContentLength = 10;
+                return Task.FromResult(res);
+            });
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            Assert.Null(item.DirectDownloadUrl);
+            Assert.Null(item.Cookies);
+
+            var task = engine.StartDownloadAsync(
+                item,
+                "https://example.com/test.bin",
+                "session=123",
+                "CustomAgent",
+                "https://example.com",
+                "test.bin");
+
+            // Must be set immediately and synchronously
+            Assert.Equal("https://example.com/test.bin", item.DirectDownloadUrl);
+            Assert.Equal("session=123", item.Cookies);
+            Assert.Equal("CustomAgent", item.UserAgent);
+            Assert.Equal("https://example.com", item.Referer);
+
+            await task;
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
 
 
