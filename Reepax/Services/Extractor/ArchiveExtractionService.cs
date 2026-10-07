@@ -75,13 +75,48 @@ public class ArchiveExtractionService
         if (!match.Success)
             return true; // Standalone archive
 
-        // Check if it's the first part (part1 or part01 or r00 or 001)
-        for (int i = 1; i < match.Groups.Count; i++)
+        // Group 1: .part0*(\d+).rar (e.g. .part1.rar, .part01.rar)
+        if (match.Groups[1].Success && int.TryParse(match.Groups[1].Value, out int p1))
         {
-            if (match.Groups[i].Success && int.TryParse(match.Groups[i].Value, out int partNum))
+            return p1 == 1 || p1 == 0;
+        }
+
+        // Group 2: .part0*(\d+) (e.g. .part1, .part01)
+        if (match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out int p2))
+        {
+            return p2 == 1 || p2 == 0;
+        }
+
+        // Group 3: .r(\d+) (Legacy RAR continuation volumes: .r00, .r01, .r02, ...)
+        if (match.Groups[3].Success)
+        {
+            if (int.TryParse(match.Groups[3].Value, out int rNum) && rNum == 0)
             {
-                return partNum == 1 || partNum == 0;
+                // .r00 is only the primary archive if no companion '.rar' file exists
+                try
+                {
+                    var dir = Path.GetDirectoryName(filePath);
+                    var baseName = fileName.Substring(0, match.Index);
+                    var rarName = $"{baseName}.rar";
+                    var rarPath = string.IsNullOrEmpty(dir) ? rarName : Path.Combine(dir, rarName);
+                    if (File.Exists(rarPath))
+                    {
+                        return false;
+                    }
+                }
+                catch { }
+
+                return true;
             }
+
+            // .r01, .r02, etc. are always subsequent volumes, never primary
+            return false;
+        }
+
+        // Group 4: .0*(\d+) (e.g. .001, .002)
+        if (match.Groups[4].Success && int.TryParse(match.Groups[4].Value, out int p4))
+        {
+            return p4 == 1 || p4 == 0;
         }
 
         return false;
@@ -284,6 +319,33 @@ public class ArchiveExtractionService
                 {
                     primaryArchives.Add(filePath);
                 }
+            }
+
+            // 5b. Deduplicate multi-volume parts: If a primary archive (like 'name.rar') is present,
+            // ensure companion volumes (like 'name.r00') are not duplicate-extracted.
+            if (primaryArchives.Count > 1)
+            {
+                var deduplicated = new List<string>();
+                foreach (var primary in primaryArchives)
+                {
+                    bool isCoveredByOther = false;
+                    foreach (var other in primaryArchives)
+                    {
+                        if (!string.Equals(primary, other, StringComparison.OrdinalIgnoreCase) &&
+                            other.EndsWith(".rar", StringComparison.OrdinalIgnoreCase) &&
+                            ArePartOfSameArchive(other, primary))
+                        {
+                            isCoveredByOther = true;
+                            break;
+                        }
+                    }
+
+                    if (!isCoveredByOther)
+                    {
+                        deduplicated.Add(primary);
+                    }
+                }
+                primaryArchives = deduplicated;
             }
 
             if (primaryArchives.Count == 0)

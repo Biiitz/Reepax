@@ -43,6 +43,42 @@ public class ArchiveExtractionTests
         Assert.False(service.IsPrimaryArchivePart("game.part2.rar"));
         Assert.False(service.IsPrimaryArchivePart("game.part05.rar"));
         Assert.False(service.IsPrimaryArchivePart("archive.002"));
+
+        // Legacy RAR subsequent volumes must never be primary
+        Assert.False(service.IsPrimaryArchivePart("archive.r01"));
+        Assert.False(service.IsPrimaryArchivePart("archive.r02"));
+    }
+
+    [Fact]
+    public void IsPrimaryArchivePart_LegacyRarVolumes_RecognizedCorrectly()
+    {
+        var service = ArchiveExtractionService.Instance;
+        var tempDir = Path.Combine(Path.GetTempPath(), "LegacyRarTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var rarFile = Path.Combine(tempDir, "game.rar");
+            var r00File = Path.Combine(tempDir, "game.r00");
+            var r01File = Path.Combine(tempDir, "game.r01");
+
+            File.WriteAllText(r00File, "test r00");
+            File.WriteAllText(r01File, "test r01");
+
+            // When game.rar does not exist, game.r00 is the starting volume
+            Assert.True(service.IsPrimaryArchivePart(r00File));
+            Assert.False(service.IsPrimaryArchivePart(r01File));
+
+            // When game.rar exists, game.rar is the primary volume and game.r00 is secondary
+            File.WriteAllText(rarFile, "test rar");
+            Assert.True(service.IsPrimaryArchivePart(rarFile));
+            Assert.False(service.IsPrimaryArchivePart(r00File));
+            Assert.False(service.IsPrimaryArchivePart(r01File));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
     }
 
     [Fact]
