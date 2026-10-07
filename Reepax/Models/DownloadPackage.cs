@@ -628,6 +628,11 @@ public partial class DownloadPackage : ObservableObject
 
         foreach (var item in itemsSnapshot)
         {
+            if (item.Status == DownloadStatus.Completed && item.TotalBytes <= 0 && item.DownloadedBytes > 0)
+            {
+                item.TotalBytes = item.DownloadedBytes;
+            }
+
             total += item.TotalBytes;
             downloaded += item.DownloadedBytes;
             if (item.IsEnabled)
@@ -746,7 +751,14 @@ public partial class DownloadPackage : ObservableObject
         {
             Status = DownloadStatus.Completed;
             ProgressPercentage = 100;
-            DownloadedBytes = TotalBytes;
+            if (TotalBytes > 0)
+            {
+                DownloadedBytes = TotalBytes;
+            }
+            else if (DownloadedBytes > 0)
+            {
+                TotalBytes = DownloadedBytes;
+            }
             var maxItemCompletedAt = itemsSnapshot
                 .Where(i => i.IsEnabled && i.CompletedAt.HasValue)
                 .Select(i => i.CompletedAt!.Value)

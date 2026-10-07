@@ -524,4 +524,30 @@ public class ModelAggregateTests
         var icon5 = converter.Convert(item3, typeof(System.Windows.Media.ImageSource), null, System.Globalization.CultureInfo.InvariantCulture);
         Assert.NotNull(icon5);
     }
+
+    [Fact]
+    public void DownloadPackage_RecalculateAggregates_PreservesDownloadedBytesWhenTotalBytesIsZeroOnCompletion()
+    {
+        // Arrange: package with chunked/stream download where Content-Length was 0 (unknown)
+        var package = new DownloadPackage { Name = "Stream Package" };
+        var item = new DownloadItem
+        {
+            FileName = "video.mp4",
+            TotalBytes = 0,
+            DownloadedBytes = 500_000_000,
+            IsEnabled = true,
+            Status = DownloadStatus.Completed
+        };
+        package.Items.Add(item);
+
+        // Act
+        package.RecalculateAggregates();
+
+        // Assert: DownloadedBytes and TotalBytes must not be 0
+        Assert.Equal(500_000_000, package.DownloadedBytes);
+        Assert.Equal(500_000_000, package.TotalBytes);
+        Assert.Equal(500_000_000, item.TotalBytes);
+        Assert.Equal(100.0, package.ProgressPercentage);
+        Assert.Equal(DownloadStatus.Completed, package.Status);
+    }
 }
