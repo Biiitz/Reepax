@@ -21,6 +21,7 @@ public class QueueManager
 {
     private static readonly Lazy<QueueManager> _instance = new(() => new QueueManager());
     public static QueueManager Instance => _instance.Value;
+    public static bool IsInitialized => _instance.IsValueCreated;
 
     private readonly object _lock = new();
     private bool _isRunning;

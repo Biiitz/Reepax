@@ -771,7 +771,17 @@ public partial class DownloadPackage : ObservableObject
 
             if (CheckIsFullyCompleted() && !HasCompletedNotified)
             {
-                Services.Download.QueueManager.Instance.NotifyPackageCompletionIfEligible(this);
+                try
+                {
+                    if (Services.Download.QueueManager.IsInitialized)
+                    {
+                        Services.Download.QueueManager.Instance.NotifyPackageCompletionIfEligible(this);
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // QueueManager singleton is being instantiated (restore from downloads.json)
+                }
             }
         }
         else if (hasActive)
@@ -967,7 +977,19 @@ public partial class DownloadPackage : ObservableObject
     {
         if (!value)
         {
-            Services.Download.QueueManager.Instance.PausePackage(this);
+            try
+            {
+                if (Services.Download.QueueManager.IsInitialized)
+                {
+                    Services.Download.QueueManager.Instance.PausePackage(this);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // QueueManager singleton is being instantiated (restore from downloads.json) -
+                // package is still initializing, nothing to pause.
+            }
+
             foreach (var item in Items.ToArray())
             {
                 if (item.Status != DownloadStatus.Completed)
@@ -978,11 +1000,34 @@ public partial class DownloadPackage : ObservableObject
             }
             Status = DownloadStatus.Paused;
             StatusMessage = Loc.Get("Status_Skipped");
-            Services.Download.QueueManager.Instance.ProcessQueue();
+
+            try
+            {
+                if (Services.Download.QueueManager.IsInitialized)
+                {
+                    Services.Download.QueueManager.Instance.ProcessQueue();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // QueueManager singleton is being instantiated (restore from downloads.json)
+            }
         }
         else
         {
-            bool isQueueActive = Services.Download.QueueManager.Instance.IsRunning;
+            bool isQueueActive = false;
+            try
+            {
+                if (Services.Download.QueueManager.IsInitialized)
+                {
+                    isQueueActive = Services.Download.QueueManager.Instance.IsRunning;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // QueueManager singleton is being instantiated (restore from downloads.json)
+            }
+
             foreach (var item in Items.ToArray())
             {
                 if (item.Status != DownloadStatus.Completed)
@@ -1002,7 +1047,17 @@ public partial class DownloadPackage : ObservableObject
 
             if (isQueueActive)
             {
-                Services.Download.QueueManager.Instance.ProcessQueue();
+                try
+                {
+                    if (Services.Download.QueueManager.IsInitialized)
+                    {
+                        Services.Download.QueueManager.Instance.ProcessQueue();
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                    // QueueManager singleton is being instantiated (restore from downloads.json)
+                }
             }
         }
 

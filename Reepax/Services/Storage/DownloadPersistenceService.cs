@@ -1435,46 +1435,52 @@ public class DownloadPersistenceService : IDisposable
                     ElapsedDurationMs = pkgDto.ElapsedDurationMs
                 };
 
-                foreach (var itemDto in pkgDto.Items)
+                if (pkgDto.Items != null)
                 {
-                    var itemSavePath = itemDto.SaveFilePath;
-                    if (!string.IsNullOrWhiteSpace(itemDto.FileName) &&
-                        (string.IsNullOrWhiteSpace(itemSavePath) || !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase)))
+                    foreach (var itemDto in pkgDto.Items)
                     {
-                        itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                        var itemSavePath = itemDto.SaveFilePath;
+                        if (!string.IsNullOrWhiteSpace(itemDto.FileName) &&
+                            (string.IsNullOrWhiteSpace(itemSavePath) || !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                        }
+
+                        var item = new DownloadItem
+                        {
+                            Id = itemDto.Id,
+                            PackageId = package.Id,
+                            OriginalUrl = itemDto.OriginalUrl,
+                            DirectDownloadUrl = itemDto.DirectDownloadUrl,
+                            FileName = itemDto.FileName,
+                            IsCustomName = itemDto.IsCustomName,
+                            HosterName = itemDto.HosterName,
+                            HosterIconKey = itemDto.HosterIconKey,
+                            TotalBytes = itemDto.TotalBytes,
+                            DownloadedBytes = itemDto.DownloadedBytes,
+                            ErrorMessage = itemDto.ErrorMessage,
+                            SaveFilePath = itemSavePath,
+                            Cookies = itemDto.Cookies,
+                            UserAgent = itemDto.UserAgent,
+                            Referer = itemDto.Referer,
+                            IsEnabled = itemDto.IsEnabled,
+                            CreatedAt = itemDto.CreatedAt,
+                            StartedAt = itemDto.StartedAt,
+                            CompletedAt = itemDto.CompletedAt,
+                            ElapsedDurationMs = itemDto.ElapsedDurationMs,
+                            Status = itemDto.Status,
+                            StatusMessage = itemDto.StatusMessage,
+                            ProgressPercentage = itemDto.ProgressPercentage,
+                            ExpectedChecksum = itemDto.ExpectedChecksum,
+                            CalculatedChecksum = itemDto.CalculatedChecksum
+                        };
+
+                        package.Items.Add(item);
                     }
-
-                    var item = new DownloadItem
-                    {
-                        Id = itemDto.Id,
-                        PackageId = package.Id,
-                        OriginalUrl = itemDto.OriginalUrl,
-                        DirectDownloadUrl = itemDto.DirectDownloadUrl,
-                        FileName = itemDto.FileName,
-                        IsCustomName = itemDto.IsCustomName,
-                        HosterName = itemDto.HosterName,
-                        HosterIconKey = itemDto.HosterIconKey,
-                        TotalBytes = itemDto.TotalBytes,
-                        DownloadedBytes = itemDto.DownloadedBytes,
-                        ErrorMessage = itemDto.ErrorMessage,
-                        SaveFilePath = itemSavePath,
-                        Cookies = itemDto.Cookies,
-                        UserAgent = itemDto.UserAgent,
-                        Referer = itemDto.Referer,
-                        IsEnabled = itemDto.IsEnabled,
-                        CreatedAt = itemDto.CreatedAt,
-                        StartedAt = itemDto.StartedAt,
-                        CompletedAt = itemDto.CompletedAt,
-                        ElapsedDurationMs = itemDto.ElapsedDurationMs,
-                        Status = itemDto.Status,
-                        StatusMessage = itemDto.StatusMessage,
-                        ProgressPercentage = itemDto.ProgressPercentage,
-                        ExpectedChecksum = itemDto.ExpectedChecksum,
-                        CalculatedChecksum = itemDto.CalculatedChecksum
-                    };
-
-                    package.Items.Add(item);
                 }
+
+                // Historical packages are already completed; prevent re-triggering completion notification
+                package.HasCompletedNotified = true;
 
                 package.RecalculateAggregates();
 
@@ -1680,96 +1686,114 @@ public class DownloadPersistenceService : IDisposable
                     ElapsedDurationMs = pkgDto.ElapsedDurationMs
                 };
 
-                foreach (var itemDto in pkgDto.Items)
+                if (pkgDto.Items != null)
                 {
-                    var itemSavePath = itemDto.SaveFilePath;
-                    if (!string.IsNullOrWhiteSpace(itemDto.FileName) &&
-                        (string.IsNullOrWhiteSpace(itemSavePath) || !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase)))
+                    foreach (var itemDto in pkgDto.Items)
                     {
-                        itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
-                    }
-
-                    var item = new DownloadItem
-                    {
-                        Id = itemDto.Id,
-                        PackageId = package.Id,
-                        OriginalUrl = itemDto.OriginalUrl,
-                        DirectDownloadUrl = itemDto.DirectDownloadUrl,
-                        FileName = itemDto.FileName,
-                        IsCustomName = itemDto.IsCustomName,
-                        HosterName = itemDto.HosterName,
-                        HosterIconKey = itemDto.HosterIconKey,
-                        TotalBytes = itemDto.TotalBytes,
-                        DownloadedBytes = itemDto.DownloadedBytes,
-                        ErrorMessage = itemDto.ErrorMessage,
-                        SaveFilePath = itemSavePath,
-                        Cookies = itemDto.Cookies,
-                        UserAgent = itemDto.UserAgent,
-                        Referer = itemDto.Referer,
-                        IsEnabled = itemDto.IsEnabled,
-                        CreatedAt = itemDto.CreatedAt,
-                        StartedAt = itemDto.StartedAt,
-                        CompletedAt = itemDto.CompletedAt,
-                        ElapsedDurationMs = itemDto.ElapsedDurationMs,
-                        ExpectedChecksum = itemDto.ExpectedChecksum,
-                        CalculatedChecksum = itemDto.CalculatedChecksum
-                    };
-
-                    if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
-                    {
-                        var partFile = item.SaveFilePath + ".part";
-                        if (File.Exists(partFile))
+                        var itemSavePath = itemDto.SaveFilePath;
+                        if (!string.IsNullOrWhiteSpace(itemDto.FileName) &&
+                            (string.IsNullOrWhiteSpace(itemSavePath) || !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase)))
                         {
-                            try
+                            itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                        }
+
+                        var item = new DownloadItem
+                        {
+                            Id = itemDto.Id,
+                            PackageId = package.Id,
+                            OriginalUrl = itemDto.OriginalUrl,
+                            DirectDownloadUrl = itemDto.DirectDownloadUrl,
+                            FileName = itemDto.FileName,
+                            IsCustomName = itemDto.IsCustomName,
+                            HosterName = itemDto.HosterName,
+                            HosterIconKey = itemDto.HosterIconKey,
+                            TotalBytes = itemDto.TotalBytes,
+                            DownloadedBytes = itemDto.DownloadedBytes,
+                            ErrorMessage = itemDto.ErrorMessage,
+                            SaveFilePath = itemSavePath,
+                            Cookies = itemDto.Cookies,
+                            UserAgent = itemDto.UserAgent,
+                            Referer = itemDto.Referer,
+                            IsEnabled = itemDto.IsEnabled,
+                            CreatedAt = itemDto.CreatedAt,
+                            StartedAt = itemDto.StartedAt,
+                            CompletedAt = itemDto.CompletedAt,
+                            ElapsedDurationMs = itemDto.ElapsedDurationMs,
+                            ExpectedChecksum = itemDto.ExpectedChecksum,
+                            CalculatedChecksum = itemDto.CalculatedChecksum
+                        };
+
+                        if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+                        {
+                            var partFile = item.SaveFilePath + ".part";
+                            if (File.Exists(partFile))
                             {
-                                // For chunked downloads, the .part file is pre-allocated to full size;
-                                // actual progress resides in the .segments sidecar (sum of Done values).
-                                var segmentedBytes = GetSegmentedDownloadedBytes(item.SaveFilePath);
-                                if (segmentedBytes.HasValue)
+                                try
                                 {
-                                    item.DownloadedBytes = segmentedBytes.Value;
-                                }
-                                else
-                                {
-                                    var info = new FileInfo(partFile);
-                                    if (info.Length > item.DownloadedBytes)
+                                    // For chunked downloads, the .part file is pre-allocated to full size;
+                                    // actual progress resides in the .segments sidecar (sum of Done values).
+                                    var segmentedBytes = GetSegmentedDownloadedBytes(item.SaveFilePath);
+                                    if (segmentedBytes.HasValue)
                                     {
-                                        item.DownloadedBytes = info.Length;
+                                        item.DownloadedBytes = segmentedBytes.Value;
+                                    }
+                                    else
+                                    {
+                                        var info = new FileInfo(partFile);
+                                        if (info.Length > item.DownloadedBytes)
+                                        {
+                                            item.DownloadedBytes = info.Length;
+                                        }
                                     }
                                 }
+                                catch { }
                             }
-                            catch { }
                         }
-                    }
 
-                    if (itemDto.Status == DownloadStatus.Completed)
-                    {
-                        item.Status = DownloadStatus.Completed;
-                        item.StatusMessage = Loc.Get("Status_Completed");
-                        item.ProgressPercentage = 100.0;
-                    }
-                    else
-                    {
-                        item.Status = DownloadStatus.Paused;
-                        if (!item.IsEnabled)
+                        if (itemDto.Status == DownloadStatus.Completed)
                         {
-                            item.StatusMessage = Loc.Get("Status_Skipped");
+                            item.Status = DownloadStatus.Completed;
+                            item.StatusMessage = Loc.Get("Status_Completed");
+                            item.ProgressPercentage = 100.0;
                         }
                         else
                         {
-                            item.StatusMessage = Loc.Get("Status_Paused");
+                            item.Status = DownloadStatus.Paused;
+                            if (!item.IsEnabled)
+                            {
+                                item.StatusMessage = Loc.Get("Status_Skipped");
+                            }
+                            else
+                            {
+                                item.StatusMessage = Loc.Get("Status_Paused");
+                            }
+
+                            if (item.TotalBytes > 0)
+                            {
+                                item.ProgressPercentage = Math.Clamp((double)item.DownloadedBytes / item.TotalBytes * 100.0, 0, 100);
+                            }
                         }
 
-                        if (item.TotalBytes > 0)
-                        {
-                            item.ProgressPercentage = Math.Clamp((double)item.DownloadedBytes / item.TotalBytes * 100.0, 0, 100);
-                        }
+                        item.SpeedBytesPerSecond = 0;
+                        item.RemainingSeconds = 0;
+
+                        package.Items.Add(item);
                     }
+                }
 
-                    item.SpeedBytesPerSecond = 0;
-                    item.RemainingSeconds = 0;
-
-                    package.Items.Add(item);
+                // Mark already completed packages as notified so RecalculateAggregates does not trigger completion notification
+                if (pkgDto.Items != null && pkgDto.Items.Count > 0 && pkgDto.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
+                {
+                    bool extractionDone = !package.AutoExtractArchives ||
+                                          pkgDto.IsExtracted ||
+                                          (pkgDto.NextTaskSteps != null && pkgDto.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)) ||
+                                          pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
+                                          pkgDto.StatusMessage == "Fertig & Entpackt" ||
+                                          pkgDto.StatusMessage == "Completed & Extracted";
+                    if (extractionDone)
+                    {
+                        package.HasCompletedNotified = true;
+                    }
                 }
 
                 package.RecalculateAggregates();

@@ -290,7 +290,10 @@ public partial class DownloadItem : ObservableObject
             try
             {
                 // Disabled items are stopped immediately (no trickle mode)
-                Services.Download.QueueManager.Instance.PauseItem(this, hardStop: true);
+                if (Services.Download.QueueManager.IsInitialized)
+                {
+                    Services.Download.QueueManager.Instance.PauseItem(this, hardStop: true);
+                }
             }
             catch (InvalidOperationException)
             {

@@ -8,7 +8,7 @@
   <a href="https://github.com/Biiitz/Reepax/actions/workflows/release.yml">
     <img src="https://github.com/Biiitz/Reepax/actions/workflows/release.yml/badge.svg" alt="Build & Release Reepax">
   </a>
-  <img src="https://img.shields.io/badge/Tests-900%2B%20Passing-success?style=flat" alt="900+ Passing Tests">
+  <img src="https://img.shields.io/badge/Tests-1000%2B%20Passing-success?style=flat" alt="1000+ Passing Tests">
 </p>
 
 <p align="center">

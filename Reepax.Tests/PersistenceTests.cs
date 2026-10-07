@@ -955,6 +955,108 @@ public class PersistenceTests
         Assert.False(pkgsDisabled[0].AutoPar2Repair);
     }
 
+    [Fact]
+    public void LoadDownloads_WithDisabledAndCompletedPackages_RestoresWithoutExceptionAndMarksNotified()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_Test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            var service = new DownloadPersistenceService(testFile);
+            var packages = new List<DownloadPackage>();
+
+            // Package 1: Disabled package
+            var pkgDisabled = new DownloadPackage
+            {
+                Name = "Disabled_Package",
+                SaveDirectory = Path.Combine(testDir, "Disabled_Package"),
+                IsEnabled = false
+            };
+            var item1 = new DownloadItem
+            {
+                FileName = "file1.zip",
+                TotalBytes = 1000,
+                DownloadedBytes = 500,
+                IsEnabled = false,
+                Status = DownloadStatus.Paused,
+                SaveFilePath = Path.Combine(testDir, "Disabled_Package", "file1.zip")
+            };
+            pkgDisabled.Items.Add(item1);
+            packages.Add(pkgDisabled);
+
+            // Package 2: Completed package
+            var pkgCompleted = new DownloadPackage
+            {
+                Name = "Completed_Package",
+                SaveDirectory = Path.Combine(testDir, "Completed_Package"),
+                IsEnabled = true
+            };
+            var item2 = new DownloadItem
+            {
+                FileName = "file2.zip",
+                TotalBytes = 1000,
+                DownloadedBytes = 1000,
+                IsEnabled = true,
+                Status = DownloadStatus.Completed,
+                SaveFilePath = Path.Combine(testDir, "Completed_Package", "file2.zip")
+            };
+            pkgCompleted.Items.Add(item2);
+            packages.Add(pkgCompleted);
+
+            service.SaveDownloads(packages, sync: true);
+
+            // Act: load downloads
+            var restored = service.LoadDownloads();
+
+            // Assert
+            Assert.False(service.HasDownloadsLoadFailed);
+            Assert.Equal(2, restored.Count);
+
+            var restoredDisabled = restored.Find(p => p.Name == "Disabled_Package");
+            Assert.NotNull(restoredDisabled);
+            Assert.False(restoredDisabled.IsEnabled);
+
+            var restoredCompleted = restored.Find(p => p.Name == "Completed_Package");
+            Assert.NotNull(restoredCompleted);
+            Assert.True(restoredCompleted.HasCompletedNotified);
+            Assert.True(restoredCompleted.CheckIsFullyCompleted());
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DownloadPackage_OnIsEnabledChanged_DoesNotThrowWhenQueueManagerNotAvailable()
+    {
+        var package = new DownloadPackage
+        {
+            Name = "Test_Pkg",
+            IsEnabled = true
+        };
+        var item = new DownloadItem
+        {
+            FileName = "test.bin",
+            TotalBytes = 500,
+            IsEnabled = true,
+            Status = DownloadStatus.Queued
+        };
+        package.Items.Add(item);
+
+        // Toggling IsEnabled should safely handle any QueueManager availability state without throwing
+        var exDisabled = Record.Exception(() => package.IsEnabled = false);
+        Assert.Null(exDisabled);
+        Assert.False(package.IsEnabled);
+
+        var exEnabled = Record.Exception(() => package.IsEnabled = true);
+        Assert.Null(exEnabled);
+        Assert.True(package.IsEnabled);
+    }
+
+
     private class FlakyEnumerable<T> : IEnumerable<T>
     {
         private readonly List<T> _items;
