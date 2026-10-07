@@ -1056,6 +1056,68 @@ public class PersistenceTests
         Assert.True(package.IsEnabled);
     }
 
+    [Fact]
+    public async Task Persistence_Debounce_PreservesConcurrentModificationsDuringSave()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_DebounceTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            using var service = new DownloadPersistenceService(testFile);
+            var packages = new ObservableCollection<DownloadPackage>();
+            service.TrackPackages(packages);
+
+            var pkg = new DownloadPackage
+            {
+                Name = "Original_Name",
+                SaveDirectory = @"C:\Downloads\Test"
+            };
+            var item = new DownloadItem
+            {
+                FileName = "file1.bin",
+                TotalBytes = 1000,
+                IsEnabled = true,
+                Status = DownloadStatus.Queued
+            };
+            pkg.Items.Add(item);
+            packages.Add(pkg);
+
+            // Adding to tracked collection triggers RequestSave
+            Assert.True(service.IsDirty);
+
+            // Wait for initial debounce save to complete (300ms + margin)
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            var initialLoaded = service.LoadDownloads();
+            Assert.Single(initialLoaded);
+            Assert.Equal("Original_Name", initialLoaded[0].Name);
+
+            // Mutate property to trigger RequestSave and debounce
+            pkg.Name = "Modified_Name_1";
+            Assert.True(service.IsDirty);
+
+            // Simulate modification arriving right after snapshot / during save
+            pkg.Name = "Modified_Name_Final";
+            Assert.True(service.IsDirty);
+
+            // Wait for debounce save to complete
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Verify final state on disk contains the latest modification
+            var finalLoaded = service.LoadDownloads();
+            Assert.Single(finalLoaded);
+            Assert.Equal("Modified_Name_Final", finalLoaded[0].Name);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
 
     private class FlakyEnumerable<T> : IEnumerable<T>
     {

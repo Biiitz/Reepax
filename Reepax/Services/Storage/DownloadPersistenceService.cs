@@ -116,6 +116,7 @@ public class DownloadPersistenceService : IDisposable
 
     public bool HasDownloadsLoadFailed => _hasDownloadsLoadFailed;
     public bool HasHistoryLoadFailed => _hasHistoryLoadFailed;
+    internal bool IsDirty => _isDirty;
 
     public static event Action<string>? OnPersistenceWarning;
 
@@ -669,61 +670,80 @@ public class DownloadPersistenceService : IDisposable
     {
         if (!_isCustomPath && IsTestEnvironment) return;
         _isDirty = true;
-        _debounceTimer.Change(300, Timeout.Infinite);
+        try
+        {
+            _debounceTimer.Change(300, Timeout.Infinite);
+        }
+        catch (ObjectDisposedException) { }
     }
 
     public void RequestThrottledSave()
     {
         if (!_isCustomPath && IsTestEnvironment) return;
         _isDirty = true;
-        _debounceTimer.Change(1500, Timeout.Infinite);
+        try
+        {
+            _debounceTimer.Change(1500, Timeout.Infinite);
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private void OnDebounceTimerElapsed(object? state)
     {
-        if (_isDirty && _trackedPackages != null)
-        {
-            List<DownloadPackageDto>? dtosSnapshot = null;
+        if (!_isDirty || _trackedPackages == null) return;
 
-            try
+        List<DownloadPackageDto>? dtosSnapshot = null;
+
+        try
+        {
+            var app = System.Windows.Application.Current;
+            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
             {
-                var app = System.Windows.Application.Current;
-                if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
-                {
-                    app.Dispatcher.Invoke(() =>
-                    {
-                        if (_trackedPackages != null)
-                        {
-                            dtosSnapshot = CreateDtos(_trackedPackages);
-                        }
-                    });
-                }
-                else
+                app.Dispatcher.Invoke(() =>
                 {
                     if (_trackedPackages != null)
                     {
+                        _isDirty = false;
                         dtosSnapshot = CreateDtos(_trackedPackages);
                     }
-                }
+                });
             }
-            catch (Exception ex)
+            else
             {
-                AppLogger.Error("[DownloadPersistenceService] Fehler beim Erstellen des UI-Snapshots", ex);
-            }
-
-            if (dtosSnapshot != null)
-            {
-                long seq = Interlocked.Increment(ref _latestDownloadsSaveSequence);
-                bool success = SaveDownloadsInternal(dtosSnapshot, seq);
-                if (success)
+                if (_trackedPackages != null)
                 {
                     _isDirty = false;
+                    dtosSnapshot = CreateDtos(_trackedPackages);
                 }
-                else
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("[DownloadPersistenceService] Fehler beim Erstellen des UI-Snapshots", ex);
+        }
+
+        if (dtosSnapshot != null)
+        {
+            long seq = Interlocked.Increment(ref _latestDownloadsSaveSequence);
+            bool success = SaveDownloadsInternal(dtosSnapshot, seq);
+            if (!success)
+            {
+                _isDirty = true;
+                try
                 {
                     _debounceTimer.Change(1500, Timeout.Infinite);
                 }
+                catch (ObjectDisposedException) { }
             }
+        }
+        else
+        {
+            _isDirty = true;
+            try
+            {
+                _debounceTimer.Change(1500, Timeout.Infinite);
+            }
+            catch (ObjectDisposedException) { }
         }
     }
 
