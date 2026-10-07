@@ -248,7 +248,7 @@
                     <Style TargetType="Border">
                         <Setter Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                         <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
-                        <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="BorderThickness" Value="0.65" />
                         <Style.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
@@ -256,6 +256,7 @@
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                 <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
                                 <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                <Setter Property="BorderThickness" Value="0.65" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding IsEnabled}" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
@@ -621,7 +622,7 @@
                         <Style TargetType="Border">
                             <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
                             <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
-                            <Setter Property="BorderThickness" Value="1" />
+                            <Setter Property="BorderThickness" Value="0.65" />
                             <Style.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter Property="Background" Value="{DynamicResource BgCardAltBrush}" />
@@ -629,6 +630,7 @@
                                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                     <Setter Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                    <Setter Property="BorderThickness" Value="0.65" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
