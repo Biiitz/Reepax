@@ -905,6 +905,85 @@ public class DownloadEngineTests
     }
 
     [Fact]
+    public async Task DownloadEngine_MultiConnection_WhenServerStreamsBeyondSegmentEnd_DoesNotOverflowOrCorruptNeighboringSegments()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxOverstream_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "overstream_test.bin");
+            var item = new DownloadItem
+            {
+                FileName = "overstream_test.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/overstream_test.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            // 8 MB + remainder to trigger multi-connection chunking
+            var testData = new byte[8 * 1024 * 1024 + 1024];
+            for (int i = 0; i < testData.Length; i++)
+                testData[i] = (byte)(i % 251);
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                if (req.Headers.Range != null)
+                {
+                    long from = req.Headers.Range.Ranges.First().From ?? 0;
+                    long to = req.Headers.Range.Ranges.First().To ?? (testData.Length - 1);
+
+                    // Probe request (0-0)
+                    if (from == 0 && to == 0)
+                    {
+                        var probeRes = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                        {
+                            Content = new ByteArrayContent(testData.AsSpan(0, 1).ToArray())
+                        };
+                        probeRes.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(0, 0, testData.Length);
+                        return Task.FromResult(probeRes);
+                    }
+
+                    // For segment requests: simulate buggy server streaming past 'to' all the way to the end of file
+                    var slice = testData.AsSpan((int)from, testData.Length - (int)from).ToArray();
+                    var res = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                    {
+                        Content = new ByteArrayContent(slice)
+                    };
+                    res.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(from, testData.Length - 1, testData.Length);
+                    return Task.FromResult(res);
+                }
+
+                var full = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(testData) };
+                full.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(full);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += i => { if (i.Id == item.Id) tcs.TrySetResult(true); };
+            engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) tcs.TrySetException(ex); };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(File.Exists(destinationFile));
+            Assert.Equal(testData.Length, new FileInfo(destinationFile).Length);
+            Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task DownloadEngine_ChunkedResume_ContinuesFromSidecarState()
     {
         var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxChunkResume_" + Guid.NewGuid().ToString("N"));

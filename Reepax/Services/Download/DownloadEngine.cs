@@ -825,8 +825,15 @@ public class DownloadEngine
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 long offset = rangeStart;
                 int bytesRead;
-                while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                while (segment.Done < segmentLength)
                 {
+                    int toRead = (int)Math.Min((long)buffer.Length, segmentLength - segment.Done);
+                    bytesRead = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
+                    if (bytesRead <= 0)
+                    {
+                        break;
+                    }
+
                     await _throttler.ThrottleAsync(bytesRead, cancellationToken);
                     if (item.IsTrickling)
                     {
