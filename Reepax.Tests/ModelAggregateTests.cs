@@ -550,4 +550,134 @@ public class ModelAggregateTests
         Assert.Equal(100.0, package.ProgressPercentage);
         Assert.Equal(DownloadStatus.Completed, package.Status);
     }
+
+    [Fact]
+    public void DownloadPackage_WhenOnlySubsetOfItemsCompletedAndRestUnknown_DoesNotShow100Percent()
+    {
+        // Arrange: Package with 22 items, 3 completed with 1 GB each, 19 queued with unknown size (0 bytes)
+        var package = new DownloadPackage { Name = "Large Multi-Part Package" };
+        for (int i = 1; i <= 22; i++)
+        {
+            var item = new DownloadItem
+            {
+                FileName = $"archive.part{i:D2}.rar",
+                IsEnabled = true,
+                TotalBytes = i <= 3 ? 1_000_000_000L : 0L,
+                DownloadedBytes = i <= 3 ? 1_000_000_000L : 0L,
+                Status = i <= 3 ? DownloadStatus.Completed : DownloadStatus.Queued
+            };
+            package.Items.Add(item);
+        }
+
+        // Act
+        package.RecalculateAggregates();
+
+        // Assert: Must NOT be 100%! Progress should be around 13.64% (3/22)
+        Assert.Equal(3, package.CompletedItemsCount);
+        Assert.Equal(22, package.EnabledItemsCount);
+        Assert.NotEqual(DownloadStatus.Completed, package.Status);
+        Assert.True(package.ProgressPercentage < 100.0, $"Expected progress < 100%, but got {package.ProgressPercentage}%");
+        Assert.InRange(package.ProgressPercentage, 13.0, 14.0);
+        Assert.Equal(3_000_000_000L, package.DownloadedBytes);
+        Assert.Equal(22_000_000_000L, package.TotalBytes);
+    }
+
+    [Fact]
+    public void DownloadPackage_WhenSomeItemsDownloadingWithUnknownRemaining_CalculatesRealisticProgress()
+    {
+        // Arrange: 10 items, 2 completed (100 MB each), 1 downloading (50 MB / 100 MB), 7 queued (0 bytes, unknown)
+        var package = new DownloadPackage { Name = "Progress Test Package" };
+        for (int i = 1; i <= 10; i++)
+        {
+            var item = new DownloadItem
+            {
+                FileName = $"part{i:D2}.rar",
+                IsEnabled = true,
+                TotalBytes = i <= 3 ? 100_000_000L : 0L,
+                DownloadedBytes = i <= 2 ? 100_000_000L : (i == 3 ? 50_000_000L : 0L),
+                Status = i <= 2 ? DownloadStatus.Completed : (i == 3 ? DownloadStatus.Downloading : DownloadStatus.Queued)
+            };
+            package.Items.Add(item);
+        }
+
+        // Act
+        package.RecalculateAggregates();
+
+        // Assert: 2.5 parts out of 10 = ~25%
+        Assert.Equal(2, package.CompletedItemsCount);
+        Assert.Equal(10, package.EnabledItemsCount);
+        Assert.NotEqual(DownloadStatus.Completed, package.Status);
+        Assert.True(package.ProgressPercentage < 100.0);
+        Assert.InRange(package.ProgressPercentage, 24.0, 26.0);
+        Assert.Equal(1_000_000_000L, package.TotalBytes);
+        Assert.Equal(250_000_000L, package.DownloadedBytes);
+    }
+
+    [Fact]
+    public void DownloadPackage_WhenAllItemsFinallyComplete_ReachesExactly100Percent()
+    {
+        // Arrange: 22 items, all completed
+        var package = new DownloadPackage { Name = "Completed Multi-Part Package" };
+        for (int i = 1; i <= 22; i++)
+        {
+            var item = new DownloadItem
+            {
+                FileName = $"archive.part{i:D2}.rar",
+                IsEnabled = true,
+                TotalBytes = 1_000_000_000L,
+                DownloadedBytes = 1_000_000_000L,
+                Status = DownloadStatus.Completed
+            };
+            package.Items.Add(item);
+        }
+
+        // Act
+        package.RecalculateAggregates();
+
+        // Assert: Exactly 100% and Completed status
+        Assert.Equal(22, package.CompletedItemsCount);
+        Assert.Equal(22, package.EnabledItemsCount);
+        Assert.Equal(DownloadStatus.Completed, package.Status);
+        Assert.Equal(100.0, package.ProgressPercentage);
+        Assert.Equal(22_000_000_000L, package.DownloadedBytes);
+        Assert.Equal(22_000_000_000L, package.TotalBytes);
+    }
+
+    [Fact]
+    public void DownloadItem_UpdateProgress_ResetsRemainingSecondsToZero_WhenSpeedStalls()
+    {
+        var item = new DownloadItem
+        {
+            FileName = "video.mp4",
+            TotalBytes = 100_000_000L,
+            DownloadedBytes = 50_000_000L,
+            RemainingSeconds = 50,
+            SpeedBytesPerSecond = 1_000_000
+        };
+
+        // When speed drops to 0, RemainingSeconds must NOT freeze at 50s, but reset to 0
+        item.UpdateProgress(downloaded: 50_000_000L, total: 100_000_000L, speed: 0);
+
+        Assert.Equal(0, item.SpeedBytesPerSecond);
+        Assert.Equal(0, item.RemainingSeconds);
+    }
+
+    [Fact]
+    public void DownloadItem_UpdateProgress_CalculatesCorrectEta_WhenActive()
+    {
+        var item = new DownloadItem
+        {
+            FileName = "game.iso",
+            TotalBytes = 200_000_000L,
+            DownloadedBytes = 0L
+        };
+
+        // 100 MB remaining at 10 MB/s = 10 seconds ETA
+        item.UpdateProgress(downloaded: 100_000_000L, total: 200_000_000L, speed: 10_000_000);
+
+        Assert.Equal(10_000_000, item.SpeedBytesPerSecond);
+        Assert.Equal(10.0, item.RemainingSeconds);
+        Assert.Equal(50.0, item.ProgressPercentage);
+    }
 }
+

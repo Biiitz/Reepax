@@ -68,6 +68,7 @@ public class CompletionNotificationTests
     [Fact]
     public void NotifyPackageCompletionIfEligible_SetsNotifiedAndNewlyCompleted()
     {
+        _ = QueueManager.Instance;
         var pkg = new DownloadPackage { Name = "CompletePkg", AutoExtractArchives = false, IsExpanded = true };
         var item = new DownloadItem { FileName = "setup.exe", Status = DownloadStatus.Downloading, IsEnabled = true };
         pkg.Items.Add(item);
@@ -92,6 +93,7 @@ public class CompletionNotificationTests
     [Fact]
     public void NotifyPackageCompletionIfEligible_AlreadyCollapsed_RemainsCollapsed()
     {
+        _ = QueueManager.Instance;
         var pkg = new DownloadPackage { Name = "AlreadyClosedPkg", AutoExtractArchives = false, IsExpanded = false };
         var item = new DownloadItem { FileName = "setup.exe", Status = DownloadStatus.Downloading, IsEnabled = true };
         pkg.Items.Add(item);

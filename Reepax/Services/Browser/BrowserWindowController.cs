@@ -682,7 +682,7 @@ public class BrowserWindowController : IDisposable
             {
                 var now = DateTime.Now;
                 var dt = (now - lastTime).TotalSeconds;
-                if (dt >= 0.25)
+                if (dt >= 0.3)
                 {
                     var speed = (op.BytesReceived - lastBytes) / dt;
                     lastBytes = op.BytesReceived;

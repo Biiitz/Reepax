@@ -508,8 +508,8 @@ public partial class DownloadPackage : ObservableObject
         RecalculateAggregates(force: true);
     }
 
-    // Throttle progress-driven RecalculateAggregates to at most once per 250 ms per package
-    private const int ProgressRecalcIntervalMs = 250;
+    // Throttle progress-driven RecalculateAggregates to at most once per 300 ms per package
+    private const int ProgressRecalcIntervalMs = 300;
     private long _lastAggregateRecalcTicks; // Environment.TickCount64 of the last aggregation
     private volatile bool _isAggregatesDirty = true;
 
@@ -615,7 +615,6 @@ public partial class DownloadPackage : ObservableObject
 
         long total = 0;
         long downloaded = 0;
-        long enabledTotal = 0;
         long enabledDownloaded = 0;
         double speed = 0;
         int completed = 0;
@@ -625,6 +624,10 @@ public partial class DownloadPackage : ObservableObject
         int enabledCount = 0;
         long enabledRemainingBytes = 0;
         double maxActiveItemEta = 0;
+
+        int enabledKnownCount = 0;
+        long enabledKnownTotal = 0;
+        double sumItemProgress = 0;
 
         foreach (var item in itemsSnapshot)
         {
@@ -638,54 +641,114 @@ public partial class DownloadPackage : ObservableObject
             if (item.IsEnabled)
             {
                 enabledCount++;
-                enabledTotal += item.TotalBytes;
                 enabledDownloaded += item.DownloadedBytes;
                 speed += item.SpeedBytesPerSecond;
 
-                if (item.Status != DownloadStatus.Completed)
+                if (item.TotalBytes > 0)
                 {
-                    if (item.TotalBytes > item.DownloadedBytes)
-                    {
-                        enabledRemainingBytes += (item.TotalBytes - item.DownloadedBytes);
-                    }
-                }
-
-                if (item.Status == DownloadStatus.Downloading && item.RemainingSeconds > 0)
-                {
-                    if (item.RemainingSeconds > maxActiveItemEta)
-                    {
-                        maxActiveItemEta = item.RemainingSeconds;
-                    }
+                    enabledKnownCount++;
+                    enabledKnownTotal += item.TotalBytes;
                 }
 
                 if (item.Status == DownloadStatus.Completed)
+                {
                     completed++;
-                else if (item.Status == DownloadStatus.Downloading)
-                    hasActive = true;
-                else if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)
-                    hasCaptcha = true;
-                else if (item.Status is DownloadStatus.Failed or DownloadStatus.Aborted)
-                    hasError = true;
+                    sumItemProgress += 100.0;
+                }
+                else
+                {
+                    double itemPct = 0;
+                    if (item.TotalBytes > 0)
+                    {
+                        itemPct = Math.Clamp((double)item.DownloadedBytes / item.TotalBytes * 100.0, 0, 100.0);
+                        if (item.TotalBytes > item.DownloadedBytes)
+                        {
+                            enabledRemainingBytes += (item.TotalBytes - item.DownloadedBytes);
+                        }
+                    }
+                    else if (item.ProgressPercentage > 0)
+                    {
+                        itemPct = Math.Clamp(item.ProgressPercentage, 0, 100.0);
+                    }
+                    sumItemProgress += itemPct;
+
+                    if (item.Status == DownloadStatus.Downloading)
+                        hasActive = true;
+                    else if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)
+                        hasCaptcha = true;
+                    else if (item.Status is DownloadStatus.Failed or DownloadStatus.Aborted)
+                        hasError = true;
+
+                    if (item.Status == DownloadStatus.Downloading && item.RemainingSeconds > 0)
+                    {
+                        if (item.RemainingSeconds > maxActiveItemEta)
+                        {
+                            maxActiveItemEta = item.RemainingSeconds;
+                        }
+                    }
+                }
             }
         }
 
+        int enabledUnknownCount = enabledCount - enabledKnownCount;
+
         if (enabledCount > 0)
         {
-            TotalBytes = enabledTotal;
-            DownloadedBytes = enabledDownloaded;
             CompletedItemsCount = completed;
+            DownloadedBytes = enabledDownloaded;
 
             if (completed == enabledCount)
             {
+                TotalBytes = enabledKnownTotal > 0 ? enabledKnownTotal : enabledDownloaded;
+                DownloadedBytes = TotalBytes;
                 ProgressPercentage = 100;
-            }
-            else if (enabledTotal > 0)
-            {
-                ProgressPercentage = Math.Clamp((double)enabledDownloaded / enabledTotal * 100.0, 0, 100);
             }
             else
             {
-                ProgressPercentage = 0;
+                // Not all items are completed: progress must represent the entire package
+                // and cannot reach 100.00% until every enabled item is completed.
+                long effectiveTotalBytes = enabledKnownTotal;
+
+                if (enabledUnknownCount > 0)
+                {
+                    if (enabledKnownCount > 0)
+                    {
+                        long avgKnownBytes = Math.Max(1L, enabledKnownTotal / enabledKnownCount);
+                        long estimatedUnknownBytes = enabledUnknownCount * avgKnownBytes;
+                        effectiveTotalBytes = Math.Max(enabledDownloaded, enabledKnownTotal + estimatedUnknownBytes);
+                        enabledRemainingBytes += estimatedUnknownBytes;
+                    }
+                    else
+                    {
+                        effectiveTotalBytes = Math.Max(enabledKnownTotal, enabledDownloaded);
+                    }
+                }
+
+                TotalBytes = effectiveTotalBytes;
+
+                double progressByBytes = effectiveTotalBytes > 0
+                    ? ((double)enabledDownloaded / effectiveTotalBytes * 100.0)
+                    : 0;
+                double progressByItems = sumItemProgress / enabledCount;
+
+                double rawProgress;
+                if (enabledUnknownCount == 0)
+                {
+                    // All sizes are known: byte ratio is exact
+                    rawProgress = progressByBytes;
+                }
+                else if (enabledKnownCount > 0)
+                {
+                    // Some sizes known, some unknown: conservative minimum prevents premature spikes
+                    rawProgress = Math.Min(progressByBytes, progressByItems);
+                }
+                else
+                {
+                    // No sizes known yet: average item completion percentage
+                    rawProgress = progressByItems;
+                }
+
+                ProgressPercentage = Math.Clamp(rawProgress, 0, 99.99);
             }
         }
         else

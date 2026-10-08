@@ -50,11 +50,12 @@ public partial class BrowserWindow : Window
                         !string.IsNullOrWhiteSpace(item.DirectDownloadUrl);
 
         WindowState = isDirect ? WindowState.Minimized : WindowState.Normal;
-        ShowInTaskbar = true;
+        ShowInTaskbar = !isDirect;
         EnsureRestoreBoundsCentered();
 
         if (isDirect)
         {
+            Opacity = 0;
             // Auto-resolver / direct link: window starts minimized.
             // If automatic resolution fails (e.g. interactive captcha challenge),
             // the window is brought to the foreground after 60s so the user can interact.

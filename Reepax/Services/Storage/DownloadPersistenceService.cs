@@ -858,10 +858,9 @@ public class DownloadPersistenceService : IDisposable
 
                 long pkgTotal = itemDtos.Sum(i => i.TotalBytes);
                 long pkgDownloaded = itemDtos.Sum(i => i.DownloadedBytes);
-                double pkgProgress = pkgTotal > 0 ? Math.Clamp((double)pkgDownloaded / pkgTotal * 100.0, 0, 100) : 0;
-                var pkgStatus = (itemDtos.Count > 0 && itemDtos.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
-                    ? DownloadStatus.Completed
-                    : DownloadStatus.Paused;
+                bool isFullyCompleted = (itemDtos.Count > 0 && itemDtos.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed));
+                var pkgStatus = isFullyCompleted ? DownloadStatus.Completed : DownloadStatus.Paused;
+                double pkgProgress = isFullyCompleted ? 100.0 : Math.Clamp(pkg.ProgressPercentage, 0, 99.99);
                 string pkgStatusMsg;
                 if (!pkg.IsEnabled)
                 {
@@ -911,7 +910,7 @@ public class DownloadPersistenceService : IDisposable
                     AutoPar2Repair = pkg.AutoPar2Repair,
                     IsExpanded = pkg.IsExpanded,
                     PackageIconKey = pkg.PackageIconKey,
-                    TotalBytes = pkgTotal > 0 ? pkgTotal : pkg.TotalBytes,
+                    TotalBytes = pkg.TotalBytes > 0 ? pkg.TotalBytes : (pkgTotal > 0 ? pkgTotal : 0),
                     DownloadedBytes = pkgDownloaded,
                     ProgressPercentage = pkgProgress,
                     Status = pkgStatus,

@@ -937,11 +937,7 @@ public class QueueManager
             }
         }
 
-        if (windowIdToClose.HasValue)
-        {
-            CloseBrowserWindow(windowIdToClose.Value);
-        }
-
+        // Set status and update package aggregates before closing the window so any close-handlers see Paused status
         SafeInvoke(() =>
         {
             item.Status = DownloadStatus.Paused;
@@ -949,13 +945,17 @@ public class QueueManager
             item.SpeedBytesPerSecond = 0;
             item.RemainingSeconds = 0;
             item.CurrentSlot = null;
+
+            var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
+            pkg?.RecalculateAggregates();
         });
 
-        if (pauseTask != null && !pauseTask.IsCompleted)
+        if (windowIdToClose.HasValue)
         {
-            _ = pauseTask.ContinueWith(_ => ProcessQueue(), TaskScheduler.Default);
+            CloseBrowserWindow(windowIdToClose.Value);
         }
-        else
+
+        if (pauseTask == null || pauseTask.IsCompleted)
         {
             ProcessQueue();
         }
@@ -1092,16 +1092,64 @@ public class QueueManager
             return;
 
         var itemsSnapshot = package.Items.ToArray();
-        foreach (var item in itemsSnapshot)
-        {
-            if (item.Status == DownloadStatus.Completed)
-                continue;
+        var itemsToPause = itemsSnapshot
+            .Where(item => item.Status != DownloadStatus.Completed &&
+                           (item.Status is DownloadStatus.Downloading or
+                                           DownloadStatus.InBrowser or
+                                           DownloadStatus.InBrowserSlot1 or
+                                           DownloadStatus.InBrowserSlot2 or
+                                           DownloadStatus.SolvingCaptcha or
+                                           DownloadStatus.WaitingForBrowser or
+                                           DownloadStatus.Queued))
+            .ToList();
 
-            if (item.Status is DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.Queued)
+        if (itemsToPause.Count == 0)
+            return;
+
+        List<int> windowIdsToClose = new();
+        lock (_lock)
+        {
+            foreach (var item in itemsToPause)
             {
-                PauseItem(item);
+                var entry = _windowItems.FirstOrDefault(kv => ReferenceEquals(kv.Value, item));
+                if (entry.Value != null)
+                {
+                    _windowItems.Remove(entry.Key);
+                    windowIdsToClose.Add(entry.Key);
+                }
             }
         }
+
+        // Atomically set all items to Paused FIRST before closing windows or triggering engine cancellation.
+        // This ensures that any intermediate ProcessQueue() invocations (from window close events or cancellations)
+        // will never see any subsequent items in this package as Queued and will never open/flash browser windows.
+        SafeInvoke(() =>
+        {
+            foreach (var item in itemsToPause)
+            {
+                item.IsTrickling = false;
+                item.Status = DownloadStatus.Paused;
+                item.StatusMessage = Loc.Get("Status_Paused");
+                item.SpeedBytesPerSecond = 0;
+                item.RemainingSeconds = 0;
+                item.CurrentSlot = null;
+            }
+            package.RecalculateAggregates();
+        });
+
+        foreach (var winId in windowIdsToClose)
+        {
+            CloseBrowserWindow(winId);
+        }
+
+        foreach (var item in itemsToPause)
+        {
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+        }
+
+        Storage.DownloadPersistenceService.Instance.SaveDownloads(Packages);
+
+        ProcessQueue();
     }
 
     public void ResumePackage(DownloadPackage? package)
@@ -1128,7 +1176,12 @@ public class QueueManager
             return;
 
         var itemsSnapshot = package.Items.ToArray();
-        bool hasActive = itemsSnapshot.Any(i => i.Status is DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2);
+        bool hasActive = itemsSnapshot.Any(i => i.Status is DownloadStatus.Downloading or
+                                                            DownloadStatus.InBrowser or
+                                                            DownloadStatus.InBrowserSlot1 or
+                                                            DownloadStatus.InBrowserSlot2 or
+                                                            DownloadStatus.SolvingCaptcha or
+                                                            DownloadStatus.WaitingForBrowser);
         if (hasActive)
         {
             PausePackage(package);

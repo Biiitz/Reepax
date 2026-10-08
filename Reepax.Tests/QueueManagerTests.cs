@@ -23,10 +23,12 @@ public class QueueManagerTests
         public Dictionary<int, DownloadItem> Windows { get; } = new();
         public Dictionary<int, bool> WindowHidden { get; } = new();
         public int ActiveWindowCount => Windows.Count;
+        public int TotalWindowsOpened { get; private set; }
         public event Action? WindowCapacityChanged;
 
         public bool TryOpenWindow(DownloadItem item, bool hidden, out int windowId)
         {
+            TotalWindowsOpened++;
             windowId = ++_nextWindowId;
             Windows[windowId] = item;
             WindowHidden[windowId] = hidden;
@@ -452,6 +454,45 @@ public class QueueManagerTests
 
         queueManager.StopQueue();
         Assert.False(queueManager.IsRunning);
+    }
+
+    [Fact]
+    public void QueueManager_PausePackage_DoesNotOpenOrFlashBrowserWindowsForQueuedItems()
+    {
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 1 };
+        var host = new FakeBrowserWindowHost();
+        queueManager.BrowserHost = host;
+        queueManager.Packages.Clear();
+
+        var pkg = new DownloadPackage { Name = "TestPackage" };
+        var item1 = new DownloadItem { FileName = "part1.rar", OriginalUrl = "https://rapidgator.net/file/1", IsEnabled = true };
+        var item2 = new DownloadItem { FileName = "part2.rar", OriginalUrl = "https://rapidgator.net/file/2", IsEnabled = true };
+        var item3 = new DownloadItem { FileName = "part3.rar", OriginalUrl = "https://rapidgator.net/file/3", IsEnabled = true };
+
+        pkg.Items.Add(item1);
+        pkg.Items.Add(item2);
+        pkg.Items.Add(item3);
+        queueManager.Packages.Add(pkg);
+
+        queueManager.StartQueue();
+
+        // One browser window should be open for item1 (since rapidgator is not a direct link)
+        Assert.Equal(1, host.ActiveWindowCount);
+        int initialOpenedCount = host.TotalWindowsOpened;
+
+        // Act: Pause the package while the queue is still running
+        queueManager.PausePackage(pkg);
+
+        // Assert:
+        // 1. All open browser windows for this package must be closed
+        Assert.Equal(0, host.ActiveWindowCount);
+        // 2. No new browser windows were opened during pause (TotalWindowsOpened hasn't increased)
+        Assert.Equal(initialOpenedCount, host.TotalWindowsOpened);
+        // 3. All items in the package are paused
+        Assert.All(pkg.Items, item => Assert.Equal(DownloadStatus.Paused, item.Status));
+        Assert.Equal(DownloadStatus.Paused, pkg.Status);
+
+        queueManager.StopQueue();
     }
 
     [Fact]

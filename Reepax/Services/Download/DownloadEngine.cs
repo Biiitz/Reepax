@@ -661,13 +661,13 @@ public class DownloadEngine
             item.StartedAt ??= DateTime.Now;
         });
 
-        // Watcher: aggregates segment progress 4x per second for UI + sidecar persistence
+        // Watcher: aggregates segment progress 1x per second for calm UI + sidecar persistence
         var watcher = Task.Run(async () =>
         {
             long lastSaveTs = Stopwatch.GetTimestamp();
             while (!Volatile.Read(ref segmentsFinished) && !cancellationToken.IsCancellationRequested)
             {
-                try { await Task.Delay(250, cancellationToken); }
+                try { await Task.Delay(300, cancellationToken); }
                 catch (OperationCanceledException) { break; }
 
                 long aggregated = segments.Sum(s => s.Done);
@@ -985,7 +985,7 @@ public class DownloadEngine
                 currentDownloaded += bytesRead;
 
                 var now = Stopwatch.GetTimestamp();
-                if (((double)(now - lastUiUpdateTime) / Stopwatch.Frequency) >= 0.25) // 4 smooth UI updates per second
+                if (((double)(now - lastUiUpdateTime) / Stopwatch.Frequency) >= 0.3) // ~300ms smooth UI updates
                 {
                     var currentSpeed = speedTracker.CalculateSpeed(currentDownloaded);
                     SafeInvokeAsync(() =>
@@ -1231,10 +1231,6 @@ public class DownloadEngine
         }
     }
 
-    /// <summary>
-    /// Like SafeInvoke, but non-blocking (BeginInvoke with Background priority):
-    /// Ensures UI rendering and user inputs have priority so downloads never cause UI lag.
-    /// </summary>
     private static void SafeInvokeAsync(Action action)
     {
         try

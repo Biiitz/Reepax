@@ -55,7 +55,7 @@ public class BrowserWindowManager : IBrowserWindowHost
 
         windowId = id;
         window.Show();
-        if (window.WindowState != System.Windows.WindowState.Minimized)
+        if (!hidden && window.WindowState != System.Windows.WindowState.Minimized)
         {
             window.Activate();
             window.Focus();

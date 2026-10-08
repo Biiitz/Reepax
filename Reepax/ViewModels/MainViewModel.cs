@@ -572,12 +572,12 @@ public partial class MainViewModel : ObservableObject
             Services.Audio.AudioNotificationService.Instance.PlayErrorSound();
         };
 
-        // Setup timer for periodic stats refresh
+        // Setup timer for periodic stats refresh (300ms cadence)
         if (!DownloadPersistenceService.IsTestEnvironment)
         {
             _statsTimer = new System.Windows.Threading.DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(500)
+                Interval = TimeSpan.FromMilliseconds(300)
             };
             _statsTimer.Tick += (s, e) => RecalculateGlobalStats();
             _statsTimer.Start();
@@ -2168,8 +2168,17 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                OverallProgressPercentage = Math.Min(100.0, (double)downloaded / total * 100.0);
+                OverallProgressPercentage = Math.Clamp((double)downloaded / total * 100.0, 0, 99.99);
             }
+        }
+        else if (activePkgs.Count > 0 && activePkgs.All(p => p.Status == DownloadStatus.Completed))
+        {
+            OverallProgressPercentage = 100.0;
+        }
+        else if (activePkgs.Count > 0)
+        {
+            double sumPkgProgress = activePkgs.Sum(p => p.ProgressPercentage);
+            OverallProgressPercentage = Math.Clamp(sumPkgProgress / activePkgs.Count, 0, 99.99);
         }
         else
         {
@@ -2183,25 +2192,6 @@ public partial class MainViewModel : ObservableObject
 
         UpdateDriveSpace();
         PostDownloadActionService.Instance.Evaluate(Packages);
-
-        // Adaptive timer frequency: 500 ms when active, 2000 ms when idle
-        if (_statsTimer != null)
-        {
-            if (active > 0 || IsQueueRunning)
-            {
-                if (_statsTimer.Interval.TotalMilliseconds != 500)
-                {
-                    _statsTimer.Interval = TimeSpan.FromMilliseconds(500);
-                }
-            }
-            else
-            {
-                if (_statsTimer.Interval.TotalMilliseconds != 2000)
-                {
-                    _statsTimer.Interval = TimeSpan.FromMilliseconds(2000);
-                }
-            }
-        }
 
         // Update Command CanExecute only on genuine state changes
         if (_lastCommandStateActiveCount != active ||

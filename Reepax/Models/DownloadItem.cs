@@ -190,26 +190,48 @@ public partial class DownloadItem : ObservableObject
         }
     }
 
+#pragma warning disable MVVMTK0034 // Direct field access is intentional to batch updates atomically before raising PropertyChanged events
     public void UpdateProgress(long downloaded, long total, double speed)
     {
-        DownloadedBytes = downloaded;
+        var prevDownloaded = _downloadedBytes;
+        var prevTotal = _totalBytes;
+        var prevProgress = _progressPercentage;
+        var prevSpeed = _speedBytesPerSecond;
+        var prevRemaining = _remainingSeconds;
+
+        _downloadedBytes = downloaded;
         if (total > 0)
         {
-            TotalBytes = total;
-            ProgressPercentage = Math.Clamp((double)downloaded / total * 100.0, 0, 100);
+            _totalBytes = total;
+            _progressPercentage = Math.Clamp((double)downloaded / total * 100.0, 0, 100);
         }
 
-        SpeedBytesPerSecond = speed;
+        _speedBytesPerSecond = speed;
 
         if (speed > 0 && total > downloaded)
         {
-            RemainingSeconds = (total - downloaded) / speed;
+            _remainingSeconds = (total - downloaded) / speed;
         }
-        else if (downloaded >= total && total > 0)
+        else
         {
-            RemainingSeconds = 0;
+            _remainingSeconds = 0;
         }
+
+        if (prevDownloaded != _downloadedBytes)
+            OnPropertyChanged(nameof(DownloadedBytes));
+        if (prevTotal != _totalBytes)
+            OnPropertyChanged(nameof(TotalBytes));
+        if (prevProgress != _progressPercentage)
+            OnPropertyChanged(nameof(ProgressPercentage));
+        if (prevSpeed != _speedBytesPerSecond)
+            OnPropertyChanged(nameof(SpeedBytesPerSecond));
+        if (prevRemaining != _remainingSeconds)
+            OnPropertyChanged(nameof(RemainingSeconds));
+
+        OnPropertyChanged(nameof(AverageSpeedBytesPerSecond));
+        OnPropertyChanged(nameof(AverageSpeedFormatted));
     }
+#pragma warning restore MVVMTK0034
 
     public void Rename(string newName, bool isUserAction = true)
     {
