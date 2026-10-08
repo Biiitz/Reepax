@@ -114,33 +114,91 @@
             </Border>
         </Grid>
 
-        <!-- ================= 2: BOTTOM ACTION BUTTONS ================= -->
+        <!-- ================= 2: BOTTOM ACTION AREA & PROGRESS ================= -->
         <Grid Grid.Row="2">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <!-- Later Button -->
-                <Button x:Name="LaterButton"
-                        Content="{loc:Loc UpdateDialog_Button_Later}"
-                        Click="LaterButton_Click"
-                        IsCancel="True"
-                        Style="{DynamicResource ModernButtonStyle}"
-                        Padding="16,6"
-                        Margin="0,0,8,0"
-                        FontSize="11.5" />
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                <!-- Get Update Button (Opens browser for manual setup download) -->
-                <Button x:Name="GetUpdateButton"
-                        Click="GetUpdateButton_Click"
-                        IsDefault="True"
-                        Style="{DynamicResource AccentButtonStyle}"
-                        Padding="18,6"
+            <!-- Progress Area (Shown during download/extract) -->
+            <Grid x:Name="UpdateProgressPanel" Grid.Row="0" Margin="0,0,0,10" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="UpdateStatusTextBlock"
+                           FontSize="11.5"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Margin="0,0,0,5"
+                           TextTrimming="CharacterEllipsis" />
+                <ProgressBar x:Name="UpdateProgressBar"
+                             Grid.Row="1"
+                             Height="6"
+                             Minimum="0"
+                             Maximum="100"
+                             Value="0" />
+            </Grid>
+
+            <!-- Buttons Row -->
+            <Grid Grid.Row="1">
+                <!-- Left: View on GitHub / Open in Browser button -->
+                <Button x:Name="ViewOnGitHubButton"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        Click="ViewOnGitHubButton_Click"
+                        Style="{DynamicResource ModernButtonStyle}"
+                        Padding="10,6"
                         FontSize="11.5"
-                        FontWeight="SemiBold">
+                        Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Path Data="{StaticResource IconGitHub}" Fill="#FFFFFF" Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
-                        <TextBlock Text="{loc:Loc UpdateDialog_Button_GetUpdate}" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                        <Path Data="{StaticResource IconExternalLink}" Fill="{DynamicResource TextSecondaryBrush}" Width="11" Height="11" Stretch="Uniform" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{loc:Loc UpdateDialog_Button_ViewOnGitHub}" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
-            </StackPanel>
+
+                <!-- Right: Action Buttons -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- Later / Cancel Button -->
+                    <Button x:Name="LaterButton"
+                            Content="{loc:Loc UpdateDialog_Button_Later}"
+                            Click="LaterButton_Click"
+                            IsCancel="True"
+                            Style="{DynamicResource ModernButtonStyle}"
+                            Padding="16,6"
+                            Margin="0,0,8,0"
+                            FontSize="11.5" />
+
+                    <!-- Install Update Button (Direct Auto-Update) -->
+                    <Button x:Name="InstallUpdateButton"
+                            Click="InstallUpdateButton_Click"
+                            IsDefault="True"
+                            Style="{DynamicResource AccentButtonStyle}"
+                            Padding="18,6"
+                            FontSize="11.5"
+                            FontWeight="SemiBold"
+                            Visibility="Visible">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconDownload}" Fill="#FFFFFF" Width="12" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock Text="{loc:Loc UpdateDialog_Button_InstallUpdate}" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Fallback: Get Update Button (Opens browser if no direct asset found) -->
+                    <Button x:Name="GetUpdateButton"
+                            Click="GetUpdateButton_Click"
+                            Style="{DynamicResource AccentButtonStyle}"
+                            Padding="18,6"
+                            FontSize="11.5"
+                            FontWeight="SemiBold"
+                            Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path Data="{StaticResource IconGitHub}" Fill="#FFFFFF" Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock Text="{loc:Loc UpdateDialog_Button_GetUpdate}" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

@@ -1,10 +1,12 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -19,6 +21,23 @@ public class UpdateInfo
     public string Changelog { get; set; } = string.Empty;
     public string ReleaseUrl { get; set; } = "https://github.com/Biiitz/Reepax/releases";
     public string FormattedDate { get; set; } = string.Empty;
+
+    public string? SetupAssetUrl { get; set; }
+    public long SetupAssetSize { get; set; }
+    public string? PortableZipAssetUrl { get; set; }
+    public long PortableZipAssetSize { get; set; }
+
+    public bool HasDirectAsset => !string.IsNullOrEmpty(TargetDownloadUrl);
+
+    public string? TargetDownloadUrl => SettingsService.IsPortableMode
+        ? (PortableZipAssetUrl ?? SetupAssetUrl)
+        : (SetupAssetUrl ?? PortableZipAssetUrl);
+
+    public long TargetDownloadSize => SettingsService.IsPortableMode
+        ? (PortableZipAssetSize > 0 ? PortableZipAssetSize : SetupAssetSize)
+        : (SetupAssetSize > 0 ? SetupAssetSize : PortableZipAssetSize);
+
+    public string TargetFileName => SettingsService.IsPortableMode ? "portable.zip" : "setup.exe";
 }
 
 public class AppUpdateService
@@ -30,10 +49,14 @@ public class AppUpdateService
     public static AppUpdateService Instance => _instance.Value;
 
     private readonly HttpClient _httpClient;
+    private readonly HttpClient _downloadHttpClient;
 
-    public AppUpdateService(HttpClient? httpClient = null)
+    public static Action<string, bool>? ApplyUpdateActionOverride { get; set; }
+
+    public AppUpdateService(HttpClient? httpClient = null, HttpClient? downloadHttpClient = null)
     {
         _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.Html);
+        _downloadHttpClient = downloadHttpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromMinutes(20), HttpContentType.BinaryOrAny);
     }
 
     /// Parses an application release version string into components: Year, Month, Patch.
@@ -284,6 +307,41 @@ public class AppUpdateService
                 formattedDate = dateFromTag.ToString("dd.MM.yyyy");
             }
 
+            string? setupUrl = null;
+            long setupSize = 0;
+            string? portableUrl = null;
+            long portableSize = 0;
+
+            if (root.TryGetProperty("assets", out var assetsProp) && assetsProp.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var asset in assetsProp.EnumerateArray())
+                {
+                    var assetName = asset.TryGetProperty("name", out var np) ? np.GetString() : null;
+                    var downloadUrl = asset.TryGetProperty("browser_download_url", out var dp) ? dp.GetString() : null;
+                    var size = asset.TryGetProperty("size", out var sp) && sp.TryGetInt64(out var s) ? s : 0L;
+
+                    if (string.IsNullOrWhiteSpace(assetName) || string.IsNullOrWhiteSpace(downloadUrl))
+                        continue;
+
+                    if (assetName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (assetName.IndexOf("setup", StringComparison.OrdinalIgnoreCase) >= 0 || setupUrl == null)
+                        {
+                            setupUrl = downloadUrl;
+                            setupSize = size;
+                        }
+                    }
+                    else if (assetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (assetName.IndexOf("portable", StringComparison.OrdinalIgnoreCase) >= 0 || portableUrl == null)
+                        {
+                            portableUrl = downloadUrl;
+                            portableSize = size;
+                        }
+                    }
+                }
+            }
+
             return new UpdateInfo
             {
                 CurrentVersion = currentVersion,
@@ -291,7 +349,11 @@ public class AppUpdateService
                 Title = title,
                 Changelog = body,
                 ReleaseUrl = releaseUrl,
-                FormattedDate = formattedDate
+                FormattedDate = formattedDate,
+                SetupAssetUrl = setupUrl,
+                SetupAssetSize = setupSize,
+                PortableZipAssetUrl = portableUrl,
+                PortableZipAssetSize = portableSize
             };
         }
         catch (Exception ex)
@@ -299,5 +361,275 @@ public class AppUpdateService
             AppLogger.Debug($"[AppUpdateService] Error checking for updates: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Downloads the update payload file to a temporary location.
+    /// </summary>
+    public async Task<string> DownloadUpdateAsync(
+        UpdateInfo updateInfo,
+        IProgress<(long bytesDownloaded, long totalBytes)>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var downloadUrl = updateInfo.TargetDownloadUrl;
+        if (string.IsNullOrWhiteSpace(downloadUrl))
+            throw new InvalidOperationException("No download URL available for update.");
+
+        var updateDir = Path.Combine(Path.GetTempPath(), "Reepax", "Update");
+        if (Directory.Exists(updateDir))
+        {
+            try { Directory.Delete(updateDir, recursive: true); } catch { }
+        }
+        Directory.CreateDirectory(updateDir);
+
+        var targetPath = Path.Combine(updateDir, updateInfo.TargetFileName);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+        request.Headers.UserAgent.ParseAdd("Reepax-AppUpdater");
+
+        using var response = await _downloadHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var totalBytes = response.Content.Headers.ContentLength ?? updateInfo.TargetDownloadSize;
+
+        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fileStream = new FileStream(targetPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+
+        var buffer = new byte[81920];
+        long totalRead = 0;
+        int bytesRead;
+
+        while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+        {
+            await fileStream.WriteAsync(buffer, 0, bytesRead, cancellationToken);
+            totalRead += bytesRead;
+            progress?.Report((totalRead, totalBytes));
+        }
+
+        return targetPath;
+    }
+
+    /// <summary>
+    /// Extracts the downloaded portable zip archive, preserving user data.
+    /// </summary>
+    public async Task<string> PreparePortableUpdateAsync(string zipFilePath, CancellationToken cancellationToken = default)
+    {
+        var baseDir = Path.GetDirectoryName(zipFilePath)!;
+        var extractDir = Path.Combine(baseDir, "extracted");
+        if (Directory.Exists(extractDir))
+        {
+            try { Directory.Delete(extractDir, recursive: true); } catch { }
+        }
+        Directory.CreateDirectory(extractDir);
+
+        await Task.Run(() =>
+        {
+            System.IO.Compression.ZipFile.ExtractToDirectory(zipFilePath, extractDir, overwriteFiles: true);
+
+            var extractedDataDir = Path.Combine(extractDir, "Data");
+            if (Directory.Exists(extractedDataDir))
+            {
+                try { Directory.Delete(extractedDataDir, recursive: true); } catch { }
+            }
+        }, cancellationToken);
+
+        return extractDir;
+    }
+
+    /// <summary>
+    /// Launches a completely hidden update script to replace files or run the installer silently,
+    /// then terminates the current process safely.
+    /// </summary>
+    public static bool ApplyUpdate(string updatePath, bool isPortable)
+    {
+        if (DownloadPersistenceService.IsTestEnvironment && ApplyUpdateActionOverride != null)
+        {
+            ApplyUpdateActionOverride.Invoke(updatePath, isPortable);
+            return true;
+        }
+
+        try
+        {
+            var targetExe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(targetExe) || !File.Exists(targetExe))
+            {
+                try { targetExe = Process.GetCurrentProcess().MainModule?.FileName; } catch { }
+            }
+
+            if (string.IsNullOrEmpty(targetExe) || !File.Exists(targetExe))
+            {
+                AppLogger.Error("[AppUpdateService] Target application executable could not be resolved.");
+                return false;
+            }
+
+            int procId = Environment.ProcessId;
+            var appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+            var tempDir = Path.Combine(Path.GetTempPath(), "Reepax", "Update");
+            Directory.CreateDirectory(tempDir);
+            var scriptPath = Path.Combine(tempDir, "apply_update.ps1");
+
+            string scriptContent = isPortable
+                ? GeneratePortableUpdateScript(procId, updatePath, appDir, targetExe)
+                : GenerateInstallerUpdateScript(procId, updatePath, targetExe);
+
+            File.WriteAllText(scriptPath, scriptContent, System.Text.Encoding.UTF8);
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\"",
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                UseShellExecute = false
+            };
+
+            Process.Start(psi);
+
+            PerformSafeShutdownAndExit();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("[AppUpdateService] Failed to apply update", ex);
+            return false;
+        }
+    }
+
+    public static string GeneratePortableUpdateScript(int procId, string sourceDir, string targetDir, string targetExe)
+    {
+        static string Esc(string s) => s.Replace("'", "''");
+
+        return $@"
+$procId = {procId}
+if ($procId -gt 0) {{
+    try {{ Wait-Process -Id $procId -Timeout 30 -ErrorAction SilentlyContinue }} catch {{}}
+}}
+Start-Sleep -Milliseconds 600
+
+$source = '{Esc(sourceDir)}'
+$dest = '{Esc(targetDir)}'
+$exe = '{Esc(targetExe)}'
+
+$copied = $false
+for ($i = 0; $i -lt 10; $i++) {{
+    try {{
+        Copy-Item -Path ""$source\*"" -Destination ""$dest"" -Recurse -Force -ErrorAction Stop
+        $copied = $true
+        break
+    }} catch {{
+        Start-Sleep -Milliseconds 800
+    }}
+}}
+
+if (Test-Path ""$exe"") {{
+    Start-Process -FilePath ""$exe"" -ArgumentList ""--restart""
+}}
+
+try {{
+    Start-Sleep -Seconds 2
+    Remove-Item -Path ""$source"" -Recurse -Force -ErrorAction SilentlyContinue
+}} catch {{}}
+";
+    }
+
+    public static string GenerateInstallerUpdateScript(int procId, string setupPath, string targetExe)
+    {
+        static string Esc(string s) => s.Replace("'", "''");
+
+        return $@"
+$procId = {procId}
+if ($procId -gt 0) {{
+    try {{ Wait-Process -Id $procId -Timeout 30 -ErrorAction SilentlyContinue }} catch {{}}
+}}
+Start-Sleep -Milliseconds 600
+
+$setup = '{Esc(setupPath)}'
+$exe = '{Esc(targetExe)}'
+
+Start-Process -FilePath ""$setup"" -ArgumentList ""/VERYSILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS"" -Wait
+
+Start-Sleep -Milliseconds 1200
+$running = Get-Process -Name ""Reepax"" -ErrorAction SilentlyContinue
+if (-not $running -and (Test-Path ""$exe"")) {{
+    Start-Process -FilePath ""$exe"" -ArgumentList ""--restart""
+}}
+
+try {{
+    Start-Sleep -Seconds 3
+    Remove-Item -Path ""$setup"" -Force -ErrorAction SilentlyContinue
+}} catch {{}}
+";
+    }
+
+    public static void PerformSafeShutdownAndExit()
+    {
+        try
+        {
+            var app = Application.Current;
+            if (!DownloadPersistenceService.IsTestEnvironment &&
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished)
+            {
+                if (app.Dispatcher.CheckAccess())
+                {
+                    if (app.MainWindow is MainWindow mw)
+                    {
+                        mw.PrepareForRestart();
+                    }
+                }
+                else
+                {
+                    app.Dispatcher.Invoke(() =>
+                    {
+                        if (app.MainWindow is MainWindow mw)
+                        {
+                            mw.PrepareForRestart();
+                        }
+                    });
+                }
+            }
+        }
+        catch { }
+
+        try
+        {
+            QueueManager.Instance.StopQueue(isExiting: true);
+            SettingsService.Instance.SaveSettings();
+        }
+        catch { }
+
+        try
+        {
+            TrayIconService.Instance.HideTrayIcon();
+            TrayIconService.Instance.Dispose();
+        }
+        catch { }
+
+        try
+        {
+            SingleInstanceService.Instance.Dispose();
+        }
+        catch { }
+
+        if (DownloadPersistenceService.IsTestEnvironment)
+            return;
+
+        try
+        {
+            var app = Application.Current;
+            app?.Dispatcher?.Invoke(() =>
+            {
+                if (app.MainWindow is MainWindow mw)
+                {
+                    mw.ForceExit();
+                }
+                app.Shutdown();
+            });
+        }
+        catch { }
+
+        Environment.Exit(0);
     }
 }

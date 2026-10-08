@@ -62,7 +62,8 @@ Root: HKA; Subkey: "Software\Classes\Reepax.Package\shell\open\command"; ValueTy
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--restart"; Flags: nowait; Check: WizardSilent
 
 [CustomMessages]
 german.DeleteAppDataPrompt=Möchten Sie auch alle Einstellungen, Logs und Benutzerdaten in AppData löschen?

@@ -1,9 +1,12 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using Reepax.Converters;
 using Reepax.Services;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
@@ -14,6 +17,8 @@ namespace Reepax.Views;
 public partial class UpdateDialog : Window
 {
     private readonly UpdateInfo _updateInfo;
+    private CancellationTokenSource? _downloadCts;
+    private bool _isDownloading;
 
     public UpdateDialog(UpdateInfo updateInfo)
     {
@@ -33,6 +38,19 @@ public partial class UpdateDialog : Window
             : DateTime.Now.ToString("dd.MM.yyyy");
 
         ChangelogViewer.Document = MarkdownDocumentRenderer.CreateFlowDocument(updateInfo.Changelog);
+
+        if (_updateInfo.HasDirectAsset)
+        {
+            InstallUpdateButton.Visibility = Visibility.Visible;
+            ViewOnGitHubButton.Visibility = Visibility.Visible;
+            GetUpdateButton.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            InstallUpdateButton.Visibility = Visibility.Collapsed;
+            ViewOnGitHubButton.Visibility = Visibility.Collapsed;
+            GetUpdateButton.Visibility = Visibility.Visible;
+        }
 
         RestoreWindowBounds();
 
@@ -159,11 +177,107 @@ public partial class UpdateDialog : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        if (_isDownloading && _downloadCts != null)
+        {
+            try { _downloadCts.Cancel(); } catch { }
+        }
         base.OnClosing(e);
         SaveWindowBounds();
     }
 
+    private async void InstallUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isDownloading) return;
+        _isDownloading = true;
+
+        _downloadCts = new CancellationTokenSource();
+        InstallUpdateButton.IsEnabled = false;
+        ViewOnGitHubButton.IsEnabled = false;
+        LaterButton.Content = Loc.Get("UpdateDialog_Button_Cancel");
+
+        UpdateProgressPanel.Visibility = Visibility.Visible;
+        UpdateProgressBar.Value = 0;
+        UpdateProgressBar.IsIndeterminate = false;
+        UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_Starting");
+
+        try
+        {
+            var progress = new Progress<(long bytesDownloaded, long totalBytes)>(p =>
+            {
+                if (p.totalBytes > 0)
+                {
+                    UpdateProgressBar.IsIndeterminate = false;
+                    double pct = Math.Clamp((double)p.bytesDownloaded / p.totalBytes * 100.0, 0, 100);
+                    UpdateProgressBar.Value = pct;
+                    UpdateStatusTextBlock.Text = Loc.Format(
+                        "UpdateDialog_Status_Progress",
+                        BytesToHumanReadableConverter.FormatBytes(p.bytesDownloaded),
+                        BytesToHumanReadableConverter.FormatBytes(p.totalBytes),
+                        (int)pct);
+                }
+                else
+                {
+                    UpdateProgressBar.IsIndeterminate = true;
+                    UpdateStatusTextBlock.Text = BytesToHumanReadableConverter.FormatBytes(p.bytesDownloaded);
+                }
+            });
+
+            var downloadedFile = await AppUpdateService.Instance.DownloadUpdateAsync(_updateInfo, progress, _downloadCts.Token);
+
+            string targetUpdatePath = downloadedFile;
+            if (SettingsService.IsPortableMode)
+            {
+                UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_Preparing");
+                UpdateProgressBar.IsIndeterminate = true;
+                targetUpdatePath = await AppUpdateService.Instance.PreparePortableUpdateAsync(downloadedFile, _downloadCts.Token);
+            }
+
+            UpdateProgressBar.IsIndeterminate = false;
+            UpdateProgressBar.Value = 100;
+            UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_ReadyRestarting");
+
+            await Task.Delay(600, _downloadCts.Token);
+
+            AppUpdateService.ApplyUpdate(targetUpdatePath, SettingsService.IsPortableMode);
+        }
+        catch (OperationCanceledException)
+        {
+            UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_Cancelled");
+            ResetUiAfterDownload();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Error("[UpdateDialog] Update download failed", ex);
+            UpdateStatusTextBlock.Text = Loc.Format("UpdateDialog_Status_Failed", ex.Message);
+            ResetUiAfterDownload();
+            ViewOnGitHubButton.Visibility = Visibility.Visible;
+            ViewOnGitHubButton.IsEnabled = true;
+        }
+    }
+
+    private void ResetUiAfterDownload()
+    {
+        _isDownloading = false;
+        InstallUpdateButton.IsEnabled = true;
+        ViewOnGitHubButton.IsEnabled = true;
+        LaterButton.Content = Loc.Get("UpdateDialog_Button_Later");
+        _downloadCts?.Dispose();
+        _downloadCts = null;
+    }
+
+    private void ViewOnGitHubButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenReleaseUrlInBrowser();
+    }
+
     private void GetUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenReleaseUrlInBrowser();
+        DialogResult = true;
+        Close();
+    }
+
+    private void OpenReleaseUrlInBrowser()
     {
         try
         {
@@ -177,13 +291,16 @@ public partial class UpdateDialog : Window
         {
             AppLogger.Warn($"[UpdateDialog] Could not open release url: {ex.Message}");
         }
-
-        DialogResult = true;
-        Close();
     }
 
     private void LaterButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isDownloading && _downloadCts != null)
+        {
+            _downloadCts.Cancel();
+            return;
+        }
+
         DialogResult = false;
         Close();
     }
