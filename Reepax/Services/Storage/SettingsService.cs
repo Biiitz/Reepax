@@ -420,26 +420,34 @@ public class SettingsService
         if (IsPortableMode)
             return;
 
+        var roamingDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Reepax"
+        );
+        MigrateFromRoamingInternal(roamingDir, AppDataDirectory);
+    }
+
+    internal static bool MigrateFromRoamingInternal(string roamingDir, string targetDir)
+    {
+        if (string.IsNullOrWhiteSpace(roamingDir) || string.IsNullOrWhiteSpace(targetDir))
+            return false;
+
         try
         {
-            var roamingDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "Reepax"
-            );
-
             if (!Directory.Exists(roamingDir))
-                return;
+                return true;
 
-            if (!Directory.Exists(AppDataDirectory))
+            if (!Directory.Exists(targetDir))
             {
-                Directory.CreateDirectory(AppDataDirectory);
+                Directory.CreateDirectory(targetDir);
             }
-            
+
+            bool allSucceeded = true;
             string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json" };
             foreach (var file in filesToMigrate)
             {
                 var src = Path.Combine(roamingDir, file);
-                var dest = Path.Combine(AppDataDirectory, file);
+                var dest = Path.Combine(targetDir, file);
                 if (File.Exists(src))
                 {
                     bool shouldCopy = !File.Exists(dest);
@@ -456,7 +464,21 @@ public class SettingsService
 
                     if (shouldCopy)
                     {
-                        try { File.Copy(src, dest, overwrite: true); } catch { }
+                        try
+                        {
+                            File.Copy(src, dest, overwrite: true);
+                            var srcInfo = new FileInfo(src);
+                            var destInfo = new FileInfo(dest);
+                            if (!destInfo.Exists || destInfo.Length != srcInfo.Length)
+                            {
+                                allSucceeded = false;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            allSucceeded = false;
+                            AppLogger.Warn($"[SettingsService] Error migrating '{file}': {ex.Message}");
+                        }
                     }
                 }
             }
@@ -466,27 +488,39 @@ public class SettingsService
             foreach (var subDir in dirsToMigrate)
             {
                 var srcSub = Path.Combine(roamingDir, subDir);
-                var destSub = Path.Combine(AppDataDirectory, subDir);
+                var destSub = Path.Combine(targetDir, subDir);
                 if (Directory.Exists(srcSub))
                 {
-                    try
+                    if (!CopyDirectory(srcSub, destSub))
                     {
-                        CopyDirectory(srcSub, destSub);
+                        allSucceeded = false;
                     }
-                    catch { }
                 }
             }
 
-            // Clean up old Roaming directory completely so nothing is left in Roaming
-            try
+            // Clean up old Roaming directory ONLY if all items were migrated successfully
+            if (allSucceeded)
             {
-                Directory.Delete(roamingDir, recursive: true);
+                try
+                {
+                    Directory.Delete(roamingDir, recursive: true);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Debug($"[SettingsService] Could not remove roaming directory after migration: {ex.Message}");
+                }
             }
-            catch { }
+            else
+            {
+                AppLogger.Warn("[SettingsService] Roaming directory was preserved because some items failed to copy.");
+            }
+
+            return allSucceeded;
         }
         catch (Exception ex)
         {
             AppLogger.Debug($"[SettingsService] Roaming migration note: {ex.Message}");
+            return false;
         }
     }
 
@@ -529,21 +563,51 @@ public class SettingsService
         }
     }
 
-    private static void CopyDirectory(string sourceDir, string targetDir)
+    private static bool CopyDirectory(string sourceDir, string targetDir)
     {
-        Directory.CreateDirectory(targetDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
+        try
         {
-            var dest = Path.Combine(targetDir, Path.GetFileName(file));
-            if (!File.Exists(dest))
+            Directory.CreateDirectory(targetDir);
+            bool allFilesSucceeded = true;
+
+            foreach (var file in Directory.GetFiles(sourceDir))
             {
-                try { File.Copy(file, dest, overwrite: false); } catch { }
+                var dest = Path.Combine(targetDir, Path.GetFileName(file));
+                try
+                {
+                    if (!File.Exists(dest) || new FileInfo(dest).Length == 0)
+                    {
+                        File.Copy(file, dest, overwrite: true);
+                        var srcInfo = new FileInfo(file);
+                        var destInfo = new FileInfo(dest);
+                        if (!destInfo.Exists || destInfo.Length != srcInfo.Length)
+                        {
+                            allFilesSucceeded = false;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    allFilesSucceeded = false;
+                    AppLogger.Warn($"[SettingsService] Failed to copy '{file}' to '{dest}': {ex.Message}");
+                }
             }
+
+            foreach (var subDir in Directory.GetDirectories(sourceDir))
+            {
+                var destSub = Path.Combine(targetDir, Path.GetFileName(subDir));
+                if (!CopyDirectory(subDir, destSub))
+                {
+                    allFilesSucceeded = false;
+                }
+            }
+
+            return allFilesSucceeded;
         }
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        catch (Exception ex)
         {
-            var destSub = Path.Combine(targetDir, Path.GetFileName(subDir));
-            CopyDirectory(subDir, destSub);
+            AppLogger.Warn($"[SettingsService] Failed to copy directory '{sourceDir}': {ex.Message}");
+            return false;
         }
     }
 }

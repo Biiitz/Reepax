@@ -143,4 +143,49 @@ public class SettingsServiceTests : IDisposable
         Assert.True(Strings_en.Map.ContainsKey(key), $"Key '{key}' is missing in Strings_en");
         Assert.False(string.IsNullOrWhiteSpace(Strings_en.Map[key]), $"Value for '{key}' is empty in Strings_en");
     }
+
+    [Fact]
+    public void MigrateFromRoamingInternal_SuccessfulCopy_MigratesFilesAndRemovesSource()
+    {
+        var fakeRoaming = Path.Combine(_tempDirectory, "FakeRoaming");
+        var fakeLocal = Path.Combine(_tempDirectory, "FakeLocal");
+        Directory.CreateDirectory(fakeRoaming);
+        Directory.CreateDirectory(fakeLocal);
+
+        File.WriteAllText(Path.Combine(fakeRoaming, "settings.json"), "{\"Theme\":\"Dark\"}");
+        File.WriteAllText(Path.Combine(fakeRoaming, "downloads.json"), "[]");
+
+        var subDir = Path.Combine(fakeRoaming, "Extensions");
+        Directory.CreateDirectory(subDir);
+        File.WriteAllText(Path.Combine(subDir, "ext1.crx"), "dummy");
+
+        bool result = SettingsService.MigrateFromRoamingInternal(fakeRoaming, fakeLocal);
+
+        Assert.True(result);
+        Assert.True(File.Exists(Path.Combine(fakeLocal, "settings.json")));
+        Assert.True(File.Exists(Path.Combine(fakeLocal, "downloads.json")));
+        Assert.True(File.Exists(Path.Combine(fakeLocal, "Extensions", "ext1.crx")));
+        Assert.False(Directory.Exists(fakeRoaming), "Roaming directory should be removed after 100% successful migration.");
+    }
+
+    [Fact]
+    public void MigrateFromRoamingInternal_WhenFileLockedOrCopyFails_PreservesSourceDirectory()
+    {
+        var fakeRoaming = Path.Combine(_tempDirectory, "FakeRoamingLocked");
+        var fakeLocal = Path.Combine(_tempDirectory, "FakeLocalLocked");
+        Directory.CreateDirectory(fakeRoaming);
+        Directory.CreateDirectory(fakeLocal);
+
+        var lockedFile = Path.Combine(fakeRoaming, "settings.json");
+        File.WriteAllText(lockedFile, "{\"Important\":\"UserValue\"}");
+
+        // Lock file with FileShare.None to force copy failure
+        using var lockStream = new FileStream(lockedFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        bool result = SettingsService.MigrateFromRoamingInternal(fakeRoaming, fakeLocal);
+
+        Assert.False(result);
+        Assert.True(Directory.Exists(fakeRoaming), "Roaming directory must NEVER be deleted if any file failed to copy!");
+        Assert.True(File.Exists(lockedFile), "Source file must be preserved intact!");
+    }
 }
