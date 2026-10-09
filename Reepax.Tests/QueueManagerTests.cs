@@ -462,6 +462,7 @@ public class QueueManagerTests
         var queueManager = new QueueManager { MaxConcurrentDownloads = 1 };
         var host = new FakeBrowserWindowHost();
         queueManager.BrowserHost = host;
+        queueManager.ActiveDownloadsCountOverride = () => 0;
         queueManager.Packages.Clear();
 
         var pkg = new DownloadPackage { Name = "TestPackage" };

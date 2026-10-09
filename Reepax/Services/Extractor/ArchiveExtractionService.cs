@@ -1514,13 +1514,7 @@ public class ArchiveExtractionService
         try
         {
             var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var shf = new SHFILEOPSTRUCT
-            {
-                wFunc = FO_DELETE,
-                pFrom = fullPath + '\0' + '\0',
-                fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT
-            };
-            int result = SHFileOperation(ref shf);
+            int result = SendToRecycleBin(fullPath);
             if (result != 0)
             {
                 if (isDir)
@@ -1553,28 +1547,93 @@ public class ArchiveExtractionService
 
     #region Win32 Shell Recycle Bin
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    private struct SHFILEOPSTRUCT
+    internal static int SendToRecycleBin(string fullPath)
+    {
+        // Win32 SHFileOperationW requires a double-null-terminated string buffer (PCZZWSTR), e.g. "C:\path\0\0".
+        // Passing a managed string field to P/Invoke truncates at the first null; manual unmanaged allocation
+        // guarantees that the double-null terminator is preserved in memory.
+        var doubleNullPath = fullPath + "\0\0";
+        IntPtr pFromPtr = Marshal.StringToHGlobalUni(doubleNullPath);
+        try
+        {
+            if (Environment.Is64BitProcess)
+            {
+                var shf = new SHFILEOPSTRUCT64
+                {
+                    wFunc = FO_DELETE,
+                    pFrom = pFromPtr,
+                    pTo = IntPtr.Zero,
+                    fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
+                    hwnd = IntPtr.Zero,
+                    hNameMappings = IntPtr.Zero,
+                    lpszProgressTitle = IntPtr.Zero
+                };
+                return SHFileOperation64(ref shf);
+            }
+            else
+            {
+                var shf = new SHFILEOPSTRUCT32
+                {
+                    wFunc = FO_DELETE,
+                    pFrom = pFromPtr,
+                    pTo = IntPtr.Zero,
+                    fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
+                    hwnd = IntPtr.Zero,
+                    hNameMappings = IntPtr.Zero,
+                    lpszProgressTitle = IntPtr.Zero
+                };
+                return SHFileOperation32(ref shf);
+            }
+        }
+        finally
+        {
+            if (pFromPtr != IntPtr.Zero)
+            {
+                Marshal.FreeHGlobal(pFromPtr);
+            }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct SHFILEOPSTRUCT64
     {
         public IntPtr hwnd;
         [MarshalAs(UnmanagedType.U4)]
         public int wFunc;
-        public string pFrom;
-        public string pTo;
-        public short fFlags;
+        public IntPtr pFrom;
+        public IntPtr pTo;
+        public ushort fFlags;
         [MarshalAs(UnmanagedType.Bool)]
         public bool fAnyOperationsAborted;
         public IntPtr hNameMappings;
-        public string lpszProgressTitle;
+        public IntPtr lpszProgressTitle;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode, Pack = 1)]
+    internal struct SHFILEOPSTRUCT32
+    {
+        public IntPtr hwnd;
+        [MarshalAs(UnmanagedType.U4)]
+        public int wFunc;
+        public IntPtr pFrom;
+        public IntPtr pTo;
+        public ushort fFlags;
+        [MarshalAs(UnmanagedType.Bool)]
+        public bool fAnyOperationsAborted;
+        public IntPtr hNameMappings;
+        public IntPtr lpszProgressTitle;
     }
 
     private const int FO_DELETE = 0x0003;
-    private const short FOF_ALLOWUNDO = 0x0040;
-    private const short FOF_NOCONFIRMATION = 0x0010;
-    private const short FOF_SILENT = 0x0004;
+    private const ushort FOF_ALLOWUNDO = 0x0040;
+    private const ushort FOF_NOCONFIRMATION = 0x0010;
+    private const ushort FOF_SILENT = 0x0004;
 
-    [DllImport("shell32.dll", CharSet = CharSet.Auto)]
-    private static extern int SHFileOperation(ref SHFILEOPSTRUCT FileOp);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "SHFileOperationW")]
+    private static extern int SHFileOperation64(ref SHFILEOPSTRUCT64 FileOp);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "SHFileOperationW")]
+    private static extern int SHFileOperation32(ref SHFILEOPSTRUCT32 FileOp);
 
     #endregion
 }
