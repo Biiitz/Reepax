@@ -282,11 +282,11 @@ You need 4 more recovery blocks to be able to repair.
     }
 
     [Fact]
-    public void AppSettings_Par2Settings_DefaultsAreDisabled()
+    public void AppSettings_Par2Settings_DefaultsAreEnabled()
     {
         var settings = new AppSettings();
-        Assert.False(settings.AutoPar2Repair);
-        Assert.False(settings.DeletePar2AfterExtraction);
+        Assert.True(settings.AutoPar2Repair);
+        Assert.True(settings.DeletePar2AfterExtraction);
     }
 
     [Fact]

@@ -108,8 +108,8 @@ public class AppSettings
     public bool? LowResourceExtraction { get; set; } = false; // Always false by default; enabled only when manually toggled
     public bool EnableChecksumVerification { get; set; } = true;
     public int MaxAutoRetryOnCorruption { get; set; } = 3;
-    public bool AutoPar2Repair { get; set; } = false;
-    public bool DeletePar2AfterExtraction { get; set; } = false;
+    public bool AutoPar2Repair { get; set; } = true;
+    public bool DeletePar2AfterExtraction { get; set; } = true;
     public List<string> ExtractionPasswords { get; set; } = new();
     public bool IsArchivePasswordsExpanded { get; set; } = false;
 

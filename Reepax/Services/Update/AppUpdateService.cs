@@ -42,7 +42,7 @@ public class UpdateInfo
 
 public class AppUpdateService
 {
-    public const string AppCurrentVersion = "26.10.2";
+    public const string AppCurrentVersion = "26.10.3";
     public const string GitHubApiLatestReleaseUrl = "https://api.github.com/repos/Biiitz/Reepax/releases/latest";
 
     private static readonly Lazy<AppUpdateService> _instance = new(() => new AppUpdateService());

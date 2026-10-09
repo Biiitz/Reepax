@@ -43,7 +43,7 @@
                     <Border Background="{DynamicResource BgDarkBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Loc UpdateDialog_CurrentVersion}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,5,0" VerticalAlignment="Center" />
-                            <TextBlock x:Name="CurrentVersionTextBlock" d:Text="26.10.2" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="CurrentVersionTextBlock" d:Text="26.10.3" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
 
@@ -54,7 +54,7 @@
                     <Border Background="#1E3B82F6" BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1" CornerRadius="4" Padding="8,4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{loc:Loc UpdateDialog_NewVersion}" FontSize="11" Foreground="{DynamicResource AccentBlueBrush}" Margin="0,0,5,0" VerticalAlignment="Center" />
-                            <TextBlock x:Name="NewVersionTextBlock" d:Text="26.10.2" FontWeight="Bold" FontSize="11.5" Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center" />
+                            <TextBlock x:Name="NewVersionTextBlock" d:Text="26.10.3" FontWeight="Bold" FontSize="11.5" Foreground="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

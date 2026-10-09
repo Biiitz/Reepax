@@ -37,7 +37,7 @@ jobs:
           if (-not $version -or $version -match '^main$|^master$') {
               [xml]$xml = Get-Content Reepax\Reepax.csproj
               $version = ($xml.Project.PropertyGroup.Version | Where-Object { $_ -match '\S' } | Select-Object -First 1)
-              if (-not $version) { $version = "26.10.2" }
+              if (-not $version) { $version = "26.10.3" }
               $version = $version.Trim()
           }
           $releaseTag = if ($tag -and $tag -notmatch '^main$|^master$') { $tag } else { "v$version" }

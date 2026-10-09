@@ -66,7 +66,7 @@ public class DownloadPackageDto
     public bool MoveArchiveToRecycleBin { get; set; } = false;
     public string? ExtractionDirectory { get; set; }
     public bool AutoResolveHostLinks { get; set; } = true;
-    public bool AutoPar2Repair { get; set; } = false;
+    public bool AutoPar2Repair { get; set; } = true;
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
     public bool IsExpanded { get; set; } = true;

@@ -56,7 +56,7 @@ public partial class DownloadPackage : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NextTaskSummary))]
     [NotifyPropertyChangedFor(nameof(NextTaskTooltip))]
-    private bool _autoPar2Repair = false;
+    private bool _autoPar2Repair = true;
 
     [ObservableProperty]
     private bool _autoResolveHostLinks = false;

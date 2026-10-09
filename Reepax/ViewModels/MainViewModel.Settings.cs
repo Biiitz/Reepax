@@ -354,7 +354,7 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
-    private bool _autoPar2Repair = false;
+    private bool _autoPar2Repair = true;
 
     partial void OnAutoPar2RepairChanged(bool value)
     {
@@ -363,7 +363,7 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
-    private bool _deletePar2AfterExtraction = false;
+    private bool _deletePar2AfterExtraction = true;
 
     partial void OnDeletePar2AfterExtractionChanged(bool value)
     {
