@@ -124,6 +124,11 @@ public partial class DownloadPackage : ObservableObject
     [ObservableProperty]
     private bool _isNewlyCompleted;
 
+    partial void OnIsNewlyCompletedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsFullyCompleted));
+    }
+
     /// <summary>Set briefly to true when the package is snapped to another folder (triggers snap & flash animation).</summary>
     [ObservableProperty]
     private bool _isJustSnapped;
@@ -331,6 +336,7 @@ public partial class DownloadPackage : ObservableObject
         {
             step.State = NextTaskStepState.Pending;
         }
+        OnPropertyChanged(nameof(IsFullyCompleted));
     }
 
     /// <summary>Marks a step as running (dot animation + color transition).</summary>
@@ -343,6 +349,7 @@ public partial class DownloadPackage : ObservableObject
                 step.State = NextTaskStepState.Running;
             }
         }
+        OnPropertyChanged(nameof(IsFullyCompleted));
     }
 
     /// <summary>Marks a step as done (permanent green).</summary>
@@ -361,6 +368,7 @@ public partial class DownloadPackage : ObservableObject
             IsExtracted = true;
             CheckAndRefreshVerifyBatFile();
         }
+        OnPropertyChanged(nameof(IsFullyCompleted));
     }
 
     [ObservableProperty]

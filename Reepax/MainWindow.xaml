@@ -569,6 +569,14 @@
                     <DoubleAnimation Storyboard.TargetName="PackageShineOverlay"
                                      Storyboard.TargetProperty="Opacity"
                                      From="1.0" To="0.0" BeginTime="0:0:1.8" Duration="0:0:0.6" />
+                    <DoubleAnimation Storyboard.TargetName="PackageContentContainer"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="1.0" To="0.65"
+                                     BeginTime="0:0:0.4" Duration="0:0:1.6">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseInOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
                 </Storyboard>
 
                 <!-- Docking Slide & Glow Storyboard for Clipped Package: Smooth slide-in to native dock position -->
@@ -598,8 +606,25 @@
             </DataTemplate.Resources>
 
             <StackPanel Margin="0">
-                <!-- ================= PACKAGE ROW ================= -->
-                <Border x:Name="PackageBorder"
+                <!-- ================= PACKAGE CONTAINER (ROW & CHILD ITEMS) ================= -->
+                <StackPanel x:Name="PackageContentContainer">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Opacity" Value="1.0" />
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsFullyCompleted}" Value="True" />
+                                        <Condition Binding="{Binding IsNewlyCompleted}" Value="False" />
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Opacity" Value="0.65" />
+                                </MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+
+                    <!-- ================= PACKAGE ROW ================= -->
+                    <Border x:Name="PackageBorder"
                         Margin="0,0.5"
                         Padding="0,1.5"
                         CornerRadius="4"
@@ -1090,6 +1115,7 @@
                                   ItemTemplate="{StaticResource DownloadItemTemplate}"
                                   Tag="{Binding IsClipped}" />
                 </helpers:AnimatedExpansionDecorator>
+                </StackPanel>
 
                 <!-- ================= CLIPPED SUB-PACKAGES (DOCKED DIRECTLY UNDERNEATH) ================= -->
                 <ItemsControl ItemsSource="{Binding ClippedPackages}"
@@ -1109,8 +1135,11 @@
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsNewlyCompleted}" Value="True">
                     <DataTrigger.EnterActions>
-                        <BeginStoryboard Storyboard="{StaticResource PackageShineStoryboard}" />
+                        <BeginStoryboard Name="PackageShineBegin" Storyboard="{StaticResource PackageShineStoryboard}" />
                     </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="PackageShineBegin" />
+                    </DataTrigger.ExitActions>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsJustSnapped}" Value="True">
                     <DataTrigger.EnterActions>

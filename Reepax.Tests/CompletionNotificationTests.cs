@@ -206,4 +206,37 @@ public class CompletionNotificationTests
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public void IsNewlyCompleted_Toggling_FiresIsFullyCompletedNotification()
+    {
+        var pkg = new DownloadPackage { Name = "TestNotify" };
+        var notifiedProperties = new List<string>();
+        pkg.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) notifiedProperties.Add(e.PropertyName);
+        };
+
+        pkg.IsNewlyCompleted = true;
+        Assert.Contains(nameof(pkg.IsFullyCompleted), notifiedProperties);
+
+        notifiedProperties.Clear();
+        pkg.IsNewlyCompleted = false;
+        Assert.Contains(nameof(pkg.IsFullyCompleted), notifiedProperties);
+    }
+
+    [Fact]
+    public void SetNextTaskDone_FiresIsFullyCompletedNotification()
+    {
+        var pkg = new DownloadPackage { Name = "TestNextTaskNotify", AutoExtractArchives = true };
+        pkg.EnsureNextTaskSteps();
+        var notifiedProperties = new List<string>();
+        pkg.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) notifiedProperties.Add(e.PropertyName);
+        };
+
+        pkg.SetNextTaskDone("Extract");
+        Assert.Contains(nameof(pkg.IsFullyCompleted), notifiedProperties);
+    }
 }

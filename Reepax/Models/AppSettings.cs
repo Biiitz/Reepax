@@ -27,7 +27,7 @@ public class AppSettings
     public bool MinimizeToTrayOnClose { get; set; } = false;
     public bool StartWithWindows { get; set; } = false;
     public bool EnableCompletionNotifications { get; set; } = false;
-    public bool EnableCompletionSound { get; set; } = true;
+    public bool EnableCompletionSound { get; set; } = false;
     public CompletionSoundTrigger CompletionSoundTrigger { get; set; } = CompletionSoundTrigger.EntirePackage;
     public string SelectedCompletionSound { get; set; } = "1.mp3";
 
@@ -42,7 +42,7 @@ public class AppSettings
         }
     }
 
-    public bool EnableErrorSound { get; set; } = true;
+    public bool EnableErrorSound { get; set; } = false;
     public string SelectedErrorSound { get; set; } = "1.mp3";
 
     private int _errorSoundVolume = 80;

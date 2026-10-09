@@ -533,7 +533,7 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
-    private bool _enableCompletionSound = true;
+    private bool _enableCompletionSound = false;
 
     partial void OnEnableCompletionSoundChanged(bool value)
     {
@@ -588,7 +588,7 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
-    private bool _enableErrorSound = true;
+    private bool _enableErrorSound = false;
 
     partial void OnEnableErrorSoundChanged(bool value)
     {

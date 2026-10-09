@@ -32,9 +32,9 @@ public class AudioNotificationTests
     {
         var settings = new AppSettings();
 
-        Assert.True(settings.EnableCompletionSound);
+        Assert.False(settings.EnableCompletionSound);
         Assert.Equal("1.mp3", settings.SelectedCompletionSound);
-        Assert.True(settings.EnableErrorSound);
+        Assert.False(settings.EnableErrorSound);
         Assert.Equal("1.mp3", settings.SelectedErrorSound);
         Assert.Equal(80, settings.SoundVolume);
         Assert.Equal(80, settings.CompletionSoundVolume);
@@ -189,7 +189,7 @@ public class AudioNotificationTests
         vm.SelectedErrorSound = "2.mp3";
         Assert.Contains(nameof(vm.SelectedErrorSoundDisplayName), triggered);
 
-        vm.EnableCompletionSound = false;
+        vm.EnableCompletionSound = true;
         Assert.Contains(nameof(vm.AreSoundEffectsEnabled), triggered);
     }
 
