@@ -962,6 +962,10 @@
                                                         <DataTrigger Binding="{Binding State}" Value="Done">
                                                             <Setter TargetName="StepText" Property="Foreground" Value="#10B981" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding State}" Value="Failed">
+                                                            <Setter TargetName="StepText" Property="Foreground" Value="#EF4444" />
+                                                            <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
+                                                        </DataTrigger>
                                                     </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>

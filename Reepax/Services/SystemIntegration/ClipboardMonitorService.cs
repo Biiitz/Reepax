@@ -145,14 +145,14 @@ public sealed class ClipboardMonitorService : IDisposable
             if (Application.Current?.Dispatcher == null || Application.Current.Dispatcher.HasShutdownStarted)
                 return;
 
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Application.Current.Dispatcher.InvokeAsync(async () =>
             {
                 try
                 {
                     if (!SettingsService.Instance.Settings.EnableClipboardMonitor)
                         return;
 
-                    var links = ExtractLinksFromClipboard();
+                    var links = await ExtractLinksFromClipboardAsync();
                     if (links.Count == 0)
                         return;
 
@@ -176,7 +176,52 @@ public sealed class ClipboardMonitorService : IDisposable
 
     /// <summary>
     /// Safely extracts all valid URLs from the Windows clipboard, checking both HTML and plain text formats.
-    /// Retries if the clipboard is temporarily locked by another application.
+    /// Retries asynchronously if the clipboard is temporarily locked by another application without blocking the UI dispatcher.
+    /// </summary>
+    public static async Task<List<string>> ExtractLinksFromClipboardAsync(int maxRetries = 3)
+    {
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                string? html = null;
+                string? text = null;
+
+                if (Clipboard.ContainsData(DataFormats.Html))
+                {
+                    html = Clipboard.GetData(DataFormats.Html) as string;
+                }
+
+                if (Clipboard.ContainsText())
+                {
+                    text = Clipboard.GetText();
+                }
+
+                // If this matches an internal Reepax copy operation, suppress
+                if (IsInternalCopy(text) || IsInternalCopy(html))
+                {
+                    return new List<string>();
+                }
+
+                return ExtractLinksFromData(html, text);
+            }
+            catch (COMException) when (attempt < maxRetries - 1)
+            {
+                // CLIPBRD_E_CANT_OPEN: another process holds the clipboard momentarily
+                await Task.Delay(30);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed: {ex.Message}");
+                break;
+            }
+        }
+
+        return new List<string>();
+    }
+
+    /// <summary>
+    /// Synchronous fallback for clipboard extraction.
     /// </summary>
     public static List<string> ExtractLinksFromClipboard(int maxRetries = 3)
     {

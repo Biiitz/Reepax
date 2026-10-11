@@ -370,4 +370,37 @@ You need 4 more recovery blocks to be able to repair.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public void RestoreBackupFiles_RestoresOriginalFilesOnFailure()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_RestoreBackupTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var sampleRar = Path.Combine(tempDir, "sample.rar");
+            var sampleRarBackup = Path.Combine(tempDir, "sample.rar.1");
+            var patchFile = Path.Combine(tempDir, "patch.1");
+
+            // Corrupted file created during repair
+            File.WriteAllText(sampleRar, "corrupted new content");
+            // Original backup file
+            File.WriteAllText(sampleRarBackup, "original intact content");
+            // Legitimate .1 file with no base file
+            File.WriteAllText(patchFile, "legitimate patch file");
+
+            Par2RepairService.RestoreBackupFiles(tempDir);
+
+            Assert.True(File.Exists(sampleRar), "sample.rar must be restored");
+            Assert.Equal("original intact content", File.ReadAllText(sampleRar));
+            Assert.False(File.Exists(sampleRarBackup), "sample.rar.1 must have been moved back to sample.rar");
+            Assert.True(File.Exists(patchFile), "patch.1 with no base file must be kept intact");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
+

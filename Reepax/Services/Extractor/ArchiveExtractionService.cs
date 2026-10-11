@@ -391,6 +391,16 @@ public class ArchiveExtractionService
                     if (!par2Success)
                     {
                         AppLogger.Warn($"[ArchiveExtractor] PAR2-Prüfung oder Reparatur für Paket '{package.Name}' war nicht erfolgreich. Entpacken abgebrochen.");
+                        SafeInvoke(() =>
+                        {
+                            package.SetNextTaskFailed("Par2");
+                            if (string.IsNullOrWhiteSpace(package.StatusMessage) ||
+                                package.StatusMessage == Loc.Get("Status_Par2Verifying") ||
+                                package.StatusMessage == Loc.Get("Status_Extracting"))
+                            {
+                                package.StatusMessage = Loc.Get("Status_Par2RepairFailedGeneric");
+                            }
+                        });
                         return false;
                     }
 

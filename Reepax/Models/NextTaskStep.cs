@@ -7,7 +7,8 @@ public enum NextTaskStepState
     Pending,
     Running,
     Transitioning,
-    Done
+    Done,
+    Failed
 }
 
 /// <summary>

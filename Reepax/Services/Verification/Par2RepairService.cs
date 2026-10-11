@@ -307,6 +307,8 @@ public class Par2RepairService
                 await process.WaitForExitAsync(ct);
             }
 
+            try { process.WaitForExit(); } catch { }
+
             var output = outputBuilder.ToString();
             result.RawOutput = output;
 
@@ -416,14 +418,23 @@ public class Par2RepairService
                 await process.WaitForExitAsync(ct);
             }
 
+            try { process.WaitForExit(); } catch { }
+
             var output = outputBuilder.ToString();
             bool success = process.ExitCode == 0 || output.Contains("Repair complete", StringComparison.OrdinalIgnoreCase) ||
                            output.Contains("All files are correct, repair is not required", StringComparison.OrdinalIgnoreCase);
 
-            // Clean up temporary .1 backup files created by par2 if requested
-            if (success && purgeBackups)
+            // Clean up temporary .1 backup files created by par2 if requested, or restore backups on failure
+            if (success)
             {
-                CleanBackupFiles(workingDir);
+                if (purgeBackups)
+                {
+                    CleanBackupFiles(workingDir);
+                }
+            }
+            else
+            {
+                RestoreBackupFiles(workingDir);
             }
 
             int repairedCount = 0;
@@ -443,6 +454,7 @@ public class Par2RepairService
         }
         catch (OperationCanceledException)
         {
+            RestoreBackupFiles(workingDir);
             return new Par2RepairResult
             {
                 Success = false,
@@ -451,6 +463,7 @@ public class Par2RepairService
         }
         catch (Exception ex)
         {
+            RestoreBackupFiles(workingDir);
             AppLogger.Error($"[Par2RepairService] Fehler bei PAR2-Reparatur von '{par2FilePath}'", ex);
             return new Par2RepairResult
             {
@@ -458,6 +471,47 @@ public class Par2RepairService
                 ErrorMessage = ex.Message,
                 RawOutput = outputBuilder.ToString()
             };
+        }
+    }
+
+    /// <summary>
+    /// Restores any .1 backup files created by par2 back to their original names when repair fails or is cancelled.
+    /// Deletes any partial/corrupt target file created during the failed attempt.
+    /// </summary>
+    public static void RestoreBackupFiles(string workingDir)
+    {
+        if (string.IsNullOrWhiteSpace(workingDir) || !Directory.Exists(workingDir))
+            return;
+
+        try
+        {
+            foreach (var backupFile in Directory.GetFiles(workingDir, "*.1", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    if (!backupFile.EndsWith(".1", StringComparison.OrdinalIgnoreCase) || backupFile.Length <= 2)
+                        continue;
+
+                    var baseFile = backupFile.Substring(0, backupFile.Length - 2);
+                    if (string.IsNullOrWhiteSpace(Path.GetFileName(baseFile)))
+                        continue;
+
+                    // If baseFile was partially written during failed repair, delete it and restore original backup
+                    if (File.Exists(baseFile))
+                    {
+                        try { File.Delete(baseFile); } catch { }
+                        File.Move(backupFile, baseFile);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn($"[Par2RepairService] Fehler beim Wiederherstellen der Backup-Datei '{backupFile}': {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"[Par2RepairService] Fehler bei der Suche nach Backup-Dateien zur Wiederherstellung in '{workingDir}': {ex.Message}");
         }
     }
 

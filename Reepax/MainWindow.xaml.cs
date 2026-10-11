@@ -477,6 +477,13 @@ public partial class MainWindow : Window
 
             SettingsService.Instance.SaveSettings();
 
+            // Stop clipboard monitor and detach native listener before window handle is destroyed
+            try
+            {
+                Services.SystemIntegration.ClipboardMonitorService.Instance.Stop();
+            }
+            catch { }
+
             // Perform central safe shutdown (pauses all downloads, flushes streams, saves downloads.json)
             Services.Download.QueueManager.PerformSafeShutdown();
         }
@@ -488,6 +495,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        try
+        {
+            Services.SystemIntegration.ClipboardMonitorService.Instance.Stop();
+        }
+        catch { }
         base.OnClosed(e);
         ThemeService.Instance.ThemeChanged -= UpdateTitleBarTheme;
         try
@@ -498,11 +510,6 @@ public partial class MainWindow : Window
                 var hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
                 hwndSource?.RemoveHook(WndProc);
             }
-        }
-        catch { }
-        try
-        {
-            Services.SystemIntegration.ClipboardMonitorService.Instance.Stop();
         }
         catch { }
         try

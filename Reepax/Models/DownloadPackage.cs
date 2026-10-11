@@ -371,6 +371,20 @@ public partial class DownloadPackage : ObservableObject
         OnPropertyChanged(nameof(IsFullyCompleted));
     }
 
+    /// <summary>Marks a step as failed (permanent red).</summary>
+    public void SetNextTaskFailed(string stepKeyOrName)
+    {
+        foreach (var step in NextTaskSteps)
+        {
+            if (step.Key == stepKeyOrName || step.Name == stepKeyOrName)
+            {
+                step.State = NextTaskStepState.Failed;
+            }
+        }
+        OnPropertyChanged(nameof(IsFullyCompleted));
+    }
+
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Duration))]
     [NotifyPropertyChangedFor(nameof(DurationFormatted))]

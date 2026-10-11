@@ -1799,6 +1799,26 @@ public class ArchiveExtractionTests
         Assert.NotNull(attr);
         Assert.Equal(1, attr.Pack);
     }
+
+    [Fact]
+    public void SetNextTaskFailed_MarksStepAsFailed_AndPackageIsNotFullyCompleted()
+    {
+        var package = new DownloadPackage { Name = "TestPackage", AutoExtractArchives = true };
+        package.Items.Add(new DownloadItem { FileName = "test.zip", Status = DownloadStatus.Completed, IsEnabled = true });
+        package.EnsureNextTaskSteps();
+
+        var par2Step = new NextTaskStep { Key = "Par2", Name = "PAR2", State = NextTaskStepState.Running };
+        package.NextTaskSteps.Insert(0, par2Step);
+
+        Assert.False(package.IsFullyCompleted);
+
+        package.SetNextTaskFailed("Par2");
+
+        Assert.Equal(NextTaskStepState.Failed, par2Step.State);
+        Assert.False(package.CheckIsFullyCompleted());
+        Assert.False(package.IsFullyCompleted);
+    }
 }
+
 
 

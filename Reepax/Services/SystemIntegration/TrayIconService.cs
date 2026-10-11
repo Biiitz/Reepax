@@ -115,6 +115,12 @@ public class TrayIconService : IDisposable
 
     public void ShowTrayIcon()
     {
+        if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.Invoke(ShowTrayIcon);
+            return;
+        }
+
         if (_isCreated)
             return;
 
@@ -217,6 +223,12 @@ public class TrayIconService : IDisposable
 
     public void HideTrayIcon()
     {
+        if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.Invoke(HideTrayIcon);
+            return;
+        }
+
         if (!_isCreated || _hwnd == IntPtr.Zero)
             return;
 
@@ -426,16 +438,15 @@ public class TrayIconService : IDisposable
     {
         try
         {
+            if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.BeginInvoke(() => ShowNotification(title, message));
+                return;
+            }
+
             if (_hwnd == IntPtr.Zero && _mainWindow != null)
             {
-                if (_mainWindow.Dispatcher.CheckAccess())
-                {
-                    _hwnd = new WindowInteropHelper(_mainWindow).Handle;
-                }
-                else
-                {
-                    _hwnd = _mainWindow.Dispatcher.Invoke(() => new WindowInteropHelper(_mainWindow).Handle);
-                }
+                _hwnd = new WindowInteropHelper(_mainWindow).Handle;
             }
 
             if (_hwnd == IntPtr.Zero)

@@ -111,7 +111,13 @@ public static class AppRestartService
 
         // 5. Preserve existing arguments (e.g. --portable) and append --restart flag
         var cmdArgs = Environment.GetCommandLineArgs();
-        var arguments = new List<string>();
+        var psi = new ProcessStartInfo
+        {
+            FileName = exePath,
+            UseShellExecute = false,
+            WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+        };
+
         if (cmdArgs.Length > 1)
         {
             for (int i = 1; i < cmdArgs.Length; i++)
@@ -120,12 +126,11 @@ public static class AppRestartService
                 if (!string.Equals(arg, "--restart", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(arg, "--activate", StringComparison.OrdinalIgnoreCase))
                 {
-                    arguments.Add(arg.Contains(' ') ? $"\"{arg}\"" : arg);
+                    psi.ArgumentList.Add(arg);
                 }
             }
         }
-        arguments.Add("--restart");
-        var argString = string.Join(" ", arguments);
+        psi.ArgumentList.Add("--restart");
 
         // 6. Release single instance mutex & IPC so the new instance can acquire ownership without race condition
         try
@@ -137,13 +142,6 @@ public static class AppRestartService
         // 7. Launch new process
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = exePath,
-                Arguments = argString,
-                UseShellExecute = true,
-                WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
-            };
             Process.Start(psi);
         }
         catch (Exception ex)
