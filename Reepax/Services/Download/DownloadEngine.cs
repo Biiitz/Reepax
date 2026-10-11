@@ -505,7 +505,9 @@ public class DownloadEngine
         if (msg.Contains("Range requests not supported", StringComparison.OrdinalIgnoreCase) ||
             msg.Contains("Server did not accept the range request", StringComparison.OrdinalIgnoreCase) ||
             msg.Contains("no 206 Partial Content", StringComparison.OrdinalIgnoreCase) ||
-            msg.Contains("Range not supported", StringComparison.OrdinalIgnoreCase))
+            msg.Contains("Range not supported", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("416", StringComparison.OrdinalIgnoreCase) ||
+            msg.Contains("Range Not Satisfiable", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -805,9 +807,7 @@ public class DownloadEngine
 
                 if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
                 {
-                    // Segment already completed according to server
-                    segment.Done = segmentLength;
-                    return;
+                    throw new RangeNotSupportedException($"Server returned 416 Range Not Satisfiable for range {rangeStart}-{segment.End}.");
                 }
 
                 if (response.StatusCode == HttpStatusCode.OK)

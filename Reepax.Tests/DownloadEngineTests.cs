@@ -1581,6 +1581,191 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task DownloadEngine_FreshChunkedDownload_WhenSegmentReturns416_FallsBackToSingleConnectionWithoutCorruptingData()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxFresh416_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "fresh_416.bin");
+            var partFile = destinationFile + ".part";
+            var segFile = partFile + ".segments";
+
+            var testData = new byte[8 * 1024 * 1024 + 1024];
+            for (int i = 0; i < testData.Length; i++)
+                testData[i] = (byte)(i % 211);
+
+            var item = new DownloadItem
+            {
+                FileName = "fresh_416.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/fresh_416.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            int probeCount = 0;
+            int segmentAttempts = 0;
+            int fallbackRequests = 0;
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                // Probe request: range bytes=0-0
+                if (req.Headers.Range != null && req.Headers.Range.Ranges.Any(r => r.From == 0 && r.To == 0))
+                {
+                    Interlocked.Increment(ref probeCount);
+                    var probeRes = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                    {
+                        Content = new ByteArrayContent(new byte[] { testData[0] })
+                    };
+                    probeRes.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(0, 0, testData.Length);
+                    return Task.FromResult(probeRes);
+                }
+
+                // Subsequent segment request with Range: server rejects with 416 Range Not Satisfiable
+                if (req.Headers.Range != null)
+                {
+                    Interlocked.Increment(ref segmentAttempts);
+                    var range416Res = new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable);
+                    return Task.FromResult(range416Res);
+                }
+
+                // Single connection fallback request (no Range header)
+                Interlocked.Increment(ref fallbackRequests);
+                var fullRes = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(testData)
+                };
+                fullRes.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(fullRes);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += i => { if (i.Id == item.Id) tcs.TrySetResult(true); };
+            engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) tcs.TrySetException(ex); };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(File.Exists(destinationFile));
+            Assert.False(File.Exists(partFile));
+            Assert.False(File.Exists(segFile), "Segment metadata must be cleaned up on 416 fallback.");
+            Assert.True(probeCount > 0);
+            Assert.True(segmentAttempts > 0);
+            Assert.True(fallbackRequests > 0);
+            Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ChunkedResume_WhenSegmentReturns416_FallsBackToSingleConnectionWithoutCorruptingData()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxResume416_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "resume_416.bin");
+            var partFile = destinationFile + ".part";
+            var segFile = partFile + ".segments";
+
+            var testData = new byte[8 * 1024 * 1024 + 512];
+            for (int i = 0; i < testData.Length; i++)
+                testData[i] = (byte)(i % 199);
+
+            // Simulate interrupted chunked state: 4 segments, segment 0 marked done
+            int segCount = 4;
+            long segSize = testData.Length / segCount;
+            var sb = new StringBuilder();
+            sb.Append("{\"TotalBytes\":").Append(testData.Length).Append(",\"Segments\":[");
+            for (int i = 0; i < segCount; i++)
+            {
+                long start = i * segSize;
+                long end = (i == segCount - 1) ? testData.Length - 1 : start + segSize - 1;
+                long done = (i == 0) ? end - start + 1 : 0;
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"Start\":").Append(start).Append(",\"End\":").Append(end).Append(",\"Done\":").Append(done).Append('}');
+            }
+            sb.Append("]}");
+            File.WriteAllText(segFile, sb.ToString());
+
+            using (var fs = new FileStream(partFile, FileMode.Create, FileAccess.ReadWrite))
+            {
+                fs.SetLength(testData.Length);
+                fs.Write(testData, 0, (int)segSize);
+            }
+
+            var item = new DownloadItem
+            {
+                FileName = "resume_416.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/resume_416.bin",
+                Status = DownloadStatus.Paused,
+                TotalBytes = testData.Length,
+                DownloadedBytes = segSize
+            };
+
+            int rangeAttempts = 0;
+            int fallbackRequests = 0;
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                if (req.Headers.Range != null)
+                {
+                    Interlocked.Increment(ref rangeAttempts);
+                    // Server returns 416 Range Not Satisfiable
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable));
+                }
+
+                Interlocked.Increment(ref fallbackRequests);
+                var fullRes = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(testData)
+                };
+                fullRes.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(fullRes);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += i => { if (i.Id == item.Id) tcs.TrySetResult(true); };
+            engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) tcs.TrySetException(ex); };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(File.Exists(destinationFile));
+            Assert.False(File.Exists(partFile));
+            Assert.False(File.Exists(segFile));
+            Assert.True(rangeAttempts > 0);
+            Assert.True(fallbackRequests > 0);
+            Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
+
 
 
