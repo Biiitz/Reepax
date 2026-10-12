@@ -2,7 +2,7 @@
 
 Reepax integrates and bundles third-party software and open-source libraries. Each component is governed by its own respective license.
 
-The proprietary restrictions of the **Reepax License** apply exclusively to the original Reepax codebase and do not restrict, alter, or override any rights granted under the open-source licenses of the third-party components listed below.
+The **MIT License** applies to the original Reepax codebase and does not restrict, alter, or override any rights granted under the open-source licenses of the third-party components listed below.
 
 ---
 

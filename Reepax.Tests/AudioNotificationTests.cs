@@ -17,9 +17,12 @@ public class AudioNotificationTests
     [InlineData("sounds_done", "4.mp3")]
     [InlineData("sounds_done", "5.mp3")]
     [InlineData("sounds_done", "6.mp3")]
+    [InlineData("sounds_done", "7.mp3")]
+    [InlineData("sounds_done", "8.mp3")]
+    [InlineData("sounds_done", "9.mp3")]
+    [InlineData("sounds_done", "10.mp3")]
     [InlineData("sounds_error", "1.mp3")]
     [InlineData("sounds_error", "2.mp3")]
-    [InlineData("sounds_error", "3.mp3")]
     public void AudioAssets_AllRequiredFilesExist(string folder, string fileName)
     {
         string? resolvedPath = AudioNotificationService.ResolveSoundPath(folder, fileName);
@@ -201,23 +204,23 @@ public class AudioNotificationTests
             SelectedCompletionSound = "1.mp3"
         };
 
-        // Forward cycling: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 1
+        // Forward cycling: 1 -> 2 -> 3 ... 10 -> 1
         vm.CycleCompletionSound(true);
         Assert.Equal("2.mp3", vm.SelectedCompletionSound);
 
         vm.CycleCompletionSound(true);
         Assert.Equal("3.mp3", vm.SelectedCompletionSound);
 
-        vm.SelectedCompletionSound = "6.mp3";
+        vm.SelectedCompletionSound = "10.mp3";
         vm.CycleCompletionSound(true);
         Assert.Equal("1.mp3", vm.SelectedCompletionSound);
 
-        // Backward cycling: 1 -> 6 -> 5
+        // Backward cycling: 1 -> 10 -> 9
         vm.CycleCompletionSound(false);
-        Assert.Equal("6.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("10.mp3", vm.SelectedCompletionSound);
 
         vm.CycleCompletionSound(false);
-        Assert.Equal("5.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("9.mp3", vm.SelectedCompletionSound);
     }
 
     [Fact]
@@ -228,22 +231,19 @@ public class AudioNotificationTests
             SelectedErrorSound = "1.mp3"
         };
 
-        // Forward cycling: 1 -> 2 -> 3 -> 1
+        // Forward cycling: 1 -> 2 -> 1
         vm.CycleErrorSound(true);
         Assert.Equal("2.mp3", vm.SelectedErrorSound);
-
-        vm.CycleErrorSound(true);
-        Assert.Equal("3.mp3", vm.SelectedErrorSound);
 
         vm.CycleErrorSound(true);
         Assert.Equal("1.mp3", vm.SelectedErrorSound);
 
-        // Backward cycling: 1 -> 3 -> 2
-        vm.CycleErrorSound(false);
-        Assert.Equal("3.mp3", vm.SelectedErrorSound);
-
+        // Backward cycling: 1 -> 2 -> 1
         vm.CycleErrorSound(false);
         Assert.Equal("2.mp3", vm.SelectedErrorSound);
+
+        vm.CycleErrorSound(false);
+        Assert.Equal("1.mp3", vm.SelectedErrorSound);
     }
 
     [Fact]

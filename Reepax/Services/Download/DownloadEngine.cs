@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -53,6 +54,26 @@ public class DownloadEngine
     /// automatically fall back to a single stream.
     /// </summary>
     public int MaxConnectionsPerDownload { get; set; } = 5;
+
+    /// <summary>
+    /// Adaptive buffer sizing based on file or segment length:
+    /// - Unknown or non-positive length: 256 KB (standard)
+    /// - Files/segments &lt; 10 MB: 64 KB (low overhead for many small files)
+    /// - Files/segments &lt; 100 MB: 256 KB (standard throughput)
+    /// - Files/segments &gt;= 100 MB: 512 KB (high throughput for large files / Gigabit lines)
+    /// </summary>
+    public static int DetermineBufferSize(long totalBytesOrSegmentLength)
+    {
+        if (totalBytesOrSegmentLength > 0 && totalBytesOrSegmentLength < 10L * 1024 * 1024)
+        {
+            return 64 * 1024;
+        }
+        if (totalBytesOrSegmentLength >= 100L * 1024 * 1024)
+        {
+            return 512 * 1024;
+        }
+        return 256 * 1024;
+    }
 
     private const long MinBytesForChunking = 8L * 1024 * 1024;   // Chunking threshold: at least 8 MB file size
     private const long MinSegmentBytes = 2L * 1024 * 1024;       // Minimum size per segment
@@ -217,7 +238,6 @@ public class DownloadEngine
 
     private async Task ExecuteDownloadLoopAsync(DownloadItem item, CancellationToken cancellationToken)
     {
-        var buffer = new byte[256 * 1024]; // 256 KB high-performance buffer
         string? tempFilePath = null;
 
         try
@@ -279,7 +299,7 @@ public class DownloadEngine
                     }
                     catch (Exception ex) when (IsRangeNotSupported(ex))
                     {
-                        await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, buffer, cancellationToken);
+                        await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
                         return;
                     }
                 }
@@ -342,14 +362,14 @@ public class DownloadEngine
                         }
                         catch (Exception ex) when (IsRangeNotSupported(ex))
                         {
-                            await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, buffer, cancellationToken);
+                            await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
                             return;
                         }
                     }
                 }
             }
 
-            await ExecuteSingleConnectionDownloadAsync(item, tempFilePath, cancellationToken, buffer);
+            await ExecuteSingleConnectionDownloadAsync(item, tempFilePath, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -393,7 +413,6 @@ public class DownloadEngine
         CancellationToken cancellationToken, 
         byte[]? buffer = null)
     {
-        buffer ??= new byte[256 * 1024];
         var destinationPath = item.SaveFilePath;
         if (string.IsNullOrWhiteSpace(destinationPath))
         {
@@ -431,7 +450,7 @@ public class DownloadEngine
 
             using var freshResponse = await _httpClient.SendAsync(freshRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             freshResponse.EnsureSuccessStatusCode();
-            await ProcessResponseStreamAsync(item, freshResponse, tempFilePath, destinationPath, buffer, cancellationToken);
+            await ProcessResponseStreamAsync(item, freshResponse, tempFilePath, destinationPath, cancellationToken, 0, buffer);
             return;
         }
 
@@ -442,15 +461,15 @@ public class DownloadEngine
         bool isPartial = response.StatusCode == HttpStatusCode.PartialContent;
         long effectiveInitialBytes = isPartial ? existingBytes : 0;
 
-        await ProcessResponseStreamAsync(item, response, tempFilePath, destinationPath, buffer, cancellationToken, effectiveInitialBytes);
+        await ProcessResponseStreamAsync(item, response, tempFilePath, destinationPath, cancellationToken, effectiveInitialBytes, buffer);
     }
 
     private async Task FallbackToSingleConnectionDownloadAsync(
         DownloadItem item, 
         string tempFilePath, 
         string segMetaPath, 
-        byte[] buffer, 
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        byte[]? buffer = null)
     {
         Services.Storage.AppLogger.Warn($"[DownloadEngine] Range requests refused by remote server for '{item.FileName}'. Falling back to clean single-connection stream.");
 
@@ -688,7 +707,7 @@ public class DownloadEngine
 
         try
         {
-            using var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 256 * 1024, FileOptions.Asynchronous);
+            using var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var tasks = segments.Select(async seg =>
             {
@@ -778,6 +797,8 @@ public class DownloadEngine
     /// <summary>
     /// Downloads a single byte-range segment into the preallocated .part file.
     /// Internal retries (3x) on network errors; progress is preserved.
+    /// Uses ArrayPool-backed zero-allocation memory and coalesces network reads into batch disk writes
+    /// with a 250ms watchdog to minimize disk thrashing on high-speed and gigabit connections.
     /// </summary>
     private async Task DownloadSegmentAsync(
         DownloadItem item,
@@ -787,83 +808,125 @@ public class DownloadEngine
         CancellationToken cancellationToken)
     {
         const int maxSegmentRetries = 3;
-        var buffer = new byte[256 * 1024];
         long segmentLength = segment.End - segment.Start + 1;
+        int bufferSize = DetermineBufferSize(segmentLength);
+        byte[] rentedBuffer = ArrayPool<byte>.Shared.Rent(bufferSize);
 
-        for (int attempt = 0; ; attempt++)
+        try
         {
-            try
+            for (int attempt = 0; ; attempt++)
             {
-                if (segment.Done >= segmentLength)
+                try
+                {
+                    if (segment.Done >= segmentLength)
+                        return;
+
+                    long rangeStart = segment.Start + segment.Done;
+
+                    using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
+                    request.Headers.Range = new RangeHeaderValue(rangeStart, segment.End);
+                    ApplyRequestHeaders(request, item);
+
+                    using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+                    if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+                    {
+                        throw new RangeNotSupportedException($"Server returned 416 Range Not Satisfiable for range {rangeStart}-{segment.End}.");
+                    }
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        throw new RangeNotSupportedException("Server returned 200 OK instead of 206 Partial Content: Range requests not supported.");
+                    }
+
+                    response.EnsureSuccessStatusCode();
+
+                    if (response.StatusCode != HttpStatusCode.PartialContent)
+                    {
+                        throw new RangeNotSupportedException("Server did not accept the range request (no 206 Partial Content).");
+                    }
+
+                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    long offset = rangeStart;
+                    int bufferedBytes = 0;
+                    long lastFlushTimestamp = Stopwatch.GetTimestamp();
+                    long flushIntervalTicks = Stopwatch.Frequency / 4; // ~250ms watchdog for smooth UI progress updates
+
+                    while (segment.Done + bufferedBytes < segmentLength)
+                    {
+                        if (bufferedBytes >= bufferSize)
+                        {
+                            await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                            offset += bufferedBytes;
+                            segment.Done += bufferedBytes;
+                            bufferedBytes = 0;
+                            lastFlushTimestamp = Stopwatch.GetTimestamp();
+                        }
+
+                        int spaceInBuffer = bufferSize - bufferedBytes;
+                        long remainingInSegment = segmentLength - (segment.Done + bufferedBytes);
+                        int toRead = (int)Math.Min(spaceInBuffer, remainingInSegment);
+
+                        int bytesRead = await stream.ReadAsync(rentedBuffer.AsMemory(bufferedBytes, toRead), cancellationToken);
+                        if (bytesRead <= 0)
+                        {
+                            break;
+                        }
+
+                        bufferedBytes += bytesRead;
+
+                        await _throttler.ThrottleAsync(bytesRead, cancellationToken);
+                        if (item.IsTrickling)
+                        {
+                            await trickleThrottler.ThrottleAsync(bytesRead, cancellationToken);
+                        }
+
+                        bool isSegmentDone = segment.Done + bufferedBytes >= segmentLength;
+                        bool isWatchdogElapsed = Stopwatch.GetTimestamp() - lastFlushTimestamp >= flushIntervalTicks;
+
+                        if (bufferedBytes >= bufferSize || isSegmentDone || isWatchdogElapsed)
+                        {
+                            await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                            offset += bufferedBytes;
+                            segment.Done += bufferedBytes;
+                            bufferedBytes = 0;
+                            lastFlushTimestamp = Stopwatch.GetTimestamp();
+                        }
+                    }
+
+                    if (bufferedBytes > 0)
+                    {
+                        await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                        offset += bufferedBytes;
+                        segment.Done += bufferedBytes;
+                        bufferedBytes = 0;
+                    }
+
+                    if (segment.Done < segmentLength)
+                    {
+                        throw new IOException("Segment stream was prematurely closed by the server.");
+                    }
+
                     return;
-
-                long rangeStart = segment.Start + segment.Done;
-
-                using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
-                request.Headers.Range = new RangeHeaderValue(rangeStart, segment.End);
-                ApplyRequestHeaders(request, item);
-
-                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-
-                if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-                {
-                    throw new RangeNotSupportedException($"Server returned 416 Range Not Satisfiable for range {rangeStart}-{segment.End}.");
                 }
-
-                if (response.StatusCode == HttpStatusCode.OK)
+                catch (OperationCanceledException)
                 {
-                    throw new RangeNotSupportedException("Server returned 200 OK instead of 206 Partial Content: Range requests not supported.");
+                    throw;
                 }
-
-                response.EnsureSuccessStatusCode();
-
-                if (response.StatusCode != HttpStatusCode.PartialContent)
+                catch (Exception ex) when (IsRangeNotSupported(ex))
                 {
-                    throw new RangeNotSupportedException("Server did not accept the range request (no 206 Partial Content).");
+                    throw;
                 }
-
-                using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-                long offset = rangeStart;
-                int bytesRead;
-                while (segment.Done < segmentLength)
+                catch (Exception) when (attempt < maxSegmentRetries - 1)
                 {
-                    int toRead = (int)Math.Min((long)buffer.Length, segmentLength - segment.Done);
-                    bytesRead = await stream.ReadAsync(buffer.AsMemory(0, toRead), cancellationToken);
-                    if (bytesRead <= 0)
-                    {
-                        break;
-                    }
-
-                    await _throttler.ThrottleAsync(bytesRead, cancellationToken);
-                    if (item.IsTrickling)
-                    {
-                        await trickleThrottler.ThrottleAsync(bytesRead, cancellationToken);
-                    }
-                    await RandomAccess.WriteAsync(fileHandle, buffer.AsMemory(0, bytesRead), offset, cancellationToken);
-                    offset += bytesRead;
-                    segment.Done += bytesRead;
+                    // Brief jitter backoff before segment retry
+                    await Task.Delay(Random.Shared.Next(400, 1200), cancellationToken);
                 }
-
-                if (segment.Done < segmentLength)
-                {
-                    throw new IOException("Segment stream was prematurely closed by the server.");
-                }
-
-                return;
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex) when (IsRangeNotSupported(ex))
-            {
-                throw;
-            }
-            catch (Exception) when (attempt < maxSegmentRetries - 1)
-            {
-                // Brief jitter backoff before segment retry
-                await Task.Delay(Random.Shared.Next(400, 1200), cancellationToken);
-            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rentedBuffer);
         }
     }
 
@@ -872,9 +935,9 @@ public class DownloadEngine
         HttpResponseMessage response, 
         string tempFilePath, 
         string finalFilePath, 
-        byte[] buffer, 
         CancellationToken cancellationToken,
-        long initialDownloadedBytes = 0)
+        long initialDownloadedBytes = 0,
+        byte[]? buffer = null)
     {
         long? contentLength = response.Content.Headers.ContentLength;
         long totalBytes;
@@ -943,118 +1006,132 @@ public class DownloadEngine
             item.StatusMessage = Loc.Get("Status_Downloading");
         });
 
-        using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var fileStreamOptions = new FileStreamOptions
-        {
-            Mode = initialDownloadedBytes > 0 ? FileMode.Append : FileMode.Create,
-            Access = FileAccess.Write,
-            Share = FileShare.ReadWrite,
-            BufferSize = 256 * 1024,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
-        };
-        using var fileStream = new FileStream(tempFilePath, fileStreamOptions);
-
-        if (totalBytes > 0 && initialDownloadedBytes == 0)
-        {
-            try
-            {
-                if (fileStream.Length != totalBytes)
-                    fileStream.SetLength(totalBytes);
-            }
-            catch { }
-        }
-
-        long currentDownloaded = initialDownloadedBytes;
-        var speedTracker = new RollingSpeedTracker(initialDownloadedBytes);
-        var lastUiUpdateTime = Stopwatch.GetTimestamp();
-
-        // Dedicated throttler for "Paused" trickle mode (500 KB/s per download)
-        var trickleThrottler = new BandwidthThrottler { MaxBytesPerSecond = 500 * 1024 };
+        int bufferSize = DetermineBufferSize(totalBytes);
+        byte[] rentedBuffer = buffer ?? ArrayPool<byte>.Shared.Rent(bufferSize);
 
         try
         {
-            int bytesRead;
-            while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+            using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var fileStreamOptions = new FileStreamOptions
             {
-                await _throttler.ThrottleAsync(bytesRead, cancellationToken);
-                if (item.IsTrickling)
-                {
-                    await trickleThrottler.ThrottleAsync(bytesRead, cancellationToken);
-                }
-                await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
-                currentDownloaded += bytesRead;
+                Mode = initialDownloadedBytes > 0 ? FileMode.Append : FileMode.Create,
+                Access = FileAccess.Write,
+                Share = FileShare.ReadWrite,
+                BufferSize = bufferSize,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+            };
+            using var fileStream = new FileStream(tempFilePath, fileStreamOptions);
 
-                var now = Stopwatch.GetTimestamp();
-                if (((double)(now - lastUiUpdateTime) / Stopwatch.Frequency) >= 0.3) // ~300ms smooth UI updates
+            if (totalBytes > 0 && initialDownloadedBytes == 0)
+            {
+                try
                 {
-                    var currentSpeed = speedTracker.CalculateSpeed(currentDownloaded);
-                    SafeInvokeAsync(() =>
-                    {
-                        item.UpdateProgress(currentDownloaded, totalBytes, currentSpeed);
-                    });
-                    DownloadProgressUpdated?.Invoke(item);
-                    lastUiUpdateTime = now;
+                    if (fileStream.Length != totalBytes)
+                        fileStream.SetLength(totalBytes);
                 }
+                catch { }
             }
 
-            await fileStream.FlushAsync(cancellationToken);
+            long currentDownloaded = initialDownloadedBytes;
+            var speedTracker = new RollingSpeedTracker(initialDownloadedBytes);
+            var lastUiUpdateTime = Stopwatch.GetTimestamp();
+
+            // Dedicated throttler for "Paused" trickle mode (500 KB/s per download)
+            var trickleThrottler = new BandwidthThrottler { MaxBytesPerSecond = 500 * 1024 };
+
+            try
+            {
+                int bytesRead;
+                int effectiveReadSize = buffer != null ? buffer.Length : bufferSize;
+                while ((bytesRead = await contentStream.ReadAsync(rentedBuffer.AsMemory(0, effectiveReadSize), cancellationToken)) > 0)
+                {
+                    await _throttler.ThrottleAsync(bytesRead, cancellationToken);
+                    if (item.IsTrickling)
+                    {
+                        await trickleThrottler.ThrottleAsync(bytesRead, cancellationToken);
+                    }
+                    await fileStream.WriteAsync(rentedBuffer.AsMemory(0, bytesRead), cancellationToken);
+                    currentDownloaded += bytesRead;
+
+                    var now = Stopwatch.GetTimestamp();
+                    if (((double)(now - lastUiUpdateTime) / Stopwatch.Frequency) >= 0.3) // ~300ms smooth UI updates
+                    {
+                        var currentSpeed = speedTracker.CalculateSpeed(currentDownloaded);
+                        SafeInvokeAsync(() =>
+                        {
+                            item.UpdateProgress(currentDownloaded, totalBytes, currentSpeed);
+                        });
+                        DownloadProgressUpdated?.Invoke(item);
+                        lastUiUpdateTime = now;
+                    }
+                }
+
+                await fileStream.FlushAsync(cancellationToken);
+            }
+            finally
+            {
+                try { await fileStream.FlushAsync(); } catch { }
+                SafeInvokeAsync(() =>
+                {
+                    item.DownloadedBytes = currentDownloaded;
+                    if (totalBytes > 0)
+                    {
+                        item.ProgressPercentage = Math.Clamp((double)currentDownloaded / totalBytes * 100.0, 0, 100);
+                    }
+                    item.SpeedBytesPerSecond = 0;
+                    item.RemainingSeconds = 0;
+                });
+            }
+
+            fileStream.Close();
+
+            // Validate stream completeness: do not mark complete if stream was truncated
+            if (totalBytes > 0 && currentDownloaded < totalBytes)
+            {
+                SafeInvokeAsync(() =>
+                {
+                    item.DownloadedBytes = currentDownloaded;
+                });
+                throw new IOException(
+                    $"Download was interrupted: Only {currentDownloaded} of {totalBytes} bytes were transferred.");
+            }
+
+            // Download completed, atomically rename temp file to final destination
+            var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
+            var targetDir = Path.GetDirectoryName(actualFinalPath);
+            if (!string.IsNullOrWhiteSpace(targetDir) && !Directory.Exists(targetDir))
+            {
+                Directory.CreateDirectory(targetDir);
+            }
+
+            File.Move(tempFilePath, actualFinalPath, overwrite: true);
+
+            SafeInvoke(() =>
+            {
+                item.DownloadedBytes = currentDownloaded;
+                if (totalBytes <= 0) item.TotalBytes = currentDownloaded;
+                item.ProgressPercentage = 100;
+                item.SpeedBytesPerSecond = 0;
+                item.RemainingSeconds = 0;
+                item.Status = DownloadStatus.Completed;
+                item.StatusMessage = Loc.Get("Status_Completed");
+                item.CompletedAt = DateTime.Now;
+                if (item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
+                {
+                    item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
+                }
+            });
+
+            CompleteAndRemoveActiveDownload(item.Id);
+            DownloadCompleted?.Invoke(item);
         }
         finally
         {
-            try { await fileStream.FlushAsync(); } catch { }
-            SafeInvokeAsync(() =>
+            if (buffer == null)
             {
-                item.DownloadedBytes = currentDownloaded;
-                if (totalBytes > 0)
-                {
-                    item.ProgressPercentage = Math.Clamp((double)currentDownloaded / totalBytes * 100.0, 0, 100);
-                }
-                item.SpeedBytesPerSecond = 0;
-                item.RemainingSeconds = 0;
-            });
-        }
-
-        fileStream.Close();
-
-        // Validate stream completeness: do not mark complete if stream was truncated
-        if (totalBytes > 0 && currentDownloaded < totalBytes)
-        {
-            SafeInvokeAsync(() =>
-            {
-                item.DownloadedBytes = currentDownloaded;
-            });
-            throw new IOException(
-                $"Download was interrupted: Only {currentDownloaded} of {totalBytes} bytes were transferred.");
-        }
-
-        // Download completed, atomically rename temp file to final destination
-        var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
-        var targetDir = Path.GetDirectoryName(actualFinalPath);
-        if (!string.IsNullOrWhiteSpace(targetDir) && !Directory.Exists(targetDir))
-        {
-            Directory.CreateDirectory(targetDir);
-        }
-
-        File.Move(tempFilePath, actualFinalPath, overwrite: true);
-
-        SafeInvoke(() =>
-        {
-            item.DownloadedBytes = currentDownloaded;
-            if (totalBytes <= 0) item.TotalBytes = currentDownloaded;
-            item.ProgressPercentage = 100;
-            item.SpeedBytesPerSecond = 0;
-            item.RemainingSeconds = 0;
-            item.Status = DownloadStatus.Completed;
-            item.StatusMessage = Loc.Get("Status_Completed");
-            item.CompletedAt = DateTime.Now;
-            if (item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
-            {
-                item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
+                ArrayPool<byte>.Shared.Return(rentedBuffer);
             }
-        });
-
-        CompleteAndRemoveActiveDownload(item.Id);
-        DownloadCompleted?.Invoke(item);
+        }
     }
 
     /// <summary>

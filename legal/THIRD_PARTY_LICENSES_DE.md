@@ -2,7 +2,7 @@
 
 Reepax bindet Software und Open-Source-Bibliotheken von Drittanbietern ein oder liefert diese mit. Jede Komponente unterliegt ihrer jeweiligen eigenen Lizenz.
 
-Die proprietären Einschränkungen der **Reepax-Lizenz** gelten ausschließlich für den ursprünglichen Reepax-Quellcode. Sie schränken die Rechte, die im Rahmen der Open-Source-Lizenzen der unten aufgeführten Drittanbieter-Komponenten gewährt werden, weder ein noch verändern oder überschreiben sie diese.
+Die **MIT-Lizenz** gilt für den ursprünglichen Reepax-Quellcode. Sie schränkt die Rechte, die im Rahmen der Open-Source-Lizenzen der unten aufgeführten Drittanbieter-Komponenten gewährt werden, weder ein noch verändert oder überschreibt sie diese.
 
 ---
 

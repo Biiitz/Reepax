@@ -1,7 +1,7 @@
 <!-- markdownlint-disable-file -->
 
 <p align="center">
-  <img src="Reepax/Assets/R.png" alt="Reepax Logo/Banner" width="150" />
+  <img src="Reepax/Assets/R.png" alt="Reepax Logo" width="80" />
 </p>
 
 <p align="center">
@@ -97,5 +97,10 @@ You can load unpacked Chromium extensions into Reepax's embedded WebView2 browse
 - **Zero Telemetry**: Reepax does not track activity, collect usage analytics, or transmit download URLs to external servers.
 - **DPAPI-Encrypted Local Storage**: All settings, download queues, and history are stored locally on your machine in `%LOCALAPPDATA%\Reepax` as DPAPI-encrypted files (`settings.json`, `downloads.json`, `history.json`).
 - **Configurable Logging**: Rotating diagnostic file logging is disabled by default and can be enabled at any time in the Settings tab.
+---
+
+## License
+
+Reepax is open-source software licensed under the [MIT License](LICENSE.md).
 
 Developed by [Biiitz](https://github.com/Biiitz).

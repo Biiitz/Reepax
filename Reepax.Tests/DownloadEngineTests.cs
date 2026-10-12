@@ -1765,6 +1765,179 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public void DetermineBufferSize_ReturnsExpectedSizesForDifferentThresholds()
+    {
+        // Unknown or non-positive size: 256 KB default
+        Assert.Equal(256 * 1024, DownloadEngine.DetermineBufferSize(0));
+        Assert.Equal(256 * 1024, DownloadEngine.DetermineBufferSize(-1));
+        Assert.Equal(256 * 1024, DownloadEngine.DetermineBufferSize(-1024));
+
+        // Small files (< 10 MB): 64 KB
+        Assert.Equal(64 * 1024, DownloadEngine.DetermineBufferSize(1));
+        Assert.Equal(64 * 1024, DownloadEngine.DetermineBufferSize(1024));
+        Assert.Equal(64 * 1024, DownloadEngine.DetermineBufferSize(5 * 1024 * 1024));
+        Assert.Equal(64 * 1024, DownloadEngine.DetermineBufferSize(10 * 1024 * 1024 - 1));
+
+        // Standard files (10 MB <= size < 100 MB): 256 KB
+        Assert.Equal(256 * 1024, DownloadEngine.DetermineBufferSize(10 * 1024 * 1024));
+        Assert.Equal(256 * 1024, DownloadEngine.DetermineBufferSize(50 * 1024 * 1024));
+        Assert.Equal(256 * 1024, DownloadEngine.DetermineBufferSize(100 * 1024 * 1024 - 1));
+
+        // Large files (>= 100 MB): 512 KB
+        Assert.Equal(512 * 1024, DownloadEngine.DetermineBufferSize(100 * 1024 * 1024));
+        Assert.Equal(512 * 1024, DownloadEngine.DetermineBufferSize(1024L * 1024 * 1024));
+        Assert.Equal(512 * 1024, DownloadEngine.DetermineBufferSize(10L * 1024 * 1024 * 1024));
+    }
+
+    [Fact]
+    public async Task DownloadEngine_SingleConnection_UsesArrayPoolSharedWithoutAllocatingCustomBuffer()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxPoolSingle_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "pooled_single.bin");
+            var item = new DownloadItem
+            {
+                FileName = "pooled_single.bin",
+                SaveFilePath = destinationFile,
+                Status = DownloadStatus.Queued
+            };
+
+            var testData = new byte[150 * 1024]; // 150 KB
+            for (int i = 0; i < testData.Length; i++) testData[i] = (byte)(i % 199);
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(testData)
+                };
+                response.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(response);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += downloadedItem =>
+            {
+                if (downloadedItem.Id == item.Id)
+                    tcs.TrySetResult(true);
+            };
+
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    tcs.TrySetException(ex);
+            };
+
+            await engine.StartDownloadAsync(
+                item,
+                "https://example.com/pooled_single.bin",
+                null,
+                "Mozilla/5.0",
+                "https://example.com",
+                "pooled_single.bin");
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(5000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(File.Exists(destinationFile));
+            Assert.Equal(testData.Length, new FileInfo(destinationFile).Length);
+            Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ChunkedDownload_BatchedBufferFlush_PreservesCompleteData()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxPoolChunked_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "pooled_chunked.bin");
+            var item = new DownloadItem
+            {
+                FileName = "pooled_chunked.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/pooled_chunked.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            // 8 MB + 500 KB to trigger chunking threshold (MinBytesForChunking = 8 MB)
+            var testData = new byte[8 * 1024 * 1024 + 500 * 1024];
+            for (int i = 0; i < testData.Length; i++)
+                testData[i] = (byte)((i * 31) % 256);
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                if (req.Headers.Range != null)
+                {
+                    long from = req.Headers.Range.Ranges.First().From ?? 0;
+                    long to = req.Headers.Range.Ranges.First().To ?? (testData.Length - 1);
+                    var slice = testData.AsSpan((int)from, (int)(to - from + 1)).ToArray();
+                    var res = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                    {
+                        Content = new ByteArrayContent(slice)
+                    };
+                    res.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(from, to, testData.Length);
+                    return Task.FromResult(res);
+                }
+
+                var full = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(testData) };
+                full.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(full);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += downloadedItem =>
+            {
+                if (downloadedItem.Id == item.Id)
+                    tcs.TrySetResult(true);
+            };
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    tcs.TrySetException(ex);
+            };
+
+            await engine.StartDownloadAsync(
+                item,
+                "https://example.com/pooled_chunked.bin",
+                null,
+                "Mozilla/5.0",
+                "https://example.com",
+                "pooled_chunked.bin");
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(File.Exists(destinationFile));
+            Assert.Equal(testData.Length, new FileInfo(destinationFile).Length);
+            Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
 
 
