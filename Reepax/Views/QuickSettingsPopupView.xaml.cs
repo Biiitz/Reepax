@@ -103,7 +103,7 @@ public partial class QuickSettingsPopupView : UserControl
 
     public void Toggle(FrameworkElement? anchor = null)
     {
-        if (Environment.TickCount64 - _closedTimestamp < 350)
+        if (Environment.TickCount64 - _closedTimestamp < 100)
         {
             return;
         }
@@ -133,7 +133,7 @@ public partial class QuickSettingsPopupView : UserControl
 
     public void HandlePreviewMouseDown(MouseButtonEventArgs e)
     {
-        if (IsOpen || (Environment.TickCount64 - _closedTimestamp < 350))
+        if (IsOpen)
         {
             IsOpen = false;
             _closedTimestamp = Environment.TickCount64;

@@ -46,6 +46,3 @@ The **MIT License** applies to the original Reepax codebase and does not restric
 
 All third-party components are provided by their respective copyright holders "as is", without warranty of any kind, express or implied. In no event shall the authors or copyright holders of either Reepax or the third-party components be liable for any claim, damages, or other liability arising from the use of these components.
 
----
-
-*Deutsche Fassung: [THIRD_PARTY_LICENSES_DE.md](THIRD_PARTY_LICENSES_DE.md)*

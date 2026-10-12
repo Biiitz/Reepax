@@ -502,6 +502,11 @@ public static class Strings_de
         ["About_Links_Repository"] = "GitHub Repository",
         ["About_Links_Releases"] = "Changelog & Releases",
         ["About_Links_Issues"] = "Fehler melden / Feedback",
+        ["About_Community_ContributeButton"] = "Auf GitHub mitwirken ↗",
+        ["About_Contributors_Title"] = "Contributors",
+        ["About_Contributors_Notice_Title"] = "Wie werde ich offizieller Contributor?",
+        ["About_Contributors_Notice"] = "Ein eingereichter Pull Request allein macht dich noch nicht zum Contributor. Erst wenn dein PR geprüft, akzeptiert und erfolgreich in den Hauptzweig gemerged wurde, erkennt GitHub dich als offizieller GitHub-Contributor an und du wirst hier dauerhaft mit deinem GitHub-Profil verewigt.",
+        ["About_Contributor_CrownToolTip"] = "Projektgründer & Hauptentwickler",
 
         // Search & Filter Bar
         ["Filter_Search_Placeholder"] = "Downloads durchsuchen",

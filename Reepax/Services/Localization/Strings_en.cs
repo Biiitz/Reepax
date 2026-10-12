@@ -502,6 +502,11 @@ public static class Strings_en
         ["About_Links_Repository"] = "GitHub Repository",
         ["About_Links_Releases"] = "Changelog & Releases",
         ["About_Links_Issues"] = "Report Issue / Feedback",
+        ["About_Community_ContributeButton"] = "Contribute on GitHub ↗",
+        ["About_Contributors_Title"] = "Contributors",
+        ["About_Contributors_Notice_Title"] = "How to become an official contributor?",
+        ["About_Contributors_Notice"] = "Submitting a pull request alone does not make you a contributor. Only once your PR has been reviewed, approved, and successfully merged into the main branch does GitHub recognize you as an official GitHub contributor and you become permanently honored here with your GitHub profile.",
+        ["About_Contributor_CrownToolTip"] = "Project Founder & Lead Maintainer",
 
         // Search & Filter Bar
         ["Filter_Search_Placeholder"] = "Search downloads",

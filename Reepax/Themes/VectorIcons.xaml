@@ -82,5 +82,8 @@
 
     <!-- Archive / Extraction Box Icon -->
     <Geometry x:Key="IconArchive">M20 2H4c-1.1 0-2 .9-2 2v3c0 .55.45 1 1 1h1v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8h1c.55 0 1-.45 1-1V4c0-1.1-.9-2-2-2zm-5 11h-6v-2h6v2zm5-7H4V4h16v2z</Geometry>
+
+    <!-- Royal Crown Icon -->
+    <Geometry x:Key="IconCrown">M5 16L3 5L8.5 10L12 4L15.5 10L21 5L19 16H5ZM19 19C19 19.55 18.55 20 18 20H6C5.45 20 5 19.55 5 19V18H19V19Z</Geometry>
 </ResourceDictionary>
 

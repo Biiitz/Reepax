@@ -25,6 +25,10 @@ public partial class MainWindow : Window
 {
     private bool _hasInitializedDownloadsTab;
     private bool _isTabIndicatorInitialized;
+    private const int WM_ENTERSIZEMOVE = 0x0231;
+    private const int WM_EXITSIZEMOVE = 0x0232;
+    private bool _isResizingOrMovingViaWin32;
+    private System.Windows.Threading.DispatcherTimer? _windowBoundsDebounceTimer;
 
     public MainWindow()
     {
@@ -171,12 +175,32 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        LocationChanged += (_, _) => SaveWindowState();
+        LocationChanged += (_, _) =>
+        {
+            if (_isResizingOrMovingViaWin32)
+            {
+                UpdateWindowStateInMemory();
+            }
+            else
+            {
+                DebounceSaveWindowState();
+            }
+        };
+
         SizeChanged += (_, _) =>
         {
-            SaveWindowState();
+            if (_isResizingOrMovingViaWin32)
+            {
+                UpdateWindowStateInMemory();
+            }
+            else
+            {
+                DebounceSaveWindowState();
+            }
             AutoFitNameColumn();
         };
+
+        StateChanged += (_, _) => DebounceSaveWindowState();
         Loaded += (_, _) => AutoFitNameColumn();
 
         ViewModel.ColumnLayoutChanged += (_, _) =>
@@ -278,8 +302,6 @@ public partial class MainWindow : Window
             DownloadsTabButton.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
         if (SettingsTabButton != null)
             SettingsTabButton.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
-        if (TabStripContainer != null)
-            TabStripContainer.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
 
         if (ViewModel != null)
             ViewModel.PropertyChanged += ViewModel_TabIndicator_PropertyChanged;
@@ -311,8 +333,8 @@ public partial class MainWindow : Window
         double targetWidth = targetButton.ActualWidth;
         if (targetWidth <= 0)
         {
-            targetButton.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             targetWidth = targetButton.DesiredSize.Width > 0 ? targetButton.DesiredSize.Width : targetButton.MinWidth;
+            if (targetWidth <= 0) targetWidth = 136;
         }
 
         Point relativePoint;
@@ -359,7 +381,7 @@ public partial class MainWindow : Window
         SlidingTabIndicator.BeginAnimation(FrameworkElement.WidthProperty, widthAnim);
     }
 
-    private void SaveWindowState()
+    private void UpdateWindowStateInMemory()
     {
         try
         {
@@ -383,10 +405,41 @@ public partial class MainWindow : Window
                 settings.WindowLeft = Left;
                 settings.WindowTop = Top;
             }
-
-            SettingsService.Instance.SaveSettings();
         }
         catch { }
+    }
+
+    private void DebounceSaveWindowState()
+    {
+        UpdateWindowStateInMemory();
+        if (_windowBoundsDebounceTimer == null)
+        {
+            _windowBoundsDebounceTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _windowBoundsDebounceTimer.Tick += (_, _) =>
+            {
+                _windowBoundsDebounceTimer.Stop();
+                try { SettingsService.Instance.SaveSettings(); } catch { }
+            };
+        }
+        _windowBoundsDebounceTimer.Stop();
+        _windowBoundsDebounceTimer.Start();
+    }
+
+    public void SaveWindowState(bool persistToDisk = false)
+    {
+        UpdateWindowStateInMemory();
+        if (persistToDisk)
+        {
+            try
+            {
+                _windowBoundsDebounceTimer?.Stop();
+                SettingsService.Instance.SaveSettings();
+            }
+            catch { }
+        }
     }
 
     private bool _isForceExit;
@@ -430,7 +483,7 @@ public partial class MainWindow : Window
         if (!_isForceExit && minimizeToTray)
         {
             e.Cancel = true;
-            SaveWindowState();
+            SaveWindowState(persistToDisk: true);
             Hide();
             Services.SystemIntegration.TrayIconService.Instance.ShowTrayIcon();
             return;
@@ -527,6 +580,16 @@ public partial class MainWindow : Window
         if (msg == Services.SystemIntegration.ClipboardMonitorService.WM_CLIPBOARDUPDATE)
         {
             Services.SystemIntegration.ClipboardMonitorService.Instance.ProcessClipboardChange();
+        }
+        else if (msg == WM_ENTERSIZEMOVE)
+        {
+            _isResizingOrMovingViaWin32 = true;
+        }
+        else if (msg == WM_EXITSIZEMOVE)
+        {
+            _isResizingOrMovingViaWin32 = false;
+            SaveWindowState(persistToDisk: true);
+            AutoFitNameColumn();
         }
         return IntPtr.Zero;
     }
@@ -2955,7 +3018,7 @@ public partial class MainWindow : Window
 
     private void StatusFilterButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (StatusFilterPopup.IsOpen || (Environment.TickCount64 - _statusFilterClosedTimestamp < 350))
+        if (StatusFilterPopup.IsOpen)
         {
             StatusFilterPopup.IsOpen = false;
             _statusFilterClosedTimestamp = Environment.TickCount64;
@@ -2965,7 +3028,7 @@ public partial class MainWindow : Window
 
     private void StatusFilterButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Environment.TickCount64 - _statusFilterClosedTimestamp < 350)
+        if (Environment.TickCount64 - _statusFilterClosedTimestamp < 100)
         {
             return;
         }

@@ -2321,7 +2321,136 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Section 3: Developer & Links -->
+                    <!-- Section 3: Contributors -->
+                    <Border Background="{DynamicResource BgCardBrush}" 
+                            BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="1" 
+                            CornerRadius="6" 
+                            Padding="20,16"
+                            Margin="0,0,0,16">
+                        <StackPanel>
+                            <!-- Header: Contributors Title + (i) ToolTip -->
+                            <DockPanel LastChildFill="False" Margin="0,0,0,12">
+                                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                    <Path Data="{StaticResource IconHeart}" Fill="{DynamicResource AccentBlueBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <TextBlock Text="{loc:Loc About_Contributors_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+
+                                    <!-- (i) Info icon explaining merged PR requirement -->
+                                    <Border Margin="8,0,0,0"
+                                            Background="Transparent"
+                                            Cursor="Help"
+                                            ToolTipService.InitialShowDelay="50"
+                                            ToolTipService.ShowDuration="15000"
+                                            VerticalAlignment="Center">
+                                        <Border.ToolTip>
+                                            <ToolTip MaxWidth="380">
+                                                <StackPanel Margin="2">
+                                                    <TextBlock Text="{loc:Loc About_Contributors_Notice_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource AccentBlueBrush}" Margin="0,0,0,4" />
+                                                    <TextBlock Text="{loc:Loc About_Contributors_Notice}" FontSize="11" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" LineHeight="16" />
+                                                </StackPanel>
+                                            </ToolTip>
+                                        </Border.ToolTip>
+                                        <Path Data="{StaticResource IconInfo}" 
+                                              Width="13" Height="13" 
+                                              Fill="{DynamicResource AccentBlueBrush}" 
+                                              Stretch="Uniform" 
+                                              VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                            </DockPanel>
+
+                            <!-- 4 Columns of Contributors (Name + Link + Crown, No Logos) -->
+                            <ItemsControl ItemsSource="{Binding Contributors}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="4" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{DynamicResource BgInputBrush}" 
+                                                BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                                BorderThickness="1" 
+                                                CornerRadius="6" 
+                                                Padding="10,8" 
+                                                Margin="3,3">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <!-- Small Royal Crown for Biiitz -->
+                                                <Path x:Name="CrownIcon" 
+                                                      Data="{StaticResource IconCrown}" 
+                                                      Width="13" Height="13" 
+                                                      Stretch="Uniform" 
+                                                      Margin="0,0,6,0" 
+                                                      VerticalAlignment="Center"
+                                                      ToolTip="{loc:Loc About_Contributor_CrownToolTip}">
+                                                    <Path.Style>
+                                                        <Style TargetType="Path">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasCrown}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Path.Style>
+                                                    <Path.Fill>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                            <GradientStop Color="#FDE047" Offset="0.0" />
+                                                            <GradientStop Color="#EAB308" Offset="0.5" />
+                                                            <GradientStop Color="#B45309" Offset="1.0" />
+                                                        </LinearGradientBrush>
+                                                    </Path.Fill>
+                                                    <Path.RenderTransform>
+                                                        <RotateTransform Angle="-12" CenterX="6.5" CenterY="6.5" />
+                                                    </Path.RenderTransform>
+                                                </Path>
+
+                                                <!-- Clickable GitHub Name Only (Not the entire bar) -->
+                                                <Button Command="{Binding DataContext.OpenContributorProfileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                        CommandParameter="{Binding ProfileUrl}" 
+                                                        ToolTip="{Binding ProfileUrl}" 
+                                                        Cursor="Hand"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="0">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <StackPanel Orientation="Horizontal" Background="Transparent" VerticalAlignment="Center">
+                                                                <TextBlock x:Name="NameText" 
+                                                                           Text="{Binding Username}" 
+                                                                           FontWeight="SemiBold" 
+                                                                           FontSize="12" 
+                                                                           Foreground="{DynamicResource TextPrimaryBrush}" 
+                                                                           VerticalAlignment="Center" 
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                                <Path x:Name="LinkIcon" 
+                                                                      Data="{StaticResource IconExternalLink}" 
+                                                                      Fill="{DynamicResource TextSecondaryBrush}" 
+                                                                      Width="9" Height="9" 
+                                                                      Stretch="Uniform" 
+                                                                      Margin="5,0,0,0" 
+                                                                      VerticalAlignment="Center" 
+                                                                      Opacity="0.6" />
+                                                            </StackPanel>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="NameText" Property="Foreground" Value="{DynamicResource AccentBlueBrush}" />
+                                                                    <Setter TargetName="LinkIcon" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                                    <Setter TargetName="LinkIcon" Property="Opacity" Value="1.0" />
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Section 4: Developer & Links -->
                     <Border Background="{DynamicResource BgCardBrush}" 
                             BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="1" 
@@ -2344,7 +2473,7 @@
                             <WrapPanel Grid.Row="1" Orientation="Horizontal">
                                 <Button Command="{Binding OpenGitHubRepositoryCommand}" 
                                         Style="{StaticResource SettingsActionButtonStyle}" 
-                                        Margin="0,0,8,0">
+                                        Margin="0,0,8,6">
                                     <StackPanel Orientation="Horizontal">
                                         <Path Data="{StaticResource IconGitHub}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <TextBlock Text="{loc:Loc About_Links_Repository}" VerticalAlignment="Center" />
@@ -2353,7 +2482,7 @@
 
                                 <Button Command="{Binding OpenGitHubReleasesCommand}" 
                                         Style="{StaticResource SettingsActionButtonStyle}" 
-                                        Margin="0,0,8,0">
+                                        Margin="0,0,8,6">
                                     <StackPanel Orientation="Horizontal">
                                         <Path Data="{StaticResource IconHistory}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <TextBlock Text="{loc:Loc About_Links_Releases}" VerticalAlignment="Center" />
@@ -2361,10 +2490,20 @@
                                 </Button>
 
                                 <Button Command="{Binding OpenGitHubIssuesCommand}" 
-                                        Style="{StaticResource SettingsActionButtonStyle}">
+                                        Style="{StaticResource SettingsActionButtonStyle}"
+                                        Margin="0,0,8,6">
                                     <StackPanel Orientation="Horizontal">
                                         <Path Data="{StaticResource IconExternalLink}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <TextBlock Text="{loc:Loc About_Links_Issues}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Command="{Binding OpenGitHubContributingCommand}" 
+                                        Style="{StaticResource SettingsActionButtonStyle}"
+                                        Margin="0,0,8,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Path Data="{StaticResource IconGitHub}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                        <TextBlock Text="{loc:Loc About_Community_ContributeButton}" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
                             </WrapPanel>

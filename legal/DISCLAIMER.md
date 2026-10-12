@@ -8,6 +8,3 @@
 - **Limitation of Liability:** The developer (**Biiitz**) is not liable for any direct, indirect, or consequential damages of any kind (such as data loss, hardware damage, or system failures) resulting from the use of this software.
 - **User Responsibility:** Use of this software is entirely at your own risk. If you do not agree to these terms, do not use Reepax.
 
----
-
-*Deutsche Fassung: [DISCLAIMER_DE.md](DISCLAIMER_DE.md)*

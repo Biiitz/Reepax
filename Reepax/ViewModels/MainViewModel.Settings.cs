@@ -1193,6 +1193,12 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
+    public void OpenGitHubContributing()
+    {
+        OpenBrowserUrl("https://github.com/Biiitz/Reepax/blob/main/CONTRIBUTING.md");
+    }
+
+    [RelayCommand]
     public void CopySystemDiagnosticInfo()
     {
         try
@@ -1370,5 +1376,32 @@ public partial class MainViewModel
     {
         _settingsService.Settings.CustomShortcuts = ShortcutManager.ExportCustomShortcuts();
         _settingsService.SaveSettings();
+    }
+
+    // =========================================================================
+    // Contributors
+    // =========================================================================
+
+    public ObservableCollection<ContributorInfo> Contributors { get; } = new();
+
+    public void InitializeContributors()
+    {
+        Contributors.Clear();
+        Contributors.Add(new ContributorInfo
+        {
+            Username = "Biiitz",
+            ProfileUrl = "https://github.com/Biiitz",
+            HasCrown = true
+        });
+    }
+
+    [RelayCommand]
+    public void OpenContributorProfile(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            url = "https://github.com/Biiitz";
+        }
+        OpenBrowserUrl(url);
     }
 }

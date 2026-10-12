@@ -653,38 +653,96 @@ public partial class MainViewModel : ObservableObject
                 PostDownloadRemainingSeconds = 0;
             });
         };
+
+        InitializeContributors();
     }
 
     // Settings commands, directory browsers, and diagnostic actions have been moved to MainViewModel.Settings.cs
 
 
 
-    public bool CanStartAll => SelectedMainTab == AppMainTab.Downloads &&
-        Packages.Any(p => p.Items.Any(i => i.IsEnabled &&
-        (i.Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Aborted ||
-         (i.Status != DownloadStatus.Completed &&
-          i.Status != DownloadStatus.Downloading &&
-          i.Status != DownloadStatus.InBrowser &&
-          i.Status != DownloadStatus.SolvingCaptcha &&
-          (i.Status != DownloadStatus.Queued || !IsQueueRunning)))));
+    public bool CanStartAll
+    {
+        get
+        {
+            if (SelectedMainTab != AppMainTab.Downloads) return false;
+            foreach (var p in Packages)
+            {
+                foreach (var i in p.Items)
+                {
+                    if (i.IsEnabled &&
+                        (i.Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Aborted ||
+                         (i.Status != DownloadStatus.Completed &&
+                          i.Status != DownloadStatus.Downloading &&
+                          i.Status != DownloadStatus.InBrowser &&
+                          i.Status != DownloadStatus.SolvingCaptcha &&
+                          (i.Status != DownloadStatus.Queued || !IsQueueRunning))))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
 
-    public bool CanPauseAll => SelectedMainTab == AppMainTab.Downloads &&
-                               Packages.Count > 0 &&
-                               (ActiveDownloadsCount > 0 ||
-                                DownloadEngine.Instance.ActiveDownloadsCount > 0 ||
-                                Packages.Any(p => p.Items.Any(i => i.IsEnabled && i.Status is DownloadStatus.Downloading or DownloadStatus.Queued or DownloadStatus.InBrowser or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)));
+    public bool CanPauseAll
+    {
+        get
+        {
+            if (SelectedMainTab != AppMainTab.Downloads || Packages.Count == 0) return false;
+            if (ActiveDownloadsCount > 0 || DownloadEngine.Instance.ActiveDownloadsCount > 0) return true;
+            foreach (var p in Packages)
+            {
+                foreach (var i in p.Items)
+                {
+                    if (i.IsEnabled && i.Status is DownloadStatus.Downloading or DownloadStatus.Queued or DownloadStatus.InBrowser or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
 
-    public bool CanClearCompleted => SelectedMainTab == AppMainTab.Downloads && Packages.Any(p => p.Items.Any(i => i.Status == DownloadStatus.Completed));
+    public bool CanClearCompleted
+    {
+        get
+        {
+            if (SelectedMainTab != AppMainTab.Downloads) return false;
+            foreach (var p in Packages)
+            {
+                foreach (var i in p.Items)
+                {
+                    if (i.Status == DownloadStatus.Completed) return true;
+                }
+            }
+            return false;
+        }
+    }
 
     public bool CanExpandCollapseAll => SelectedMainTab == AppMainTab.Downloads && Packages.Count > 0;
 
     public bool CanTogglePauseResume => SelectedMainTab == AppMainTab.Downloads && (CanPauseAll || CanStartAll);
 
-    public bool CanDeleteSelected =>
-        SelectedMainTab == AppMainTab.Downloads &&
-        (SelectedPackage != null ||
-         SelectedItem != null ||
-         Packages.Any(p => p.IsSelected || p.Items.Any(i => i.IsSelected)));
+    public bool CanDeleteSelected
+    {
+        get
+        {
+            if (SelectedMainTab != AppMainTab.Downloads) return false;
+            if (SelectedPackage != null || SelectedItem != null) return true;
+            foreach (var p in Packages)
+            {
+                if (p.IsSelected) return true;
+                foreach (var i in p.Items)
+                {
+                    if (i.IsSelected) return true;
+                }
+            }
+            return false;
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanTogglePauseResume))]
     public void TogglePauseResume()
