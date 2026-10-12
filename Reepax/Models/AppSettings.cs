@@ -241,7 +241,7 @@ public class AppSettings
         return list;
     }
 
-    public static readonly string[] ValidCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3"];
+    public static readonly string[] ValidCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3", "7.mp3", "8.mp3", "9.mp3", "10.mp3"];
     public static readonly string[] ValidErrorSounds = ["1.mp3", "2.mp3", "3.mp3"];
 
     public static void SanitizeSoundSettings(AppSettings? settings)

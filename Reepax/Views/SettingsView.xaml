@@ -873,7 +873,6 @@
                                                     <!-- Sound 1 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="1.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -888,7 +887,6 @@
                                                     <!-- Sound 2 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="2.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -903,7 +901,6 @@
                                                     <!-- Sound 3 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="3.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -918,7 +915,6 @@
                                                     <!-- Sound 4 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="4.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -933,7 +929,6 @@
                                                     <!-- Sound 5 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="5.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -948,7 +943,6 @@
                                                     <!-- Sound 6 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="6.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -963,7 +957,6 @@
                                                     <!-- Sound 7 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="7.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -978,7 +971,6 @@
                                                     <!-- Sound 8 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="8.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -993,7 +985,6 @@
                                                     <!-- Sound 9 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="9.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -1008,7 +999,6 @@
                                                     <!-- Sound 10 -->
                                                     <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                             Click="CompletionSoundOption_Click"
-                                                            Command="{Binding SelectAndPreviewCompletionSoundCommand}"
                                                             CommandParameter="10.mp3">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -1196,7 +1186,6 @@
                                                 <!-- Sound 1 -->
                                                 <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                         Click="ErrorSoundOption_Click"
-                                                        Command="{Binding SelectAndPreviewErrorSoundCommand}"
                                                         CommandParameter="1.mp3">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
@@ -1211,7 +1200,6 @@
                                                 <!-- Sound 2 -->
                                                 <Button Style="{StaticResource SoundDropdownItemStyle}"
                                                         Click="ErrorSoundOption_Click"
-                                                        Command="{Binding SelectAndPreviewErrorSoundCommand}"
                                                         CommandParameter="2.mp3">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>

@@ -768,6 +768,14 @@ public partial class SettingsView : UserControl
 
     private void CompletionSoundOption_Click(object sender, RoutedEventArgs e)
     {
+        if (sender is Button btn)
+        {
+            var sound = btn.CommandParameter as string ?? btn.Tag as string;
+            if (!string.IsNullOrWhiteSpace(sound))
+            {
+                ViewModel?.SelectAndPreviewCompletionSound(sound);
+            }
+        }
         CompletionSoundPopup.IsOpen = false;
     }
 
@@ -824,6 +832,14 @@ public partial class SettingsView : UserControl
 
     private void ErrorSoundOption_Click(object sender, RoutedEventArgs e)
     {
+        if (sender is Button btn)
+        {
+            var sound = btn.CommandParameter as string ?? btn.Tag as string;
+            if (!string.IsNullOrWhiteSpace(sound))
+            {
+                ViewModel?.SelectAndPreviewErrorSound(sound);
+            }
+        }
         ErrorSoundPopup.IsOpen = false;
     }
 

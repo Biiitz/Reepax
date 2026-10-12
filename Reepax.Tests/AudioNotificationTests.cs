@@ -247,6 +247,24 @@ public class AudioNotificationTests
     }
 
     [Fact]
+    public void MainViewModel_SelectAndPreview_UpdatesSelectedSoundAndDisplayName()
+    {
+        var vm = new ViewModels.MainViewModel();
+
+        vm.SelectAndPreviewCompletionSound("7.mp3");
+        Assert.Equal("7.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("Sound 7", vm.SelectedCompletionSoundDisplayName);
+
+        vm.SelectAndPreviewCompletionSound("10.mp3");
+        Assert.Equal("10.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("Sound 10", vm.SelectedCompletionSoundDisplayName);
+
+        vm.SelectAndPreviewErrorSound("2.mp3");
+        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        Assert.Equal("Sound 2", vm.SelectedErrorSoundDisplayName);
+    }
+
+    [Fact]
     public void MainViewModel_VolumeProperties_ClampAndPersist()
     {
         var vm = new ViewModels.MainViewModel();
@@ -324,6 +342,24 @@ public class AudioNotificationTests
 
         Assert.Equal("1.mp3", settings.SelectedCompletionSound);
         Assert.Equal("1.mp3", settings.SelectedErrorSound);
+    }
+
+    [Theory]
+    [InlineData("1.mp3")]
+    [InlineData("2.mp3")]
+    [InlineData("3.mp3")]
+    [InlineData("4.mp3")]
+    [InlineData("5.mp3")]
+    [InlineData("6.mp3")]
+    [InlineData("7.mp3")]
+    [InlineData("8.mp3")]
+    [InlineData("9.mp3")]
+    [InlineData("10.mp3")]
+    public void AppSettings_AudioProperties_Sanitization_PreservesAll10CompletionSounds(string sound)
+    {
+        var settings = new AppSettings { SelectedCompletionSound = sound };
+        AppSettings.SanitizeSoundSettings(settings);
+        Assert.Equal(sound, settings.SelectedCompletionSound);
     }
 
     [Fact]
