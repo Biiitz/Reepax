@@ -116,9 +116,17 @@ public partial class DownloadPackage : ObservableObject
     /// <summary>Clipped sub-packages (e.g. updates, DLCs, extra packs) attached to this package.</summary>
     public ObservableCollection<DownloadPackage> ClippedPackages { get; } = new();
 
-    /// <summary>Indicates whether another package is being dragged over this folder.</summary>
+    /// <summary>Indicates whether another package is being dragged over this folder (to clip/combine).</summary>
     [ObservableProperty]
     private bool _isDropTarget;
+
+    /// <summary>Indicates whether another package is being dragged above this folder (to insert before).</summary>
+    [ObservableProperty]
+    private bool _isDropBefore;
+
+    /// <summary>Indicates whether another package is being dragged below this folder (to insert after).</summary>
+    [ObservableProperty]
+    private bool _isDropAfter;
 
     /// <summary>Set briefly to true to trigger the completion shine animation in XAML.</summary>
     [ObservableProperty]
@@ -1492,4 +1500,12 @@ public partial class DownloadPackage : ObservableObject
 
         return null;
     }
+}
+
+public enum PackageDropAction
+{
+    None,
+    InsertBefore,
+    Clip,
+    InsertAfter
 }

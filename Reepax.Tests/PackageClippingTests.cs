@@ -203,4 +203,218 @@ public class PackageClippingTests
         Assert.Contains(gamePkg, vm.Packages);
         Assert.Contains(updatePkg, vm.Packages);
     }
+
+    [Theory]
+    [InlineData(5.0, 30.0, PackageDropAction.InsertBefore)]
+    [InlineData(8.0, 30.0, PackageDropAction.InsertBefore)]
+    [InlineData(10.0, 30.0, PackageDropAction.Clip)]
+    [InlineData(15.0, 30.0, PackageDropAction.Clip)]
+    [InlineData(21.0, 30.0, PackageDropAction.Clip)]
+    [InlineData(23.0, 30.0, PackageDropAction.InsertAfter)]
+    [InlineData(28.0, 30.0, PackageDropAction.InsertAfter)]
+    public void CalculatePackageDropAction_WhenCanClip_DeterminesZonesCorrectly(double posY, double height, PackageDropAction expectedAction)
+    {
+        var game = new DownloadPackage { Name = "Elden Ring" };
+        var update = new DownloadPackage { Name = "Elden Ring - DLC" };
+
+        var action = MainWindow.CalculatePackageDropAction(update, game, posY, height);
+        Assert.Equal(expectedAction, action);
+    }
+
+    [Theory]
+    [InlineData(5.0, 30.0, PackageDropAction.InsertBefore)]
+    [InlineData(14.0, 30.0, PackageDropAction.InsertBefore)]
+    [InlineData(16.0, 30.0, PackageDropAction.InsertAfter)]
+    [InlineData(25.0, 30.0, PackageDropAction.InsertAfter)]
+    public void CalculatePackageDropAction_WhenCannotClip_SplitsTopBottom5050(double posY, double height, PackageDropAction expectedAction)
+    {
+        var pkgA = new DownloadPackage { Name = "Game A" };
+        var pkgB = new DownloadPackage { Name = "Game B" };
+        // If pkgB is already clipped, CanClip is false
+        pkgB.ParentPackageId = Guid.NewGuid();
+
+        var action = MainWindow.CalculatePackageDropAction(pkgA, pkgB, posY, height);
+        Assert.Equal(expectedAction, action);
+    }
+
+    [Fact]
+    public void CalculatePackageDropAction_WhenSelfOrNull_ReturnsNone()
+    {
+        var pkg = new DownloadPackage { Name = "Cyberpunk 2077" };
+        Assert.Equal(PackageDropAction.None, MainWindow.CalculatePackageDropAction(pkg, pkg, 15, 30));
+        Assert.Equal(PackageDropAction.None, MainWindow.CalculatePackageDropAction(null, pkg, 15, 30));
+        Assert.Equal(PackageDropAction.None, MainWindow.CalculatePackageDropAction(pkg, null, 15, 30));
+    }
+
+    [Fact]
+    public void MovePackageBefore_MovesPackageToVeryTop()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var pkg1 = new DownloadPackage { Name = "Package 1" };
+        var pkg2 = new DownloadPackage { Name = "Package 2" };
+        var pkg3 = new DownloadPackage { Name = "Package 3" };
+
+        vm.Packages.Add(pkg1);
+        vm.Packages.Add(pkg2);
+        vm.Packages.Add(pkg3);
+        vm.RefreshRootPackages();
+
+        // Move Package 3 to very top (before Package 1)
+        vm.MovePackageBefore(pkg3, pkg1);
+
+        Assert.Equal(3, vm.RootPackages.Count);
+        Assert.Equal("Package 3", vm.RootPackages[0].Name);
+        Assert.Equal("Package 1", vm.RootPackages[1].Name);
+        Assert.Equal("Package 2", vm.RootPackages[2].Name);
+
+        Assert.Equal("Package 3", vm.Packages[0].Name);
+        Assert.Equal("Package 1", vm.Packages[0 + 1].Name);
+        Assert.Equal("Package 2", vm.Packages[2].Name);
+    }
+
+    [Fact]
+    public void MovePackageAfter_MovesPackageBetweenOthers()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var pkg1 = new DownloadPackage { Name = "Package 1" };
+        var pkg2 = new DownloadPackage { Name = "Package 2" };
+        var pkg3 = new DownloadPackage { Name = "Package 3" };
+
+        vm.Packages.Add(pkg1);
+        vm.Packages.Add(pkg2);
+        vm.Packages.Add(pkg3);
+        vm.RefreshRootPackages();
+
+        // Move Package 1 after Package 2 (so order becomes: 2, 1, 3)
+        vm.MovePackageAfter(pkg1, pkg2);
+
+        Assert.Equal(3, vm.RootPackages.Count);
+        Assert.Equal("Package 2", vm.RootPackages[0].Name);
+        Assert.Equal("Package 1", vm.RootPackages[1].Name);
+        Assert.Equal("Package 3", vm.RootPackages[2].Name);
+
+        Assert.Equal("Package 2", vm.Packages[0].Name);
+        Assert.Equal("Package 1", vm.Packages[1].Name);
+        Assert.Equal("Package 3", vm.Packages[2].Name);
+    }
+
+    [Fact]
+    public void MovePackageToEnd_MovesPackageToLastPosition()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var pkg1 = new DownloadPackage { Name = "Package 1" };
+        var pkg2 = new DownloadPackage { Name = "Package 2" };
+        var pkg3 = new DownloadPackage { Name = "Package 3" };
+
+        vm.Packages.Add(pkg1);
+        vm.Packages.Add(pkg2);
+        vm.Packages.Add(pkg3);
+        vm.RefreshRootPackages();
+
+        // Move Package 1 to the end (so order becomes: 2, 3, 1)
+        vm.MovePackageToEnd(pkg1);
+
+        Assert.Equal(3, vm.RootPackages.Count);
+        Assert.Equal("Package 2", vm.RootPackages[0].Name);
+        Assert.Equal("Package 3", vm.RootPackages[1].Name);
+        Assert.Equal("Package 1", vm.RootPackages[2].Name);
+
+        Assert.Equal("Package 2", vm.Packages[0].Name);
+        Assert.Equal("Package 3", vm.Packages[1].Name);
+        Assert.Equal("Package 1", vm.Packages[2].Name);
+    }
+
+    [Fact]
+    public void MovePackage_WhenClipped_UnclipsAndPlacesInRootQueue()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var parentPkg = new DownloadPackage { Name = "Parent Game" };
+        var clippedPkg = new DownloadPackage { Name = "DLC Expansion" };
+        var otherPkg = new DownloadPackage { Name = "Other Game" };
+
+        vm.Packages.Add(parentPkg);
+        vm.Packages.Add(clippedPkg);
+        vm.Packages.Add(otherPkg);
+        vm.RefreshRootPackages();
+
+        vm.ClipPackage(clippedPkg, parentPkg);
+        Assert.True(clippedPkg.IsClipped);
+        Assert.DoesNotContain(clippedPkg, vm.RootPackages);
+
+        // Move clipped package before Other Game
+        vm.MovePackageBefore(clippedPkg, otherPkg);
+
+        Assert.False(clippedPkg.IsClipped);
+        Assert.Null(clippedPkg.ParentPackageId);
+        Assert.DoesNotContain(clippedPkg, parentPkg.ClippedPackages);
+        Assert.Contains(clippedPkg, vm.RootPackages);
+
+        int dlcIndex = vm.RootPackages.IndexOf(clippedPkg);
+        int otherIndex = vm.RootPackages.IndexOf(otherPkg);
+        Assert.Equal(otherIndex - 1, dlcIndex);
+    }
+
+    [Fact]
+    public void MovePackage_WithClippedChildren_MovesEntireHierarchyCohesively()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var parent1 = new DownloadPackage { Name = "Game 1" };
+        var child1 = new DownloadPackage { Name = "Game 1 - DLC" };
+        var parent2 = new DownloadPackage { Name = "Game 2" };
+
+        vm.Packages.Add(parent1);
+        vm.Packages.Add(child1);
+        vm.Packages.Add(parent2);
+        vm.RefreshRootPackages();
+
+        vm.ClipPackage(child1, parent1);
+
+        // Move Game 1 after Game 2
+        vm.MovePackageAfter(parent1, parent2);
+
+        Assert.Equal(2, vm.RootPackages.Count);
+        Assert.Equal("Game 2", vm.RootPackages[0].Name);
+        Assert.Equal("Game 1", vm.RootPackages[1].Name);
+
+        // In full Packages list, Game 1 and its child should both be after Game 2
+        int p2Idx = vm.Packages.IndexOf(parent2);
+        int p1Idx = vm.Packages.IndexOf(parent1);
+        int c1Idx = vm.Packages.IndexOf(child1);
+
+        Assert.True(p1Idx > p2Idx);
+        Assert.True(c1Idx > p1Idx);
+    }
+
+    [Fact]
+    public void MovePackage_BetweenSubPackages_ReordersWithinParent()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var parent = new DownloadPackage { Name = "Game" };
+        var sub1 = new DownloadPackage { Name = "DLC 1" };
+        var sub2 = new DownloadPackage { Name = "DLC 2" };
+
+        vm.Packages.Add(parent);
+        vm.Packages.Add(sub1);
+        vm.Packages.Add(sub2);
+        vm.RefreshRootPackages();
+
+        vm.ClipPackage(sub1, parent);
+        vm.ClipPackage(sub2, parent);
+
+        Assert.Equal(2, parent.ClippedPackages.Count);
+        Assert.Equal("DLC 1", parent.ClippedPackages[0].Name);
+        Assert.Equal("DLC 2", parent.ClippedPackages[1].Name);
+
+        // Move sub2 before sub1
+        vm.MovePackageBefore(sub2, sub1);
+
+        Assert.Equal("DLC 2", parent.ClippedPackages[0].Name);
+        Assert.Equal("DLC 1", parent.ClippedPackages[1].Name);
+    }
 }

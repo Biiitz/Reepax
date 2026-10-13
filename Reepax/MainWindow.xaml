@@ -1110,6 +1110,38 @@
                                 Background="#1038BDF8"
                                 BorderBrush="#3038BDF8"
                                 BorderThickness="1" />
+
+                        <!-- Top Drop Indicator (Insert Before / Above) -->
+                        <Border x:Name="PackageTopDropIndicator"
+                                Grid.Column="0" Grid.ColumnSpan="13"
+                                Height="2"
+                                VerticalAlignment="Top"
+                                Margin="-0.5,-1,-0.5,0"
+                                Background="{DynamicResource AccentBlueBrush}"
+                                CornerRadius="1"
+                                IsHitTestVisible="False"
+                                Panel.ZIndex="50"
+                                Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#38BDF8" BlurRadius="5" ShadowDepth="0" Opacity="0.9" />
+                            </Border.Effect>
+                        </Border>
+
+                        <!-- Bottom Drop Indicator (Insert After / Below) -->
+                        <Border x:Name="PackageBottomDropIndicator"
+                                Grid.Column="0" Grid.ColumnSpan="13"
+                                Height="2"
+                                VerticalAlignment="Bottom"
+                                Margin="-0.5,0,-0.5,-1"
+                                Background="{DynamicResource AccentBlueBrush}"
+                                CornerRadius="1"
+                                IsHitTestVisible="False"
+                                Panel.ZIndex="50"
+                                Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="#38BDF8" BlurRadius="5" ShadowDepth="0" Opacity="0.9" />
+                            </Border.Effect>
+                        </Border>
                     </Grid>
                 </Border>
 
@@ -2089,6 +2121,7 @@
                               PreviewMouseWheel="TreeList_PreviewMouseWheel"
                               AllowDrop="True"
                               DragOver="PackagesScrollViewer_DragOver"
+                              DragLeave="PackagesScrollViewer_DragLeave"
                               Drop="PackagesScrollViewer_Drop">
                     <ScrollViewer.Resources>
                         <Style x:Key="ScrollBarArrowButton" TargetType="{x:Type Button}">

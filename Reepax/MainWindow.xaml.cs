@@ -991,6 +991,8 @@ public partial class MainWindow : Window
         foreach (var p in ViewModel.Packages)
         {
             p.IsDropTarget = false;
+            p.IsDropBefore = false;
+            p.IsDropAfter = false;
         }
     }
 
@@ -1067,25 +1069,84 @@ public partial class MainWindow : Window
         ClearAllDropTargets();
     }
 
+    internal static PackageDropAction CalculatePackageDropAction(
+        DownloadPackage? sourcePkg,
+        DownloadPackage? targetPkg,
+        double posY,
+        double rowHeight)
+    {
+        if (sourcePkg == null || targetPkg == null || sourcePkg == targetPkg)
+            return PackageDropAction.None;
+
+        if (rowHeight <= 0) rowHeight = 30;
+
+        bool canClip = MainViewModel.CanClip(sourcePkg, targetPkg);
+
+        if (canClip)
+        {
+            // If cursor is near top edge (upper 28%), drop before
+            if (posY < rowHeight * 0.28)
+                return PackageDropAction.InsertBefore;
+
+            // If cursor is near bottom edge (lower 28%), drop after
+            if (posY > rowHeight * 0.72)
+                return PackageDropAction.InsertAfter;
+
+            // Center 44% zone: clip/combine into target package
+            return PackageDropAction.Clip;
+        }
+        else
+        {
+            // When clipping is not allowed, split top/bottom 50/50 for smooth reordering
+            return posY < rowHeight * 0.5
+                ? PackageDropAction.InsertBefore
+                : PackageDropAction.InsertAfter;
+        }
+    }
+
     private void PackageRow_DragOver(object sender, DragEventArgs e)
     {
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var sourcePkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-            var targetPkg = (sender as FrameworkElement)?.DataContext as DownloadPackage;
+            var targetElement = sender as FrameworkElement;
+            var targetPkg = targetElement?.DataContext as DownloadPackage;
 
-            if (sourcePkg != null && targetPkg != null && MainViewModel.CanClip(sourcePkg, targetPkg))
+            if (sourcePkg != null && targetPkg != null && targetElement != null && sourcePkg != targetPkg)
             {
-                e.Effects = DragDropEffects.Move;
-                targetPkg.IsDropTarget = true;
-                e.Handled = true;
-                return;
+                Point pos = e.GetPosition(targetElement);
+                double height = targetElement.ActualHeight;
+
+                var action = CalculatePackageDropAction(sourcePkg, targetPkg, pos.Y, height);
+
+                if (action != PackageDropAction.None)
+                {
+                    foreach (var p in ViewModel.Packages)
+                    {
+                        if (p != targetPkg)
+                        {
+                            p.IsDropTarget = false;
+                            p.IsDropBefore = false;
+                            p.IsDropAfter = false;
+                        }
+                    }
+
+                    targetPkg.IsDropTarget = (action == PackageDropAction.Clip);
+                    targetPkg.IsDropBefore = (action == PackageDropAction.InsertBefore);
+                    targetPkg.IsDropAfter = (action == PackageDropAction.InsertAfter);
+
+                    e.Effects = DragDropEffects.Move;
+                    e.Handled = true;
+                    return;
+                }
             }
         }
 
         if ((sender as FrameworkElement)?.DataContext is DownloadPackage pkg)
         {
             pkg.IsDropTarget = false;
+            pkg.IsDropBefore = false;
+            pkg.IsDropAfter = false;
         }
 
         e.Effects = DragDropEffects.None;
@@ -1097,31 +1158,44 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.DataContext is DownloadPackage targetPkg)
         {
             targetPkg.IsDropTarget = false;
+            targetPkg.IsDropBefore = false;
+            targetPkg.IsDropAfter = false;
         }
     }
 
     private void PackageRow_Drop(object sender, DragEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is DownloadPackage targetPkg)
-        {
-            targetPkg.IsDropTarget = false;
+        var targetElement = sender as FrameworkElement;
+        var targetPkg = targetElement?.DataContext as DownloadPackage;
 
-            if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
+        if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
+        {
+            var sourcePkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
+            if (sourcePkg != null && targetPkg != null && targetElement != null && sourcePkg != targetPkg)
             {
-                var sourcePkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-                if (sourcePkg != null)
+                Point pos = e.GetPosition(targetElement);
+                double height = targetElement.ActualHeight;
+
+                var action = CalculatePackageDropAction(sourcePkg, targetPkg, pos.Y, height);
+
+                switch (action)
                 {
-                    if (MainViewModel.CanClip(sourcePkg, targetPkg))
-                    {
+                    case PackageDropAction.Clip:
                         ViewModel.ClipPackage(sourcePkg, targetPkg);
-                    }
-                    // Always set e.Handled = true! A drop on any package row (even itself
-                    // or current parent) must never bubble up to ScrollViewer and unclip by accident.
-                    e.Handled = true;
-                    return;
+                        break;
+                    case PackageDropAction.InsertBefore:
+                        ViewModel.MovePackageBefore(sourcePkg, targetPkg);
+                        break;
+                    case PackageDropAction.InsertAfter:
+                        ViewModel.MovePackageAfter(sourcePkg, targetPkg);
+                        break;
                 }
+
+                e.Handled = true;
             }
         }
+
+        ClearAllDropTargets();
     }
 
     private void PackagesScrollViewer_DragOver(object sender, DragEventArgs e)
@@ -1129,13 +1203,34 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-            if (pkg != null && pkg.IsClipped)
+            if (pkg != null)
             {
                 e.Effects = DragDropEffects.Move;
                 e.Handled = true;
+
+                // Highlight bottom of the last root package as drop target (drop at end)
+                var lastPkg = ViewModel.RootPackages.LastOrDefault();
+                if (lastPkg != null && lastPkg != pkg)
+                {
+                    foreach (var p in ViewModel.Packages)
+                    {
+                        if (p != lastPkg)
+                        {
+                            p.IsDropTarget = false;
+                            p.IsDropBefore = false;
+                            p.IsDropAfter = false;
+                        }
+                    }
+                    lastPkg.IsDropAfter = true;
+                }
                 return;
             }
         }
+    }
+
+    private void PackagesScrollViewer_DragLeave(object sender, DragEventArgs e)
+    {
+        ClearAllDropTargets();
     }
 
     private void PackagesScrollViewer_Drop(object sender, DragEventArgs e)
@@ -1143,18 +1238,20 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-            if (pkg != null && pkg.IsClipped)
+            if (pkg != null)
             {
                 Point currentPos = e.GetPosition(this);
                 Vector diff = _dragStartPoint - currentPos;
-                if (Math.Abs(diff.X) > 20 || Math.Abs(diff.Y) > 20)
+                if (Math.Abs(diff.X) > 16 || Math.Abs(diff.Y) > 16)
                 {
-                    ViewModel.UnclipPackage(pkg);
+                    ViewModel.MovePackageToEnd(pkg);
                 }
                 e.Handled = true;
+                ClearAllDropTargets();
                 return;
             }
         }
+        ClearAllDropTargets();
     }
 
     private void PackageContextMenu_Opened(object sender, RoutedEventArgs e)

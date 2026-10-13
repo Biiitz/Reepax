@@ -52,6 +52,7 @@ public partial class MainViewModel : ObservableObject
     private int _lastCommandStatePackageCount = -1;
     private readonly NavigationHistoryManager _navManager = new();
     private bool _isApplyingNavigation = false;
+    private bool _isReorderingPackages = false;
 
     public NavigationHistoryManager NavigationHistory => _navManager;
 
@@ -586,6 +587,7 @@ public partial class MainViewModel : ObservableObject
         RefreshRootPackages();
         _queueManager.Packages.CollectionChanged += (s, e) =>
         {
+            if (_isReorderingPackages) return;
             SafeDispatch(RefreshRootPackages);
         };
 
@@ -1680,6 +1682,241 @@ public partial class MainViewModel : ObservableObject
         }
 
         DownloadPersistenceService.Instance.RequestSave();
+    }
+
+    /// <summary>
+    /// Moves a package immediately before the specified target package.
+    /// Unclips the package if it was clipped, clears active column sorting, and persists the new order.
+    /// </summary>
+    public void MovePackageBefore(DownloadPackage packageToMove, DownloadPackage targetPackage)
+    {
+        if (packageToMove == null || targetPackage == null || packageToMove == targetPackage)
+            return;
+
+        // If target is clipped and source is also clipped to the same parent, reorder within the parent
+        if (packageToMove.ParentPackageId.HasValue && targetPackage.ParentPackageId.HasValue &&
+            packageToMove.ParentPackageId.Value == targetPackage.ParentPackageId.Value)
+        {
+            var parent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            if (parent != null)
+            {
+                int curIdx = parent.ClippedPackages.IndexOf(packageToMove);
+                if (curIdx >= 0)
+                {
+                    parent.ClippedPackages.RemoveAt(curIdx);
+                    int targetClippedIdx = parent.ClippedPackages.IndexOf(targetPackage);
+                    if (targetClippedIdx < 0) targetClippedIdx = 0;
+                    parent.ClippedPackages.Insert(targetClippedIdx, packageToMove);
+                }
+            }
+            _isReorderingPackages = true;
+            try
+            {
+                MoveInPackagesList(packageToMove, targetPackage, insertBefore: true);
+            }
+            finally
+            {
+                _isReorderingPackages = false;
+            }
+            DownloadPersistenceService.Instance.RequestSave();
+            return;
+        }
+
+        // If package was clipped, unclip it so it becomes a root package
+        if (packageToMove.ParentPackageId.HasValue)
+        {
+            var oldParent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            oldParent?.ClippedPackages.Remove(packageToMove);
+            packageToMove.ParentPackageId = null;
+            packageToMove.ParentPackageName = null;
+        }
+
+        // If target package is clipped to another parent, resolve target to its root parent
+        var effectiveTarget = targetPackage;
+        if (effectiveTarget.ParentPackageId.HasValue)
+        {
+            effectiveTarget = Packages.FirstOrDefault(p => p.Id == effectiveTarget.ParentPackageId.Value) ?? effectiveTarget;
+        }
+
+        if (packageToMove == effectiveTarget)
+            return;
+
+        // Reset column sorting so manual order is active
+        SortColumn = null;
+        SortDirection = null;
+        OnPropertyChanged(nameof(SortColumn));
+        OnPropertyChanged(nameof(SortDirection));
+
+        // Reorder in full Packages list (including any clipped children of packageToMove)
+        _isReorderingPackages = true;
+        try
+        {
+            MoveInPackagesList(packageToMove, effectiveTarget, insertBefore: true);
+        }
+        finally
+        {
+            _isReorderingPackages = false;
+        }
+
+        RefreshRootPackages();
+        DownloadPersistenceService.Instance.RequestSave();
+    }
+
+    /// <summary>
+    /// Moves a package immediately after the specified target package (and after any of its clipped children).
+    /// Unclips the package if it was clipped, clears active column sorting, and persists the new order.
+    /// </summary>
+    public void MovePackageAfter(DownloadPackage packageToMove, DownloadPackage targetPackage)
+    {
+        if (packageToMove == null || targetPackage == null || packageToMove == targetPackage)
+            return;
+
+        // If target is clipped and source is also clipped to the same parent, reorder within the parent
+        if (packageToMove.ParentPackageId.HasValue && targetPackage.ParentPackageId.HasValue &&
+            packageToMove.ParentPackageId.Value == targetPackage.ParentPackageId.Value)
+        {
+            var parent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            if (parent != null)
+            {
+                int curIdx = parent.ClippedPackages.IndexOf(packageToMove);
+                if (curIdx >= 0)
+                {
+                    parent.ClippedPackages.RemoveAt(curIdx);
+                    int targetClippedIdx = parent.ClippedPackages.IndexOf(targetPackage);
+                    if (targetClippedIdx < 0) targetClippedIdx = parent.ClippedPackages.Count - 1;
+                    parent.ClippedPackages.Insert(targetClippedIdx + 1, packageToMove);
+                }
+            }
+            _isReorderingPackages = true;
+            try
+            {
+                MoveInPackagesList(packageToMove, targetPackage, insertBefore: false);
+            }
+            finally
+            {
+                _isReorderingPackages = false;
+            }
+            DownloadPersistenceService.Instance.RequestSave();
+            return;
+        }
+
+        // If package was clipped, unclip it so it becomes a root package
+        if (packageToMove.ParentPackageId.HasValue)
+        {
+            var oldParent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            oldParent?.ClippedPackages.Remove(packageToMove);
+            packageToMove.ParentPackageId = null;
+            packageToMove.ParentPackageName = null;
+        }
+
+        // If target package is clipped to another parent, resolve target to its root parent
+        var effectiveTarget = targetPackage;
+        if (effectiveTarget.ParentPackageId.HasValue)
+        {
+            effectiveTarget = Packages.FirstOrDefault(p => p.Id == effectiveTarget.ParentPackageId.Value) ?? effectiveTarget;
+        }
+
+        if (packageToMove == effectiveTarget)
+            return;
+
+        // Reset column sorting so manual order is active
+        SortColumn = null;
+        SortDirection = null;
+        OnPropertyChanged(nameof(SortColumn));
+        OnPropertyChanged(nameof(SortDirection));
+
+        // Reorder in full Packages list (including any clipped children of packageToMove)
+        _isReorderingPackages = true;
+        try
+        {
+            MoveInPackagesList(packageToMove, effectiveTarget, insertBefore: false);
+        }
+        finally
+        {
+            _isReorderingPackages = false;
+        }
+
+        RefreshRootPackages();
+        DownloadPersistenceService.Instance.RequestSave();
+    }
+
+    /// <summary>
+    /// Moves a package to the very end of the download queue.
+    /// </summary>
+    public void MovePackageToEnd(DownloadPackage packageToMove)
+    {
+        if (packageToMove == null) return;
+
+        if (packageToMove.ParentPackageId.HasValue)
+        {
+            var oldParent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            oldParent?.ClippedPackages.Remove(packageToMove);
+            packageToMove.ParentPackageId = null;
+            packageToMove.ParentPackageName = null;
+        }
+
+        SortColumn = null;
+        SortDirection = null;
+        OnPropertyChanged(nameof(SortColumn));
+        OnPropertyChanged(nameof(SortDirection));
+
+        var groupToMove = new List<DownloadPackage> { packageToMove };
+        if (packageToMove.ClippedPackages.Count > 0)
+        {
+            groupToMove.AddRange(packageToMove.ClippedPackages);
+        }
+
+        var desiredList = new List<DownloadPackage>(Packages);
+        desiredList.RemoveAll(p => groupToMove.Contains(p));
+        desiredList.AddRange(groupToMove);
+
+        _isReorderingPackages = true;
+        try
+        {
+            SyncOrder(Packages, desiredList);
+        }
+        finally
+        {
+            _isReorderingPackages = false;
+        }
+
+        RefreshRootPackages();
+        DownloadPersistenceService.Instance.RequestSave();
+    }
+
+    private void MoveInPackagesList(DownloadPackage packageToMove, DownloadPackage targetPackage, bool insertBefore)
+    {
+        var groupToMove = new List<DownloadPackage> { packageToMove };
+        if (packageToMove.ClippedPackages.Count > 0)
+        {
+            groupToMove.AddRange(packageToMove.ClippedPackages);
+        }
+
+        var desiredList = new List<DownloadPackage>(Packages);
+        desiredList.RemoveAll(p => groupToMove.Contains(p));
+
+        int targetIndex = desiredList.IndexOf(targetPackage);
+        if (targetIndex < 0) targetIndex = 0;
+
+        if (insertBefore)
+        {
+            desiredList.InsertRange(targetIndex, groupToMove);
+        }
+        else
+        {
+            if (targetPackage.ClippedPackages.Count > 0)
+            {
+                foreach (var child in targetPackage.ClippedPackages)
+                {
+                    int cIdx = desiredList.IndexOf(child);
+                    if (cIdx > targetIndex) targetIndex = cIdx;
+                }
+            }
+            int insertIndex = Math.Min(targetIndex + 1, desiredList.Count);
+            desiredList.InsertRange(insertIndex, groupToMove);
+        }
+
+        SyncOrder(Packages, desiredList);
     }
 
     /// <summary>
