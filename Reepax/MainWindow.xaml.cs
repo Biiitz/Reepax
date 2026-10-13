@@ -307,6 +307,7 @@ public partial class MainWindow : Window
             ViewModel.PropertyChanged += ViewModel_TabIndicator_PropertyChanged;
 
         UpdateSlidingTabIndicator(animate: false);
+        UpdateSearchFilterBarVisibility(animate: false);
         _isTabIndicatorInitialized = true;
     }
 
@@ -314,8 +315,143 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(ViewModel.SelectedMainTab))
         {
+            UpdateSearchFilterBarVisibility(animate: true);
             Dispatcher.BeginInvoke(new Action(() => UpdateSlidingTabIndicator(animate: true)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    private int _searchFilterBarAnimGeneration;
+
+    private void UpdateSearchFilterBarVisibility(bool animate = true)
+    {
+        if (SearchFilterBarContainer == null) return;
+
+        bool isDownloads = ViewModel?.SelectedMainTab == AppMainTab.Downloads;
+
+        if (!isDownloads)
+        {
+            if (StatusFilterPopup != null && StatusFilterPopup.IsOpen)
+            {
+                StatusFilterPopup.IsOpen = false;
+            }
+
+            if (BottomSearchFilterBox != null && BottomSearchFilterBox.IsKeyboardFocused)
+            {
+                Keyboard.ClearFocus();
+            }
+
+            SearchFilterBarContainer.IsHitTestVisible = false;
+
+            if (!animate || !_isTabIndicatorInitialized)
+            {
+                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
+                SearchFilterBarContainer.Opacity = 0.0;
+                if (SearchFilterBarTransform != null)
+                {
+                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                    SearchFilterBarTransform.Y = 12.0;
+                }
+                SearchFilterBarContainer.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            int currentGen = ++_searchFilterBarAnimGeneration;
+
+            var fadeOut = new DoubleAnimation
+            {
+                To = 0.0,
+                Duration = TimeSpan.FromMilliseconds(160),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            };
+
+            if (SearchFilterBarTransform != null)
+            {
+                var slideDown = new DoubleAnimation
+                {
+                    To = 12.0,
+                    Duration = TimeSpan.FromMilliseconds(180),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+                };
+                SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, slideDown);
+            }
+
+            fadeOut.Completed += (_, _) =>
+            {
+                if (_searchFilterBarAnimGeneration != currentGen) return;
+                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
+                SearchFilterBarContainer.Opacity = 0.0;
+                if (SearchFilterBarTransform != null)
+                {
+                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                    SearchFilterBarTransform.Y = 12.0;
+                }
+                SearchFilterBarContainer.Visibility = Visibility.Collapsed;
+            };
+
+            SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        }
+        else
+        {
+            bool wasCollapsed = SearchFilterBarContainer.Visibility != Visibility.Visible;
+            SearchFilterBarContainer.Visibility = Visibility.Visible;
+            SearchFilterBarContainer.IsHitTestVisible = true;
+
+            if (wasCollapsed)
+            {
+                SearchFilterBarContainer.Opacity = 0.0;
+                if (SearchFilterBarTransform != null)
+                {
+                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                    SearchFilterBarTransform.Y = 12.0;
+                }
+            }
+
+            if (!animate || !_isTabIndicatorInitialized)
+            {
+                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
+                SearchFilterBarContainer.Opacity = 1.0;
+                if (SearchFilterBarTransform != null)
+                {
+                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                    SearchFilterBarTransform.Y = 0.0;
+                }
+                return;
+            }
+
+            int currentGen = ++_searchFilterBarAnimGeneration;
+
+            var fadeIn = new DoubleAnimation
+            {
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(220),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            if (SearchFilterBarTransform != null)
+            {
+                var slideUp = new DoubleAnimation
+                {
+                    To = 0.0,
+                    Duration = TimeSpan.FromMilliseconds(240),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, slideUp);
+            }
+
+            fadeIn.Completed += (_, _) =>
+            {
+                if (_searchFilterBarAnimGeneration != currentGen) return;
+                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
+                SearchFilterBarContainer.Opacity = 1.0;
+                if (SearchFilterBarTransform != null)
+                {
+                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                    SearchFilterBarTransform.Y = 0.0;
+                }
+            };
+
+            SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, fadeIn);
         }
     }
 
