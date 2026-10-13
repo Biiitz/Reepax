@@ -1,4 +1,4 @@
-<Window x:Class="Reepax.MainWindow"
+﻿<Window x:Class="Reepax.MainWindow"
         x:Name="RootWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -569,35 +569,141 @@
                     <DoubleAnimation Storyboard.TargetName="PackageShineOverlay"
                                      Storyboard.TargetProperty="Opacity"
                                      From="1.0" To="0.0" BeginTime="0:0:1.8" Duration="0:0:0.6" />
-                    <DoubleAnimation Storyboard.TargetName="PackageContentContainer"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="1.0" To="0.65"
-                                     BeginTime="0:0:0.4" Duration="0:0:1.6">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseInOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
                 </Storyboard>
 
-                <!-- Docking Slide & Glow Storyboard for Clipped Package: Smooth slide-in to native dock position -->
+                <!-- Docking Slide & Glow Storyboard for Clipped Package -->
                 <Storyboard x:Key="PackageSnapStoryboard">
                     <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
+                                     Storyboard.TargetProperty="X"
+                                     From="20" To="0" Duration="0:0:0.30">
+                        <DoubleAnimation.EasingFunction>
+                            <BackEase EasingMode="EaseOut" Amplitude="0.2" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
                                      Storyboard.TargetProperty="Y"
-                                     From="6" To="0" Duration="0:0:0.24">
+                                     From="-10" To="0" Duration="0:0:0.30">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                     <DoubleAnimation Storyboard.TargetName="PackageBorder"
                                      Storyboard.TargetProperty="Opacity"
-                                     From="0.0" To="1.0" Duration="0:0:0.24">
+                                     From="0.4" To="1.0" Duration="0:0:0.25">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                     <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
                                      Storyboard.TargetProperty="Opacity"
-                                     From="0.4" To="0.0" Duration="0:0:0.35">
+                                     From="0.65" To="0.0" Duration="0:0:0.45">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+
+                <!-- Undocking Slide & Glow Storyboard -->
+                <Storyboard x:Key="PackageUnclipStoryboard">
+                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
+                                     Storyboard.TargetProperty="X"
+                                     From="18" To="0" Duration="0:0:0.30">
+                        <DoubleAnimation.EasingFunction>
+                            <BackEase EasingMode="EaseOut" Amplitude="0.22" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
+                                     Storyboard.TargetProperty="Y"
+                                     From="8" To="0" Duration="0:0:0.28">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.55" To="1.0" Duration="0:0:0.24">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.55" To="0.0" Duration="0:0:0.40">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+
+                <!-- Reorder Slide UP Storyboard -->
+                <Storyboard x:Key="PackageMoveUpStoryboard">
+                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
+                                     Storyboard.TargetProperty="Y"
+                                     From="32" To="0" Duration="0:0:0.34">
+                        <DoubleAnimation.EasingFunction>
+                            <BackEase EasingMode="EaseOut" Amplitude="0.28" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.55" To="1.0" Duration="0:0:0.22">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.5" To="0.0" Duration="0:0:0.38">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+
+                <!-- Reorder Slide DOWN Storyboard -->
+                <Storyboard x:Key="PackageMoveDownStoryboard">
+                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
+                                     Storyboard.TargetProperty="Y"
+                                     From="-32" To="0" Duration="0:0:0.34">
+                        <DoubleAnimation.EasingFunction>
+                            <BackEase EasingMode="EaseOut" Amplitude="0.28" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.55" To="1.0" Duration="0:0:0.22">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.5" To="0.0" Duration="0:0:0.38">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+
+                <!-- General Reorder Storyboard -->
+                <Storyboard x:Key="PackageMoveStoryboard">
+                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
+                                     Storyboard.TargetProperty="Y"
+                                     From="20" To="0" Duration="0:0:0.30">
+                        <DoubleAnimation.EasingFunction>
+                            <BackEase EasingMode="EaseOut" Amplitude="0.25" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.6" To="1.0" Duration="0:0:0.24">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="0.5" To="0.0" Duration="0:0:0.35">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
@@ -616,6 +722,7 @@
                                     <MultiDataTrigger.Conditions>
                                         <Condition Binding="{Binding IsFullyCompleted}" Value="True" />
                                         <Condition Binding="{Binding IsNewlyCompleted}" Value="False" />
+                                        <Condition Binding="{Binding DataContext.DimCompletedPackages, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
                                     </MultiDataTrigger.Conditions>
                                     <Setter Property="Opacity" Value="0.65" />
                                 </MultiDataTrigger>
@@ -1112,36 +1219,30 @@
                                 BorderThickness="1" />
 
                         <!-- Top Drop Indicator (Insert Before / Above) -->
-                        <Border x:Name="PackageTopDropIndicator"
-                                Grid.Column="0" Grid.ColumnSpan="13"
-                                Height="2"
-                                VerticalAlignment="Top"
-                                Margin="-0.5,-1,-0.5,0"
-                                Background="{DynamicResource AccentBlueBrush}"
-                                CornerRadius="1"
-                                IsHitTestVisible="False"
-                                Panel.ZIndex="50"
-                                Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
-                            <Border.Effect>
-                                <DropShadowEffect Color="#38BDF8" BlurRadius="5" ShadowDepth="0" Opacity="0.9" />
-                            </Border.Effect>
-                        </Border>
+                        <Grid x:Name="PackageTopDropIndicator"
+                              Grid.Column="0" Grid.ColumnSpan="13"
+                              Height="4"
+                              VerticalAlignment="Top"
+                              Margin="-0.5,-2,-0.5,0"
+                              IsHitTestVisible="False"
+                              Panel.ZIndex="50"
+                              Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
+                            <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                            <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                        </Grid>
 
                         <!-- Bottom Drop Indicator (Insert After / Below) -->
-                        <Border x:Name="PackageBottomDropIndicator"
-                                Grid.Column="0" Grid.ColumnSpan="13"
-                                Height="2"
-                                VerticalAlignment="Bottom"
-                                Margin="-0.5,0,-0.5,-1"
-                                Background="{DynamicResource AccentBlueBrush}"
-                                CornerRadius="1"
-                                IsHitTestVisible="False"
-                                Panel.ZIndex="50"
-                                Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
-                            <Border.Effect>
-                                <DropShadowEffect Color="#38BDF8" BlurRadius="5" ShadowDepth="0" Opacity="0.9" />
-                            </Border.Effect>
-                        </Border>
+                        <Grid x:Name="PackageBottomDropIndicator"
+                              Grid.Column="0" Grid.ColumnSpan="13"
+                              Height="4"
+                              VerticalAlignment="Bottom"
+                              Margin="-0.5,0,-0.5,-2"
+                              IsHitTestVisible="False"
+                              Panel.ZIndex="50"
+                              Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
+                            <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                            <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                        </Grid>
                     </Grid>
                 </Border>
 
@@ -1180,6 +1281,26 @@
                 <DataTrigger Binding="{Binding IsJustSnapped}" Value="True">
                     <DataTrigger.EnterActions>
                         <BeginStoryboard Storyboard="{StaticResource PackageSnapStoryboard}" />
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsJustUnclipped}" Value="True">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Storyboard="{StaticResource PackageUnclipStoryboard}" />
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsJustMovedUp}" Value="True">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Storyboard="{StaticResource PackageMoveUpStoryboard}" />
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsJustMovedDown}" Value="True">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Storyboard="{StaticResource PackageMoveDownStoryboard}" />
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsJustMoved}" Value="True">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Storyboard="{StaticResource PackageMoveStoryboard}" />
                     </DataTrigger.EnterActions>
                 </DataTrigger>
             </DataTemplate.Triggers>

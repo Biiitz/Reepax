@@ -94,7 +94,7 @@ public partial class MainViewModel : ObservableObject
         if (_settingsService.Settings.SelectedStatusFilter != value)
         {
             _settingsService.Settings.SelectedStatusFilter = value;
-            _settingsService.SaveSettings();
+            _settingsService.RequestSaveSettings();
         }
 
         OnPropertyChanged(nameof(IsStatusFilterActive));
@@ -498,6 +498,7 @@ public partial class MainViewModel : ObservableObject
         SelectedErrorSound = !string.IsNullOrWhiteSpace(settings.SelectedErrorSound) ? settings.SelectedErrorSound : "1.mp3";
         ErrorSoundVolume = Math.Clamp(settings.ErrorSoundVolume, 0, 100);
         AutoCollapseCompletedPackages = settings.AutoCollapseCompletedPackages;
+        DimCompletedPackages = settings.DimCompletedPackages;
         EnableFileLogging = settings.EnableFileLogging;
         AppLogger.IsLoggingEnabled = EnableFileLogging;
         EnableClipboardMonitor = settings.EnableClipboardMonitor;
@@ -1321,23 +1322,9 @@ public partial class MainViewModel : ObservableObject
 
     public void RefreshRootPackages()
     {
-        DownloadPersistenceService.RelinkPackageHierarchy(Packages);
-
-        // Ensure original item order indices are initialized
-        foreach (var pkg in Packages)
-        {
-            for (int i = 0; i < pkg.Items.Count; i++)
-            {
-                if (pkg.Items[i].OriginalOrderIndex == 0)
-                {
-                    pkg.Items[i].OriginalOrderIndex = i + 1;
-                }
-            }
-        }
-
         var roots = Packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
 
-        // Remove any items no longer in roots
+        // 1. Remove packages from RootPackages that no longer match the active filter (back-to-front)
         for (int i = RootPackages.Count - 1; i >= 0; i--)
         {
             if (!roots.Contains(RootPackages[i]))
@@ -1346,29 +1333,33 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        // Add any new root packages
-        for (int i = 0; i < roots.Count; i++)
+        // 2. Determine target ordering (sorted or natural queue order)
+        var targetOrder = (!string.IsNullOrEmpty(SortColumn) && SortDirection.HasValue)
+            ? SortPackages(roots, SortColumn, SortDirection.Value)
+            : roots;
+
+        // 3. Single-pass insertion and repositioning for minimal collection mutations
+        for (int targetIndex = 0; targetIndex < targetOrder.Count; targetIndex++)
         {
-            var r = roots[i];
-            if (!RootPackages.Contains(r))
+            var targetPkg = targetOrder[targetIndex];
+            int currentIndex = RootPackages.IndexOf(targetPkg);
+            if (currentIndex < 0)
             {
-                RootPackages.Add(r);
+                RootPackages.Insert(targetIndex, targetPkg);
+            }
+            else if (currentIndex != targetIndex)
+            {
+                RootPackages.Move(currentIndex, targetIndex);
             }
         }
 
         if (!string.IsNullOrEmpty(SortColumn) && SortDirection.HasValue)
         {
-            var sortedRoots = SortPackages(RootPackages.ToList(), SortColumn, SortDirection.Value);
-            SyncOrder(RootPackages, sortedRoots);
             foreach (var pkg in Packages)
             {
                 var sortedItems = SortItems(pkg.Items.ToList(), SortColumn, SortDirection.Value);
                 SyncOrder(pkg.Items, sortedItems);
             }
-        }
-        else
-        {
-            SyncOrder(RootPackages, roots);
         }
 
         OnPropertyChanged(nameof(HasDownloads));
@@ -1647,19 +1638,7 @@ public partial class MainViewModel : ObservableObject
         DownloadPersistenceService.Instance.RequestSave();
 
         // Magnetic snap effect & sound
-        packageToClip.IsJustSnapped = true;
-        _ = Task.Delay(800).ContinueWith(_ =>
-        {
-            var app = System.Windows.Application.Current;
-            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted)
-            {
-                app.Dispatcher.InvokeAsync(() => packageToClip.IsJustSnapped = false);
-            }
-            else
-            {
-                packageToClip.IsJustSnapped = false;
-            }
-        });
+        TriggerPackageSnapAnimation(packageToClip);
     }
 
     /// <summary>
@@ -1682,6 +1661,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         DownloadPersistenceService.Instance.RequestSave();
+        TriggerPackageUnclipAnimation(packageToUnclip);
     }
 
     /// <summary>
@@ -1693,17 +1673,21 @@ public partial class MainViewModel : ObservableObject
         if (packageToMove == null || targetPackage == null || packageToMove == targetPackage)
             return;
 
+        int oldIndex = RootPackages.IndexOf(packageToMove);
+        bool wasClipped = packageToMove.ParentPackageId.HasValue;
+
         // If target is clipped and source is also clipped to the same parent, reorder within the parent
         if (packageToMove.ParentPackageId.HasValue && targetPackage.ParentPackageId.HasValue &&
             packageToMove.ParentPackageId.Value == targetPackage.ParentPackageId.Value)
         {
             var parent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            int oldClippedIdx = -1;
             if (parent != null)
             {
-                int curIdx = parent.ClippedPackages.IndexOf(packageToMove);
-                if (curIdx >= 0)
+                oldClippedIdx = parent.ClippedPackages.IndexOf(packageToMove);
+                if (oldClippedIdx >= 0)
                 {
-                    parent.ClippedPackages.RemoveAt(curIdx);
+                    parent.ClippedPackages.RemoveAt(oldClippedIdx);
                     int targetClippedIdx = parent.ClippedPackages.IndexOf(targetPackage);
                     if (targetClippedIdx < 0) targetClippedIdx = 0;
                     parent.ClippedPackages.Insert(targetClippedIdx, packageToMove);
@@ -1719,6 +1703,8 @@ public partial class MainViewModel : ObservableObject
                 _isReorderingPackages = false;
             }
             DownloadPersistenceService.Instance.RequestSave();
+            int newClippedIdx = parent?.ClippedPackages.IndexOf(packageToMove) ?? -1;
+            TriggerPackageMoveAnimation(packageToMove, movedUp: newClippedIdx <= oldClippedIdx);
             return;
         }
 
@@ -1741,11 +1727,14 @@ public partial class MainViewModel : ObservableObject
         if (packageToMove == effectiveTarget)
             return;
 
-        // Reset column sorting so manual order is active
-        SortColumn = null;
-        SortDirection = null;
-        OnPropertyChanged(nameof(SortColumn));
-        OnPropertyChanged(nameof(SortDirection));
+        // Reset column sorting only if active so manual order is active without redundant invalidations
+        if (!string.IsNullOrEmpty(SortColumn) || SortDirection.HasValue)
+        {
+            SortColumn = null;
+            SortDirection = null;
+            OnPropertyChanged(nameof(SortColumn));
+            OnPropertyChanged(nameof(SortDirection));
+        }
 
         // Reorder in full Packages list (including any clipped children of packageToMove)
         _isReorderingPackages = true;
@@ -1760,6 +1749,17 @@ public partial class MainViewModel : ObservableObject
 
         RefreshRootPackages();
         DownloadPersistenceService.Instance.RequestSave();
+
+        int newIndex = RootPackages.IndexOf(packageToMove);
+        bool movedUp = newIndex < oldIndex || oldIndex < 0;
+        if (wasClipped)
+        {
+            TriggerPackageUnclipAnimation(packageToMove);
+        }
+        else
+        {
+            TriggerPackageMoveAnimation(packageToMove, movedUp);
+        }
     }
 
     /// <summary>
@@ -1771,17 +1771,21 @@ public partial class MainViewModel : ObservableObject
         if (packageToMove == null || targetPackage == null || packageToMove == targetPackage)
             return;
 
+        int oldIndex = RootPackages.IndexOf(packageToMove);
+        bool wasClipped = packageToMove.ParentPackageId.HasValue;
+
         // If target is clipped and source is also clipped to the same parent, reorder within the parent
         if (packageToMove.ParentPackageId.HasValue && targetPackage.ParentPackageId.HasValue &&
             packageToMove.ParentPackageId.Value == targetPackage.ParentPackageId.Value)
         {
             var parent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
+            int oldClippedIdx = -1;
             if (parent != null)
             {
-                int curIdx = parent.ClippedPackages.IndexOf(packageToMove);
-                if (curIdx >= 0)
+                oldClippedIdx = parent.ClippedPackages.IndexOf(packageToMove);
+                if (oldClippedIdx >= 0)
                 {
-                    parent.ClippedPackages.RemoveAt(curIdx);
+                    parent.ClippedPackages.RemoveAt(oldClippedIdx);
                     int targetClippedIdx = parent.ClippedPackages.IndexOf(targetPackage);
                     if (targetClippedIdx < 0) targetClippedIdx = parent.ClippedPackages.Count - 1;
                     parent.ClippedPackages.Insert(targetClippedIdx + 1, packageToMove);
@@ -1797,6 +1801,8 @@ public partial class MainViewModel : ObservableObject
                 _isReorderingPackages = false;
             }
             DownloadPersistenceService.Instance.RequestSave();
+            int newClippedIdx = parent?.ClippedPackages.IndexOf(packageToMove) ?? -1;
+            TriggerPackageMoveAnimation(packageToMove, movedUp: newClippedIdx <= oldClippedIdx);
             return;
         }
 
@@ -1819,11 +1825,14 @@ public partial class MainViewModel : ObservableObject
         if (packageToMove == effectiveTarget)
             return;
 
-        // Reset column sorting so manual order is active
-        SortColumn = null;
-        SortDirection = null;
-        OnPropertyChanged(nameof(SortColumn));
-        OnPropertyChanged(nameof(SortDirection));
+        // Reset column sorting only if active
+        if (!string.IsNullOrEmpty(SortColumn) || SortDirection.HasValue)
+        {
+            SortColumn = null;
+            SortDirection = null;
+            OnPropertyChanged(nameof(SortColumn));
+            OnPropertyChanged(nameof(SortDirection));
+        }
 
         // Reorder in full Packages list (including any clipped children of packageToMove)
         _isReorderingPackages = true;
@@ -1838,6 +1847,17 @@ public partial class MainViewModel : ObservableObject
 
         RefreshRootPackages();
         DownloadPersistenceService.Instance.RequestSave();
+
+        int newIndex = RootPackages.IndexOf(packageToMove);
+        bool movedUp = oldIndex >= 0 && newIndex < oldIndex;
+        if (wasClipped)
+        {
+            TriggerPackageUnclipAnimation(packageToMove);
+        }
+        else
+        {
+            TriggerPackageMoveAnimation(packageToMove, movedUp);
+        }
     }
 
     /// <summary>
@@ -1847,6 +1867,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (packageToMove == null) return;
 
+        bool wasClipped = packageToMove.ParentPackageId.HasValue;
         if (packageToMove.ParentPackageId.HasValue)
         {
             var oldParent = Packages.FirstOrDefault(p => p.Id == packageToMove.ParentPackageId.Value);
@@ -1855,10 +1876,14 @@ public partial class MainViewModel : ObservableObject
             packageToMove.ParentPackageName = null;
         }
 
-        SortColumn = null;
-        SortDirection = null;
-        OnPropertyChanged(nameof(SortColumn));
-        OnPropertyChanged(nameof(SortDirection));
+        // Reset column sorting only if active
+        if (!string.IsNullOrEmpty(SortColumn) || SortDirection.HasValue)
+        {
+            SortColumn = null;
+            SortDirection = null;
+            OnPropertyChanged(nameof(SortColumn));
+            OnPropertyChanged(nameof(SortDirection));
+        }
 
         var groupToMove = new List<DownloadPackage> { packageToMove };
         if (packageToMove.ClippedPackages.Count > 0)
@@ -1882,6 +1907,90 @@ public partial class MainViewModel : ObservableObject
 
         RefreshRootPackages();
         DownloadPersistenceService.Instance.RequestSave();
+
+        if (wasClipped)
+        {
+            TriggerPackageUnclipAnimation(packageToMove);
+        }
+        else
+        {
+            TriggerPackageMoveAnimation(packageToMove, movedUp: false);
+        }
+    }
+
+    public void TriggerPackageMoveAnimation(DownloadPackage package, bool movedUp = true)
+    {
+        if (package == null) return;
+        package.IsJustMoved = false;
+        package.IsJustMovedUp = false;
+        package.IsJustMovedDown = false;
+
+        package.IsJustMoved = true;
+        if (movedUp)
+        {
+            package.IsJustMovedUp = true;
+        }
+        else
+        {
+            package.IsJustMovedDown = true;
+        }
+
+        if (!DownloadPersistenceService.IsTestEnvironment)
+        {
+            _ = Task.Delay(450).ContinueWith(_ =>
+            {
+                SafeDispatch(() =>
+                {
+                    package.IsJustMoved = false;
+                    package.IsJustMovedUp = false;
+                    package.IsJustMovedDown = false;
+                });
+            });
+        }
+        else
+        {
+            package.IsJustMoved = false;
+            package.IsJustMovedUp = false;
+            package.IsJustMovedDown = false;
+        }
+    }
+
+    public void TriggerPackageSnapAnimation(DownloadPackage package)
+    {
+        if (package == null) return;
+        package.IsJustSnapped = false;
+        package.IsJustSnapped = true;
+
+        if (!DownloadPersistenceService.IsTestEnvironment)
+        {
+            _ = Task.Delay(450).ContinueWith(_ =>
+            {
+                SafeDispatch(() => package.IsJustSnapped = false);
+            });
+        }
+        else
+        {
+            package.IsJustSnapped = false;
+        }
+    }
+
+    public void TriggerPackageUnclipAnimation(DownloadPackage package)
+    {
+        if (package == null) return;
+        package.IsJustUnclipped = false;
+        package.IsJustUnclipped = true;
+
+        if (!DownloadPersistenceService.IsTestEnvironment)
+        {
+            _ = Task.Delay(450).ContinueWith(_ =>
+            {
+                SafeDispatch(() => package.IsJustUnclipped = false);
+            });
+        }
+        else
+        {
+            package.IsJustUnclipped = false;
+        }
     }
 
     private void MoveInPackagesList(DownloadPackage packageToMove, DownloadPackage targetPackage, bool insertBefore)

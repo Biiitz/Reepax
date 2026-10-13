@@ -5,19 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Reepax.Models;
 
-/// <summary>
-/// A high-performance WPF decorator that provides buttery-smooth, hardware-accelerated
-/// expansion and collapse animations for package child items.
-/// 
-/// Key design principles:
-/// 1. Zero scaling / distortion: Child items are ALWAYS measured and arranged at their
-///    100% natural desired size without stretching, squishing, or zooming.
-/// 2. Performance: Avoids continuous layout thrashing by clipping and smoothly interpolating
-///    expansion progress via GPU-friendly TranslateTransform and Opacity.
-/// 3. Snappy response: ~170ms expand / ~150ms collapse with CubicEase curves.
-/// 4. Reversible: Mid-animation direction changes smoothly interpolate from current position.
-/// </summary>
 public class AnimatedExpansionDecorator : Decorator
 {
     private TranslateTransform? _translateTransform;
@@ -88,8 +77,17 @@ public class AnimatedExpansionDecorator : Decorator
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        // When container is recycled during scrolling, immediately snap without playing animation!
+        // When container is recycled or bound, immediately snap without playing animation!
         _suppressAnimation = true;
+        if (e.NewValue is DownloadPackage pkg)
+        {
+            SetCurrentValue(IsExpandedProperty, pkg.IsExpanded);
+            SetCurrentValue(ExpansionProgressProperty, pkg.IsExpanded ? 1.0 : 0.0);
+            if (Child != null)
+            {
+                Child.Visibility = pkg.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
         ApplyExpansionState(animate: false);
         Dispatcher.BeginInvoke(new Action(() => _suppressAnimation = false), System.Windows.Threading.DispatcherPriority.Loaded);
     }
@@ -107,7 +105,16 @@ public class AnimatedExpansionDecorator : Decorator
         if (visualAdded == Child && Child != null)
         {
             EnsureChildTransform();
-            UpdateChildVisuals(ExpansionProgress);
+            if (DataContext is DownloadPackage pkg && !pkg.IsExpanded)
+            {
+                SetCurrentValue(IsExpandedProperty, false);
+                SetCurrentValue(ExpansionProgressProperty, 0.0);
+                Child.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                UpdateChildVisuals(ExpansionProgress);
+            }
         }
     }
 
@@ -232,9 +239,22 @@ public class AnimatedExpansionDecorator : Decorator
     {
         if (Child == null) return new Size(0, 0);
 
+        if (DataContext is DownloadPackage pkg && !pkg.IsExpanded && ExpansionProgress <= 0.0001)
+        {
+            if (Child.Visibility != Visibility.Collapsed)
+            {
+                Child.Visibility = Visibility.Collapsed;
+            }
+            return new Size(0, 0);
+        }
+
         // If collapsed and not animating, occupy zero vertical height immediately without measuring children!
         if (ExpansionProgress <= 0.0001 && !IsExpanded)
         {
+            if (Child.Visibility != Visibility.Collapsed)
+            {
+                Child.Visibility = Visibility.Collapsed;
+            }
             return new Size(0, 0);
         }
 

@@ -83,6 +83,8 @@ public class SettingsService
     private readonly string _backupFilePath;
     private readonly bool _isCustomPath;
     private readonly object _fileLock = new();
+    private readonly System.Threading.Timer? _settingsDebounceTimer;
+    private volatile bool _isSettingsDirty;
     private AppSettings _currentSettings = new();
     private volatile bool _hasSettingsLoadFailed;
 
@@ -93,6 +95,7 @@ public class SettingsService
 
     public SettingsService(string? customSettingsFilePath = null)
     {
+        _settingsDebounceTimer = new System.Threading.Timer(OnSettingsDebounceTimerElapsed, null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
         if (IsPortableMode)
         {
             try
@@ -293,8 +296,43 @@ public class SettingsService
         catch { }
     }
 
+    /// <summary>
+    /// Schedules a debounced save of the settings in the background.
+    /// Prevents blocking the UI thread during rapid interactions (such as filter switching or column resizing).
+    /// </summary>
+    public void RequestSaveSettings(int delayMs = 350)
+    {
+        if (!_isCustomPath && DownloadPersistenceService.IsTestEnvironment)
+        {
+            SaveSettings(force: false);
+            return;
+        }
+
+        _isSettingsDirty = true;
+        try
+        {
+            _settingsDebounceTimer?.Change(delayMs, System.Threading.Timeout.Infinite);
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void OnSettingsDebounceTimerElapsed(object? state)
+    {
+        if (!_isSettingsDirty) return;
+        _isSettingsDirty = false;
+        try
+        {
+            SaveSettings(force: false);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Debug($"[SettingsService] Debounced save failed: {ex.Message}");
+        }
+    }
+
     public void SaveSettings(bool force = false)
     {
+        _isSettingsDirty = false;
         if (!_isCustomPath && DownloadPersistenceService.IsTestEnvironment) return;
 
         lock (_fileLock)

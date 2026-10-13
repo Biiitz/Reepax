@@ -723,6 +723,15 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
+    private bool _dimCompletedPackages = false;
+
+    partial void OnDimCompletedPackagesChanged(bool value)
+    {
+        _settingsService.Settings.DimCompletedPackages = value;
+        _settingsService.SaveSettings();
+    }
+
+    [ObservableProperty]
     private bool _enableFileLogging = false;
 
     partial void OnEnableFileLoggingChanged(bool value)

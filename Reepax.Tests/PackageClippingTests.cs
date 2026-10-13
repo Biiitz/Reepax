@@ -417,4 +417,78 @@ public class PackageClippingTests
         Assert.Equal("DLC 2", parent.ClippedPackages[0].Name);
         Assert.Equal("DLC 1", parent.ClippedPackages[1].Name);
     }
+
+    [Fact]
+    public void MovePackageBefore_TriggersMoveUpAnimation_WhenMovingUp()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var p1 = new DownloadPackage { Name = "First" };
+        var p2 = new DownloadPackage { Name = "Second" };
+        vm.Packages.Add(p1);
+        vm.Packages.Add(p2);
+        vm.RefreshRootPackages();
+
+        var changedProps = new List<string>();
+        p2.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) changedProps.Add(e.PropertyName);
+        };
+
+        vm.MovePackageBefore(p2, p1);
+
+        Assert.Contains(nameof(DownloadPackage.IsJustMovedUp), changedProps);
+        Assert.Contains(nameof(DownloadPackage.IsJustMoved), changedProps);
+    }
+
+    [Fact]
+    public void MovePackageAfter_TriggersMoveDownAnimation_WhenMovingDown()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var p1 = new DownloadPackage { Name = "First" };
+        var p2 = new DownloadPackage { Name = "Second" };
+        vm.Packages.Add(p1);
+        vm.Packages.Add(p2);
+        vm.RefreshRootPackages();
+
+        var changedProps = new List<string>();
+        p1.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) changedProps.Add(e.PropertyName);
+        };
+
+        vm.MovePackageAfter(p1, p2);
+
+        Assert.Contains(nameof(DownloadPackage.IsJustMovedDown), changedProps);
+        Assert.Contains(nameof(DownloadPackage.IsJustMoved), changedProps);
+    }
+
+    [Fact]
+    public void ClipAndUnclipPackage_TriggersSnapAndUnclipAnimationEvents()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var parent = new DownloadPackage { Name = "Parent" };
+        var child = new DownloadPackage { Name = "Child" };
+        vm.Packages.Add(parent);
+        vm.Packages.Add(child);
+        vm.RefreshRootPackages();
+
+        var childChanges = new List<string>();
+        child.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) childChanges.Add(e.PropertyName);
+        };
+
+        // Clip child to parent -> should fire IsJustSnapped
+        vm.ClipPackage(child, parent);
+        Assert.Contains(nameof(DownloadPackage.IsJustSnapped), childChanges);
+
+        childChanges.Clear();
+
+        // Unclip child -> should fire IsJustUnclipped
+        vm.UnclipPackage(child);
+        Assert.Contains(nameof(DownloadPackage.IsJustUnclipped), childChanges);
+    }
 }

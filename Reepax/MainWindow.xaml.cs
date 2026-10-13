@@ -971,6 +971,7 @@ public partial class MainWindow : Window
 
     private Point _dragStartPoint;
     private DownloadPackage? _draggedPackage;
+    private DownloadPackage? _currentDropTargetPackage;
     private bool _isDraggingPackage;
     private ContextMenu? _activeContextMenu;
     private DateTime _lastContextMenuClosedTime = DateTime.MinValue;
@@ -988,11 +989,20 @@ public partial class MainWindow : Window
 
     private void ClearAllDropTargets()
     {
+        if (_currentDropTargetPackage != null)
+        {
+            if (_currentDropTargetPackage.IsDropTarget) _currentDropTargetPackage.IsDropTarget = false;
+            if (_currentDropTargetPackage.IsDropBefore) _currentDropTargetPackage.IsDropBefore = false;
+            if (_currentDropTargetPackage.IsDropAfter) _currentDropTargetPackage.IsDropAfter = false;
+            _currentDropTargetPackage = null;
+        }
+
+        if (ViewModel?.Packages == null) return;
         foreach (var p in ViewModel.Packages)
         {
-            p.IsDropTarget = false;
-            p.IsDropBefore = false;
-            p.IsDropAfter = false;
+            if (p.IsDropTarget) p.IsDropTarget = false;
+            if (p.IsDropBefore) p.IsDropBefore = false;
+            if (p.IsDropAfter) p.IsDropAfter = false;
         }
     }
 
@@ -1043,8 +1053,8 @@ public partial class MainWindow : Window
         Point currentPosition = e.GetPosition(this);
         Vector diff = _dragStartPoint - currentPosition;
 
-        // Clear threshold (at least 16 pixels) so a click never accidentally triggers drag
-        if (Math.Abs(diff.X) > 16 || Math.Abs(diff.Y) > 16)
+        // Snappy threshold (8px) ensures immediate responsiveness while preventing accidental clicks
+        if (Math.Abs(diff.X) > 8 || Math.Abs(diff.Y) > 8)
         {
             var pkgToDrag = _draggedPackage;
             _isDraggingPackage = true;
@@ -1121,19 +1131,21 @@ public partial class MainWindow : Window
 
                 if (action != PackageDropAction.None)
                 {
-                    foreach (var p in ViewModel.Packages)
+                    if (_currentDropTargetPackage != null && _currentDropTargetPackage != targetPkg)
                     {
-                        if (p != targetPkg)
-                        {
-                            p.IsDropTarget = false;
-                            p.IsDropBefore = false;
-                            p.IsDropAfter = false;
-                        }
+                        if (_currentDropTargetPackage.IsDropTarget) _currentDropTargetPackage.IsDropTarget = false;
+                        if (_currentDropTargetPackage.IsDropBefore) _currentDropTargetPackage.IsDropBefore = false;
+                        if (_currentDropTargetPackage.IsDropAfter) _currentDropTargetPackage.IsDropAfter = false;
                     }
+                    _currentDropTargetPackage = targetPkg;
 
-                    targetPkg.IsDropTarget = (action == PackageDropAction.Clip);
-                    targetPkg.IsDropBefore = (action == PackageDropAction.InsertBefore);
-                    targetPkg.IsDropAfter = (action == PackageDropAction.InsertAfter);
+                    bool isClip = (action == PackageDropAction.Clip);
+                    bool isBefore = (action == PackageDropAction.InsertBefore);
+                    bool isAfter = (action == PackageDropAction.InsertAfter);
+
+                    if (targetPkg.IsDropTarget != isClip) targetPkg.IsDropTarget = isClip;
+                    if (targetPkg.IsDropBefore != isBefore) targetPkg.IsDropBefore = isBefore;
+                    if (targetPkg.IsDropAfter != isAfter) targetPkg.IsDropAfter = isAfter;
 
                     e.Effects = DragDropEffects.Move;
                     e.Handled = true;
@@ -1144,9 +1156,10 @@ public partial class MainWindow : Window
 
         if ((sender as FrameworkElement)?.DataContext is DownloadPackage pkg)
         {
-            pkg.IsDropTarget = false;
-            pkg.IsDropBefore = false;
-            pkg.IsDropAfter = false;
+            if (pkg.IsDropTarget) pkg.IsDropTarget = false;
+            if (pkg.IsDropBefore) pkg.IsDropBefore = false;
+            if (pkg.IsDropAfter) pkg.IsDropAfter = false;
+            if (_currentDropTargetPackage == pkg) _currentDropTargetPackage = null;
         }
 
         e.Effects = DragDropEffects.None;
@@ -1157,9 +1170,10 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is DownloadPackage targetPkg)
         {
-            targetPkg.IsDropTarget = false;
-            targetPkg.IsDropBefore = false;
-            targetPkg.IsDropAfter = false;
+            if (targetPkg.IsDropTarget) targetPkg.IsDropTarget = false;
+            if (targetPkg.IsDropBefore) targetPkg.IsDropBefore = false;
+            if (targetPkg.IsDropAfter) targetPkg.IsDropAfter = false;
+            if (_currentDropTargetPackage == targetPkg) _currentDropTargetPackage = null;
         }
     }
 
@@ -1212,16 +1226,17 @@ public partial class MainWindow : Window
                 var lastPkg = ViewModel.RootPackages.LastOrDefault();
                 if (lastPkg != null && lastPkg != pkg)
                 {
-                    foreach (var p in ViewModel.Packages)
+                    if (_currentDropTargetPackage != null && _currentDropTargetPackage != lastPkg)
                     {
-                        if (p != lastPkg)
-                        {
-                            p.IsDropTarget = false;
-                            p.IsDropBefore = false;
-                            p.IsDropAfter = false;
-                        }
+                        if (_currentDropTargetPackage.IsDropTarget) _currentDropTargetPackage.IsDropTarget = false;
+                        if (_currentDropTargetPackage.IsDropBefore) _currentDropTargetPackage.IsDropBefore = false;
+                        if (_currentDropTargetPackage.IsDropAfter) _currentDropTargetPackage.IsDropAfter = false;
                     }
-                    lastPkg.IsDropAfter = true;
+                    _currentDropTargetPackage = lastPkg;
+
+                    if (lastPkg.IsDropTarget) lastPkg.IsDropTarget = false;
+                    if (lastPkg.IsDropBefore) lastPkg.IsDropBefore = false;
+                    if (!lastPkg.IsDropAfter) lastPkg.IsDropAfter = true;
                 }
                 return;
             }
@@ -1230,7 +1245,11 @@ public partial class MainWindow : Window
 
     private void PackagesScrollViewer_DragLeave(object sender, DragEventArgs e)
     {
-        ClearAllDropTargets();
+        Point pt = e.GetPosition(TreeListScrollViewer);
+        if (pt.X < 0 || pt.Y < 0 || pt.X > TreeListScrollViewer.ActualWidth || pt.Y > TreeListScrollViewer.ActualHeight)
+        {
+            ClearAllDropTargets();
+        }
     }
 
     private void PackagesScrollViewer_Drop(object sender, DragEventArgs e)
@@ -1240,12 +1259,7 @@ public partial class MainWindow : Window
             var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
             if (pkg != null)
             {
-                Point currentPos = e.GetPosition(this);
-                Vector diff = _dragStartPoint - currentPos;
-                if (Math.Abs(diff.X) > 16 || Math.Abs(diff.Y) > 16)
-                {
-                    ViewModel.MovePackageToEnd(pkg);
-                }
+                ViewModel.MovePackageToEnd(pkg);
                 e.Handled = true;
                 ClearAllDropTargets();
                 return;

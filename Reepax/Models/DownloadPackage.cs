@@ -141,6 +141,22 @@ public partial class DownloadPackage : ObservableObject
     [ObservableProperty]
     private bool _isJustSnapped;
 
+    /// <summary>Set briefly to true when the package is unclipped from another folder back to root.</summary>
+    [ObservableProperty]
+    private bool _isJustUnclipped;
+
+    /// <summary>Set briefly to true when the package is reordered/moved.</summary>
+    [ObservableProperty]
+    private bool _isJustMoved;
+
+    /// <summary>Set briefly to true when the package is moved upwards in the queue.</summary>
+    [ObservableProperty]
+    private bool _isJustMovedUp;
+
+    /// <summary>Set briefly to true when the package is moved downwards in the queue.</summary>
+    [ObservableProperty]
+    private bool _isJustMovedDown;
+
     /// <summary>Prevents duplicate notifications for the same package.</summary>
     public bool HasCompletedNotified { get; set; }
 
