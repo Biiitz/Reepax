@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.Update;
@@ -159,6 +162,7 @@ public class AppUpdateServiceTests
     [InlineData("UpdateDialog_Status_Progress")]
     [InlineData("UpdateDialog_Status_Preparing")]
     [InlineData("UpdateDialog_Status_ReadyRestarting")]
+    [InlineData("UpdateDialog_Status_Verifying")]
     [InlineData("UpdateDialog_Status_Failed")]
     [InlineData("UpdateDialog_Status_Cancelled")]
     public void Localization_UpdateKeysExistInBothLanguages(string key)
@@ -172,5 +176,154 @@ public class AppUpdateServiceTests
         loc.CurrentLanguage = "en";
         var enValue = loc[key];
         Assert.False(string.IsNullOrWhiteSpace(enValue), $"Key '{key}' missing in English translation.");
+    }
+
+    [Fact]
+    public void ParseSha256Checksums_ParsesVariousFormatsCorrectly()
+    {
+        string sampleShaFile = @"
+# Comments should be ignored
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  setup.exe
+2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae *portable.zip
+SHA256 (archive.zip) = fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9
+custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+";
+        var parsed = AppUpdateService.ParseSha256Checksums(sampleShaFile);
+
+        Assert.Equal("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", parsed["setup.exe"]);
+        Assert.Equal("2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae", parsed["portable.zip"]);
+        Assert.Equal("fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9", parsed["archive.zip"]);
+        Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", parsed["custom.exe"]);
+    }
+
+    [Fact]
+    public async Task DownloadUpdateAsync_ThrowsWhenFileSizeDoesNotMatchExpected()
+    {
+        var testData = System.Text.Encoding.UTF8.GetBytes("Small payload");
+        var handler = new TestMockHttpMessageHandler((req, ct) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(testData)
+            };
+            return Task.FromResult(response);
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var service = new AppUpdateService(httpClient, httpClient);
+
+        var updateInfo = new UpdateInfo
+        {
+            SetupAssetUrl = "https://example.com/setup.exe",
+            SetupAssetSize = 9999 // Intentionally expected size is much larger
+        };
+
+        SettingsService.IsPortableMode = false;
+
+        await Assert.ThrowsAsync<InvalidDataException>(async () =>
+        {
+            await service.DownloadUpdateAsync(updateInfo);
+        });
+    }
+
+    [Fact]
+    public async Task DownloadUpdateAsync_ThrowsWhenSha256ChecksumMismatches()
+    {
+        var testData = System.Text.Encoding.UTF8.GetBytes("Integrity check test content");
+        var handler = new TestMockHttpMessageHandler((req, ct) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(testData)
+            };
+            return Task.FromResult(response);
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var service = new AppUpdateService(httpClient, httpClient);
+
+        var updateInfo = new UpdateInfo
+        {
+            SetupAssetUrl = "https://example.com/setup.exe",
+            SetupAssetSize = testData.Length
+        };
+        updateInfo.SetExpectedSha256("setup.exe", "0000000000000000000000000000000000000000000000000000000000000000"); // Wrong hash
+
+        SettingsService.IsPortableMode = false;
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(async () =>
+        {
+            await service.DownloadUpdateAsync(updateInfo);
+        });
+
+        Assert.Contains("SHA-256 mismatch", ex.Message);
+    }
+
+    [Fact]
+    public async Task DownloadUpdateAsync_SucceedsAndSetsVerifiedSha256WhenHashMatches()
+    {
+        var testData = System.Text.Encoding.UTF8.GetBytes("Authentic verified Reepax binary update content");
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var expectedHash = Convert.ToHexString(sha256.ComputeHash(testData)).ToLowerInvariant();
+
+        var handler = new TestMockHttpMessageHandler((req, ct) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(testData)
+            };
+            return Task.FromResult(response);
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var service = new AppUpdateService(httpClient, httpClient);
+
+        var updateInfo = new UpdateInfo
+        {
+            SetupAssetUrl = "https://example.com/setup.exe",
+            SetupAssetSize = testData.Length
+        };
+        updateInfo.SetExpectedSha256("setup.exe", expectedHash);
+
+        SettingsService.IsPortableMode = false;
+
+        var path = await service.DownloadUpdateAsync(updateInfo);
+
+        Assert.True(File.Exists(path));
+        Assert.Equal(expectedHash, updateInfo.VerifiedSha256);
+        Assert.Equal(testData, File.ReadAllBytes(path));
+    }
+
+    [Fact]
+    public void GenerateInstallerUpdateScript_ContainsSha256IntegrityCheckWhenProvided()
+    {
+        string expectedHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        string script = AppUpdateService.GenerateInstallerUpdateScript(
+            1234,
+            @"C:\Temp\setup.exe",
+            @"C:\Programs\Reepax\Reepax.exe",
+            expectedHash);
+
+        Assert.Contains(expectedHash, script);
+        Assert.Contains("Get-FileHash", script);
+        Assert.Contains("$currentHash -ne $expectedHash", script);
+    }
+
+    [Fact]
+    public void VerifyAuthenticodeSignature_DoesNotCrashAndReturnsUnsignedForRegularFile()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), "test_unsigned_" + Guid.NewGuid().ToString("N") + ".exe");
+        try
+        {
+            File.WriteAllBytes(tempFile, new byte[] { 0x4D, 0x5A, 0x90, 0x00 }); // Dummy MZ header
+            var result = AppUpdateService.VerifyAuthenticodeSignature(tempFile);
+
+            Assert.False(result.IsSigned);
+            Assert.False(result.IsTampered);
+        }
+        finally
+        {
+            try { File.Delete(tempFile); } catch { }
+        }
     }
 }

@@ -462,6 +462,7 @@ public static class Strings_en
         ["UpdateDialog_Status_Progress"] = "Downloading: {0} / {1} ({2}%)",
         ["UpdateDialog_Status_Preparing"] = "Extracting and preparing files...",
         ["UpdateDialog_Status_ReadyRestarting"] = "Update ready. Restarting Reepax...",
+        ["UpdateDialog_Status_Verifying"] = "Verifying integrity and signature...",
         ["UpdateDialog_Status_Failed"] = "Download failed: {0}",
         ["UpdateDialog_Status_Cancelled"] = "Download cancelled.",
         ["LineIndicator_Remaining"] = "{0} of {1} lines remaining",

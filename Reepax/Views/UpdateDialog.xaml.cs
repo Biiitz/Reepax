@@ -238,7 +238,8 @@ public partial class UpdateDialog : Window
 
             await Task.Delay(600, _downloadCts.Token);
 
-            AppUpdateService.ApplyUpdate(targetUpdatePath, SettingsService.IsPortableMode);
+            string? verifiedHash = _updateInfo.VerifiedSha256 ?? _updateInfo.GetExpectedSha256(_updateInfo.TargetFileName);
+            AppUpdateService.ApplyUpdate(targetUpdatePath, SettingsService.IsPortableMode, verifiedHash);
         }
         catch (OperationCanceledException)
         {

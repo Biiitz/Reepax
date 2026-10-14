@@ -205,6 +205,23 @@ jobs:
           }
           Write-Host "setup.exe installer integrity verified successfully."
 
+      - name: Generate SHA-256 Checksums (SHA256SUMS.txt)
+        shell: powershell
+        run: |
+          $checksumFile = "dist\SHA256SUMS.txt"
+          $files = @("dist\portable.zip", "dist\setup.exe")
+          $lines = @()
+          foreach ($f in $files) {
+              if (Test-Path $f) {
+                  $hash = (Get-FileHash -Path $f -Algorithm SHA256).Hash.ToLowerInvariant()
+                  $name = Split-Path -Leaf $f
+                  $lines += "$hash  $name"
+                  Write-Host "SHA256 ($name) = $hash"
+              }
+          }
+          $lines | Out-File -FilePath $checksumFile -Encoding utf8
+          Write-Host "Generated $checksumFile successfully."
+
       - name: Upload Artifacts to Workflow Run
         uses: actions/upload-artifact@v4
         with:
@@ -212,6 +229,7 @@ jobs:
           path: |
             dist/portable.zip
             dist/setup.exe
+            dist/SHA256SUMS.txt
 
       - name: Attach Assets to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -221,5 +239,6 @@ jobs:
           files: |
             dist/portable.zip
             dist/setup.exe
+            dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
