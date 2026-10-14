@@ -2,12 +2,14 @@
 
 <div align="center">
 
+
   <img src="Reepax/Assets/R.png" alt="Reepax Logo" width="90" height="127" />
 
+---
   <br />
 
   [![Build & Release](https://github.com/Biiitz/Reepax/actions/workflows/release.yml/badge.svg)](https://github.com/Biiitz/Reepax/actions/workflows/release.yml)
-
+  
   [![Tests](https://img.shields.io/badge/Tests-1000%2B%20Passing-10b981?style=flat-square)](https://github.com/Biiitz/Reepax/actions)
   [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078d4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Biiitz/Reepax/releases)
   [![Framework](https://img.shields.io/badge/.NET-8.0-512bd4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
@@ -15,7 +17,6 @@
   [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE.md)
 
   <br />
-
   
   [Overview](#overview) • [Features](#features) • [Installation](#installation) • [Contributing](CONTRIBUTING.md) • [License](LICENSE.md)
 
