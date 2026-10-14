@@ -542,6 +542,22 @@ public class DownloadEngine
         public long Start { get; set; }
         public long End { get; set; }
         public long Done { get; set; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        private long _receivedBytes;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public long ReceivedBytes => Volatile.Read(ref _receivedBytes);
+
+        public void InitializeReceivedBytes()
+        {
+            Volatile.Write(ref _receivedBytes, Done);
+        }
+
+        public void AddReceivedBytes(long count)
+        {
+            Interlocked.Add(ref _receivedBytes, count);
+        }
     }
 
     private sealed class SegmentFileState
@@ -659,7 +675,11 @@ public class DownloadEngine
     {
         var totalBytes = state.TotalBytes;
         var segments = state.Segments;
-        long initialDownloaded = segments.Sum(s => s.Done);
+        foreach (var s in segments)
+        {
+            s.InitializeReceivedBytes();
+        }
+        long initialDownloaded = segments.Sum(s => s.ReceivedBytes);
 
         // Preallocate target file to full size (instant on NTFS without writing zeroes)
         {
@@ -691,7 +711,7 @@ public class DownloadEngine
                 try { await Task.Delay(300, cancellationToken); }
                 catch (OperationCanceledException) { break; }
 
-                long aggregated = segments.Sum(s => s.Done);
+                long aggregated = segments.Sum(s => s.ReceivedBytes);
                 var speed = speedTracker.CalculateSpeed(aggregated);
                 SafeInvokeAsync(() => item.UpdateProgress(aggregated, totalBytes, speed));
                 DownloadProgressUpdated?.Invoke(item);
@@ -713,7 +733,7 @@ public class DownloadEngine
             {
                 try
                 {
-                    await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token);
+                    await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, segments.Count);
                 }
                 catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
                 {
@@ -819,7 +839,8 @@ public class DownloadEngine
         SegmentState segment,
         SafeFileHandle fileHandle,
         BandwidthThrottler trickleThrottler,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int activeSegmentsCount = 1)
     {
         const int maxSegmentRetries = 3;
         long segmentLength = segment.End - segment.Start + 1;
@@ -835,6 +856,7 @@ public class DownloadEngine
                     if (segment.Done >= segmentLength)
                         return;
 
+                    segment.InitializeReceivedBytes();
                     long rangeStart = segment.Start + segment.Done;
 
                     using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
@@ -880,20 +902,30 @@ public class DownloadEngine
                         int spaceInBuffer = bufferSize - bufferedBytes;
                         long remainingInSegment = segmentLength - (segment.Done + bufferedBytes);
                         int toRead = (int)Math.Min(spaceInBuffer, remainingInSegment);
+                        toRead = _throttler.GetOptimalReadChunkSize(toRead, item.IsTrickling ? 500 * 1024 : 0, activeSegmentsCount);
+
+                        await _throttler.AcquireReadQuotaAsync(toRead, cancellationToken);
+                        if (item.IsTrickling)
+                        {
+                            await trickleThrottler.AcquireReadQuotaAsync(toRead, cancellationToken);
+                        }
 
                         int bytesRead = await stream.ReadAsync(rentedBuffer.AsMemory(bufferedBytes, toRead), cancellationToken);
                         if (bytesRead <= 0)
                         {
+                            _throttler.RefundUnusedQuota(toRead);
+                            if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead);
                             break;
                         }
 
-                        bufferedBytes += bytesRead;
-
-                        await _throttler.ThrottleAsync(bytesRead, cancellationToken);
-                        if (item.IsTrickling)
+                        if (bytesRead < toRead)
                         {
-                            await trickleThrottler.ThrottleAsync(bytesRead, cancellationToken);
+                            _throttler.RefundUnusedQuota(toRead - bytesRead);
+                            if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead - bytesRead);
                         }
+
+                        bufferedBytes += bytesRead;
+                        segment.AddReceivedBytes(bytesRead);
 
                         bool isSegmentDone = segment.Done + bufferedBytes >= segmentLength;
                         bool isWatchdogElapsed = Stopwatch.GetTimestamp() - lastFlushTimestamp >= flushIntervalTicks;
@@ -1057,13 +1089,29 @@ public class DownloadEngine
             {
                 int bytesRead;
                 int effectiveReadSize = buffer != null ? buffer.Length : bufferSize;
-                while ((bytesRead = await contentStream.ReadAsync(rentedBuffer.AsMemory(0, effectiveReadSize), cancellationToken)) > 0)
+                while (true)
                 {
-                    await _throttler.ThrottleAsync(bytesRead, cancellationToken);
+                    int toRead = _throttler.GetOptimalReadChunkSize(effectiveReadSize, item.IsTrickling ? 500 * 1024 : 0, 1);
+                    await _throttler.AcquireReadQuotaAsync(toRead, cancellationToken);
                     if (item.IsTrickling)
                     {
-                        await trickleThrottler.ThrottleAsync(bytesRead, cancellationToken);
+                        await trickleThrottler.AcquireReadQuotaAsync(toRead, cancellationToken);
                     }
+
+                    bytesRead = await contentStream.ReadAsync(rentedBuffer.AsMemory(0, toRead), cancellationToken);
+                    if (bytesRead <= 0)
+                    {
+                        _throttler.RefundUnusedQuota(toRead);
+                        if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead);
+                        break;
+                    }
+
+                    if (bytesRead < toRead)
+                    {
+                        _throttler.RefundUnusedQuota(toRead - bytesRead);
+                        if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead - bytesRead);
+                    }
+
                     await fileStream.WriteAsync(rentedBuffer.AsMemory(0, bytesRead), cancellationToken);
                     currentDownloaded += bytesRead;
 
