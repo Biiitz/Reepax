@@ -26,6 +26,42 @@ public class TestMockHttpMessageHandler : HttpMessageHandler
     }
 }
 
+public class InterruptibleMemoryStream : MemoryStream
+{
+    private readonly int _limit;
+    private int _readSoFar;
+
+    public InterruptibleMemoryStream(byte[] buffer, int limit) : base(buffer)
+    {
+        _limit = limit;
+    }
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        if (_readSoFar >= _limit)
+        {
+            throw new OperationCanceledException();
+        }
+        int toRead = Math.Min(buffer.Length, _limit - _readSoFar);
+        var slice = buffer.Slice(0, toRead);
+        int read = await base.ReadAsync(slice, cancellationToken);
+        _readSoFar += read;
+        return read;
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        if (_readSoFar >= _limit)
+        {
+            throw new OperationCanceledException();
+        }
+        int toRead = Math.Min(count, _limit - _readSoFar);
+        int read = base.Read(buffer, offset, toRead);
+        _readSoFar += read;
+        return read;
+    }
+}
+
 public class DownloadEngineTests
 {
     [Fact]
@@ -186,6 +222,115 @@ public class DownloadEngineTests
             Assert.Equal(1000, finalBytes.Length);
             for (int i = 0; i < 500; i++) Assert.Equal((byte)'A', finalBytes[i]);
             for (int i = 500; i < 1000; i++) Assert.Equal((byte)'B', finalBytes[i]);
+        }
+        finally
+        {
+            try { Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_SingleConnectionDownload_DoesNotPreallocatePartFile_AllowsResumeWithout416()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_NoPrealloc_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "single_no_prealloc.bin");
+            var partFile = destinationFile + ".part";
+
+            var fullData = new byte[1000];
+            for (int i = 0; i < 500; i++) fullData[i] = (byte)'X';
+            for (int i = 500; i < 1000; i++) fullData[i] = (byte)'Y';
+
+            var item = new DownloadItem
+            {
+                FileName = "single_no_prealloc.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/single_no_prealloc.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            bool resumeRequested = false;
+            long resumeFrom = -1;
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                if (req.Headers.Range != null && req.Headers.Range.Ranges.Count > 0)
+                {
+                    resumeRequested = true;
+                    resumeFrom = req.Headers.Range.Ranges.First().From ?? 0;
+
+                    // If preallocation occurred, resumeFrom would be 1000, which triggers 416
+                    if (resumeFrom >= 1000)
+                    {
+                        var res416 = new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable);
+                        return Task.FromResult(res416);
+                    }
+
+                    var remainingBytes = fullData.AsMemory((int)resumeFrom).ToArray();
+                    var partialResponse = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                    {
+                        Content = new ByteArrayContent(remainingBytes)
+                    };
+                    partialResponse.Content.Headers.ContentLength = remainingBytes.Length;
+                    partialResponse.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(resumeFrom, 999, 1000);
+                    return Task.FromResult(partialResponse);
+                }
+
+                // Initial download stream that serves 500 bytes and then cancels
+                var ms = new InterruptibleMemoryStream(fullData, 500);
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StreamContent(ms)
+                };
+                response.Content.Headers.ContentLength = 1000;
+                return Task.FromResult(response);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 1 };
+
+            // 1. Initial attempt: interrupted after reading 500 bytes
+            try
+            {
+                await engine.ExecuteSingleConnectionDownloadAsync(item, partFile, CancellationToken.None);
+            }
+            catch (OperationCanceledException) { }
+
+            // Verify .part file on disk was NOT pre-allocated to 1000 bytes!
+            Assert.True(File.Exists(partFile));
+            var partLength = new FileInfo(partFile).Length;
+            Assert.Equal(500, partLength);
+
+            // 2. Resume download
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += downloadedItem =>
+            {
+                if (downloadedItem.Id == item.Id)
+                    tcs.TrySetResult(true);
+            };
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    tcs.TrySetException(ex);
+            };
+
+            await engine.ResumeDownloadAsync(item);
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(4000));
+            Assert.Same(tcs.Task, completed);
+            Assert.True(tcs.Task.Result);
+
+            Assert.True(resumeRequested);
+            Assert.Equal(500, resumeFrom);
+            Assert.True(File.Exists(destinationFile));
+            Assert.False(File.Exists(partFile));
+
+            var resultBytes = File.ReadAllBytes(destinationFile);
+            Assert.Equal(1000, resultBytes.Length);
+            for (int i = 0; i < 500; i++) Assert.Equal((byte)'X', resultBytes[i]);
+            for (int i = 500; i < 1000; i++) Assert.Equal((byte)'Y', resultBytes[i]);
         }
         finally
         {

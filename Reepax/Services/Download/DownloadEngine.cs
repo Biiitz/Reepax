@@ -1068,15 +1068,10 @@ public class DownloadEngine
             };
             using var fileStream = new FileStream(tempFilePath, fileStreamOptions);
 
-            if (totalBytes > 0 && initialDownloadedBytes == 0)
-            {
-                try
-                {
-                    if (fileStream.Length != totalBytes)
-                        fileStream.SetLength(totalBytes);
-                }
-                catch { }
-            }
+            // NOTE: Do NOT pre-allocate file length (SetLength) for sequential single-connection downloads.
+            // Single-connection downloads do not have a .segments sidecar; progress and Range resume rely
+            // strictly on the physical file length on disk. Pre-allocating would cause subsequent resume
+            // attempts to request out-of-range offsets resulting in HTTP 416 and 100% data loss.
 
             long currentDownloaded = initialDownloadedBytes;
             var speedTracker = new RollingSpeedTracker(initialDownloadedBytes);
