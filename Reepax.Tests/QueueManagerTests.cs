@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Browser;
@@ -916,6 +918,39 @@ public class QueueManagerTests
             _ = DownloadEngine.Instance.CancelOrPauseDownload(item1.Id);
             _ = DownloadEngine.Instance.CancelOrPauseDownload(item2.Id);
         }
+    }
+
+    [Fact]
+    public void QueueManager_IsExpiredLinkError_AccuratelyDistinguishesExpiredTokensFromArbitraryBytesAndPorts()
+    {
+        // 1. Genuine expired link errors (404, 410, 403, 401)
+        Assert.True(QueueManager.IsExpiredLinkError(new HttpRequestException("Not Found", null, HttpStatusCode.NotFound)));
+        Assert.True(QueueManager.IsExpiredLinkError(new HttpRequestException("Gone", null, HttpStatusCode.Gone)));
+        Assert.True(QueueManager.IsExpiredLinkError(new HttpRequestException("Forbidden", null, HttpStatusCode.Forbidden)));
+        Assert.True(QueueManager.IsExpiredLinkError(new HttpRequestException("Unauthorized", null, HttpStatusCode.Unauthorized)));
+        Assert.True(QueueManager.IsExpiredLinkError(new AggregateException(new HttpRequestException("Gone", null, HttpStatusCode.Gone))));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("Response status code does not indicate success: 404 (Not Found).")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("Response status code does not indicate success: 410 (Gone).")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("Response status code does not indicate success: 403 (Forbidden).")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("Response status code does not indicate success: 401 (Unauthorized).")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("Server returned 404 Not Found")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("410 Gone")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("HTTP 404")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("HTTP 410")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("status code: 404")));
+        Assert.True(QueueManager.IsExpiredLinkError(new Exception("status code: 410")));
+
+        // 2. False positives that MUST NOT trigger link re-resolution (e.g. byte counts, ports, local file errors)
+        Assert.False(QueueManager.IsExpiredLinkError(null));
+        Assert.False(QueueManager.IsExpiredLinkError(new IOException("Download was interrupted: Only 4104000 of 10000000 bytes were transferred.")));
+        Assert.False(QueueManager.IsExpiredLinkError(new IOException("Only 4040000 bytes transferred")));
+        Assert.False(QueueManager.IsExpiredLinkError(new Exception("Connecting to host dl404.example.com:4040 failed")));
+        Assert.False(QueueManager.IsExpiredLinkError(new FileNotFoundException("File not found on local disk: C:\\file.part")));
+        Assert.False(QueueManager.IsExpiredLinkError(new Exception("The drive is gone: E:\\")));
+        Assert.False(QueueManager.IsExpiredLinkError(new Exception("Arbitrary error 40499")));
+        Assert.False(QueueManager.IsExpiredLinkError(new Exception("Timeout waiting for 4100ms")));
+        Assert.False(QueueManager.IsExpiredLinkError(new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError)));
+        Assert.False(QueueManager.IsExpiredLinkError(new HttpRequestException("Bad Gateway", null, HttpStatusCode.BadGateway)));
     }
 }
 

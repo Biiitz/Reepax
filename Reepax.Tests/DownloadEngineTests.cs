@@ -2191,4 +2191,123 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public void DownloadEngine_IsRangeNotSupported_AccuratelyDistinguishesRangeErrorsFromArbitraryNumbers()
+    {
+        // 1. True range unsupported errors
+        Assert.True(DownloadEngine.IsRangeNotSupported(new RangeNotSupportedException("Range requests not supported.")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new HttpRequestException("416 Range Not Satisfiable", null, HttpStatusCode.RequestedRangeNotSatisfiable)));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new AggregateException(new HttpRequestException("416", null, HttpStatusCode.RequestedRangeNotSatisfiable))));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("Server returned 416 Range Not Satisfiable for range 0-100.")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("Server returned 200 OK instead of 206 Partial Content: Range requests not supported.")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("Response status code does not indicate success: 416 (Range Not Satisfiable).")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("HTTP 416")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("Server returned 416")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("status code: 416")));
+        Assert.True(DownloadEngine.IsRangeNotSupported(new Exception("Server did not accept the range request (no 206 Partial Content).")));
+
+        // 2. False positives that MUST NOT trigger RangeNotSupported (preventing segment loss & file truncation)
+        Assert.False(DownloadEngine.IsRangeNotSupported(null));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new Exception("No connection could be made because the target machine actively refused it. (dl416.host.com:443)")));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new Exception("The response ended prematurely, with at least 1416384 additional bytes expected.")));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new Exception(@"Access to path 'D:\Games\Spiel_v1.416\Spiel.part01.rar.part' is denied.")));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new IOException("Download was interrupted: Only 4160000 of 80000000 bytes were transferred.")));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new TimeoutException("Connection to 192.168.1.10:416 timed out after 30000ms")));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError)));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new HttpRequestException("Bad Gateway", null, HttpStatusCode.BadGateway)));
+    }
+
+    [Fact]
+    public async Task DownloadEngine_SegmentErrorWith416InHostOrByteCount_DoesNotTruncateOrDropChunks()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxSeg416Host_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "host416_test.bin");
+            var partFile = destinationFile + ".part";
+            var segFile = partFile + ".segments";
+
+            var totalLength = 8 * 1024 * 1024; // 8 MB
+            int segCount = 4;
+            long segSize = totalLength / segCount; // 2 MB per segment
+
+            // Simulate interrupted download: segment 0 is 100% done (2 MB written)
+            var testSegment0Data = new byte[segSize];
+            for (int i = 0; i < testSegment0Data.Length; i++) testSegment0Data[i] = (byte)(i % 179);
+
+            var sb = new StringBuilder();
+            sb.Append("{\"TotalBytes\":").Append(totalLength).Append(",\"Segments\":[");
+            for (int i = 0; i < segCount; i++)
+            {
+                long start = i * segSize;
+                long end = (i == segCount - 1) ? totalLength - 1 : start + segSize - 1;
+                long done = (i == 0) ? end - start + 1 : 0;
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"Start\":").Append(start).Append(",\"End\":").Append(end).Append(",\"Done\":").Append(done).Append('}');
+            }
+            sb.Append("]}");
+            File.WriteAllText(segFile, sb.ToString());
+
+            using (var fs = new FileStream(partFile, FileMode.Create, FileAccess.ReadWrite))
+            {
+                fs.SetLength(totalLength);
+                fs.Write(testSegment0Data, 0, (int)segSize);
+            }
+
+            var item = new DownloadItem
+            {
+                FileName = "host416_test.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://dl416.example.com/host416_test.bin",
+                Status = DownloadStatus.Paused,
+                TotalBytes = totalLength,
+                DownloadedBytes = segSize
+            };
+
+            // Mock handler: segment requests fail with network error mentioning host dl416
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                throw new HttpRequestException("No connection could be made because the target machine actively refused it. (dl416.example.com:443)");
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
+
+            var failedTcs = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    failedTcs.TrySetResult(ex);
+            };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(failedTcs.Task, Task.Delay(10000));
+            Assert.Same(failedTcs.Task, completedTask);
+
+            // Item failed due to network error, BUT segments file and part file MUST be preserved!
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.True(File.Exists(segFile), "Segment metadata must NOT be deleted on arbitrary 416-containing network error!");
+            Assert.True(File.Exists(partFile), "Part file must NOT be deleted on arbitrary 416-containing network error!");
+
+            // Verify file length was NOT truncated to 0
+            var fi = new FileInfo(partFile);
+            Assert.Equal(totalLength, fi.Length);
+
+            // Verify segment 0 data is intact
+            using (var fs = new FileStream(partFile, FileMode.Open, FileAccess.Read))
+            {
+                var readBuf = new byte[segSize];
+                fs.ReadExactly(readBuf);
+                Assert.Equal(testSegment0Data, readBuf);
+            }
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }

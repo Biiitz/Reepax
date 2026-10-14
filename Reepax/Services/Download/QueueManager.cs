@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using Reepax.Helpers;
@@ -1432,11 +1433,18 @@ public class QueueManager
         ProcessQueue();
     }
 
+    private static readonly Regex ExpiredLinkRegex = new(
+        @"\b(?:(?:404\s*\(?\s*Not\s+Found|410\s*\(?\s*Gone|403\s*\(?\s*Forbidden|401\s*\(?\s*Unauthorized)|(?:(?:HTTP(?:\s+(?:status(?:\s+code)?|error))?|status\s*code|statuscode|returned)\s*:?\s*(?:404|410|403|401)))\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     /// <summary>
     /// Detects expired/dead direct links based on HTTP status code (404/410/403/401).
     /// </summary>
-    private static bool IsExpiredLinkError(Exception ex)
+    internal static bool IsExpiredLinkError(Exception? ex)
     {
+        if (ex == null)
+            return false;
+
         if (ex is HttpRequestException hre &&
             hre.StatusCode is System.Net.HttpStatusCode.NotFound
                 or System.Net.HttpStatusCode.Gone
@@ -1446,12 +1454,24 @@ public class QueueManager
             return true;
         }
 
-        // Fallback by parsing error message
+        if (ex is AggregateException agg)
+        {
+            return agg.InnerExceptions.Any(IsExpiredLinkError);
+        }
+
+        if (ex.InnerException != null && IsExpiredLinkError(ex.InnerException))
+        {
+            return true;
+        }
+
+        // Fallback by parsing error message with explicit HTTP status context.
+        // Never do plain substring matching on "404" or "410", which would falsely trigger
+        // on byte counts (e.g. "Only 4104000 of ... bytes"), ports (dl404.host:443), or paths.
         var msg = ex.Message;
-        return msg.Contains("404") ||
-               msg.Contains("410") ||
-               msg.Contains("Not Found", StringComparison.OrdinalIgnoreCase) ||
-               msg.Contains("Gone", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(msg))
+            return false;
+
+        return ExpiredLinkRegex.IsMatch(msg);
     }
 
     /// <summary>

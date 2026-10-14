@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -505,9 +506,19 @@ public class DownloadEngine
         await ExecuteSingleConnectionDownloadAsync(item, tempFilePath, cancellationToken, buffer);
     }
 
-    private static bool IsRangeNotSupported(Exception ex)
+    private static readonly Regex Range416Regex = new(
+        @"\b(?:(?:416\s*\(?\s*(?:Requested\s+)?Range\s+Not\s+Satisfiable)|(?:(?:HTTP(?:\s+(?:status(?:\s+code)?|error))?|status\s*code|statuscode|returned)\s*:?\s*416))\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    internal static bool IsRangeNotSupported(Exception? ex)
     {
+        if (ex == null)
+            return false;
+
         if (ex is RangeNotSupportedException)
+            return true;
+
+        if (ex is HttpRequestException hre && hre.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
             return true;
 
         if (ex is AggregateException agg)
@@ -521,17 +532,19 @@ public class DownloadEngine
         }
 
         var msg = ex.Message;
+        if (string.IsNullOrWhiteSpace(msg))
+            return false;
+
         if (msg.Contains("Range requests not supported", StringComparison.OrdinalIgnoreCase) ||
             msg.Contains("Server did not accept the range request", StringComparison.OrdinalIgnoreCase) ||
             msg.Contains("no 206 Partial Content", StringComparison.OrdinalIgnoreCase) ||
             msg.Contains("Range not supported", StringComparison.OrdinalIgnoreCase) ||
-            msg.Contains("416", StringComparison.OrdinalIgnoreCase) ||
             msg.Contains("Range Not Satisfiable", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        return false;
+        return Range416Regex.IsMatch(msg);
     }
 
 
