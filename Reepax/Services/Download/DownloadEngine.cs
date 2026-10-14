@@ -715,12 +715,16 @@ public class DownloadEngine
                 {
                     await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token);
                 }
-                catch (Exception ex) when (IsRangeNotSupported(ex))
+                catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception)
                 {
                     try { linkedCts.Cancel(); } catch { }
                     throw;
                 }
-            });
+            }).ToArray();
             var allTask = Task.WhenAll(tasks);
             try
             {
@@ -730,10 +734,20 @@ public class DownloadEngine
             {
                 if (allTask.Exception != null)
                 {
-                    var rangeEx = allTask.Exception.InnerExceptions.FirstOrDefault(IsRangeNotSupported);
+                    var flatExceptions = allTask.Exception.Flatten().InnerExceptions;
+                    var rangeEx = flatExceptions.FirstOrDefault(IsRangeNotSupported);
                     if (rangeEx != null)
                     {
                         throw rangeEx;
+                    }
+
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        var actualEx = flatExceptions.FirstOrDefault(e => e is not OperationCanceledException);
+                        if (actualEx != null)
+                        {
+                            throw actualEx;
+                        }
                     }
                 }
                 throw;

@@ -1938,7 +1938,112 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task DownloadEngine_ChunkedDownload_NetworkErrorInSegment_CancelsPeersAndReleasesFileLockPromptly()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxSegCancel_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "chunked_error.bin");
+            var item = new DownloadItem
+            {
+                FileName = "chunked_error.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/chunked_error.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            var totalLength = 8 * 1024 * 1024 + 500 * 1024;
+            var peerSegmentCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var handler = new TestMockHttpMessageHandler(async (req, ct) =>
+            {
+                if (req.Headers.Range != null)
+                {
+                    long from = req.Headers.Range.Ranges.First().From ?? 0;
+                    long to = req.Headers.Range.Ranges.First().To ?? (totalLength - 1);
+
+                    // Range probe: bytes=0-0
+                    if (from == 0 && to == 0)
+                    {
+                        var probeRes = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                        {
+                            Content = new ByteArrayContent(new byte[1])
+                        };
+                        probeRes.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(0, 0, totalLength);
+                        return probeRes;
+                    }
+
+                    // Segment 0 fails with network error
+                    if (from == 0)
+                    {
+                        throw new HttpRequestException("Simulated network drop on chunk 0");
+                    }
+
+                    try
+                    {
+                        await Task.Delay(10000, ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        peerSegmentCancelled.TrySetResult(true);
+                        throw;
+                    }
+
+                    var slice = new byte[(int)(to - from + 1)];
+                    var res = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                    {
+                        Content = new ByteArrayContent(slice)
+                    };
+                    res.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(from, to, totalLength);
+                    return res;
+                }
+
+                var full = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[1]) };
+                full.Content.Headers.ContentLength = totalLength;
+                return full;
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
+
+            var failedTcs = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    failedTcs.TrySetResult(ex);
+            };
+
+            await engine.StartDownloadAsync(
+                item,
+                "https://example.com/chunked_error.bin",
+                null,
+                "Mozilla/5.0",
+                "https://example.com",
+                "chunked_error.bin");
+
+            var completedTask = await Task.WhenAny(failedTcs.Task, Task.Delay(10000));
+            Assert.Same(failedTcs.Task, completedTask);
+
+            var peerCancelledTask = await Task.WhenAny(peerSegmentCancelled.Task, Task.Delay(5000));
+            Assert.Same(peerSegmentCancelled.Task, peerCancelledTask);
+
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.Contains("Simulated network drop on chunk 0", item.ErrorMessage);
+
+            var partFile = destinationFile + ".part";
+            Assert.True(File.Exists(partFile));
+            using (var testStream = new FileStream(partFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.NotNull(testStream);
+            }
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
-
-
-
