@@ -266,6 +266,9 @@ public class MainViewModelUiAndSettingsTests
         // Cycle backward wraps to 2.mp3
         vm.CycleErrorSound(forward: false);
         Assert.Equal("2.mp3", vm.SelectedErrorSound);
+
+        // Restore default
+        vm.SelectedErrorSound = "1.mp3";
     }
 
     [Fact]
@@ -292,6 +295,10 @@ public class MainViewModelUiAndSettingsTests
 
         vm.SelectAndPreviewErrorSound("");
         Assert.Equal("2.mp3", vm.SelectedErrorSound);
+
+        // Restore defaults
+        vm.SelectedCompletionSound = "1.mp3";
+        vm.SelectedErrorSound = "1.mp3";
     }
 
     // =========================================================================

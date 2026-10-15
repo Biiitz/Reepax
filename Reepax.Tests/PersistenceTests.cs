@@ -1118,6 +1118,103 @@ public class PersistenceTests
         }
     }
 
+    [Fact]
+    public void LoadDownloads_WhenPackageSaveDirectoryIsEmpty_PreservesAbsoluteItemSaveFilePathAndRecoversDirectory()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_Test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            string expectedItemDir = @"C:\Games\SpecialDownload";
+            string expectedItemPath = Path.Combine(expectedItemDir, "game_setup.exe");
+
+            // Write downloads.json with empty SaveDirectory but absolute item SaveFilePath
+            string json = $$"""
+            [
+              {
+                "Id": "11111111-1111-1111-1111-111111111111",
+                "Name": "GamePackage",
+                "SaveDirectory": "",
+                "Items": [
+                  {
+                    "Id": "22222222-2222-2222-2222-222222222222",
+                    "FileName": "game_setup.exe",
+                    "SaveFilePath": "{{expectedItemPath.Replace("\\", "\\\\")}}"
+                  }
+                ]
+              }
+            ]
+            """;
+            File.WriteAllText(testFile, json);
+
+            var service = new DownloadPersistenceService(testFile);
+            var loaded = service.LoadDownloads();
+
+            Assert.Single(loaded);
+            var pkg = loaded[0];
+            Assert.Equal(expectedItemDir, pkg.SaveDirectory);
+
+            Assert.Single(pkg.Items);
+            var item = pkg.Items[0];
+            // Must preserve the full absolute path and NOT truncate it to relative "game_setup.exe"
+            Assert.Equal(expectedItemPath, item.SaveFilePath);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void LoadHistory_WhenPackageSaveDirectoryIsEmpty_PreservesAbsoluteItemSaveFilePathAndRecoversDirectory()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_Test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testDownloads = Path.Combine(testDir, "downloads.json");
+        var testHistory = Path.Combine(testDir, "history.json");
+
+        try
+        {
+            string expectedItemDir = @"D:\ArchiveStorage\Pack1";
+            string expectedItemPath = Path.Combine(expectedItemDir, "archive.part1.rar");
+
+            string json = $$"""
+            [
+              {
+                "Id": "33333333-3333-3333-3333-333333333333",
+                "Name": "HistoryPackage",
+                "SaveDirectory": "",
+                "Items": [
+                  {
+                    "Id": "44444444-4444-4444-4444-444444444444",
+                    "FileName": "archive.part1.rar",
+                    "SaveFilePath": "{{expectedItemPath.Replace("\\", "\\\\")}}"
+                  }
+                ]
+              }
+            ]
+            """;
+            File.WriteAllText(testHistory, json);
+
+            var service = new DownloadPersistenceService(testDownloads);
+            var history = service.LoadHistory();
+
+            Assert.Single(history);
+            var pkg = history[0];
+            Assert.Equal(expectedItemDir, pkg.SaveDirectory);
+
+            Assert.Single(pkg.Items);
+            var item = pkg.Items[0];
+            Assert.Equal(expectedItemPath, item.SaveFilePath);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
 
     private class FlakyEnumerable<T> : IEnumerable<T>
     {

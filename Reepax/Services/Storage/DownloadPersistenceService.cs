@@ -1459,10 +1459,40 @@ public class DownloadPersistenceService : IDisposable
                     foreach (var itemDto in pkgDto.Items)
                     {
                         var itemSavePath = itemDto.SaveFilePath;
-                        if (!string.IsNullOrWhiteSpace(itemDto.FileName) &&
-                            (string.IsNullOrWhiteSpace(itemSavePath) || !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase)))
+                        if (!string.IsNullOrWhiteSpace(cleanSaveDir))
                         {
-                            itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                            bool directoryMismatch = true;
+                            try
+                            {
+                                directoryMismatch = string.IsNullOrWhiteSpace(itemSavePath) ||
+                                                    !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase);
+                            }
+                            catch { }
+
+                            if (!string.IsNullOrWhiteSpace(itemDto.FileName) && directoryMismatch)
+                            {
+                                try
+                                {
+                                    itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                                }
+                                catch { }
+                            }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(itemSavePath))
+                        {
+                            try
+                            {
+                                if (Path.IsPathRooted(itemSavePath))
+                                {
+                                    var recoveredDir = Path.GetDirectoryName(itemSavePath);
+                                    if (!string.IsNullOrWhiteSpace(recoveredDir))
+                                    {
+                                        cleanSaveDir = recoveredDir;
+                                        package.SaveDirectory = recoveredDir;
+                                    }
+                                }
+                            }
+                            catch { }
                         }
 
                         var item = new DownloadItem
@@ -1710,10 +1740,40 @@ public class DownloadPersistenceService : IDisposable
                     foreach (var itemDto in pkgDto.Items)
                     {
                         var itemSavePath = itemDto.SaveFilePath;
-                        if (!string.IsNullOrWhiteSpace(itemDto.FileName) &&
-                            (string.IsNullOrWhiteSpace(itemSavePath) || !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase)))
+                        if (!string.IsNullOrWhiteSpace(cleanSaveDir))
                         {
-                            itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                            bool directoryMismatch = true;
+                            try
+                            {
+                                directoryMismatch = string.IsNullOrWhiteSpace(itemSavePath) ||
+                                                    !string.Equals(Path.GetDirectoryName(itemSavePath), cleanSaveDir, StringComparison.OrdinalIgnoreCase);
+                            }
+                            catch { }
+
+                            if (!string.IsNullOrWhiteSpace(itemDto.FileName) && directoryMismatch)
+                            {
+                                try
+                                {
+                                    itemSavePath = Path.Combine(cleanSaveDir, itemDto.FileName);
+                                }
+                                catch { }
+                            }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(itemSavePath))
+                        {
+                            try
+                            {
+                                if (Path.IsPathRooted(itemSavePath))
+                                {
+                                    var recoveredDir = Path.GetDirectoryName(itemSavePath);
+                                    if (!string.IsNullOrWhiteSpace(recoveredDir))
+                                    {
+                                        cleanSaveDir = recoveredDir;
+                                        package.SaveDirectory = recoveredDir;
+                                    }
+                                }
+                            }
+                            catch { }
                         }
 
                         var item = new DownloadItem

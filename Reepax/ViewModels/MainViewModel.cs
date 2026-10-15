@@ -2153,11 +2153,19 @@ public partial class MainViewModel : ObservableObject
                 cleanFileName = $"{package.Name}.part{++crypticIndex:D2}.rar";
             }
 
+            var effectiveSaveDir = !string.IsNullOrWhiteSpace(package.SaveDirectory)
+                ? package.SaveDirectory
+                : SettingsService.Instance.Settings.DefaultDownloadDirectory;
+            if (string.IsNullOrWhiteSpace(effectiveSaveDir))
+            {
+                effectiveSaveDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            }
+
             // Collision avoidance with existing package files (in-memory list + disk)
             var candidate = cleanFileName;
             int suffix = 1;
             while (package.Items.Any(i => string.Equals(i.FileName, candidate, StringComparison.OrdinalIgnoreCase)) ||
-                   File.Exists(Path.Combine(package.SaveDirectory, candidate)))
+                   File.Exists(Path.Combine(effectiveSaveDir, candidate)))
             {
                 var baseName = Path.GetFileNameWithoutExtension(cleanFileName);
                 var ext = Path.GetExtension(cleanFileName);
@@ -2174,7 +2182,7 @@ public partial class MainViewModel : ObservableObject
                 FileName = cleanFileName,
                 HosterName = link.Hoster.DisplayName,
                 HosterIconKey = link.Hoster.IconKey,
-                SaveFilePath = Path.Combine(package.SaveDirectory, cleanFileName),
+                SaveFilePath = Path.Combine(effectiveSaveDir, cleanFileName),
                 Status = autoQueue ? DownloadStatus.Queued : DownloadStatus.Paused,
                 StatusMessage = autoQueue ? Loc.Get("Status_Queued") : Loc.Get("Status_Paused")
             };
@@ -2259,11 +2267,14 @@ public partial class MainViewModel : ObservableObject
         }
 
         // Update target file paths for items
-        foreach (var item in package.Items)
+        if (!string.IsNullOrWhiteSpace(package.SaveDirectory))
         {
-            if (!string.IsNullOrWhiteSpace(item.FileName))
+            foreach (var item in package.Items)
             {
-                item.SaveFilePath = Path.Combine(package.SaveDirectory, item.FileName);
+                if (!string.IsNullOrWhiteSpace(item.FileName))
+                {
+                    item.SaveFilePath = Path.Combine(package.SaveDirectory, item.FileName);
+                }
             }
         }
 
@@ -2318,10 +2329,18 @@ public partial class MainViewModel : ObservableObject
                 cleanFileName = $"{package.Name}.part{++crypticIndex:D2}.rar";
             }
 
+            var effectiveSaveDir = !string.IsNullOrWhiteSpace(package.SaveDirectory)
+                ? package.SaveDirectory
+                : SettingsService.Instance.Settings.DefaultDownloadDirectory;
+            if (string.IsNullOrWhiteSpace(effectiveSaveDir))
+            {
+                effectiveSaveDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            }
+
             var candidate = cleanFileName;
             int suffix = 1;
             while (package.Items.Any(i => string.Equals(i.FileName, candidate, StringComparison.OrdinalIgnoreCase)) ||
-                   File.Exists(Path.Combine(package.SaveDirectory, candidate)))
+                   File.Exists(Path.Combine(effectiveSaveDir, candidate)))
             {
                 var baseName = Path.GetFileNameWithoutExtension(cleanFileName);
                 var ext = Path.GetExtension(cleanFileName);
@@ -2337,7 +2356,7 @@ public partial class MainViewModel : ObservableObject
                 FileName = cleanFileName,
                 HosterName = link.Hoster.DisplayName,
                 HosterIconKey = link.Hoster.IconKey,
-                SaveFilePath = Path.Combine(package.SaveDirectory, cleanFileName),
+                SaveFilePath = Path.Combine(effectiveSaveDir, cleanFileName),
                 Status = autoQueue ? DownloadStatus.Queued : DownloadStatus.Paused,
                 StatusMessage = autoQueue ? Loc.Get("Status_Queued") : Loc.Get("Status_Paused")
             };
