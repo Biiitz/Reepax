@@ -26,7 +26,7 @@ public class WebPageExtractionResult
 /// </summary>
 public static class WebPageLinkExtractor
 {
-    private static readonly HttpClient _httpClient = HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(25), HttpContentType.Html);
+    private static HttpClient _httpClient = HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(25), HttpContentType.Html);
 
     private static readonly Regex PageUrlRegex = new(
         @"https?://[^\s""'<>]+",
@@ -54,10 +54,10 @@ public static class WebPageLinkExtractor
     static WebPageLinkExtractor()
     {
         // When User-Agent updates live (e.g. from WebView2 initialization),
-        // synchronize default headers of the extractor client.
+        // atomically exchange the HttpClient instance so in-flight requests are not corrupted.
         HttpUserAgentService.UserAgentChanged += _ =>
         {
-            HttpUserAgentService.ApplyDefaultBrowserHeaders(_httpClient.DefaultRequestHeaders, null, HttpContentType.Html);
+            Interlocked.Exchange(ref _httpClient, HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(25), HttpContentType.Html));
         };
     }
 

@@ -1,9 +1,14 @@
-﻿using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Helpers;
+using Reepax.Models;
+using Reepax.Services.Download;
 using Reepax.Services.SystemIntegration;
 using Xunit;
 
@@ -145,5 +150,171 @@ public class HttpHandlingTests
         {
             await HttpJitterHelper.DelayJitterAsync(1000, 2000, cts.Token);
         });
+    }
+
+    [Fact]
+    public void DownloadEngine_DoesNotModifyDefaultRequestHeadersOnUserAgentUpdate()
+    {
+        var initialUa = HttpUserAgentService.CurrentUserAgent;
+        var engine = new DownloadEngine();
+
+        var initialEngineUa = engine.HttpClient.DefaultRequestHeaders.UserAgent.ToString();
+
+        // Simulate WebView2 providing a new live user agent
+        string newLiveUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0";
+        HttpUserAgentService.UpdateUserAgent(newLiveUa);
+
+        try
+        {
+            // DefaultRequestHeaders on the active HttpClient must NOT have been mutated!
+            Assert.Equal(initialEngineUa, engine.HttpClient.DefaultRequestHeaders.UserAgent.ToString());
+            Assert.Equal(newLiveUa, HttpUserAgentService.CurrentUserAgent);
+        }
+        finally
+        {
+            HttpUserAgentService.UpdateUserAgent(initialUa);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ApplyRequestHeaders_SendsLiveUserAgentAndChromiumHintsPerRequest()
+    {
+        var initialUa = HttpUserAgentService.CurrentUserAgent;
+        string liveUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0";
+        HttpUserAgentService.UpdateUserAgent(liveUa);
+
+        try
+        {
+            string? capturedUa = null;
+            string? capturedSecChUa = null;
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                capturedUa = req.Headers.UserAgent?.ToString();
+                if (req.Headers.TryGetValues("Sec-Ch-Ua", out var values))
+                {
+                    capturedSecChUa = values.FirstOrDefault();
+                }
+                var res = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[10]) };
+                return Task.FromResult(res);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            var tempFile = Path.Combine(Path.GetTempPath(), "ua_test_" + Guid.NewGuid().ToString("N") + ".bin");
+            var item = new DownloadItem
+            {
+                FileName = Path.GetFileName(tempFile),
+                SaveFilePath = tempFile,
+                DirectDownloadUrl = "https://example.com/test.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            await engine.StartDownloadAsync(item, item.DirectDownloadUrl, null, null, null, item.FileName);
+
+            Assert.Equal(liveUa, capturedUa);
+            Assert.NotNull(capturedSecChUa);
+            Assert.Contains("135", capturedSecChUa);
+
+            try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            try { if (File.Exists(tempFile + ".part")) File.Delete(tempFile + ".part"); } catch { }
+        }
+        finally
+        {
+            HttpUserAgentService.UpdateUserAgent(initialUa);
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ConcurrentRequestsAndLiveUserAgentUpdates_DoNotThrowOrDropHeaders()
+    {
+        var initialUa = HttpUserAgentService.CurrentUserAgent;
+        var capturedHeaders = new ConcurrentBag<(string? UA, string? SecCh)>();
+        var exceptions = new ConcurrentBag<Exception>();
+
+        var handler = new TestMockHttpMessageHandler(async (req, ct) =>
+        {
+            var ua = req.Headers.UserAgent?.ToString();
+            string? secCh = req.Headers.TryGetValues("Sec-Ch-Ua", out var vals) ? vals.FirstOrDefault() : null;
+            capturedHeaders.Add((ua, secCh));
+
+            await Task.Delay(Random.Shared.Next(1, 5), ct);
+            var res = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[100]) };
+            return res;
+        });
+
+        using var httpClient = new HttpClient(handler);
+        var engine = new DownloadEngine(httpClient);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+        // 20 parallel workers simulating download requests
+        var workers = Enumerable.Range(0, 20).Select(async i =>
+        {
+            var tempFile = Path.Combine(Path.GetTempPath(), $"conc_ua_{i}_{Guid.NewGuid():N}.bin");
+            try
+            {
+                var item = new DownloadItem
+                {
+                    FileName = Path.GetFileName(tempFile),
+                    SaveFilePath = tempFile,
+                    DirectDownloadUrl = $"https://example.com/file_{i}.bin",
+                    Status = DownloadStatus.Queued
+                };
+
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await engine.StartDownloadAsync(item, item.DirectDownloadUrl, null, null, null, item.FileName);
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        exceptions.Add(ex);
+                    }
+                }
+            }
+            finally
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+                try { if (File.Exists(tempFile + ".part")) File.Delete(tempFile + ".part"); } catch { }
+            }
+        });
+
+        // Parallel thread rapidly updating User-Agent from WebView2
+        var updater = Task.Run(async () =>
+        {
+            int ver = 130;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                ver = ver == 130 ? 136 : 130;
+                string testUa = $"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{ver}.0.0.0 Safari/537.36 Edg/{ver}.0.0.0";
+                HttpUserAgentService.UpdateUserAgent(testUa);
+                await Task.Delay(5);
+            }
+        });
+
+        try
+        {
+            await Task.WhenAll(workers.Concat(new[] { updater }));
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            HttpUserAgentService.UpdateUserAgent(initialUa);
+        }
+
+        // Verify NO exceptions (no InvalidOperationException, no NullReferenceException)
+        Assert.Empty(exceptions);
+
+        // Verify every captured request had a non-empty User-Agent
+        Assert.NotEmpty(capturedHeaders);
+        foreach (var (ua, _) in capturedHeaders)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(ua), "Request was sent without User-Agent header!");
+            Assert.StartsWith("Mozilla/5.0", ua);
+        }
     }
 }

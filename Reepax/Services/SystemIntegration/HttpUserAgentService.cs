@@ -152,6 +152,8 @@ public static class HttpUserAgentService
 
     /// <summary>
     /// Applies authentic browser headers to HttpRequestHeaders.
+    /// Note: Must only be called during HttpClient initialization or on per-request HttpRequestMessage.Headers.
+    /// Modifying DefaultRequestHeaders on an active HttpClient while requests are running is not thread-safe in .NET.
     /// </summary>
     public static void ApplyDefaultBrowserHeaders(HttpRequestHeaders headers, string? referer = null, HttpContentType contentType = HttpContentType.Html)
     {

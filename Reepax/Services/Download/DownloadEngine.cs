@@ -113,18 +113,11 @@ public class DownloadEngine
         DownloadCancelled?.Invoke(item);
     }
 
+    internal HttpClient HttpClient => _httpClient;
+
     public DownloadEngine(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny);
-
-        HttpUserAgentService.UserAgentChanged += _ =>
-        {
-            try
-            {
-                HttpUserAgentService.ApplyDefaultBrowserHeaders(_httpClient.DefaultRequestHeaders, null, HttpContentType.BinaryOrAny);
-            }
-            catch { }
-        };
     }
 
     public async Task StartDownloadAsync(
@@ -636,8 +629,19 @@ public class DownloadEngine
     {
         if (!string.IsNullOrWhiteSpace(item.Cookies))
             request.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
-        if (!string.IsNullOrWhiteSpace(item.UserAgent))
-            request.Headers.TryAddWithoutValidation("User-Agent", item.UserAgent);
+
+        // Apply item's custom User-Agent if set, otherwise apply the latest live User-Agent
+        // per-request so that DefaultRequestHeaders is never mutated while downloads are running.
+        var userAgent = !string.IsNullOrWhiteSpace(item.UserAgent)
+            ? item.UserAgent
+            : HttpUserAgentService.CurrentUserAgent;
+        if (!string.IsNullOrWhiteSpace(userAgent))
+            request.Headers.TryAddWithoutValidation("User-Agent", userAgent);
+
+        var chromiumVersion = HttpUserAgentService.ChromiumMajorVersion;
+        if (!string.IsNullOrWhiteSpace(chromiumVersion))
+            request.Headers.TryAddWithoutValidation("Sec-Ch-Ua", $"\"Chromium\";v=\"{chromiumVersion}\", \"Microsoft Edge\";v=\"{chromiumVersion}\", \"Not=A?Brand\";v=\"99\"");
+
         if (!string.IsNullOrWhiteSpace(item.Referer))
             request.Headers.TryAddWithoutValidation("Referer", item.Referer);
     }

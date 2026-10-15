@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
@@ -20,7 +21,7 @@ public static class HosterIconService
     private static readonly ConcurrentDictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
     private static readonly ConcurrentDictionary<string, byte> _downloadsInFlight = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string _appDataIconsDir;
-    private static readonly HttpClient _httpClient;
+    private static HttpClient _httpClient;
     private static readonly ImageSource _defaultGlobe;
 
     /// <summary>
@@ -38,7 +39,7 @@ public static class HosterIconService
 
         HttpUserAgentService.UserAgentChanged += _ =>
         {
-            HttpUserAgentService.ApplyDefaultBrowserHeaders(_httpClient.DefaultRequestHeaders, null, HttpContentType.Image);
+            Interlocked.Exchange(ref _httpClient, HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(8), HttpContentType.Image));
         };
 
         _defaultGlobe = CreateGenericGlobeIcon();

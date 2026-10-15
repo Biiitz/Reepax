@@ -66,11 +66,25 @@ public class LinkMetadataResolverService
     public LinkMetadataResolverService(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny);
+    }
 
-        HttpUserAgentService.UserAgentChanged += _ =>
-        {
-            HttpUserAgentService.ApplyDefaultBrowserHeaders(_httpClient.DefaultRequestHeaders, null, HttpContentType.BinaryOrAny);
-        };
+    private static void ApplyRequestHeaders(HttpRequestMessage request, DownloadItem? item = null)
+    {
+        if (item != null && !string.IsNullOrWhiteSpace(item.Cookies))
+            request.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
+
+        var userAgent = item != null && !string.IsNullOrWhiteSpace(item.UserAgent)
+            ? item.UserAgent
+            : HttpUserAgentService.CurrentUserAgent;
+        if (!string.IsNullOrWhiteSpace(userAgent))
+            request.Headers.TryAddWithoutValidation("User-Agent", userAgent);
+
+        var chromiumVersion = HttpUserAgentService.ChromiumMajorVersion;
+        if (!string.IsNullOrWhiteSpace(chromiumVersion))
+            request.Headers.TryAddWithoutValidation("Sec-Ch-Ua", $"\"Chromium\";v=\"{chromiumVersion}\", \"Microsoft Edge\";v=\"{chromiumVersion}\", \"Not=A?Brand\";v=\"99\"");
+
+        if (item != null && !string.IsNullOrWhiteSpace(item.Referer))
+            request.Headers.TryAddWithoutValidation("Referer", item.Referer);
     }
 
     private static void SafeInvoke(Action action)
@@ -119,9 +133,7 @@ public class LinkMetadataResolverService
         {
             // Method 1: Fast HTTP HEAD Request
             using var headRequest = new HttpRequestMessage(HttpMethod.Head, uri);
-            if (!string.IsNullOrWhiteSpace(item.Cookies)) headRequest.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
-            if (!string.IsNullOrWhiteSpace(item.UserAgent)) headRequest.Headers.TryAddWithoutValidation("User-Agent", item.UserAgent);
-            if (!string.IsNullOrWhiteSpace(item.Referer)) headRequest.Headers.TryAddWithoutValidation("Referer", item.Referer);
+            ApplyRequestHeaders(headRequest, item);
 
             using var headResponse = await _httpClient.SendAsync(headRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
@@ -140,9 +152,7 @@ public class LinkMetadataResolverService
             // Method 2: HTTP GET with Range: bytes=0-0 (for servers where HEAD is blocked or lacks Content-Length)
             using var rangeRequest = new HttpRequestMessage(HttpMethod.Get, uri);
             rangeRequest.Headers.Range = new RangeHeaderValue(0, 0);
-            if (!string.IsNullOrWhiteSpace(item.Cookies)) rangeRequest.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
-            if (!string.IsNullOrWhiteSpace(item.UserAgent)) rangeRequest.Headers.TryAddWithoutValidation("User-Agent", item.UserAgent);
-            if (!string.IsNullOrWhiteSpace(item.Referer)) rangeRequest.Headers.TryAddWithoutValidation("Referer", item.Referer);
+            ApplyRequestHeaders(rangeRequest, item);
 
             using var rangeResponse = await _httpClient.SendAsync(rangeRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
@@ -340,6 +350,7 @@ public class LinkMetadataResolverService
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, pageUrl);
+            ApplyRequestHeaders(req, item);
             using var res = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseContentRead, cancellationToken);
             if (!res.IsSuccessStatusCode) return false;
 
@@ -370,6 +381,7 @@ public class LinkMetadataResolverService
                 {
                     using var directReq = new HttpRequestMessage(HttpMethod.Get, directUrl);
                     directReq.Headers.Range = new RangeHeaderValue(0, 0);
+                    ApplyRequestHeaders(directReq, item);
                     using var directRes = await _httpClient.SendAsync(directReq, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                     if (directRes.StatusCode == HttpStatusCode.PartialContent)
                     {
