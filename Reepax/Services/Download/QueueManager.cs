@@ -1369,7 +1369,7 @@ public class QueueManager
                     bool hasArchives = Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(package);
                     if (package.AutoExtractArchives && hasArchives && !package.IsExtracted)
                     {
-                        await Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
+                        _ = Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
                     }
                     else
                     {

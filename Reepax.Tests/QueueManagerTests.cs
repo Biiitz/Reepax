@@ -952,5 +952,113 @@ public class QueueManagerTests
         Assert.False(QueueManager.IsExpiredLinkError(new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError)));
         Assert.False(QueueManager.IsExpiredLinkError(new HttpRequestException("Bad Gateway", null, HttpStatusCode.BadGateway)));
     }
+
+    [Fact]
+    public async Task QueueManager_WhenPackageStartsAutoExtraction_DoesNotBlockNextQueuedItem()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_QueueExtractTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var queueManager = QueueManager.Instance;
+        var prevPackages = queueManager.Packages.ToList();
+        var prevBrowserHost = queueManager.BrowserHost;
+        var prevOverride = queueManager.ActiveDownloadsCountOverride;
+        var prevMax = queueManager.MaxConcurrentDownloads;
+        var prevChecksum = Reepax.Services.Storage.SettingsService.Instance.Settings.EnableChecksumVerification;
+
+        try
+        {
+            Reepax.Services.Storage.SettingsService.Instance.Settings.EnableChecksumVerification = false;
+            var archivePath = Path.Combine(tempDir, "archive.zip");
+            using (var zip = System.IO.Compression.ZipFile.Open(archivePath, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("payload.txt");
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write("test-content");
+            }
+
+            var host = new FakeBrowserWindowHost();
+            queueManager.BrowserHost = host;
+            queueManager.MaxConcurrentDownloads = 1;
+            queueManager.Packages.Clear();
+
+            var pkg1 = new DownloadPackage
+            {
+                Name = "ExtractPkg",
+                SaveDirectory = tempDir,
+                AutoExtractArchives = true,
+                IsEnabled = true
+            };
+            var item1 = new DownloadItem
+            {
+                PackageId = pkg1.Id,
+                FileName = "archive.zip",
+                SaveFilePath = archivePath,
+                OriginalUrl = "https://example.com/archive.zip",
+                Status = DownloadStatus.Downloading,
+                IsEnabled = true
+            };
+            pkg1.Items.Add(item1);
+            queueManager.ActiveDownloadsCountOverride = () => item1.Status == DownloadStatus.Downloading ? 1 : 0;
+
+            var pkg2 = new DownloadPackage
+            {
+                Name = "WaitingPkg",
+                SaveDirectory = tempDir,
+                AutoExtractArchives = false,
+                IsEnabled = true
+            };
+            var item2 = new DownloadItem
+            {
+                PackageId = pkg2.Id,
+                FileName = "next.bin",
+                OriginalUrl = "https://example.com/next.bin",
+                Status = DownloadStatus.Queued,
+                IsEnabled = true
+            };
+            pkg2.Items.Add(item2);
+
+            queueManager.Packages.Add(pkg1);
+            queueManager.Packages.Add(pkg2);
+
+            var item2AssignedWhileExtractingTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            item2.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(DownloadItem.Status) && item2.Status == DownloadStatus.InBrowser)
+                {
+                    // Capture whether pkg1 is still actively in its extraction lifecycle (not yet finished) when item2 starts
+                    bool wasExtracting = pkg1.IsExtracting || ArchiveExtractionService.Instance.IsPackageExtracting(pkg1.Id);
+                    item2AssignedWhileExtractingTcs.TrySetResult(wasExtracting);
+                }
+            };
+
+            queueManager.StartQueue();
+            Assert.Equal(DownloadStatus.Queued, item2.Status);
+
+            // Simulate completion of item1
+            DownloadEngine.Instance.TriggerDownloadCompletedForTesting(item1);
+
+            var completedTask = await Task.WhenAny(item2AssignedWhileExtractingTcs.Task, Task.Delay(3000));
+            Assert.Same(item2AssignedWhileExtractingTcs.Task, completedTask);
+            Assert.True(await item2AssignedWhileExtractingTcs.Task, "Next queued item should be scheduled immediately while archive extraction is still running in the background.");
+            Assert.Equal(DownloadStatus.InBrowser, item2.Status);
+        }
+        finally
+        {
+            ArchiveExtractionService.Instance.CancelAllExtractions();
+            await Task.Delay(200);
+            queueManager.StopQueue();
+            queueManager.BrowserHost = prevBrowserHost;
+            queueManager.ActiveDownloadsCountOverride = prevOverride;
+            queueManager.MaxConcurrentDownloads = prevMax;
+            Reepax.Services.Storage.SettingsService.Instance.Settings.EnableChecksumVerification = prevChecksum;
+            queueManager.Packages.Clear();
+            foreach (var p in prevPackages)
+            {
+                queueManager.Packages.Add(p);
+            }
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
 
