@@ -17,9 +17,9 @@ public class AppUpdateServiceTests
     {
         var info = new UpdateInfo
         {
-            SetupAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.3/setup.exe",
+            SetupAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/setup.exe",
             SetupAssetSize = 1000,
-            PortableZipAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.3/portable.zip",
+            PortableZipAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/portable.zip",
             PortableZipAssetSize = 2000
         };
 
@@ -29,7 +29,7 @@ public class AppUpdateServiceTests
             SettingsService.IsPortableMode = false;
 
             Assert.True(info.HasDirectAsset);
-            Assert.Equal("https://github.com/Biiitz/Reepax/releases/download/v26.10.3/setup.exe", info.TargetDownloadUrl);
+            Assert.Equal("https://github.com/Biiitz/Reepax/releases/download/v26.10.4/setup.exe", info.TargetDownloadUrl);
             Assert.Equal(1000, info.TargetDownloadSize);
             Assert.Equal("setup.exe", info.TargetFileName);
         }
@@ -44,9 +44,9 @@ public class AppUpdateServiceTests
     {
         var info = new UpdateInfo
         {
-            SetupAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.3/setup.exe",
+            SetupAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/setup.exe",
             SetupAssetSize = 1000,
-            PortableZipAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.3/portable.zip",
+            PortableZipAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/portable.zip",
             PortableZipAssetSize = 2000
         };
 
@@ -56,7 +56,7 @@ public class AppUpdateServiceTests
             SettingsService.IsPortableMode = true;
 
             Assert.True(info.HasDirectAsset);
-            Assert.Equal("https://github.com/Biiitz/Reepax/releases/download/v26.10.3/portable.zip", info.TargetDownloadUrl);
+            Assert.Equal("https://github.com/Biiitz/Reepax/releases/download/v26.10.4/portable.zip", info.TargetDownloadUrl);
             Assert.Equal(2000, info.TargetDownloadSize);
             Assert.Equal("portable.zip", info.TargetFileName);
         }
@@ -141,10 +141,10 @@ public class AppUpdateServiceTests
     }
 
     [Theory]
-    [InlineData("26.10.1", "26.10.3", true)]
-    [InlineData("26.10.1", "v26.10.3", true)]
+    [InlineData("26.10.1", "26.10.4", true)]
+    [InlineData("26.10.1", "v26.10.4", true)]
     [InlineData("26.10.1", "26.10.1", false)]
-    [InlineData("26.10.3", "26.10.1", false)]
+    [InlineData("26.10.4", "26.10.1", false)]
     [InlineData("26.9.15", "26.10.1", true)]
     public void IsNewerVersion_CorrectlyComparesVersions(string current, string candidate, bool expectedNewer)
     {
