@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -129,6 +130,54 @@ public partial class QuickSettingsPopupView : UserControl
         PopupRoot.VerticalOffset = -13;
         SyncDataContext(target?.DataContext ?? DataContext);
         IsOpen = !IsOpen;
+    }
+
+    /// <summary>
+    /// Preheats the popup window (HWND), visual tree, template, and bindings during application startup.
+    /// This eliminates the 100-200ms freeze/lag when the user opens quick settings for the first time.
+    /// </summary>
+    public void Preheat(FrameworkElement? anchor = null)
+    {
+        try
+        {
+            var target = anchor ?? PlacementTarget as FrameworkElement;
+            if (target != null)
+            {
+                PopupRoot.PlacementTarget = target;
+            }
+            SyncDataContext(target?.DataContext ?? DataContext);
+
+            if (PopupContent != null)
+            {
+                PopupContent.Measure(new Size(340, 500));
+                PopupContent.Arrange(new Rect(0, 0, 340, 500));
+                PopupContent.UpdateLayout();
+            }
+
+            if (PopupRoot != null)
+            {
+                var prevAnim = PopupRoot.PopupAnimation;
+                var prevOpacity = PopupContent?.Opacity ?? 1.0;
+                if (PopupContent != null)
+                {
+                    PopupContent.Opacity = 0;
+                }
+                PopupRoot.PopupAnimation = PopupAnimation.None;
+                PopupRoot.IsOpen = true;
+                PopupRoot.UpdateLayout();
+                PopupRoot.IsOpen = false;
+                if (PopupContent != null)
+                {
+                    PopupContent.Opacity = prevOpacity;
+                }
+                PopupRoot.PopupAnimation = prevAnim;
+            }
+            _closedTimestamp = 0;
+        }
+        catch (Exception ex)
+        {
+            Services.Storage.AppLogger.Warn($"[QuickSettingsPopup] Preheat notice: {ex.Message}");
+        }
     }
 
     public void HandlePreviewMouseDown(MouseButtonEventArgs e)

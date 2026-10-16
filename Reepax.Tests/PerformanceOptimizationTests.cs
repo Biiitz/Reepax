@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -187,5 +187,18 @@ public class PerformanceOptimizationTests
         }
         sw.Stop();
         Assert.True(sw.ElapsedMilliseconds < 100, $"Expected < 100ms for 200 runs, was {sw.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task SystemIconService_PreloadCommonIconsAsync_RunsWithoutError()
+    {
+        var customFiles = new[] { "game_setup.exe", "movie.mkv", "archive.part01.rar", "document.pdf" };
+        await Reepax.Services.SystemIconService.PreloadCommonIconsAsync(customFiles);
+
+        // Subsequent calls for these cached items return immediately
+        var icon1 = Reepax.Services.SystemIconService.GetIconForFile("game_setup.exe");
+        var icon2 = Reepax.Services.SystemIconService.GetIconForFile("archive.part01.rar");
+        Assert.NotNull(icon1);
+        Assert.NotNull(icon2);
     }
 }

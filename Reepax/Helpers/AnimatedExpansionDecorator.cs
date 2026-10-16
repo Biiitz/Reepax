@@ -19,6 +19,13 @@ public class AnimatedExpansionDecorator : Decorator
             typeof(AnimatedExpansionDecorator),
             new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnIsExpandedChanged));
 
+    public static readonly DependencyProperty EnableAnimationProperty =
+        DependencyProperty.Register(
+            nameof(EnableAnimation),
+            typeof(bool),
+            typeof(AnimatedExpansionDecorator),
+            new PropertyMetadata(false));
+
     public static readonly DependencyProperty DurationMillisecondsProperty =
         DependencyProperty.Register(
             nameof(DurationMilliseconds),
@@ -48,6 +55,12 @@ public class AnimatedExpansionDecorator : Decorator
     {
         get => (bool)GetValue(IsExpandedProperty);
         set => SetValue(IsExpandedProperty, value);
+    }
+
+    public bool EnableAnimation
+    {
+        get => (bool)GetValue(EnableAnimationProperty);
+        set => SetValue(EnableAnimationProperty, value);
     }
 
     public int DurationMilliseconds
@@ -85,7 +98,8 @@ public class AnimatedExpansionDecorator : Decorator
             SetCurrentValue(ExpansionProgressProperty, pkg.IsExpanded ? 1.0 : 0.0);
             if (Child != null)
             {
-                Child.Visibility = pkg.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+                Child.Visibility = pkg.IsExpanded ? Visibility.Visible : Visibility.Hidden;
+                Child.IsHitTestVisible = pkg.IsExpanded;
             }
         }
         ApplyExpansionState(animate: false);
@@ -109,7 +123,8 @@ public class AnimatedExpansionDecorator : Decorator
             {
                 SetCurrentValue(IsExpandedProperty, false);
                 SetCurrentValue(ExpansionProgressProperty, 0.0);
-                Child.Visibility = Visibility.Collapsed;
+                Child.Visibility = Visibility.Hidden;
+                Child.IsHitTestVisible = false;
             }
             else
             {
@@ -133,8 +148,8 @@ public class AnimatedExpansionDecorator : Decorator
     {
         if (d is AnimatedExpansionDecorator decorator)
         {
-            // Only animate if user interacted; never animate during virtualization recycling or initial load
-            if (decorator._suppressAnimation || !decorator.IsLoaded)
+            // Only animate if enabled, user interacted, and loaded; default is instant snappy expansion
+            if (decorator._suppressAnimation || !decorator.IsLoaded || !decorator.EnableAnimation)
             {
                 decorator.ApplyExpansionState(animate: false);
             }
@@ -171,11 +186,13 @@ public class AnimatedExpansionDecorator : Decorator
         // Toggle visibility to avoid unnecessary hit testing or layout overhead when fully closed
         if (p <= 0.0001 && !IsExpanded)
         {
-            Child.Visibility = Visibility.Collapsed;
+            Child.Visibility = Visibility.Hidden;
+            Child.IsHitTestVisible = false;
         }
         else if (Child.Visibility != Visibility.Visible)
         {
             Child.Visibility = Visibility.Visible;
+            Child.IsHitTestVisible = true;
         }
     }
 
@@ -198,6 +215,7 @@ public class AnimatedExpansionDecorator : Decorator
         if (targetExpanded)
         {
             Child.Visibility = Visibility.Visible;
+            Child.IsHitTestVisible = true;
         }
 
         double currentProgress = ExpansionProgress;
@@ -227,7 +245,8 @@ public class AnimatedExpansionDecorator : Decorator
             {
                 if (Child != null)
                 {
-                    Child.Visibility = Visibility.Collapsed;
+                    Child.Visibility = Visibility.Hidden;
+                    Child.IsHitTestVisible = false;
                 }
             }
         };
@@ -241,9 +260,10 @@ public class AnimatedExpansionDecorator : Decorator
 
         if (DataContext is DownloadPackage pkg && !pkg.IsExpanded && ExpansionProgress <= 0.0001)
         {
-            if (Child.Visibility != Visibility.Collapsed)
+            if (Child.Visibility != Visibility.Hidden)
             {
-                Child.Visibility = Visibility.Collapsed;
+                Child.Visibility = Visibility.Hidden;
+                Child.IsHitTestVisible = false;
             }
             return new Size(0, 0);
         }
@@ -251,9 +271,10 @@ public class AnimatedExpansionDecorator : Decorator
         // If collapsed and not animating, occupy zero vertical height immediately without measuring children!
         if (ExpansionProgress <= 0.0001 && !IsExpanded)
         {
-            if (Child.Visibility != Visibility.Collapsed)
+            if (Child.Visibility != Visibility.Hidden)
             {
-                Child.Visibility = Visibility.Collapsed;
+                Child.Visibility = Visibility.Hidden;
+                Child.IsHitTestVisible = false;
             }
             return new Size(0, 0);
         }

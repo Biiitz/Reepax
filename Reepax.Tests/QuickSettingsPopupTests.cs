@@ -104,4 +104,20 @@ public class QuickSettingsPopupTests
             popup.DataContext = null;
         });
     }
+
+    [Fact]
+    public void QuickSettingsPopup_Preheat_ExecutesSafelyWithoutThrowing()
+    {
+        RunInSta(() =>
+        {
+            var vm = new MainViewModel();
+            var popup = new QuickSettingsPopupView
+            {
+                DataContext = vm
+            };
+
+            popup.Preheat();
+            Assert.False(popup.IsOpen);
+        });
+    }
 }

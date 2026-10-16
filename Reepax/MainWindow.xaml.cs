@@ -201,7 +201,10 @@ public partial class MainWindow : Window
         };
 
         StateChanged += (_, _) => DebounceSaveWindowState();
-        Loaded += (_, _) => AutoFitNameColumn();
+        Loaded += (_, _) =>
+        {
+            AutoFitNameColumn();
+        };
 
         ViewModel.ColumnLayoutChanged += (_, _) =>
         {
@@ -214,6 +217,236 @@ public partial class MainWindow : Window
         ViewModel.RequestShowAddLinksDialog += (_, _) => ShowAddLinksDialog();
         ViewModel.RequestShowUpdateDialog += (_, updateInfo) => ShowUpdateDialog(updateInfo);
     }
+
+    protected override void OnContentRendered(EventArgs e)
+    {
+        base.OnContentRendered(e);
+        RunStartupWarmupSequenceAsync();
+    }
+
+    #region Startup Warmup & Loading Animation (JDownloader 2 Style)
+
+    private bool _hasRunStartupSequence;
+
+    private async void RunStartupWarmupSequenceAsync()
+    {
+        if (_hasRunStartupSequence) return;
+        _hasRunStartupSequence = true;
+
+        if (Services.Storage.DownloadPersistenceService.IsTestEnvironment)
+        {
+            if (StartupLoadingOverlay != null)
+            {
+                StartupLoadingOverlay.Visibility = Visibility.Collapsed;
+                StartupLoadingOverlay.IsHitTestVisible = false;
+            }
+            if (TreeListScrollViewer != null)
+            {
+                TreeListScrollViewer.Opacity = 1.0;
+            }
+            return;
+        }
+
+        try
+        {
+            // Conceal the package tree completely during warmup and container pre-realization
+            if (TreeListScrollViewer != null)
+                TreeListScrollViewer.Opacity = 0.0;
+
+            // Temporarily disable user interactions on bottom bar and tabs during startup
+            if (BottomStatusBarBorder != null)
+                BottomStatusBarBorder.IsHitTestVisible = false;
+            if (DownloadsTabButton != null)
+                DownloadsTabButton.IsEnabled = false;
+            if (SettingsTabButton != null)
+                SettingsTabButton.IsEnabled = false;
+
+            // Step 1: Initial load phase (15% progress)
+            AnimateStartupProgress(45, 180);
+            StartupStatusDetail.Text = Loc.Get("Startup_Step_LoadingDownloads");
+            await System.Threading.Tasks.Task.Delay(180);
+
+            // Step 2: Preheating components & icons (55% progress)
+            AnimateStartupProgress(165, 240);
+            StartupStatusDetail.Text = Loc.Get("Startup_Step_PreheatingComponents");
+
+            var itemNames = ViewModel.Packages
+                .SelectMany(p => p.Items)
+                .Select(i => i.FileName)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .ToList();
+
+            await SystemIconService.PreloadCommonIconsAsync(itemNames);
+            await System.Threading.Tasks.Task.Delay(100);
+
+            // Step 3: UI & Template Warmup (85% progress)
+            AnimateStartupProgress(255, 220);
+            StartupStatusDetail.Text = Loc.Get("Startup_Step_OptimizingUI");
+
+            // Preheat Quick Settings Popup (eliminates popup opening lag)
+            QuickSettingsPopup.Preheat(QuickSettingsButton);
+
+            // Preheat item & package templates (eliminates first-expansion lag)
+            WarmupTemplates();
+
+            // Pre-realize actual package containers while concealed behind the startup overlay!
+            // This forces WPF's ItemsControl to generate all item rows and cache them in memory,
+            // completely eliminating the freeze when opening packages for the first time.
+            if (ViewModel.Packages.Count > 0)
+            {
+                var savedExpansionStates = ViewModel.Packages.Select(p => (Package: p, WasExpanded: p.IsExpanded)).ToList();
+
+                foreach (var p in ViewModel.Packages)
+                {
+                    p.IsExpanded = true;
+                }
+
+                UpdateLayout();
+
+                foreach (var (pkg, wasExpanded) in savedExpansionStates)
+                {
+                    pkg.IsExpanded = wasExpanded;
+                }
+
+                UpdateLayout();
+            }
+
+            AutoFitNameColumn();
+
+            int pkgCount = ViewModel.Packages.Count;
+            if (pkgCount > 0)
+            {
+                StartupFooterText.Text = string.Format(Loc.Get("Startup_PackagesLoaded"), pkgCount);
+            }
+
+            await System.Threading.Tasks.Task.Delay(150);
+
+            // Step 4: Ready! (100% progress)
+            AnimateStartupProgress(300, 160);
+            StartupStatusDetail.Text = Loc.Get("Startup_Step_Ready");
+            await System.Threading.Tasks.Task.Delay(250);
+
+            // Step 5: Smooth fade out and unlock UI
+            if (TreeListScrollViewer != null)
+            {
+                var contentFadeIn = new DoubleAnimation(0.0, 1.0, new Duration(TimeSpan.FromMilliseconds(260)))
+                {
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                TreeListScrollViewer.BeginAnimation(UIElement.OpacityProperty, contentFadeIn);
+            }
+
+            var fadeOut = new DoubleAnimation(1.0, 0.0, new Duration(TimeSpan.FromMilliseconds(260)))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            fadeOut.Completed += (_, _) =>
+            {
+                StartupLoadingOverlay.Visibility = Visibility.Collapsed;
+                StartupLoadingOverlay.IsHitTestVisible = false;
+
+                if (TreeListScrollViewer != null)
+                {
+                    TreeListScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
+                    TreeListScrollViewer.Opacity = 1.0;
+                }
+
+                if (BottomStatusBarBorder != null)
+                    BottomStatusBarBorder.IsHitTestVisible = true;
+                if (DownloadsTabButton != null)
+                    DownloadsTabButton.IsEnabled = true;
+                if (SettingsTabButton != null)
+                    SettingsTabButton.IsEnabled = true;
+
+                if (TreeListScrollViewer?.IsVisible == true)
+                {
+                    TreeListScrollViewer.Focus();
+                }
+            };
+
+            StartupLoadingOverlay.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        }
+        catch (Exception ex)
+        {
+            Services.Storage.AppLogger.Error("Error during startup warmup sequence", ex);
+            if (StartupLoadingOverlay != null)
+            {
+                StartupLoadingOverlay.Visibility = Visibility.Collapsed;
+                StartupLoadingOverlay.IsHitTestVisible = false;
+            }
+            if (TreeListScrollViewer != null)
+            {
+                TreeListScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
+                TreeListScrollViewer.Opacity = 1.0;
+            }
+            if (BottomStatusBarBorder != null)
+                BottomStatusBarBorder.IsHitTestVisible = true;
+            if (DownloadsTabButton != null)
+                DownloadsTabButton.IsEnabled = true;
+            if (SettingsTabButton != null)
+                SettingsTabButton.IsEnabled = true;
+        }
+    }
+
+    private void AnimateStartupProgress(double targetWidth, double durationMs)
+    {
+        if (StartupProgressFill == null) return;
+        var anim = new DoubleAnimation(targetWidth, new Duration(TimeSpan.FromMilliseconds(durationMs)))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        StartupProgressFill.BeginAnimation(FrameworkElement.WidthProperty, anim);
+    }
+
+    private void WarmupTemplates()
+    {
+        try
+        {
+            if (TryFindResource("DownloadItemTemplate") is DataTemplate itemTemplate)
+            {
+                var dummyItem = new DownloadItem
+                {
+                    FileName = "Reepax_Warmup_Archive.zip",
+                    TotalBytes = 1024 * 1024 * 50,
+                    DownloadedBytes = 1024 * 1024 * 25,
+                    Status = DownloadStatus.Queued,
+                    HosterName = "Direct"
+                };
+
+                if (itemTemplate.LoadContent() is FrameworkElement itemElem)
+                {
+                    itemElem.DataContext = dummyItem;
+                    itemElem.Measure(new Size(1200, 32));
+                    itemElem.Arrange(new Rect(0, 0, 1200, 32));
+                    itemElem.UpdateLayout();
+                }
+            }
+
+            if (TryFindResource("PackageTemplate") is DataTemplate pkgTemplate)
+            {
+                var dummyPkg = new DownloadPackage
+                {
+                    Name = "Reepax_Warmup_Package",
+                    IsExpanded = false
+                };
+
+                if (pkgTemplate.LoadContent() is FrameworkElement pkgElem)
+                {
+                    pkgElem.DataContext = dummyPkg;
+                    pkgElem.Measure(new Size(1200, 40));
+                    pkgElem.Arrange(new Rect(0, 0, 1200, 40));
+                    pkgElem.UpdateLayout();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Storage.AppLogger.Warn($"Template warm-up notice: {ex.Message}");
+        }
+    }
+
+    #endregion
 
     private void TabContent_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
@@ -233,6 +466,17 @@ public partial class MainWindow : Window
             _hasInitializedDownloadsTab = true;
 
             AnimateTabIn(element, transform);
+
+            if (element == DownloadsTabContent)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (TreeListScrollViewer.IsVisible && (StartupLoadingOverlay == null || !StartupLoadingOverlay.IsVisible))
+                    {
+                        TreeListScrollViewer.Focus();
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }
         }
         else
         {
@@ -2049,10 +2293,14 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 3. Do not intercept if actively typing inside an inline editing TextBox or any input control
-        if (e.OriginalSource is TextBox or PasswordBox or RichTextBox)
+        // 3. Do not intercept if actively typing inside an inline editing TextBox or any input control that is currently visible
+        if (e.OriginalSource is TextBox tbOrig && tbOrig.IsVisible)
             return;
-        if (Keyboard.FocusedElement is TextBox or PasswordBox or RichTextBox)
+        if (Keyboard.FocusedElement is TextBox tbFoc && tbFoc.IsVisible)
+            return;
+        if (Keyboard.FocusedElement is PasswordBox pbFoc && pbFoc.IsVisible)
+            return;
+        if (Keyboard.FocusedElement is RichTextBox rtbFoc && rtbFoc.IsVisible)
             return;
 
         var key = e.Key == Key.System ? e.SystemKey : e.Key;

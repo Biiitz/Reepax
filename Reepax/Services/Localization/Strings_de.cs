@@ -551,6 +551,14 @@ public static class Strings_de
         ["PostDownload_Countdown_Cancelled"] = "Aktion nach Download-Abschluss abgebrochen.",
         ["PostDownload_Btn_Cancel"] = "Abbrechen",
         ["Settings_PostDownload_Title"] = "Nach Abschluss aller Downloads",
-        ["Settings_PostDownload_Subtitle"] = "Automatisch den PC herunterfahren, in Ruhezustand versetzen oder die App beenden, sobald alle aktiven Downloads und Entpackvorgänge abgeschlossen sind."
+        ["Settings_PostDownload_Subtitle"] = "Automatisch den PC herunterfahren, in Ruhezustand versetzen oder die App beenden, sobald alle aktiven Downloads und Entpackvorgänge abgeschlossen sind.",
+
+        // Startup Loading Screen
+        ["Startup_LoadingTitle"] = "Downloads werden initialisiert...",
+        ["Startup_Step_LoadingDownloads"] = "Lade Download-Liste...",
+        ["Startup_Step_PreheatingComponents"] = "Initialisiere Komponenten & Icons...",
+        ["Startup_Step_OptimizingUI"] = "Bereite Benutzeroberfläche vor...",
+        ["Startup_Step_Ready"] = "Bereit!",
+        ["Startup_PackagesLoaded"] = "{0} Pakete geladen"
     };
 }

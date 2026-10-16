@@ -162,4 +162,57 @@ public static class SystemIconService
         drawing.Freeze();
         return drawing;
     }
+
+    /// <summary>
+    /// Preloads common file extension and folder icons in a background task on application startup
+    /// so that expanding packages hits memory cache with 0ms disk/shell latency.
+    /// </summary>
+    public static void PreloadCommonIcons()
+    {
+        _ = PreloadCommonIconsAsync();
+    }
+
+    /// <summary>
+    /// Asynchronously preloads common file extension and folder icons (and any optional specific file names)
+    /// in a background task on application startup so expanding packages hits memory cache with 0ms disk/shell latency.
+    /// </summary>
+    public static System.Threading.Tasks.Task PreloadCommonIconsAsync(System.Collections.Generic.IEnumerable<string>? additionalFileNames = null)
+    {
+        return System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                _ = GetFolderIcon();
+                _ = GetZipArchiveIcon();
+
+                string[] commonExtensions =
+                {
+                    ".zip", ".rar", ".7z", ".tar", ".gz", ".iso", ".bin",
+                    ".exe", ".msi", ".dll",
+                    ".mp4", ".mkv", ".avi", ".mov", ".wmv",
+                    ".mp3", ".flac", ".wav", ".aac",
+                    ".pdf", ".epub", ".txt", ".nfo", ".log",
+                    ".jpg", ".png", ".gif", ".webp",
+                    ".part", ".001", ".r00"
+                };
+
+                foreach (var ext in commonExtensions)
+                {
+                    _ = GetIconForFile("file" + ext);
+                }
+
+                if (additionalFileNames != null)
+                {
+                    foreach (var name in additionalFileNames)
+                    {
+                        if (!string.IsNullOrWhiteSpace(name))
+                        {
+                            _ = GetIconForFile(name);
+                        }
+                    }
+                }
+            }
+            catch { }
+        });
+    }
 }

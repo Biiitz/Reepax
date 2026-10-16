@@ -275,6 +275,34 @@ public class LocalizationTests
             loc.CurrentLanguage = "en";
         }
     }
+
+    [Fact]
+    public void LocalizationService_StartupLoadingKeys_ExistInBothLanguages()
+    {
+        var loc = LocalizationService.Instance;
+        try
+        {
+            loc.CurrentLanguage = "de";
+            Assert.Equal("Downloads werden initialisiert...", loc["Startup_LoadingTitle"]);
+            Assert.Equal("Lade Download-Liste...", loc["Startup_Step_LoadingDownloads"]);
+            Assert.Equal("Initialisiere Komponenten & Icons...", loc["Startup_Step_PreheatingComponents"]);
+            Assert.Equal("Bereite Benutzeroberfläche vor...", loc["Startup_Step_OptimizingUI"]);
+            Assert.Equal("Bereit!", loc["Startup_Step_Ready"]);
+            Assert.Equal("4 Pakete geladen", Loc.Format("Startup_PackagesLoaded", 4));
+
+            loc.CurrentLanguage = "en";
+            Assert.Equal("Initializing Downloads...", loc["Startup_LoadingTitle"]);
+            Assert.Equal("Loading download list...", loc["Startup_Step_LoadingDownloads"]);
+            Assert.Equal("Initializing components & icons...", loc["Startup_Step_PreheatingComponents"]);
+            Assert.Equal("Preparing user interface...", loc["Startup_Step_OptimizingUI"]);
+            Assert.Equal("Ready!", loc["Startup_Step_Ready"]);
+            Assert.Equal("4 packages loaded", Loc.Format("Startup_PackagesLoaded", 4));
+        }
+        finally
+        {
+            loc.CurrentLanguage = "en";
+        }
+    }
 }
 
 

@@ -551,6 +551,14 @@ public static class Strings_en
         ["PostDownload_Countdown_Cancelled"] = "Post-download action cancelled.",
         ["PostDownload_Btn_Cancel"] = "Cancel",
         ["Settings_PostDownload_Title"] = "On Completion of All Downloads",
-        ["Settings_PostDownload_Subtitle"] = "Automatically shut down the PC, put it to sleep, or close the app once all active downloads and extraction tasks have finished."
+        ["Settings_PostDownload_Subtitle"] = "Automatically shut down the PC, put it to sleep, or close the app once all active downloads and extraction tasks have finished.",
+
+        // Startup Loading Screen
+        ["Startup_LoadingTitle"] = "Initializing Downloads...",
+        ["Startup_Step_LoadingDownloads"] = "Loading download list...",
+        ["Startup_Step_PreheatingComponents"] = "Initializing components & icons...",
+        ["Startup_Step_OptimizingUI"] = "Preparing user interface...",
+        ["Startup_Step_Ready"] = "Ready!",
+        ["Startup_PackagesLoaded"] = "{0} packages loaded"
      };
 }
