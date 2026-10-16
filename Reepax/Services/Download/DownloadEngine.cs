@@ -278,30 +278,32 @@ public class DownloadEngine
             }
 
             // === Multi-Connection Download (Chunking) ===
+            var segMetaPath = tempFilePath + ".segments";
+
+            // 1. Resume an earlier chunked download (sidecar file exists),
+            //    even if MaxConnectionsPerDownload was subsequently reduced to 1,
+            //    so already-downloaded chunks in the preallocated .part file are never lost.
+            var segState = LoadSegmentState(segMetaPath);
+            if (segState != null && File.Exists(tempFilePath))
+            {
+                try
+                {
+                    await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
+                    return;
+                }
+                catch (Exception ex) when (IsRangeNotSupported(ex))
+                {
+                    await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
+                    return;
+                }
+            }
+            else if (File.Exists(segMetaPath))
+            {
+                try { File.Delete(segMetaPath); } catch { }
+            }
+
             if (MaxConnectionsPerDownload > 1)
             {
-                var segMetaPath = tempFilePath + ".segments";
-
-                // 1. Resume an earlier chunked download (sidecar file exists)
-                var segState = LoadSegmentState(segMetaPath);
-                if (segState != null && File.Exists(tempFilePath))
-                {
-                    try
-                    {
-                        await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
-                        return;
-                    }
-                    catch (Exception ex) when (IsRangeNotSupported(ex))
-                    {
-                        await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
-                        return;
-                    }
-                }
-                else if (File.Exists(segMetaPath))
-                {
-                    try { File.Delete(segMetaPath); } catch { }
-                }
-
                 // 2. Fresh download: probe server for range support and chunk if supported
                 if (existingBytes == 0)
                 {
@@ -746,11 +748,17 @@ public class DownloadEngine
         {
             using var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous);
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            int maxConcurrentSegments = Math.Clamp(MaxConnectionsPerDownload, 1, segments.Count);
+            using var segmentSemaphore = new SemaphoreSlim(maxConcurrentSegments, maxConcurrentSegments);
             var tasks = segments.Select(async seg =>
             {
+                if (seg.Done >= seg.End - seg.Start + 1)
+                    return;
+
+                await segmentSemaphore.WaitAsync(linkedCts.Token);
                 try
                 {
-                    await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, segments.Count);
+                    await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, maxConcurrentSegments);
                 }
                 catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
                 {
@@ -760,6 +768,10 @@ public class DownloadEngine
                 {
                     try { linkedCts.Cancel(); } catch { }
                     throw;
+                }
+                finally
+                {
+                    segmentSemaphore.Release();
                 }
             }).ToArray();
             var allTask = Task.WhenAll(tasks);

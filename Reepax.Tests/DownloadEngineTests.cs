@@ -2310,4 +2310,118 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task DownloadEngine_ChunkedResume_WhenMaxConnectionsReducedToOne_PreservesExistingChunksAndCompletes()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxResumeMaxConn1_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "resume_conn1.bin");
+            var partFile = destinationFile + ".part";
+            var segFile = partFile + ".segments";
+
+            var testData = new byte[8 * 1024 * 1024 + 512];
+            for (int i = 0; i < testData.Length; i++)
+                testData[i] = (byte)(i % 229);
+
+            // Simulate state: 4 segments, segments 0 and 2 already complete, segments 1 and 3 empty
+            int segCount = 4;
+            long segSize = testData.Length / segCount;
+            var sb = new StringBuilder();
+            sb.Append("{\"TotalBytes\":").Append(testData.Length).Append(",\"Segments\":[");
+            for (int i = 0; i < segCount; i++)
+            {
+                long start = i * segSize;
+                long end = (i == segCount - 1) ? testData.Length - 1 : start + segSize - 1;
+                long done = (i == 0 || i == 2) ? end - start + 1 : 0;
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"Start\":").Append(start).Append(",\"End\":").Append(end).Append(",\"Done\":").Append(done).Append('}');
+            }
+            sb.Append("]}");
+            File.WriteAllText(segFile, sb.ToString());
+
+            // Pre-allocate .part file to full size and write segments 0 and 2
+            using (var fs = new FileStream(partFile, FileMode.Create, FileAccess.ReadWrite))
+            {
+                fs.SetLength(testData.Length);
+                fs.Position = 0;
+                fs.Write(testData, 0, (int)segSize);
+                fs.Position = 2 * segSize;
+                fs.Write(testData, (int)(2 * segSize), (int)segSize);
+            }
+
+            var item = new DownloadItem
+            {
+                FileName = "resume_conn1.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/resume_conn1.bin",
+                Status = DownloadStatus.Paused,
+                TotalBytes = testData.Length,
+                DownloadedBytes = 2 * segSize
+            };
+
+            int range416Count = 0;
+            int fullDownloadRequests = 0;
+            int requestedSegmentCount = 0;
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                if (req.Headers.Range != null)
+                {
+                    long from = req.Headers.Range.Ranges.First().From ?? 0;
+                    long to = req.Headers.Range.Ranges.First().To ?? (testData.Length - 1);
+
+                    if (from >= testData.Length)
+                    {
+                        Interlocked.Increment(ref range416Count);
+                        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable));
+                    }
+
+                    Interlocked.Increment(ref requestedSegmentCount);
+                    var slice = testData.AsSpan((int)from, (int)(to - from + 1)).ToArray();
+                    var res = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                    {
+                        Content = new ByteArrayContent(slice)
+                    };
+                    res.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(from, to, testData.Length);
+                    return Task.FromResult(res);
+                }
+
+                Interlocked.Increment(ref fullDownloadRequests);
+                var full = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(testData) };
+                full.Content.Headers.ContentLength = testData.Length;
+                return Task.FromResult(full);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            // User reduced MaxConnectionsPerDownload to 1 before resuming
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 1 };
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += i => { if (i.Id == item.Id) tcs.TrySetResult(true); };
+            engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) tcs.TrySetException(ex); };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(15000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(0, range416Count);
+            Assert.Equal(0, fullDownloadRequests);
+            Assert.Equal(2, requestedSegmentCount); // Only the 2 missing segments (1 and 3) were fetched
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(File.Exists(destinationFile));
+            Assert.False(File.Exists(partFile));
+            Assert.False(File.Exists(segFile));
+            Assert.Equal(testData, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
