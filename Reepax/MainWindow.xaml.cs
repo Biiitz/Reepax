@@ -224,7 +224,7 @@ public partial class MainWindow : Window
         RunStartupWarmupSequenceAsync();
     }
 
-    #region Startup Warmup & Loading Animation (JDownloader 2 Style)
+    #region Startup Warmup & Loading Animation
 
     private bool _hasRunStartupSequence;
 
