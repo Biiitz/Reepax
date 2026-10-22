@@ -3,7 +3,7 @@
 <div align="center">
 
 
-  <img src="Reepax/Assets/R.png" alt="Reepax Logo" width="90" height="127" />
+  <img src="Reepax/Assets/R.png" alt="Reepax Logo" width="90" height="137" />
 
 ---
   <br />
@@ -18,11 +18,11 @@
 
   <br />
   
-  [Overview](#overview) • [Features](#features) • [Installation](#installation) • [Contributing](CONTRIBUTING.md) • [License](LICENSE.md)
+  [Overview](#overview) • [Screenshots](#screenshots) • [Features](#features) • [Installation](#installation) • [Contributing](CONTRIBUTING.md) • [License](LICENSE.md)
 
   <br />
 
-  Notice: Reepax is an evolving project provided &ldquo;as is&rdquo;. Please read the <a href="legal/DISCLAIMER.md">Disclaimer</a> before use.
+  Notice: Reepax is an early evolving project provided &ldquo;as is&rdquo;. Please read the <a href="legal/DISCLAIMER.md">Disclaimer</a> before use.
 
   Want to help improve Reepax? Click **[here](CONTRIBUTING.md)** to check out our contribution guide!
 
@@ -32,6 +32,22 @@
 ## Overview
 
 **Reepax** is an independent download manager Built with **.NET 8** and **WPF**, it delivers multi-connection acceleration, integrated Rust-powered content filtering, automated PAR2 verification, and archive extraction—wrapped in a clean, modern dark UI.
+
+---
+
+## Screenshots
+
+<p align="center">
+  <a href="Reepax/Assets/screenshots/1.png">
+    <img src="Reepax/Assets/screenshots/1.png" alt="Reepax Screenshot 1" width="850" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="Reepax/Assets/screenshots/2.png">
+    <img src="Reepax/Assets/screenshots/2.png" alt="Reepax Screenshot 2" width="850" />
+  </a>
+</p>
 
 ---
 
