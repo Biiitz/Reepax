@@ -19,6 +19,10 @@ public class AppSettings
     }
     public bool IsDarkMode { get; set; } = true;
     public bool EnableForcedDarkMode { get; set; } = true;
+    public string AccentColorHex { get; set; } = "#3B82F6";
+    public double? AccentColorHue { get; set; } = 217.22;
+    public double? AccentColorSaturation { get; set; } = 0.76;
+    public double? AccentColorValue { get; set; } = 0.96;
     public bool EnableAdBlocker { get; set; } = true;
     public double SpeedLimitMBps { get; set; } = 0; // 0 = unlimited
     public long SpeedLimitBytesPerSecond { get; set; } = 0; // 0 = unlimited

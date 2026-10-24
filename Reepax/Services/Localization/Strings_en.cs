@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Reepax.Services.Localization;
@@ -132,6 +132,14 @@ public static class Strings_en
         ["Settings_Language_Subtitle"] = "App language",
         ["Settings_Language_English"] = "English",
         ["Settings_Language_German"] = "Deutsch",
+        ["Settings_AccentColor_Title"] = "Accent color",
+        ["Settings_AccentColor_Subtitle"] = "Choose a custom accent color",
+        ["Settings_AccentColor_ToggleTooltip"] = "Open or close color palette",
+        ["Settings_AccentColor_Reset"] = "Reset to default",
+        ["Settings_AccentColor_HexLabel"] = "HEX",
+        ["Settings_AccentColor_RedLabel"] = "R",
+        ["Settings_AccentColor_GreenLabel"] = "G",
+        ["Settings_AccentColor_BlueLabel"] = "B",
 
         // Settings Categories
         ["Settings_Category_General"] = "General",

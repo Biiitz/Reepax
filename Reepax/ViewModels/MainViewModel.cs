@@ -542,6 +542,33 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(DeleteArchiveAfterExtraction));
         };
 
+        string initialAccent = !string.IsNullOrWhiteSpace(settings.AccentColorHex)
+            ? settings.AccentColorHex
+            : ThemeService.Instance.CurrentAccentColorHex;
+
+        SyncAccentColorState(initialAccent);
+
+        if (settings.AccentColorHue.HasValue)
+        {
+            PickerHue = Math.Clamp(settings.AccentColorHue.Value, 0, 360);
+        }
+        if (settings.AccentColorSaturation.HasValue)
+        {
+            PickerSaturation = Math.Clamp(settings.AccentColorSaturation.Value, 0, 1);
+        }
+        if (settings.AccentColorValue.HasValue)
+        {
+            PickerValue = Math.Clamp(settings.AccentColorValue.Value, 0, 1);
+        }
+
+        ThemeService.Instance.AccentColorChanged += hex =>
+        {
+            if (!_isUpdatingColorInternally && !string.Equals(hex, CurrentAccentColor, StringComparison.OrdinalIgnoreCase))
+            {
+                SafeDispatch(() => SyncAccentColorState(hex));
+            }
+        };
+
         _queueManager.QueueStateChanged += isRunning =>
         {
             SafeDispatch(() =>

@@ -138,6 +138,11 @@ public sealed class AudioNotificationService
             return;
         }
 
+        if (DownloadPersistenceService.IsTestEnvironment)
+        {
+            return;
+        }
+
         var app = Application.Current;
         if (app?.Dispatcher == null || app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished)
         {

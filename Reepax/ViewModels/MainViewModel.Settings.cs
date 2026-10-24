@@ -884,42 +884,217 @@ public partial class MainViewModel
     }
 
     // =========================================================================
-    // Theming & Fixed Accent Color
+    // Theming & Accent Color Palette
     // =========================================================================
 
-    public string CurrentAccentColor => ThemeService.FixedAccentColorHex;
+    public const double DefaultAccentHue = 217.22;
+    public const double DefaultAccentSaturation = 0.76;
+    public const double DefaultAccentValue = 0.96;
 
-    public string CustomAccentColorHex
+    private bool _isUpdatingColorInternally;
+
+    [ObservableProperty]
+    private string _currentAccentColor = ThemeService.FixedAccentColorHex;
+
+    [ObservableProperty]
+    private Brush _currentAccentBrush = new SolidColorBrush(Color.FromRgb(59, 130, 246));
+
+    [ObservableProperty]
+    private string _customAccentColorHex = ThemeService.FixedAccentColorHex;
+
+    partial void OnCustomAccentColorHexChanged(string value)
     {
-        get => ThemeService.FixedAccentColorHex;
-        set { /* Accent color is fixed to #3B82F6 and not customizable */ }
+        if (_isUpdatingColorInternally) return;
+
+        if (Helpers.ColorHelper.TryParseHex(value, out var color))
+        {
+            UpdateFromRgb(color.R, color.G, color.B, updateHexText: false);
+        }
     }
 
-    public void UpdateFromHsv(double hue, double saturation, double value, bool updateHexText = true)
+    [ObservableProperty]
+    private double _pickerHue = DefaultAccentHue;
+
+    partial void OnPickerHueChanged(double value)
     {
-        // Accent color is fixed to #3B82F6 and not customizable
+        if (_isUpdatingColorInternally) return;
+        UpdateFromHsv(value, PickerSaturation, PickerValue);
     }
 
-    public void UpdateFromRgb(byte r, byte g, byte b, bool updateHexText = true)
+    [ObservableProperty]
+    private double _pickerSaturation = DefaultAccentSaturation;
+
+    partial void OnPickerSaturationChanged(double value)
     {
-        // Accent color is fixed to #3B82F6 and not customizable
+        if (_isUpdatingColorInternally) return;
+        UpdateFromHsv(PickerHue, value, PickerValue);
+    }
+
+    [ObservableProperty]
+    private double _pickerValue = DefaultAccentValue;
+
+    partial void OnPickerValueChanged(double value)
+    {
+        if (_isUpdatingColorInternally) return;
+        UpdateFromHsv(PickerHue, PickerSaturation, value);
+    }
+
+    [ObservableProperty]
+    private Brush _pureHueBrush = new SolidColorBrush(Color.FromRgb(0, 102, 255));
+
+    [ObservableProperty]
+    private byte _colorR = 59;
+
+    partial void OnColorRChanged(byte value)
+    {
+        if (_isUpdatingColorInternally) return;
+        UpdateFromRgb(value, ColorG, ColorB);
+    }
+
+    [ObservableProperty]
+    private byte _colorG = 130;
+
+    partial void OnColorGChanged(byte value)
+    {
+        if (_isUpdatingColorInternally) return;
+        UpdateFromRgb(ColorR, value, ColorB);
+    }
+
+    [ObservableProperty]
+    private byte _colorB = 246;
+
+    partial void OnColorBChanged(byte value)
+    {
+        if (_isUpdatingColorInternally) return;
+        UpdateFromRgb(ColorR, ColorG, value);
+    }
+
+    [ObservableProperty]
+    private bool _isColorPaletteOpen;
+
+    [RelayCommand]
+    public void ToggleColorPalette()
+    {
+        IsColorPaletteOpen = !IsColorPaletteOpen;
+    }
+
+    public void UpdateFromHsv(double hue, double saturation, double value, bool updateHexText = true, bool applyToTheme = true)
+    {
+        _isUpdatingColorInternally = true;
+        try
+        {
+            PickerHue = Math.Clamp(hue, 0, 360);
+            PickerSaturation = Math.Clamp(saturation, 0, 1);
+            PickerValue = Math.Clamp(value, 0, 1);
+
+            var color = Helpers.ColorHelper.FromHsv(PickerHue, PickerSaturation, PickerValue);
+            var pureColor = Helpers.ColorHelper.FromHsv(PickerHue, 1.0, 1.0);
+
+            ColorR = color.R;
+            ColorG = color.G;
+            ColorB = color.B;
+
+            var hex = Helpers.ColorHelper.ToHex(color);
+            CurrentAccentColor = hex;
+            if (updateHexText)
+            {
+                CustomAccentColorHex = hex;
+            }
+
+            var pureBrush = new SolidColorBrush(pureColor);
+            pureBrush.Freeze();
+            PureHueBrush = pureBrush;
+
+            var accentBrush = new SolidColorBrush(color);
+            accentBrush.Freeze();
+            CurrentAccentBrush = accentBrush;
+
+            if (applyToTheme)
+            {
+                ThemeService.Instance.SetAccentColor(hex, save: true, hue: PickerHue, sat: PickerSaturation, val: PickerValue);
+            }
+        }
+        finally
+        {
+            _isUpdatingColorInternally = false;
+        }
+    }
+
+    public void UpdateFromRgb(byte r, byte g, byte b, bool updateHexText = true, bool applyToTheme = true)
+    {
+        _isUpdatingColorInternally = true;
+        try
+        {
+            ColorR = r;
+            ColorG = g;
+            ColorB = b;
+
+            var color = Color.FromRgb(r, g, b);
+            Helpers.ColorHelper.ToHsv(color, PickerHue, out double h, out double s, out double v);
+
+            PickerHue = Math.Clamp(h, 0, 360);
+            PickerSaturation = Math.Clamp(s, 0, 1);
+            PickerValue = Math.Clamp(v, 0, 1);
+
+            var pureColor = Helpers.ColorHelper.FromHsv(PickerHue, 1.0, 1.0);
+            var hex = Helpers.ColorHelper.ToHex(color);
+            CurrentAccentColor = hex;
+            if (updateHexText)
+            {
+                CustomAccentColorHex = hex;
+            }
+
+            var pureBrush = new SolidColorBrush(pureColor);
+            pureBrush.Freeze();
+            PureHueBrush = pureBrush;
+
+            var accentBrush = new SolidColorBrush(color);
+            accentBrush.Freeze();
+            CurrentAccentBrush = accentBrush;
+
+            if (applyToTheme)
+            {
+                ThemeService.Instance.SetAccentColor(hex, save: true, hue: PickerHue, sat: PickerSaturation, val: PickerValue);
+            }
+        }
+        finally
+        {
+            _isUpdatingColorInternally = false;
+        }
     }
 
     public void SyncAccentColorState(string hex)
     {
-        // Accent color is fixed to #3B82F6 and not customizable
+        if (Helpers.ColorHelper.TryParseHex(hex, out var color))
+        {
+            UpdateFromRgb(color.R, color.G, color.B, updateHexText: true, applyToTheme: false);
+        }
+        else
+        {
+            UpdateFromHsv(DefaultAccentHue, DefaultAccentSaturation, DefaultAccentValue, updateHexText: true, applyToTheme: false);
+        }
     }
 
     [RelayCommand]
     public void SelectAccentColor(string? hex)
     {
-        // Accent color is fixed to #3B82F6 and not customizable
+        if (!string.IsNullOrWhiteSpace(hex) && Helpers.ColorHelper.TryParseHex(hex, out var color))
+        {
+            UpdateFromRgb(color.R, color.G, color.B);
+        }
     }
 
     [RelayCommand]
     public void ResetAccentColor()
     {
-        // Accent color is fixed to #3B82F6 and not customizable
+        if (Helpers.ColorHelper.TryParseHex(ThemeService.FixedAccentColorHex, out var defaultColor))
+        {
+            UpdateFromRgb(defaultColor.R, defaultColor.G, defaultColor.B);
+        }
+        else
+        {
+            UpdateFromRgb(59, 130, 246);
+        }
     }
 
     [RelayCommand]

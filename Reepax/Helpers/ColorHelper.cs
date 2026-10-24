@@ -16,10 +16,10 @@ public static class ColorHelper
         double f = hue / 60.0 - Math.Floor(hue / 60.0);
 
         double v = value * 255.0;
-        byte vByte = (byte)Math.Clamp(v, 0, 255);
-        byte pByte = (byte)Math.Clamp(v * (1.0 - saturation), 0, 255);
-        byte qByte = (byte)Math.Clamp(v * (1.0 - f * saturation), 0, 255);
-        byte tByte = (byte)Math.Clamp(v * (1.0 - (1.0 - f) * saturation), 0, 255);
+        byte vByte = (byte)Math.Clamp(Math.Round(v), 0, 255);
+        byte pByte = (byte)Math.Clamp(Math.Round(v * (1.0 - saturation)), 0, 255);
+        byte qByte = (byte)Math.Clamp(Math.Round(v * (1.0 - f * saturation)), 0, 255);
+        byte tByte = (byte)Math.Clamp(Math.Round(v * (1.0 - (1.0 - f) * saturation)), 0, 255);
 
         return hi switch
         {
@@ -34,6 +34,11 @@ public static class ColorHelper
 
     public static void ToHsv(Color color, out double hue, out double saturation, out double value)
     {
+        ToHsv(color, 0.0, out hue, out saturation, out value);
+    }
+
+    public static void ToHsv(Color color, double fallbackHue, out double hue, out double saturation, out double value)
+    {
         double r = color.R / 255.0;
         double g = color.G / 255.0;
         double b = color.B / 255.0;
@@ -42,7 +47,7 @@ public static class ColorHelper
         double min = Math.Min(r, Math.Min(g, b));
         double delta = max - min;
 
-        hue = 0;
+        hue = fallbackHue;
         if (delta > 0.00001)
         {
             if (Math.Abs(max - r) < 0.00001)

@@ -295,21 +295,21 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void AccentColor_IsFixedToDefaultBlueAndCannotBeChanged()
+    public void AccentColor_CanBeSelectedAndCustomized()
     {
         var vm = new MainViewModel();
         Assert.Equal("#3B82F6", vm.CurrentAccentColor);
         Assert.Equal("#3B82F6", vm.CustomAccentColorHex);
         Assert.Equal("#3B82F6", Services.ThemeService.Instance.CurrentAccentColorHex);
 
-        // Attempting to change accent color retains fixed default blue
+        // Selecting a new accent color applies everywhere
         vm.SelectAccentColorCommand.Execute("#8B5CF6");
-        Assert.Equal("#3B82F6", vm.CurrentAccentColor);
-        Assert.Equal("#3B82F6", Services.ThemeService.Instance.CurrentAccentColorHex);
+        Assert.Equal("#8B5CF6", vm.CurrentAccentColor);
+        Assert.Equal("#8B5CF6", Services.ThemeService.Instance.CurrentAccentColorHex);
 
         vm.CustomAccentColorHex = "#10B981";
-        Assert.Equal("#3B82F6", vm.CurrentAccentColor);
-        Assert.Equal("#3B82F6", Services.ThemeService.Instance.CurrentAccentColorHex);
+        Assert.Equal("#10B981", vm.CurrentAccentColor);
+        Assert.Equal("#10B981", Services.ThemeService.Instance.CurrentAccentColorHex);
 
         vm.ResetAccentColorCommand.Execute(null);
         Assert.Equal("#3B82F6", vm.CurrentAccentColor);

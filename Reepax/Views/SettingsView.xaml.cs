@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +21,12 @@ public partial class SettingsView : UserControl
         Unloaded += SettingsView_Unloaded;
         DataContextChanged += SettingsView_DataContextChanged;
         IsVisibleChanged += SettingsView_IsVisibleChanged;
+
+        if (SpectrumBox != null)
+        {
+            SpectrumBox.SizeChanged += (_, _) => UpdateSpectrumThumbPosition();
+            SpectrumBox.IsVisibleChanged += (_, _) => { if (SpectrumBox.IsVisible) UpdateSpectrumThumbPosition(); };
+        }
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
@@ -45,6 +51,8 @@ public partial class SettingsView : UserControl
         if (CategoryButtonsContainer != null)
             CategoryButtonsContainer.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
 
+        UpdateSpectrumThumbPosition();
+
         Dispatcher.BeginInvoke(new Action(() =>
         {
             UpdateSlidingCategoryIndicator(animate: false);
@@ -63,6 +71,8 @@ public partial class SettingsView : UserControl
         UpdateGameInstallFolderVisibility(animate: false);
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
+
+        UpdateSpectrumThumbPosition();
         Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: false)),
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
@@ -100,7 +110,14 @@ public partial class SettingsView : UserControl
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.CreateGameInstallFolder))
+        if (e.PropertyName == nameof(MainViewModel.PickerSaturation) ||
+            e.PropertyName == nameof(MainViewModel.PickerValue) ||
+            e.PropertyName == nameof(MainViewModel.PickerHue) ||
+            e.PropertyName == nameof(MainViewModel.CurrentAccentColor))
+        {
+            UpdateSpectrumThumbPosition();
+        }
+        else if (e.PropertyName == nameof(MainViewModel.CreateGameInstallFolder))
         {
             UpdateGameInstallFolderVisibility(animate: true);
         }
@@ -899,6 +916,106 @@ public partial class SettingsView : UserControl
             int delta = e.Delta > 0 ? 5 : -5;
             ViewModel.ErrorSoundVolume = Math.Clamp(ViewModel.ErrorSoundVolume + delta, 0, 100);
             ViewModel.PreviewErrorVolumeSound();
+            e.Handled = true;
+        }
+    }
+
+    #endregion
+
+    #region Accent Color Palette
+
+    private void SpectrumBox_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (SpectrumBox == null || ViewModel == null)
+            return;
+
+        SpectrumBox.CaptureMouse();
+        UpdateSpectrumFromMouse(e.GetPosition(SpectrumBox));
+        e.Handled = true;
+    }
+
+    private void SpectrumBox_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (SpectrumBox == null || ViewModel == null || !SpectrumBox.IsMouseCaptured)
+            return;
+
+        UpdateSpectrumFromMouse(e.GetPosition(SpectrumBox));
+        e.Handled = true;
+    }
+
+    private void SpectrumBox_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (SpectrumBox != null && SpectrumBox.IsMouseCaptured)
+        {
+            SpectrumBox.ReleaseMouseCapture();
+            e.Handled = true;
+        }
+    }
+
+    private void UpdateSpectrumFromMouse(Point pos)
+    {
+        if (SpectrumBox == null || ViewModel == null)
+            return;
+
+        double width = SpectrumBox.ActualWidth;
+        double height = SpectrumBox.ActualHeight;
+        if (width <= 0 || height <= 0)
+            return;
+
+        double s = Math.Clamp(pos.X / width, 0.0, 1.0);
+        double v = Math.Clamp(1.0 - (pos.Y / height), 0.0, 1.0);
+
+        ViewModel.UpdateFromHsv(ViewModel.PickerHue, s, v);
+        UpdateSpectrumThumbPosition();
+    }
+
+    private void UpdateSpectrumThumbPosition()
+    {
+        if (SpectrumBox == null || SpectrumThumb == null || ViewModel == null)
+            return;
+
+        double width = SpectrumBox.ActualWidth;
+        double height = SpectrumBox.ActualHeight;
+        if (width <= 0 || height <= 0)
+            return;
+
+        double s = Math.Clamp(ViewModel.PickerSaturation, 0.0, 1.0);
+        double v = Math.Clamp(ViewModel.PickerValue, 0.0, 1.0);
+
+        double thumbWidth = SpectrumThumb.ActualWidth > 0 ? SpectrumThumb.ActualWidth : 14.0;
+        double thumbHeight = SpectrumThumb.ActualHeight > 0 ? SpectrumThumb.ActualHeight : 14.0;
+
+        double x = Math.Clamp(s * width - (thumbWidth / 2.0), -thumbWidth / 2.0, width - thumbWidth / 2.0);
+        double y = Math.Clamp((1.0 - v) * height - (thumbHeight / 2.0), -thumbHeight / 2.0, height - thumbHeight / 2.0);
+
+        Canvas.SetLeft(SpectrumThumb, x);
+        Canvas.SetTop(SpectrumThumb, y);
+    }
+
+    private void HexTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (sender is TextBox tb)
+            {
+                var be = tb.GetBindingExpression(TextBox.TextProperty);
+                be?.UpdateSource();
+                tb.SelectAll();
+            }
+            e.Handled = true;
+        }
+    }
+
+    private void RgbTextBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (sender is TextBox tb)
+            {
+                var be = tb.GetBindingExpression(TextBox.TextProperty);
+                be?.UpdateSource();
+                tb.SelectAll();
+            }
             e.Handled = true;
         }
     }

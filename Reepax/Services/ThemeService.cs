@@ -24,11 +24,21 @@ public class ThemeService
         }
     }
 
-    public string CurrentAccentColorHex => FixedAccentColorHex;
+    private string _currentAccentColorHex = FixedAccentColorHex;
+    public string CurrentAccentColorHex => _currentAccentColorHex;
 
     public void Initialize()
     {
         ApplyTheme(true, save: false);
+        string? savedAccent = SettingsService.Instance.Settings.AccentColorHex;
+        if (!string.IsNullOrWhiteSpace(savedAccent) && Helpers.ColorHelper.TryParseHex(savedAccent, out _))
+        {
+            ApplyAccentColor(savedAccent, save: false);
+        }
+        else
+        {
+            ApplyAccentColor(FixedAccentColorHex, save: false);
+        }
     }
 
     public void ToggleTheme()
@@ -36,13 +46,23 @@ public class ThemeService
         // No-op: only dark mode is available
     }
 
-    public void SetAccentColor(string hexColor, bool save = true)
+    public static System.Windows.Media.Color GetHoverColor(System.Windows.Media.Color color)
     {
-        // No-op: accent color is fixed to #3B82F6
-        ApplyAccentColor(FixedAccentColorHex, save: false);
+        Helpers.ColorHelper.ToHsv(color, out double h, out double s, out double v);
+        double hoverV = v > 0.25 ? Math.Max(0.1, v * 0.85) : Math.Min(1.0, v + 0.25);
+        return Helpers.ColorHelper.FromHsv(h, s, hoverV);
     }
 
-    private void ApplyAccentColor(string hexColor, bool save)
+    public void SetAccentColor(string hexColor, bool save = true, double? hue = null, double? sat = null, double? val = null)
+    {
+        if (string.IsNullOrWhiteSpace(hexColor) || !Helpers.ColorHelper.TryParseHex(hexColor, out _))
+        {
+            hexColor = FixedAccentColorHex;
+        }
+        ApplyAccentColor(hexColor, save, hue, sat, val);
+    }
+
+    private void ApplyAccentColor(string hexColor, bool save, double? hue = null, double? sat = null, double? val = null)
     {
         var app = Application.Current;
         if (!Storage.DownloadPersistenceService.IsTestEnvironment &&
@@ -50,15 +70,20 @@ public class ThemeService
             app.Dispatcher.Thread?.IsAlive == true &&
             !app.Dispatcher.CheckAccess())
         {
-            app.Dispatcher.Invoke(() => ApplyAccentColor(hexColor, save));
+            app.Dispatcher.Invoke(() => ApplyAccentColor(hexColor, save, hue, sat, val));
             return;
         }
 
         try
         {
-            // Fixed accent color: #3B82F6 (Blue 500)
-            var color = System.Windows.Media.Color.FromRgb(59, 130, 246);
-            var hoverColor = System.Windows.Media.Color.FromRgb(37, 99, 235);
+            if (!Helpers.ColorHelper.TryParseHex(hexColor, out var color))
+            {
+                hexColor = FixedAccentColorHex;
+                Helpers.ColorHelper.TryParseHex(hexColor, out color);
+            }
+
+            _currentAccentColorHex = hexColor;
+            var hoverColor = GetHoverColor(color);
 
             if (app != null)
             {
@@ -76,13 +101,31 @@ public class ThemeService
                 app.Resources["BorderHighlightBrush"] = accentBrush;
             }
 
+            if (save)
+            {
+                var settings = SettingsService.Instance.Settings;
+                settings.AccentColorHex = hexColor;
+                if (hue.HasValue && sat.HasValue && val.HasValue)
+                {
+                    settings.AccentColorHue = hue.Value;
+                    settings.AccentColorSaturation = sat.Value;
+                    settings.AccentColorValue = val.Value;
+                }
+                else
+                {
+                    Helpers.ColorHelper.ToHsv(color, settings.AccentColorHue ?? 217.22, out double h, out double s, out double v);
+                    settings.AccentColorHue = h;
+                    settings.AccentColorSaturation = s;
+                    settings.AccentColorValue = v;
+                }
+                SettingsService.Instance.RequestSaveSettings();
+            }
 
-
-            AccentColorChanged?.Invoke(FixedAccentColorHex);
+            AccentColorChanged?.Invoke(hexColor);
         }
         catch (Exception ex)
         {
-            Storage.AppLogger.Error($"[ThemeService] Error applying accent color {FixedAccentColorHex}", ex);
+            Storage.AppLogger.Error($"[ThemeService] Error applying accent color {hexColor}", ex);
         }
     }
 
@@ -134,7 +177,7 @@ public class ThemeService
                 SettingsService.Instance.SaveSettings();
             }
 
-            ApplyAccentColor(FixedAccentColorHex, save: false);
+            ApplyAccentColor(_currentAccentColorHex, save: false);
 
             // Update title bars for all open windows
             UpdateAllOpenWindowsTitleBar(true);
