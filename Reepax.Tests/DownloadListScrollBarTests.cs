@@ -49,6 +49,7 @@ public class DownloadListScrollBarTests
         vm.ShowColSpeed = true;
         vm.ShowColEta = true;
         vm.ShowColStatus = true;
+        vm.ShowColDuration = true;
         vm.ShowColAddedDate = true;
         vm.ShowColCompletedDate = true;
         vm.ShowColChecksum = true;
@@ -63,6 +64,7 @@ public class DownloadListScrollBarTests
         Assert.Equal(80, vm.ColWidthSpeed);
         Assert.Equal(65, vm.ColWidthEta);
         Assert.Equal(170, vm.ColWidthStatus);
+        Assert.Equal(75, vm.ColWidthDuration);
         Assert.Equal(95, vm.ColWidthAddedDate);
         Assert.Equal(95, vm.ColWidthCompletedDate);
         Assert.Equal(90, vm.ColWidthChecksum);
@@ -77,12 +79,13 @@ public class DownloadListScrollBarTests
         Assert.Equal(80, vm.ActualColWidthSpeed);
         Assert.Equal(65, vm.ActualColWidthEta);
         Assert.Equal(170, vm.ActualColWidthStatus);
+        Assert.Equal(75, vm.ActualColWidthDuration);
         Assert.Equal(95, vm.ActualColWidthAddedDate);
         Assert.Equal(95, vm.ActualColWidthCompletedDate);
         Assert.Equal(90, vm.ActualColWidthChecksum);
         Assert.Equal(95, vm.ActualColWidthActions);
 
-        // Sum of all 12 columns: 220 + 75 + 140 + 75 + 110 + 80 + 65 + 170 + 95 + 95 + 90 + 95 = 1310
+        // Sum of all 13 columns: 220 + 75 + 140 + 75 + 110 + 80 + 65 + 170 + 75 + 95 + 95 + 90 + 95 = 1385
         double totalActualWidth = vm.ActualColWidthName +
                                   vm.ActualColWidthHoster +
                                   vm.ActualColWidthSavePath +
@@ -91,12 +94,13 @@ public class DownloadListScrollBarTests
                                   vm.ActualColWidthSpeed +
                                   vm.ActualColWidthEta +
                                   vm.ActualColWidthStatus +
+                                  vm.ActualColWidthDuration +
                                   vm.ActualColWidthAddedDate +
                                   vm.ActualColWidthCompletedDate +
                                   vm.ActualColWidthChecksum +
                                   vm.ActualColWidthActions;
 
-        Assert.Equal(1310.0, totalActualWidth);
+        Assert.Equal(1385.0, totalActualWidth);
     }
 
     [Fact]
@@ -115,6 +119,7 @@ public class DownloadListScrollBarTests
         Assert.True(vm.ShowColSpeed);
         Assert.True(vm.ShowColEta);
         Assert.True(vm.ShowColStatus);
+        Assert.False(vm.ShowColDuration);
         Assert.False(vm.ShowColAddedDate);
         Assert.False(vm.ShowColCompletedDate);
         Assert.False(vm.ShowColChecksum);
@@ -122,6 +127,7 @@ public class DownloadListScrollBarTests
 
         // Hidden columns have ActualColWidth of 0
         Assert.Equal(0, vm.ActualColWidthSavePath);
+        Assert.Equal(0, vm.ActualColWidthDuration);
         Assert.Equal(0, vm.ActualColWidthAddedDate);
         Assert.Equal(0, vm.ActualColWidthCompletedDate);
         Assert.Equal(0, vm.ActualColWidthChecksum);
@@ -135,6 +141,7 @@ public class DownloadListScrollBarTests
                             vm.ActualColWidthSpeed +
                             vm.ActualColWidthEta +
                             vm.ActualColWidthStatus +
+                            vm.ActualColWidthDuration +
                             vm.ActualColWidthAddedDate +
                             vm.ActualColWidthCompletedDate +
                             vm.ActualColWidthChecksum +
@@ -565,7 +572,7 @@ public class DownloadListScrollBarTests
                     vm.ShowColChecksum = true; vm.ColWidthChecksum = 110;
                     vm.ShowColActions = true; vm.ColWidthActions = 135;
                 })},
-                new { Name = "All 12 Columns", Setup = (Action)(() =>
+                new { Name = "All 13 Columns", Setup = (Action)(() =>
                 {
                     vm.ShowColName = true;
                     vm.ShowColHoster = true;
@@ -575,6 +582,7 @@ public class DownloadListScrollBarTests
                     vm.ShowColSpeed = true;
                     vm.ShowColEta = true;
                     vm.ShowColStatus = true;
+                    vm.ShowColDuration = true;
                     vm.ShowColAddedDate = true;
                     vm.ShowColCompletedDate = true;
                     vm.ShowColChecksum = true;
@@ -595,6 +603,7 @@ public class DownloadListScrollBarTests
                 Assert.Equal(vm.ShowColSpeed, vm.ShowDividerSpeed);
                 Assert.Equal(vm.ShowColEta, vm.ShowDividerEta);
                 Assert.Equal(vm.ShowColStatus, vm.ShowDividerStatus);
+                Assert.Equal(vm.ShowColDuration, vm.ShowDividerDuration);
                 Assert.Equal(vm.ShowColAddedDate, vm.ShowDividerAddedDate);
                 Assert.Equal(vm.ShowColCompletedDate, vm.ShowDividerCompletedDate);
                 Assert.Equal(vm.ShowColChecksum, vm.ShowDividerChecksum);
@@ -609,6 +618,7 @@ public class DownloadListScrollBarTests
                 if (vm.ShowColSpeed) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthSpeed.GridUnitType);
                 if (vm.ShowColEta) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthEta.GridUnitType);
                 if (vm.ShowColStatus) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthStatus.GridUnitType);
+                if (vm.ShowColDuration) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthDuration.GridUnitType);
                 if (vm.ShowColAddedDate) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthAddedDate.GridUnitType);
                 if (vm.ShowColCompletedDate) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthCompletedDate.GridUnitType);
                 if (vm.ShowColChecksum) Assert.Equal(GridUnitType.Pixel, vm.GridColWidthChecksum.GridUnitType);
@@ -634,6 +644,7 @@ public class DownloadListScrollBarTests
         vm.ShowColSpeed = true;
         vm.ShowColEta = true;
         vm.ShowColStatus = true;
+        vm.ShowColDuration = true;
         vm.ShowColAddedDate = true;
         vm.ShowColCompletedDate = true;
         vm.ShowColChecksum = true;
@@ -647,6 +658,7 @@ public class DownloadListScrollBarTests
         vm.ColWidthSpeed = 140;
         vm.ColWidthEta = 110;
         vm.ColWidthStatus = 180;
+        vm.ColWidthDuration = 130;
         vm.ColWidthAddedDate = 160;
         vm.ColWidthCompletedDate = 160;
         vm.ColWidthChecksum = 140;
@@ -663,6 +675,7 @@ public class DownloadListScrollBarTests
         Assert.Equal(80, vm.ColWidthSpeed);
         Assert.Equal(65, vm.ColWidthEta);
         Assert.Equal(170, vm.ColWidthStatus);
+        Assert.Equal(75, vm.ColWidthDuration);
         Assert.Equal(95, vm.ColWidthAddedDate);
         Assert.Equal(95, vm.ColWidthCompletedDate);
         Assert.Equal(90, vm.ColWidthChecksum);

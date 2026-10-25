@@ -42,6 +42,7 @@ public static class Strings_de
         ["Col_Speed"] = "Geschwindigkeit",
         ["Col_Eta"] = "ETA",
         ["Col_Status"] = "Status",
+        ["Col_Duration"] = "Dauer",
         ["Col_AddedDate"] = "Hinzugefügt am",
         ["Col_CompletedDate"] = "Fertiggestellt am",
         ["Col_Checksum"] = "Prüfsumme",

@@ -854,6 +854,7 @@ public partial class MainWindow : Window
             settings.ColWidthSpeed = ViewModel.ColWidthSpeed;
             settings.ColWidthEta = ViewModel.ColWidthEta;
             settings.ColWidthStatus = ViewModel.ColWidthStatus;
+            settings.ColWidthDuration = ViewModel.ColWidthDuration;
             settings.ColWidthActions = ViewModel.ColWidthActions;
         }
         SettingsService.Instance.SaveSettings();
@@ -914,6 +915,7 @@ public partial class MainWindow : Window
                 settings.ColWidthSpeed = ViewModel.ColWidthSpeed;
                 settings.ColWidthEta = ViewModel.ColWidthEta;
                 settings.ColWidthStatus = ViewModel.ColWidthStatus;
+                settings.ColWidthDuration = ViewModel.ColWidthDuration;
                 settings.ColWidthActions = ViewModel.ColWidthActions;
             }
 
@@ -2845,6 +2847,7 @@ public partial class MainWindow : Window
             case "Speed": vm.ColWidthSpeed = width; break;
             case "Eta": vm.ColWidthEta = width; break;
             case "Status": vm.ColWidthStatus = width; break;
+            case "Duration": vm.ColWidthDuration = width; break;
             case "AddedDate": vm.ColWidthAddedDate = width; break;
             case "CompletedDate": vm.ColWidthCompletedDate = width; break;
             case "Checksum": vm.ColWidthChecksum = width; break;
@@ -2918,6 +2921,7 @@ public partial class MainWindow : Window
         if (vm.ShowColSpeed) visibleCols.Add("Speed");
         if (vm.ShowColEta) visibleCols.Add("Eta");
         if (vm.ShowColStatus) visibleCols.Add("Status");
+        if (vm.ShowColDuration) visibleCols.Add("Duration");
         if (vm.ShowColAddedDate) visibleCols.Add("AddedDate");
         if (vm.ShowColCompletedDate) visibleCols.Add("CompletedDate");
         if (vm.ShowColChecksum) visibleCols.Add("Checksum");
@@ -2993,6 +2997,7 @@ public partial class MainWindow : Window
         if (vm.ShowColCompletedDate) return "CompletedDate";
         if (vm.ShowColAddedDate) return "AddedDate";
         if (vm.ShowColStatus) return "Status";
+        if (vm.ShowColDuration) return "Duration";
         if (vm.ShowColEta) return "Eta";
         if (vm.ShowColSpeed) return "Speed";
         if (vm.ShowColProgress) return "Progress";
@@ -3013,6 +3018,7 @@ public partial class MainWindow : Window
         "Speed" => 40.0,
         "Eta" => 36.0,
         "Status" => 40.0,
+        "Duration" => 40.0,
         "AddedDate" => 50.0,
         "CompletedDate" => 50.0,
         "Checksum" => 50.0,
@@ -3033,6 +3039,7 @@ public partial class MainWindow : Window
             "Speed" => vm.ColWidthSpeed,
             "Eta" => vm.ColWidthEta,
             "Status" => vm.ColWidthStatus,
+            "Duration" => vm.ColWidthDuration,
             "AddedDate" => vm.ColWidthAddedDate,
             "CompletedDate" => vm.ColWidthCompletedDate,
             "Checksum" => vm.ColWidthChecksum,
@@ -3051,6 +3058,7 @@ public partial class MainWindow : Window
         if (vm.ShowColSpeed) dict["Speed"] = vm.ColWidthSpeed;
         if (vm.ShowColEta) dict["Eta"] = vm.ColWidthEta;
         if (vm.ShowColStatus) dict["Status"] = vm.ColWidthStatus;
+        if (vm.ShowColDuration) dict["Duration"] = vm.ColWidthDuration;
         if (vm.ShowColAddedDate) dict["AddedDate"] = vm.ColWidthAddedDate;
         if (vm.ShowColCompletedDate) dict["CompletedDate"] = vm.ColWidthCompletedDate;
         if (vm.ShowColChecksum) dict["Checksum"] = vm.ColWidthChecksum;
@@ -3067,6 +3075,7 @@ public partial class MainWindow : Window
                (vm.ShowColSpeed ? vm.ColWidthSpeed : 0) +
                (vm.ShowColEta ? vm.ColWidthEta : 0) +
                (vm.ShowColStatus ? vm.ColWidthStatus : 0) +
+               (vm.ShowColDuration ? vm.ColWidthDuration : 0) +
                (vm.ShowColAddedDate ? vm.ColWidthAddedDate : 0) +
                (vm.ShowColCompletedDate ? vm.ColWidthCompletedDate : 0) +
                (vm.ShowColChecksum ? vm.ColWidthChecksum : 0) +
@@ -3087,6 +3096,7 @@ public partial class MainWindow : Window
             case "Speed": vm.ColWidthSpeed = MainViewModel.DefaultColWidthSpeed; break;
             case "Eta": vm.ColWidthEta = MainViewModel.DefaultColWidthEta; break;
             case "Status": vm.ColWidthStatus = MainViewModel.DefaultColWidthStatus; break;
+            case "Duration": vm.ColWidthDuration = MainViewModel.DefaultColWidthDuration; break;
             case "AddedDate": vm.ColWidthAddedDate = MainViewModel.DefaultColWidthAddedDate; break;
             case "CompletedDate": vm.ColWidthCompletedDate = MainViewModel.DefaultColWidthCompletedDate; break;
             case "Checksum": vm.ColWidthChecksum = MainViewModel.DefaultColWidthChecksum; break;
@@ -3300,6 +3310,7 @@ public partial class MainWindow : Window
             "Speed" => LocalizationService.Instance.Get("Col_Speed"),
             "Eta" => LocalizationService.Instance.Get("Col_Eta"),
             "Status" => LocalizationService.Instance.Get("Col_Status"),
+            "Duration" => LocalizationService.Instance.Get("Col_Duration"),
             "AddedDate" => LocalizationService.Instance.Get("Col_AddedDate"),
             "CompletedDate" => LocalizationService.Instance.Get("Col_CompletedDate"),
             "Checksum" => LocalizationService.Instance.Get("Col_Checksum"),
@@ -3480,6 +3491,7 @@ public partial class MainWindow : Window
             settings.ColWidthSpeed = ViewModel.ColWidthSpeed;
             settings.ColWidthEta = ViewModel.ColWidthEta;
             settings.ColWidthStatus = ViewModel.ColWidthStatus;
+            settings.ColWidthDuration = ViewModel.ColWidthDuration;
             settings.ColWidthAddedDate = ViewModel.ColWidthAddedDate;
             settings.ColWidthCompletedDate = ViewModel.ColWidthCompletedDate;
             settings.ColWidthChecksum = ViewModel.ColWidthChecksum;

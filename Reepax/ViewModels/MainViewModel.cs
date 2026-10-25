@@ -410,6 +410,12 @@ public partial class MainViewModel : ObservableObject
             _settingsService.SaveSettings();
         }
 
+        if (settings.ColWidthDuration <= 0)
+        {
+            settings.ColWidthDuration = DefaultColWidthDuration;
+            _settingsService.SaveSettings();
+        }
+
         ColWidthName = settings.ColWidthName;
         ColWidthHoster = settings.ColWidthHoster;
         ColWidthSavePath = settings.ColWidthSavePath;
@@ -418,6 +424,7 @@ public partial class MainViewModel : ObservableObject
         ColWidthSpeed = settings.ColWidthSpeed;
         ColWidthEta = settings.ColWidthEta;
         ColWidthStatus = settings.ColWidthStatus;
+        ColWidthDuration = settings.ColWidthDuration;
         ColWidthAddedDate = settings.ColWidthAddedDate;
         ColWidthCompletedDate = settings.ColWidthCompletedDate;
         ColWidthChecksum = settings.ColWidthChecksum;
@@ -431,6 +438,7 @@ public partial class MainViewModel : ObservableObject
         ShowColSpeed = settings.ShowColSpeed;
         ShowColEta = settings.ShowColEta;
         ShowColStatus = settings.ShowColStatus;
+        ShowColDuration = settings.ShowColDuration;
         ShowColAddedDate = settings.ShowColAddedDate;
         ShowColCompletedDate = settings.ShowColCompletedDate;
         ShowColChecksum = settings.ShowColChecksum;

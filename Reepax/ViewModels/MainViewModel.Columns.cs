@@ -24,6 +24,7 @@ public partial class MainViewModel
     public const double DefaultColWidthSpeed = 80;
     public const double DefaultColWidthEta = 65;
     public const double DefaultColWidthStatus = 170;
+    public const double DefaultColWidthDuration = 75;
     public const double DefaultColWidthAddedDate = 95;
     public const double DefaultColWidthCompletedDate = 95;
     public const double DefaultColWidthChecksum = 90;
@@ -76,6 +77,12 @@ public partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthStatus = DefaultColWidthStatus;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActualColWidthDuration))]
+    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
+    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
+    private double _colWidthDuration = DefaultColWidthDuration;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthAddedDate))]
@@ -154,6 +161,12 @@ public partial class MainViewModel
     private bool _showColStatus = true;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActualColWidthDuration))]
+    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
+    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
+    private bool _showColDuration = false;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthAddedDate))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
@@ -189,6 +202,7 @@ public partial class MainViewModel
     public double ActualColWidthSpeed => ShowColSpeed ? ColWidthSpeed : 0;
     public double ActualColWidthEta => ShowColEta ? ColWidthEta : 0;
     public double ActualColWidthStatus => ShowColStatus ? ColWidthStatus : 0;
+    public double ActualColWidthDuration => ShowColDuration ? ColWidthDuration : 0;
     public double ActualColWidthAddedDate => ShowColAddedDate ? ColWidthAddedDate : 0;
     public double ActualColWidthCompletedDate => ShowColCompletedDate ? ColWidthCompletedDate : 0;
     public double ActualColWidthChecksum => ShowColChecksum ? ColWidthChecksum : 0;
@@ -208,6 +222,7 @@ public partial class MainViewModel
         ActualColWidthSpeed +
         ActualColWidthEta +
         ActualColWidthStatus +
+        ActualColWidthDuration +
         ActualColWidthAddedDate +
         ActualColWidthCompletedDate +
         ActualColWidthChecksum +
@@ -232,6 +247,7 @@ public partial class MainViewModel
     public bool ShowDividerSpeed => ShowColSpeed;
     public bool ShowDividerEta => ShowColEta;
     public bool ShowDividerStatus => ShowColStatus;
+    public bool ShowDividerDuration => ShowColDuration;
     public bool ShowDividerAddedDate => ShowColAddedDate;
     public bool ShowDividerCompletedDate => ShowColCompletedDate;
     public bool ShowDividerChecksum => ShowColChecksum;
@@ -253,6 +269,7 @@ public partial class MainViewModel
     public System.Windows.GridLength GridColWidthSpeed => GetColumnGridLength(ShowColSpeed, ColWidthSpeed);
     public System.Windows.GridLength GridColWidthEta => GetColumnGridLength(ShowColEta, ColWidthEta);
     public System.Windows.GridLength GridColWidthStatus => GetColumnGridLength(ShowColStatus, ColWidthStatus);
+    public System.Windows.GridLength GridColWidthDuration => GetColumnGridLength(ShowColDuration, ColWidthDuration);
     public System.Windows.GridLength GridColWidthAddedDate => GetColumnGridLength(ShowColAddedDate, ColWidthAddedDate);
     public System.Windows.GridLength GridColWidthCompletedDate => GetColumnGridLength(ShowColCompletedDate, ColWidthCompletedDate);
     public System.Windows.GridLength GridColWidthChecksum => GetColumnGridLength(ShowColChecksum, ColWidthChecksum);
@@ -270,6 +287,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(ShowDividerSpeed));
         OnPropertyChanged(nameof(ShowDividerEta));
         OnPropertyChanged(nameof(ShowDividerStatus));
+        OnPropertyChanged(nameof(ShowDividerDuration));
         OnPropertyChanged(nameof(ShowDividerAddedDate));
         OnPropertyChanged(nameof(ShowDividerCompletedDate));
         OnPropertyChanged(nameof(ShowDividerChecksum));
@@ -283,6 +301,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(GridColWidthSpeed));
         OnPropertyChanged(nameof(GridColWidthEta));
         OnPropertyChanged(nameof(GridColWidthStatus));
+        OnPropertyChanged(nameof(GridColWidthDuration));
         OnPropertyChanged(nameof(GridColWidthAddedDate));
         OnPropertyChanged(nameof(GridColWidthCompletedDate));
         OnPropertyChanged(nameof(GridColWidthChecksum));
@@ -309,6 +328,7 @@ public partial class MainViewModel
     public int ColIndexSpeed => GetColumnIndex("Speed");
     public int ColIndexEta => GetColumnIndex("Eta");
     public int ColIndexStatus => GetColumnIndex("Status");
+    public int ColIndexDuration => GetColumnIndex("Duration");
     public int ColIndexAddedDate => GetColumnIndex("AddedDate");
     public int ColIndexCompletedDate => GetColumnIndex("CompletedDate");
     public int ColIndexChecksum => GetColumnIndex("Checksum");
@@ -339,6 +359,7 @@ public partial class MainViewModel
         "Speed" => ShowColSpeed,
         "Eta" => ShowColEta,
         "Status" => ShowColStatus,
+        "Duration" => ShowColDuration,
         "AddedDate" => ShowColAddedDate,
         "CompletedDate" => ShowColCompletedDate,
         "Checksum" => ShowColChecksum,
@@ -356,6 +377,7 @@ public partial class MainViewModel
         "Speed" => ColWidthSpeed,
         "Eta" => ColWidthEta,
         "Status" => ColWidthStatus,
+        "Duration" => ColWidthDuration,
         "AddedDate" => ColWidthAddedDate,
         "CompletedDate" => ColWidthCompletedDate,
         "Checksum" => ColWidthChecksum,
@@ -387,6 +409,7 @@ public partial class MainViewModel
     public System.Windows.GridLength GridColWidthSlot9 => GetSlotGridLength(9);
     public System.Windows.GridLength GridColWidthSlot10 => GetSlotGridLength(10);
     public System.Windows.GridLength GridColWidthSlot11 => GetSlotGridLength(11);
+    public System.Windows.GridLength GridColWidthSlot12 => GetSlotGridLength(12);
 
     public double ActualColWidthSlot0 => GetSlotActualWidth(0);
     public double ActualColWidthSlot1 => GetSlotActualWidth(1);
@@ -400,6 +423,7 @@ public partial class MainViewModel
     public double ActualColWidthSlot9 => GetSlotActualWidth(9);
     public double ActualColWidthSlot10 => GetSlotActualWidth(10);
     public double ActualColWidthSlot11 => GetSlotActualWidth(11);
+    public double ActualColWidthSlot12 => GetSlotActualWidth(12);
 
     public void MoveColumn(string column, int targetSlotIndex)
     {
@@ -462,6 +486,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(ColIndexSpeed));
         OnPropertyChanged(nameof(ColIndexEta));
         OnPropertyChanged(nameof(ColIndexStatus));
+        OnPropertyChanged(nameof(ColIndexDuration));
         OnPropertyChanged(nameof(ColIndexAddedDate));
         OnPropertyChanged(nameof(ColIndexCompletedDate));
         OnPropertyChanged(nameof(ColIndexChecksum));
@@ -484,6 +509,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(GridColWidthSlot9));
         OnPropertyChanged(nameof(GridColWidthSlot10));
         OnPropertyChanged(nameof(GridColWidthSlot11));
+        OnPropertyChanged(nameof(GridColWidthSlot12));
 
         OnPropertyChanged(nameof(ActualColWidthSlot0));
         OnPropertyChanged(nameof(ActualColWidthSlot1));
@@ -497,6 +523,7 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(ActualColWidthSlot9));
         OnPropertyChanged(nameof(ActualColWidthSlot10));
         OnPropertyChanged(nameof(ActualColWidthSlot11));
+        OnPropertyChanged(nameof(ActualColWidthSlot12));
 
         OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
         OnPropertyChanged(nameof(TotalContentMinWidth));
@@ -510,6 +537,7 @@ public partial class MainViewModel
     partial void OnShowColSpeedChanged(bool value) { _settingsService.Settings.ShowColSpeed = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColEtaChanged(bool value) { _settingsService.Settings.ShowColEta = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColStatusChanged(bool value) { _settingsService.Settings.ShowColStatus = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
+    partial void OnShowColDurationChanged(bool value) { _settingsService.Settings.ShowColDuration = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColAddedDateChanged(bool value) { _settingsService.Settings.ShowColAddedDate = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColCompletedDateChanged(bool value) { _settingsService.Settings.ShowColCompletedDate = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColChecksumChanged(bool value) { _settingsService.Settings.ShowColChecksum = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
@@ -531,6 +559,7 @@ public partial class MainViewModel
     partial void OnColWidthSpeedChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSpeed = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
     partial void OnColWidthEtaChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthEta = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
     partial void OnColWidthStatusChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthStatus = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
+    partial void OnColWidthDurationChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthDuration = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
     partial void OnColWidthAddedDateChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthAddedDate = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
     partial void OnColWidthCompletedDateChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthCompletedDate = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
     partial void OnColWidthChecksumChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthChecksum = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
@@ -554,6 +583,7 @@ public partial class MainViewModel
         "AddedDate" => true,     // 1st click: newer
         "CompletedDate" => true, // 1st click: newer
         "Status" => true,        // 1st click: active downloads first
+        "Duration" => true,      // 1st click: longest first
         "Actions" => true,       // 1st click: packages with most items first
         _ => false               // Name, Hoster, SavePath, Checksum, Eta: 1st click Ascending
     };
@@ -692,6 +722,10 @@ public partial class MainViewModel
                 ? list.OrderBy(p => GetStatusSortRank(p.Status)).ToList()
                 : list.OrderByDescending(p => GetStatusSortRank(p.Status)).ToList(),
 
+            "Duration" => asc
+                ? list.OrderBy(p => p.Duration).ToList()
+                : list.OrderByDescending(p => p.Duration).ToList(),
+
             "AddedDate" => asc
                 ? list.OrderBy(p => p.CreatedAt).ToList()
                 : list.OrderByDescending(p => p.CreatedAt).ToList(),
@@ -748,6 +782,10 @@ public partial class MainViewModel
             "Status" => asc
                 ? list.OrderBy(i => GetStatusSortRank(i.Status)).ToList()
                 : list.OrderByDescending(i => GetStatusSortRank(i.Status)).ToList(),
+
+            "Duration" => asc
+                ? list.OrderBy(i => i.Duration).ToList()
+                : list.OrderByDescending(i => i.Duration).ToList(),
 
             "AddedDate" => asc
                 ? list.OrderBy(i => i.CreatedAt).ToList()
@@ -809,6 +847,7 @@ public partial class MainViewModel
         if (ShowColSpeed) ColWidthSpeed = DefaultColWidthSpeed;
         if (ShowColEta) ColWidthEta = DefaultColWidthEta;
         if (ShowColStatus) ColWidthStatus = DefaultColWidthStatus;
+        if (ShowColDuration) ColWidthDuration = DefaultColWidthDuration;
         if (ShowColAddedDate) ColWidthAddedDate = DefaultColWidthAddedDate;
         if (ShowColCompletedDate) ColWidthCompletedDate = DefaultColWidthCompletedDate;
         if (ShowColChecksum) ColWidthChecksum = DefaultColWidthChecksum;
@@ -821,6 +860,7 @@ public partial class MainViewModel
         _settingsService.Settings.ColWidthSpeed = ColWidthSpeed;
         _settingsService.Settings.ColWidthEta = ColWidthEta;
         _settingsService.Settings.ColWidthStatus = ColWidthStatus;
+        _settingsService.Settings.ColWidthDuration = ColWidthDuration;
         _settingsService.Settings.ColWidthAddedDate = ColWidthAddedDate;
         _settingsService.Settings.ColWidthCompletedDate = ColWidthCompletedDate;
         _settingsService.Settings.ColWidthChecksum = ColWidthChecksum;
@@ -842,6 +882,7 @@ public partial class MainViewModel
         ColWidthSpeed = DefaultColWidthSpeed;
         ColWidthEta = DefaultColWidthEta;
         ColWidthStatus = DefaultColWidthStatus;
+        ColWidthDuration = DefaultColWidthDuration;
         ColWidthAddedDate = DefaultColWidthAddedDate;
         ColWidthCompletedDate = DefaultColWidthCompletedDate;
         ColWidthChecksum = DefaultColWidthChecksum;
@@ -855,6 +896,7 @@ public partial class MainViewModel
         ShowColSpeed = true;
         ShowColEta = true;
         ShowColStatus = true;
+        ShowColDuration = false;
         ShowColAddedDate = false;
         ShowColCompletedDate = false;
         ShowColChecksum = false;
@@ -872,6 +914,7 @@ public partial class MainViewModel
         s.ColWidthSpeed = ColWidthSpeed;
         s.ColWidthEta = ColWidthEta;
         s.ColWidthStatus = ColWidthStatus;
+        s.ColWidthDuration = ColWidthDuration;
         s.ColWidthAddedDate = ColWidthAddedDate;
         s.ColWidthCompletedDate = ColWidthCompletedDate;
         s.ColWidthChecksum = ColWidthChecksum;
@@ -885,6 +928,7 @@ public partial class MainViewModel
         s.ShowColSpeed = ShowColSpeed;
         s.ShowColEta = ShowColEta;
         s.ShowColStatus = ShowColStatus;
+        s.ShowColDuration = ShowColDuration;
         s.ShowColAddedDate = ShowColAddedDate;
         s.ShowColCompletedDate = ShowColCompletedDate;
         s.ShowColChecksum = ShowColChecksum;
@@ -909,6 +953,7 @@ public partial class MainViewModel
         ColWidthSpeed = DefaultColWidthSpeed;
         ColWidthEta = DefaultColWidthEta;
         ColWidthStatus = DefaultColWidthStatus;
+        ColWidthDuration = DefaultColWidthDuration;
         ColWidthAddedDate = DefaultColWidthAddedDate;
         ColWidthCompletedDate = DefaultColWidthCompletedDate;
         ColWidthChecksum = DefaultColWidthChecksum;
@@ -926,6 +971,7 @@ public partial class MainViewModel
         s.ColWidthSpeed = ColWidthSpeed;
         s.ColWidthEta = ColWidthEta;
         s.ColWidthStatus = ColWidthStatus;
+        s.ColWidthDuration = ColWidthDuration;
         s.ColWidthAddedDate = ColWidthAddedDate;
         s.ColWidthCompletedDate = ColWidthCompletedDate;
         s.ColWidthChecksum = ColWidthChecksum;

@@ -179,6 +179,7 @@ public class AppSettings
     public double ColWidthSpeed { get; set; } = 80;
     public double ColWidthEta { get; set; } = 65;
     public double ColWidthStatus { get; set; } = 170;
+    public double ColWidthDuration { get; set; } = 75;
     public double ColWidthAddedDate { get; set; } = 95;
     public double ColWidthCompletedDate { get; set; } = 95;
     public double ColWidthChecksum { get; set; } = 90;
@@ -196,6 +197,7 @@ public class AppSettings
     public bool ShowColSpeed { get; set; } = true;
     public bool ShowColEta { get; set; } = true;
     public bool ShowColStatus { get; set; } = true;
+    public bool ShowColDuration { get; set; } = false;
     public bool ShowColAddedDate { get; set; } = false;
     public bool ShowColCompletedDate { get; set; } = false;
     public bool ShowColChecksum { get; set; } = false;
@@ -212,6 +214,7 @@ public class AppSettings
         "Speed",
         "Eta",
         "Status",
+        "Duration",
         "AddedDate",
         "CompletedDate",
         "Checksum",

@@ -412,6 +412,7 @@ https://rapidgator.net/file/182937105
         Assert.True(vm.ShowColSpeed);
         Assert.True(vm.ShowColEta);
         Assert.True(vm.ShowColStatus);
+        Assert.False(vm.ShowColDuration);
         Assert.False(vm.ShowColAddedDate);
         Assert.False(vm.ShowColCompletedDate);
         Assert.False(vm.ShowColChecksum);

@@ -27,10 +27,10 @@ public class ColumnReorderingTests : System.IDisposable
     }
 
     [Fact]
-    public void DefaultColumnOrder_ContainsAllTwelveColumnsInStandardOrder()
+    public void DefaultColumnOrder_ContainsAllThirteenColumnsInStandardOrder()
     {
         var defaultOrder = AppSettings.DefaultColumnOrder;
-        Assert.Equal(12, defaultOrder.Length);
+        Assert.Equal(13, defaultOrder.Length);
         Assert.Equal("Name", defaultOrder[0]);
         Assert.Equal("Hoster", defaultOrder[1]);
         Assert.Equal("SavePath", defaultOrder[2]);
@@ -39,10 +39,11 @@ public class ColumnReorderingTests : System.IDisposable
         Assert.Equal("Speed", defaultOrder[5]);
         Assert.Equal("Eta", defaultOrder[6]);
         Assert.Equal("Status", defaultOrder[7]);
-        Assert.Equal("AddedDate", defaultOrder[8]);
-        Assert.Equal("CompletedDate", defaultOrder[9]);
-        Assert.Equal("Checksum", defaultOrder[10]);
-        Assert.Equal("Actions", defaultOrder[11]);
+        Assert.Equal("Duration", defaultOrder[8]);
+        Assert.Equal("AddedDate", defaultOrder[9]);
+        Assert.Equal("CompletedDate", defaultOrder[10]);
+        Assert.Equal("Checksum", defaultOrder[11]);
+        Assert.Equal("Actions", defaultOrder[12]);
     }
 
     [Fact]
@@ -61,12 +62,12 @@ public class ColumnReorderingTests : System.IDisposable
         var input = new List<string> { "Size", "size", "UNKNOWN_COL", "Progress" };
         var sanitized = AppSettings.SanitizeColumnOrder(input);
 
-        Assert.Equal(12, sanitized.Count);
+        Assert.Equal(13, sanitized.Count);
         Assert.Equal("Size", sanitized[0]);
         Assert.Equal("Progress", sanitized[1]);
-        // All other 10 standard columns appended in default relative order
+        // All other 11 standard columns appended in default relative order
         Assert.DoesNotContain("UNKNOWN_COL", sanitized);
-        Assert.Equal(12, sanitized.Distinct().Count());
+        Assert.Equal(13, sanitized.Distinct().Count());
     }
 
     [Fact]
@@ -86,7 +87,7 @@ public class ColumnReorderingTests : System.IDisposable
         vm.MoveColumn("Size", 5);
         Assert.Equal("Size", vm.ColumnOrder[5]);
         Assert.Equal(5, vm.ColIndexSize);
-        Assert.Equal(12, vm.ColumnOrder.Distinct().Count());
+        Assert.Equal(13, vm.ColumnOrder.Distinct().Count());
     }
 
     [Fact]
@@ -101,8 +102,8 @@ public class ColumnReorderingTests : System.IDisposable
 
         // Move "Name" beyond maximum index
         vm.MoveColumn("Name", 999);
-        Assert.Equal("Name", vm.ColumnOrder[11]);
-        Assert.Equal(11, vm.ColIndexName);
+        Assert.Equal("Name", vm.ColumnOrder[12]);
+        Assert.Equal(12, vm.ColIndexName);
     }
 
     [Fact]
@@ -120,7 +121,7 @@ public class ColumnReorderingTests : System.IDisposable
         int speedIndexBefore = vm.ColIndexSpeed;
         vm.MoveColumnBefore("Checksum", "Speed");
         Assert.Equal(vm.ColIndexSpeed - 1, vm.ColIndexChecksum);
-        Assert.Equal(12, vm.ColumnOrder.Distinct().Count());
+        Assert.Equal(13, vm.ColumnOrder.Distinct().Count());
     }
 
     [Fact]
@@ -131,9 +132,9 @@ public class ColumnReorderingTests : System.IDisposable
 
         // Move "Name" right after "Actions" (to the end)
         vm.MoveColumnAfter("Name", "Actions");
-        Assert.Equal(11, vm.ColIndexName);
-        Assert.Equal("Name", vm.ColumnOrder[11]);
-        Assert.Equal(12, vm.ColumnOrder.Distinct().Count());
+        Assert.Equal(12, vm.ColIndexName);
+        Assert.Equal("Name", vm.ColumnOrder[12]);
+        Assert.Equal(13, vm.ColumnOrder.Distinct().Count());
     }
 
     [Fact]
@@ -147,7 +148,7 @@ public class ColumnReorderingTests : System.IDisposable
         vm.ResetColumnWidths();
         Assert.Equal(AppSettings.DefaultColumnOrder, vm.ColumnOrder);
         Assert.Equal(0, vm.ColIndexName);
-        Assert.Equal(11, vm.ColIndexActions);
+        Assert.Equal(12, vm.ColIndexActions);
     }
 
     [Fact]
@@ -180,7 +181,7 @@ public class ColumnReorderingTests : System.IDisposable
         Assert.Equal("Actions", MainWindow.GetLastVisibleColumn(vm));
 
         // Move "Size" to the very end
-        vm.MoveColumn("Size", 11);
+        vm.MoveColumn("Size", 12);
         Assert.Equal("Size", MainWindow.GetLastVisibleColumn(vm));
 
         // When "Size" is hidden, last visible should be the one before it in ColumnOrder

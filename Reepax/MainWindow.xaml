@@ -287,6 +287,7 @@
                         <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot9, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot9, RelativeSource={RelativeSource AncestorType=Window}}" />
                         <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot10, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot10, RelativeSource={RelativeSource AncestorType=Window}}" />
                         <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot11, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot11, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot12, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot12, RelativeSource={RelativeSource AncestorType=Window}}" />
                         <ColumnDefinition Width="*" MinWidth="0" />
                     </Grid.ColumnDefinitions>
 
@@ -476,6 +477,14 @@
                             <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{Binding Status, Converter={StaticResource StatusBrushConverter}}" Margin="0,0,5,0" VerticalAlignment="Center" />
                             <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" FontSize="10" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                         </Grid>
+                    </Border>
+
+                    <!-- Duration -->
+                    <Border Grid.Column="{Binding DataContext.ColIndexDuration, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
+                            BorderThickness="{Binding DataContext.ShowDividerDuration, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="4,0"
+                            Visibility="{Binding DataContext.ShowColDuration, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
+                        <TextBlock Text="{Binding DurationFormatted}" 
+                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                     </Border>
 
                     <!-- 8: Added Date -->
@@ -763,6 +772,7 @@
                             <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot9, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot9, RelativeSource={RelativeSource AncestorType=Window}}" />
                             <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot10, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot10, RelativeSource={RelativeSource AncestorType=Window}}" />
                             <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot11, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot11, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            <ColumnDefinition Width="{Binding DataContext.GridColWidthSlot12, RelativeSource={RelativeSource AncestorType=Window}}" MinWidth="{Binding DataContext.ActualColWidthSlot12, RelativeSource={RelativeSource AncestorType=Window}}" />
                             <ColumnDefinition Width="*" MinWidth="0" />
                         </Grid.ColumnDefinitions>
 
@@ -1061,6 +1071,14 @@
                                 <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{Binding Status, Converter={StaticResource StatusBrushConverter}}" Margin="0,0,5,0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" FontSize="10" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </Grid>
+                        </Border>
+
+                        <!-- Duration -->
+                        <Border Grid.Column="{Binding DataContext.ColIndexDuration, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
+                                BorderThickness="{Binding DataContext.ShowDividerDuration, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="4,0"
+                                Visibility="{Binding DataContext.ShowColDuration, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
+                            <TextBlock Text="{Binding DurationFormatted}" 
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                         </Border>
 
                         <!-- 8: Added Date -->
@@ -1712,6 +1730,7 @@
                             <MenuItem Header="{loc:Loc Col_Speed}" IsCheckable="True" IsChecked="{Binding ShowColSpeed, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Eta}" IsCheckable="True" IsChecked="{Binding ShowColEta, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Status}" IsCheckable="True" IsChecked="{Binding ShowColStatus, Mode=TwoWay}" StaysOpenOnClick="True" />
+                            <MenuItem Header="{loc:Loc Col_Duration}" IsCheckable="True" IsChecked="{Binding ShowColDuration, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_AddedDate}" IsCheckable="True" IsChecked="{Binding ShowColAddedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_CompletedDate}" IsCheckable="True" IsChecked="{Binding ShowColCompletedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Checksum}" IsCheckable="True" IsChecked="{Binding ShowColChecksum, Mode=TwoWay}" StaysOpenOnClick="True" />
@@ -1770,6 +1789,7 @@
                                         <ColumnDefinition Width="{Binding GridColWidthSlot9}" MinWidth="{Binding ActualColWidthSlot9}" />
                                         <ColumnDefinition Width="{Binding GridColWidthSlot10}" MinWidth="{Binding ActualColWidthSlot10}" />
                                         <ColumnDefinition Width="{Binding GridColWidthSlot11}" MinWidth="{Binding ActualColWidthSlot11}" />
+                                        <ColumnDefinition Width="{Binding GridColWidthSlot12}" MinWidth="{Binding ActualColWidthSlot12}" />
                                         <ColumnDefinition Width="*" MinWidth="0" />
                                     </Grid.ColumnDefinitions>
 
@@ -1992,6 +2012,34 @@
                                         </StackPanel>
                                         <Border Tag="Status" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
                                                 Visibility="{Binding ShowDividerStatus, Converter={StaticResource BoolToVisConverter}}"
+                                                MouseLeftButtonDown="HeaderDivider_MouseLeftButtonDown" MouseMove="HeaderDivider_MouseMove" MouseLeftButtonUp="HeaderDivider_MouseLeftButtonUp" LostMouseCapture="HeaderDivider_LostMouseCapture">
+                                            <Rectangle Width="1" Fill="{DynamicResource BorderDarkBrush}" HorizontalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Header: Duration -->
+                                    <Grid Grid.Column="{Binding ColIndexDuration}" Tag="Duration" Background="Transparent" Cursor="Hand"
+                                          MouseLeftButtonDown="ColumnHeader_MouseLeftButtonDown" MouseMove="ColumnHeader_MouseMove" MouseLeftButtonUp="ColumnHeader_MouseLeftButtonUp" LostMouseCapture="ColumnHeader_LostMouseCapture"
+                                          Visibility="{Binding ShowColDuration, Converter={StaticResource BoolToVisConverter}}">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,4,4,4">
+                                            <TextBlock Text="{loc:Loc Col_Duration}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
+                                                <Path.Data>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Duration">
+                                                        <Binding Path="SortColumn" />
+                                                        <Binding Path="SortDirection" />
+                                                    </MultiBinding>
+                                                </Path.Data>
+                                                <Path.Visibility>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Duration">
+                                                        <Binding Path="SortColumn" />
+                                                        <Binding Path="SortDirection" />
+                                                    </MultiBinding>
+                                                </Path.Visibility>
+                                            </Path>
+                                        </StackPanel>
+                                        <Border Tag="Duration" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
+                                                Visibility="{Binding ShowDividerDuration, Converter={StaticResource BoolToVisConverter}}"
                                                 MouseLeftButtonDown="HeaderDivider_MouseLeftButtonDown" MouseMove="HeaderDivider_MouseMove" MouseLeftButtonUp="HeaderDivider_MouseLeftButtonUp" LostMouseCapture="HeaderDivider_LostMouseCapture">
                                             <Rectangle Width="1" Fill="{DynamicResource BorderDarkBrush}" HorizontalAlignment="Center" />
                                         </Border>

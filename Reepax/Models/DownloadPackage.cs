@@ -442,7 +442,13 @@ public partial class DownloadPackage : ObservableObject
                 return CompletedAt.Value - StartedAt.Value;
 
             var sumTicks = Items.ToArray().Sum(i => i.Duration.Ticks);
-            return sumTicks > 0 ? TimeSpan.FromTicks(sumTicks) : TimeSpan.Zero;
+            if (sumTicks > 0)
+                return TimeSpan.FromTicks(sumTicks);
+
+            if (Status == DownloadStatus.Downloading && StartedAt.HasValue && DateTime.Now >= StartedAt.Value)
+                return DateTime.Now - StartedAt.Value;
+
+            return TimeSpan.Zero;
         }
     }
 
@@ -808,6 +814,7 @@ public partial class DownloadPackage : ObservableObject
         SpeedBytesPerSecond = speed;
         OnPropertyChanged(nameof(PrimaryHosterName));
         OnPropertyChanged(nameof(RequiredDiskSpaceBytes));
+        OnPropertyChanged(nameof(Duration));
         OnPropertyChanged(nameof(DurationFormatted));
         OnPropertyChanged(nameof(AverageSpeedFormatted));
         OnPropertyChanged(nameof(UsedHosters));

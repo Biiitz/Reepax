@@ -151,6 +151,8 @@ public partial class DownloadItem : ObservableObject
                 return TimeSpan.FromMilliseconds(ElapsedDurationMs);
             if (CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
                 return CompletedAt.Value - StartedAt.Value;
+            if (Status == DownloadStatus.Downloading && StartedAt.HasValue && DateTime.Now >= StartedAt.Value)
+                return DateTime.Now - StartedAt.Value;
             return TimeSpan.Zero;
         }
     }
@@ -230,6 +232,8 @@ public partial class DownloadItem : ObservableObject
 
         OnPropertyChanged(nameof(AverageSpeedBytesPerSecond));
         OnPropertyChanged(nameof(AverageSpeedFormatted));
+        OnPropertyChanged(nameof(Duration));
+        OnPropertyChanged(nameof(DurationFormatted));
     }
 #pragma warning restore MVVMTK0034
 
