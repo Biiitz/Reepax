@@ -1216,6 +1216,97 @@ public class PersistenceTests
     }
 
 
+    [Fact]
+    public async Task Persistence_PackageOptionsChanged_TriggersRequestSaveAndPersists()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_OptionsTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testFile = Path.Combine(testDir, "downloads.json");
+
+        try
+        {
+            using var service = new DownloadPersistenceService(testFile);
+            var packages = new ObservableCollection<DownloadPackage>();
+            service.TrackPackages(packages);
+
+            var pkg = new DownloadPackage
+            {
+                Name = "Test_Package",
+                SaveDirectory = @"C:\Downloads\Test",
+                AutoExtractArchives = false,
+                LowResourceExtraction = false,
+                DeleteArchiveAfterExtraction = false,
+                MoveArchiveToRecycleBin = false,
+                ExtractionDirectory = null,
+                AutoResolveHostLinks = false,
+                AutoPar2Repair = true
+            };
+            packages.Add(pkg);
+
+            // Wait for initial debounce to settle
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test AutoExtractArchives change
+            pkg.AutoExtractArchives = true;
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test LowResourceExtraction change
+            pkg.LowResourceExtraction = true;
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test DeleteArchiveAfterExtraction change
+            pkg.DeleteArchiveAfterExtraction = true;
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test MoveArchiveToRecycleBin change
+            pkg.MoveArchiveToRecycleBin = true;
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test ExtractionDirectory change
+            pkg.ExtractionDirectory = @"C:\Extracted\Target";
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test AutoResolveHostLinks change
+            pkg.AutoResolveHostLinks = true;
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Test AutoPar2Repair change
+            pkg.AutoPar2Repair = false;
+            Assert.True(service.IsDirty);
+            await Task.Delay(550);
+            Assert.False(service.IsDirty);
+
+            // Verify loaded file has all updated options persisted
+            var reloaded = service.LoadDownloads();
+            Assert.Single(reloaded);
+            var loadedPkg = reloaded[0];
+            Assert.True(loadedPkg.AutoExtractArchives);
+            Assert.True(loadedPkg.LowResourceExtraction);
+            Assert.True(loadedPkg.DeleteArchiveAfterExtraction);
+            Assert.True(loadedPkg.MoveArchiveToRecycleBin);
+            Assert.Equal(@"C:\Extracted\Target", loadedPkg.ExtractionDirectory);
+            Assert.True(loadedPkg.AutoResolveHostLinks);
+            Assert.False(loadedPkg.AutoPar2Repair);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
     private class FlakyEnumerable<T> : IEnumerable<T>
     {
         private readonly List<T> _items;

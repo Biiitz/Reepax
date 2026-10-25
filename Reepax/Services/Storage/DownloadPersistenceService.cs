@@ -588,12 +588,24 @@ public class DownloadPersistenceService : IDisposable
 
     private void OnPackagePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Persist when user-configurable package metadata or extraction/post-processing options change
         if (e.PropertyName is nameof(DownloadPackage.IsEnabled) or 
             nameof(DownloadPackage.Name) or 
             nameof(DownloadPackage.SaveDirectory) or 
             nameof(DownloadPackage.IsExpanded) or
             nameof(DownloadPackage.Status) or
-            nameof(DownloadPackage.StatusMessage))
+            nameof(DownloadPackage.StatusMessage) or
+            nameof(DownloadPackage.AutoExtractArchives) or
+            nameof(DownloadPackage.LowResourceExtraction) or
+            nameof(DownloadPackage.DeleteArchiveAfterExtraction) or
+            nameof(DownloadPackage.MoveArchiveToRecycleBin) or
+            nameof(DownloadPackage.ExtractionDirectory) or
+            nameof(DownloadPackage.AutoResolveHostLinks) or
+            nameof(DownloadPackage.AutoPar2Repair) or
+            nameof(DownloadPackage.IsCustomName) or
+            nameof(DownloadPackage.PackageIconKey) or
+            nameof(DownloadPackage.IsExtracted) or
+            nameof(DownloadPackage.ParentPackageId))
         {
             RequestSave();
         }
