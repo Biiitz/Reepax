@@ -62,7 +62,7 @@ public class DownloadListScrollBarTests
         Assert.Equal(110, vm.ColWidthProgress);
         Assert.Equal(80, vm.ColWidthSpeed);
         Assert.Equal(65, vm.ColWidthEta);
-        Assert.Equal(95, vm.ColWidthStatus);
+        Assert.Equal(170, vm.ColWidthStatus);
         Assert.Equal(95, vm.ColWidthAddedDate);
         Assert.Equal(95, vm.ColWidthCompletedDate);
         Assert.Equal(90, vm.ColWidthChecksum);
@@ -76,13 +76,13 @@ public class DownloadListScrollBarTests
         Assert.Equal(110, vm.ActualColWidthProgress);
         Assert.Equal(80, vm.ActualColWidthSpeed);
         Assert.Equal(65, vm.ActualColWidthEta);
-        Assert.Equal(95, vm.ActualColWidthStatus);
+        Assert.Equal(170, vm.ActualColWidthStatus);
         Assert.Equal(95, vm.ActualColWidthAddedDate);
         Assert.Equal(95, vm.ActualColWidthCompletedDate);
         Assert.Equal(90, vm.ActualColWidthChecksum);
         Assert.Equal(95, vm.ActualColWidthActions);
 
-        // Sum of all 12 columns: 220 + 75 + 140 + 75 + 110 + 80 + 65 + 95 + 95 + 95 + 90 + 95 = 1235
+        // Sum of all 12 columns: 220 + 75 + 140 + 75 + 110 + 80 + 65 + 170 + 95 + 95 + 90 + 95 = 1310
         double totalActualWidth = vm.ActualColWidthName +
                                   vm.ActualColWidthHoster +
                                   vm.ActualColWidthSavePath +
@@ -96,7 +96,7 @@ public class DownloadListScrollBarTests
                                   vm.ActualColWidthChecksum +
                                   vm.ActualColWidthActions;
 
-        Assert.Equal(1235.0, totalActualWidth);
+        Assert.Equal(1310.0, totalActualWidth);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class DownloadListScrollBarTests
         Assert.Equal(0, vm.ActualColWidthCompletedDate);
         Assert.Equal(0, vm.ActualColWidthChecksum);
 
-        // Sum of default visible columns: 220 + 75 + 75 + 110 + 80 + 65 + 95 + 95 = 815
+        // Sum of default visible columns: 220 + 75 + 75 + 110 + 80 + 65 + 170 + 95 = 890
         double visibleSum = vm.ActualColWidthName +
                             vm.ActualColWidthHoster +
                             vm.ActualColWidthSavePath +
@@ -140,7 +140,7 @@ public class DownloadListScrollBarTests
                             vm.ActualColWidthChecksum +
                             vm.ActualColWidthActions;
 
-        Assert.Equal(815.0, visibleSum);
+        Assert.Equal(890.0, visibleSum);
     }
 
     [Fact]
@@ -435,8 +435,8 @@ public class DownloadListScrollBarTests
         var vm = new MainViewModel();
         vm.ResetColumnsCommand.Execute(null);
 
-        // Baseline: default visible columns sum to 815
-        Assert.Equal(815.0, vm.TotalVisibleColumnsWidth);
+        // Baseline: default visible columns sum to 890
+        Assert.Equal(890.0, vm.TotalVisibleColumnsWidth);
 
         var propertyChangedList = new System.Collections.Generic.List<string>();
         vm.PropertyChanged += (s, e) =>
@@ -448,21 +448,21 @@ public class DownloadListScrollBarTests
         propertyChangedList.Clear();
         vm.ShowColSavePath = true;
 
-        Assert.Equal(955.0, vm.TotalVisibleColumnsWidth);
+        Assert.Equal(1030.0, vm.TotalVisibleColumnsWidth);
         Assert.Contains(nameof(MainViewModel.TotalVisibleColumnsWidth), propertyChangedList);
 
         // Act: Hide ColName (220px)
         propertyChangedList.Clear();
         vm.ShowColName = false;
 
-        Assert.Equal(735.0, vm.TotalVisibleColumnsWidth);
+        Assert.Equal(810.0, vm.TotalVisibleColumnsWidth);
         Assert.Contains(nameof(MainViewModel.TotalVisibleColumnsWidth), propertyChangedList);
 
         // Act: Reset columns
         propertyChangedList.Clear();
         vm.ResetColumnsCommand.Execute(null);
 
-        Assert.Equal(815.0, vm.TotalVisibleColumnsWidth);
+        Assert.Equal(890.0, vm.TotalVisibleColumnsWidth);
         Assert.Contains(nameof(MainViewModel.TotalVisibleColumnsWidth), propertyChangedList);
     }
 
@@ -480,13 +480,13 @@ public class DownloadListScrollBarTests
 
         // Name column is visible with 220px default
         Assert.True(vm.ShowColName);
-        Assert.Equal(815.0, vm.TotalVisibleColumnsWidth);
+        Assert.Equal(890.0, vm.TotalVisibleColumnsWidth);
 
         // Resize Name from 220 to 320 (+100px)
         propertyChangedList.Clear();
         vm.ColWidthName = 320;
 
-        Assert.Equal(915.0, vm.TotalVisibleColumnsWidth);
+        Assert.Equal(990.0, vm.TotalVisibleColumnsWidth);
         Assert.Contains(nameof(MainViewModel.TotalVisibleColumnsWidth), propertyChangedList);
 
         // Resize hidden SavePath column - TotalVisibleColumnsWidth should remain unchanged (SavePath is hidden)
@@ -494,8 +494,8 @@ public class DownloadListScrollBarTests
         propertyChangedList.Clear();
         vm.ColWidthSavePath = 300;
 
-        // Since SavePath is hidden, its actual width is 0, so TotalVisibleColumnsWidth remains 915
-        Assert.Equal(915.0, vm.TotalVisibleColumnsWidth);
+        // Since SavePath is hidden, its actual width is 0, so TotalVisibleColumnsWidth remains 990
+        Assert.Equal(990.0, vm.TotalVisibleColumnsWidth);
     }
 
 
@@ -662,7 +662,7 @@ public class DownloadListScrollBarTests
         Assert.Equal(110, vm.ColWidthProgress);
         Assert.Equal(80, vm.ColWidthSpeed);
         Assert.Equal(65, vm.ColWidthEta);
-        Assert.Equal(95, vm.ColWidthStatus);
+        Assert.Equal(170, vm.ColWidthStatus);
         Assert.Equal(95, vm.ColWidthAddedDate);
         Assert.Equal(95, vm.ColWidthCompletedDate);
         Assert.Equal(90, vm.ColWidthChecksum);
@@ -865,7 +865,7 @@ public class DownloadListScrollBarTests
 
         // Reset Status
         MainWindow.ResetSingleColumnWidth(vm, "Status");
-        Assert.Equal(95, vm.ColWidthStatus);
+        Assert.Equal(170, vm.ColWidthStatus);
 
         // Reset AddedDate
         MainWindow.ResetSingleColumnWidth(vm, "AddedDate");
@@ -1275,6 +1275,45 @@ public class DownloadListScrollBarTests
             Assert.Equal(ScrollBarVisibility.Disabled, scv.HorizontalScrollBarVisibility);
             Assert.Equal(ScrollBarVisibility.Visible, scv.VerticalScrollBarVisibility);
         });
+    }
+
+    [Fact]
+    public void ResetColumns_CalledMultipleTimes_RestoresDefaultColumnOrder_AndFiresColumnLayoutChanged()
+    {
+        var vm = new MainViewModel();
+
+        // Mess up column order, widths, and visibility
+        vm.MoveColumn("Status", 0);
+        vm.MoveColumn("Actions", 1);
+        vm.ColWidthStatus = 300;
+        vm.ColWidthName = 450;
+        vm.ShowColSavePath = true;
+        vm.ShowColName = false;
+
+        Assert.NotEqual(AppSettings.DefaultColumnOrder, vm.ColumnOrder);
+        Assert.Equal(300, vm.ColWidthStatus);
+
+        int layoutChangedEvents = 0;
+        vm.ColumnLayoutChanged += (_, _) => layoutChangedEvents++;
+
+        // 1st reset: resets everything, fires ColumnLayoutChanged
+        vm.ResetColumnsCommand.Execute(null);
+
+        Assert.Equal(AppSettings.DefaultColumnOrder, vm.ColumnOrder);
+        Assert.Equal(MainViewModel.DefaultColWidthStatus, vm.ColWidthStatus);
+        Assert.Equal(170, vm.ColWidthStatus);
+        Assert.Equal(MainViewModel.DefaultColWidthName, vm.ColWidthName);
+        Assert.True(vm.ShowColName);
+        Assert.False(vm.ShowColSavePath);
+        Assert.True(layoutChangedEvents >= 1);
+
+        // 2nd reset (all visibilities are already default): MUST still fire ColumnLayoutChanged and preserve/ensure order
+        int countBeforeSecondReset = layoutChangedEvents;
+        vm.ResetColumnsCommand.Execute(null);
+
+        Assert.True(layoutChangedEvents > countBeforeSecondReset, "ColumnLayoutChanged must fire on multiple ResetColumns calls");
+        Assert.Equal(AppSettings.DefaultColumnOrder, vm.ColumnOrder);
+        Assert.Equal(170, vm.ColWidthStatus);
     }
 
     #endregion

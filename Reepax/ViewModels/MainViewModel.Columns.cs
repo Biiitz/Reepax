@@ -16,77 +16,90 @@ public partial class MainViewModel
     // TreeListView Column Widths
     // =========================================================================
 
+    public const double DefaultColWidthName = 220;
+    public const double DefaultColWidthHoster = 75;
+    public const double DefaultColWidthSavePath = 140;
+    public const double DefaultColWidthSize = 75;
+    public const double DefaultColWidthProgress = 110;
+    public const double DefaultColWidthSpeed = 80;
+    public const double DefaultColWidthEta = 65;
+    public const double DefaultColWidthStatus = 170;
+    public const double DefaultColWidthAddedDate = 95;
+    public const double DefaultColWidthCompletedDate = 95;
+    public const double DefaultColWidthChecksum = 90;
+    public const double DefaultColWidthActions = 95;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthName))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthName = 220;
+    private double _colWidthName = DefaultColWidthName;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthHoster))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthHoster = 75;
+    private double _colWidthHoster = DefaultColWidthHoster;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthSavePath))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthSavePath = 140;
+    private double _colWidthSavePath = DefaultColWidthSavePath;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthSize))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthSize = 75;
+    private double _colWidthSize = DefaultColWidthSize;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthProgress))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthProgress = 110;
+    private double _colWidthProgress = DefaultColWidthProgress;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthSpeed))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthSpeed = 80;
+    private double _colWidthSpeed = DefaultColWidthSpeed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthEta))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthEta = 65;
+    private double _colWidthEta = DefaultColWidthEta;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthStatus))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthStatus = 95;
+    private double _colWidthStatus = DefaultColWidthStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthAddedDate))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthAddedDate = 95;
+    private double _colWidthAddedDate = DefaultColWidthAddedDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthCompletedDate))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthCompletedDate = 95;
+    private double _colWidthCompletedDate = DefaultColWidthCompletedDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthChecksum))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthChecksum = 90;
+    private double _colWidthChecksum = DefaultColWidthChecksum;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthActions))]
     [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private double _colWidthActions = 95;
+    private double _colWidthActions = DefaultColWidthActions;
 
     // =========================================================================
     // TreeListView Column Visibility
@@ -789,17 +802,17 @@ public partial class MainViewModel
     [RelayCommand]
     public void AutoFitColumns()
     {
-        if (ShowColHoster) ColWidthHoster = 75;
-        if (ShowColSavePath) ColWidthSavePath = 140;
-        if (ShowColSize) ColWidthSize = 75;
-        if (ShowColProgress) ColWidthProgress = 110;
-        if (ShowColSpeed) ColWidthSpeed = 80;
-        if (ShowColEta) ColWidthEta = 65;
-        if (ShowColStatus) ColWidthStatus = 95;
-        if (ShowColAddedDate) ColWidthAddedDate = 95;
-        if (ShowColCompletedDate) ColWidthCompletedDate = 95;
-        if (ShowColChecksum) ColWidthChecksum = 90;
-        if (ShowColActions) ColWidthActions = 95;
+        if (ShowColHoster) ColWidthHoster = DefaultColWidthHoster;
+        if (ShowColSavePath) ColWidthSavePath = DefaultColWidthSavePath;
+        if (ShowColSize) ColWidthSize = DefaultColWidthSize;
+        if (ShowColProgress) ColWidthProgress = DefaultColWidthProgress;
+        if (ShowColSpeed) ColWidthSpeed = DefaultColWidthSpeed;
+        if (ShowColEta) ColWidthEta = DefaultColWidthEta;
+        if (ShowColStatus) ColWidthStatus = DefaultColWidthStatus;
+        if (ShowColAddedDate) ColWidthAddedDate = DefaultColWidthAddedDate;
+        if (ShowColCompletedDate) ColWidthCompletedDate = DefaultColWidthCompletedDate;
+        if (ShowColChecksum) ColWidthChecksum = DefaultColWidthChecksum;
+        if (ShowColActions) ColWidthActions = DefaultColWidthActions;
 
         _settingsService.Settings.ColWidthHoster = ColWidthHoster;
         _settingsService.Settings.ColWidthSavePath = ColWidthSavePath;
@@ -814,23 +827,25 @@ public partial class MainViewModel
         _settingsService.Settings.ColWidthActions = ColWidthActions;
         _settingsService.SaveSettings();
         NotifyDividerChanges();
+        NotifySlotWidthChanges();
+        ColumnLayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
     public void ResetColumns()
     {
-        ColWidthName = 220;
-        ColWidthHoster = 75;
-        ColWidthSavePath = 140;
-        ColWidthSize = 75;
-        ColWidthProgress = 110;
-        ColWidthSpeed = 80;
-        ColWidthEta = 65;
-        ColWidthStatus = 95;
-        ColWidthAddedDate = 95;
-        ColWidthCompletedDate = 95;
-        ColWidthChecksum = 90;
-        ColWidthActions = 95;
+        ColWidthName = DefaultColWidthName;
+        ColWidthHoster = DefaultColWidthHoster;
+        ColWidthSavePath = DefaultColWidthSavePath;
+        ColWidthSize = DefaultColWidthSize;
+        ColWidthProgress = DefaultColWidthProgress;
+        ColWidthSpeed = DefaultColWidthSpeed;
+        ColWidthEta = DefaultColWidthEta;
+        ColWidthStatus = DefaultColWidthStatus;
+        ColWidthAddedDate = DefaultColWidthAddedDate;
+        ColWidthCompletedDate = DefaultColWidthCompletedDate;
+        ColWidthChecksum = DefaultColWidthChecksum;
+        ColWidthActions = DefaultColWidthActions;
 
         ShowColName = true;
         ShowColHoster = true;
@@ -845,7 +860,10 @@ public partial class MainViewModel
         ShowColChecksum = false;
         ShowColActions = true;
 
+        ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
+
         var s = _settingsService.Settings;
+        s.ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
         s.ColWidthName = ColWidthName;
         s.ColWidthHoster = ColWidthHoster;
         s.ColWidthSavePath = ColWidthSavePath;
@@ -873,25 +891,28 @@ public partial class MainViewModel
         s.ShowColActions = ShowColActions;
 
         NotifyDividerChanges();
+        NotifyColumnOrderChanges();
         ClearColumnSort();
         _settingsService.SaveSettings();
+        StatusSummary = Loc.Get("Status_ColumnWidthsReset");
+        ColumnLayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
     public void ResetColumnWidths()
     {
-        ColWidthName = 220;
-        ColWidthHoster = 75;
-        ColWidthSavePath = 140;
-        ColWidthSize = 75;
-        ColWidthProgress = 110;
-        ColWidthSpeed = 80;
-        ColWidthEta = 65;
-        ColWidthStatus = 95;
-        ColWidthAddedDate = 95;
-        ColWidthCompletedDate = 95;
-        ColWidthChecksum = 90;
-        ColWidthActions = 95;
+        ColWidthName = DefaultColWidthName;
+        ColWidthHoster = DefaultColWidthHoster;
+        ColWidthSavePath = DefaultColWidthSavePath;
+        ColWidthSize = DefaultColWidthSize;
+        ColWidthProgress = DefaultColWidthProgress;
+        ColWidthSpeed = DefaultColWidthSpeed;
+        ColWidthEta = DefaultColWidthEta;
+        ColWidthStatus = DefaultColWidthStatus;
+        ColWidthAddedDate = DefaultColWidthAddedDate;
+        ColWidthCompletedDate = DefaultColWidthCompletedDate;
+        ColWidthChecksum = DefaultColWidthChecksum;
+        ColWidthActions = DefaultColWidthActions;
 
         ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
 
@@ -913,5 +934,6 @@ public partial class MainViewModel
         StatusSummary = Loc.Get("Status_ColumnWidthsReset");
         NotifyDividerChanges();
         NotifyColumnOrderChanges();
+        ColumnLayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 }

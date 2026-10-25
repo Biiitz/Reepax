@@ -208,10 +208,19 @@ public partial class MainWindow : Window
 
         ViewModel.ColumnLayoutChanged += (_, _) =>
         {
-            Dispatcher.InvokeAsync(() =>
+            if (Dispatcher.CheckAccess())
             {
                 AutoFitNameColumn();
-            });
+                HeaderColumnsGrid?.UpdateLayout();
+            }
+            else
+            {
+                Dispatcher.InvokeAsync(() =>
+                {
+                    AutoFitNameColumn();
+                    HeaderColumnsGrid?.UpdateLayout();
+                });
+            }
         };
 
         ViewModel.RequestShowAddLinksDialog += (_, _) => ShowAddLinksDialog();
@@ -3070,18 +3079,18 @@ public partial class MainWindow : Window
 
         switch (col)
         {
-            case "Name": vm.ColWidthName = 220; break;
-            case "Hoster": vm.ColWidthHoster = 75; break;
-            case "SavePath": vm.ColWidthSavePath = 140; break;
-            case "Size": vm.ColWidthSize = 75; break;
-            case "Progress": vm.ColWidthProgress = 110; break;
-            case "Speed": vm.ColWidthSpeed = 80; break;
-            case "Eta": vm.ColWidthEta = 65; break;
-            case "Status": vm.ColWidthStatus = 95; break;
-            case "AddedDate": vm.ColWidthAddedDate = 95; break;
-            case "CompletedDate": vm.ColWidthCompletedDate = 95; break;
-            case "Checksum": vm.ColWidthChecksum = 90; break;
-            case "Actions": vm.ColWidthActions = 95; break;
+            case "Name": vm.ColWidthName = MainViewModel.DefaultColWidthName; break;
+            case "Hoster": vm.ColWidthHoster = MainViewModel.DefaultColWidthHoster; break;
+            case "SavePath": vm.ColWidthSavePath = MainViewModel.DefaultColWidthSavePath; break;
+            case "Size": vm.ColWidthSize = MainViewModel.DefaultColWidthSize; break;
+            case "Progress": vm.ColWidthProgress = MainViewModel.DefaultColWidthProgress; break;
+            case "Speed": vm.ColWidthSpeed = MainViewModel.DefaultColWidthSpeed; break;
+            case "Eta": vm.ColWidthEta = MainViewModel.DefaultColWidthEta; break;
+            case "Status": vm.ColWidthStatus = MainViewModel.DefaultColWidthStatus; break;
+            case "AddedDate": vm.ColWidthAddedDate = MainViewModel.DefaultColWidthAddedDate; break;
+            case "CompletedDate": vm.ColWidthCompletedDate = MainViewModel.DefaultColWidthCompletedDate; break;
+            case "Checksum": vm.ColWidthChecksum = MainViewModel.DefaultColWidthChecksum; break;
+            case "Actions": vm.ColWidthActions = MainViewModel.DefaultColWidthActions; break;
         }
     }
 

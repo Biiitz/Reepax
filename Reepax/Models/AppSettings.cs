@@ -178,7 +178,7 @@ public class AppSettings
     public double ColWidthProgress { get; set; } = 110;
     public double ColWidthSpeed { get; set; } = 80;
     public double ColWidthEta { get; set; } = 65;
-    public double ColWidthStatus { get; set; } = 95;
+    public double ColWidthStatus { get; set; } = 170;
     public double ColWidthAddedDate { get; set; } = 95;
     public double ColWidthCompletedDate { get; set; } = 95;
     public double ColWidthChecksum { get; set; } = 90;

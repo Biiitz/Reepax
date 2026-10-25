@@ -388,18 +388,25 @@ public partial class MainViewModel : ObservableObject
         // Migrate/sanitize old legacy bloated defaults (from earlier versions) so all columns fit cleanly without overflow
         if (settings.ColWidthSavePath >= 160 && (settings.ColWidthChecksum >= 100 || settings.ColWidthActions >= 110))
         {
-            settings.ColWidthName = 220;
-            settings.ColWidthHoster = 75;
-            settings.ColWidthSavePath = 140;
-            settings.ColWidthSize = 75;
-            settings.ColWidthProgress = 110;
-            settings.ColWidthSpeed = 80;
-            settings.ColWidthEta = 65;
-            settings.ColWidthStatus = 95;
-            settings.ColWidthAddedDate = 95;
-            settings.ColWidthCompletedDate = 95;
-            settings.ColWidthChecksum = 90;
-            settings.ColWidthActions = 95;
+            settings.ColWidthName = DefaultColWidthName;
+            settings.ColWidthHoster = DefaultColWidthHoster;
+            settings.ColWidthSavePath = DefaultColWidthSavePath;
+            settings.ColWidthSize = DefaultColWidthSize;
+            settings.ColWidthProgress = DefaultColWidthProgress;
+            settings.ColWidthSpeed = DefaultColWidthSpeed;
+            settings.ColWidthEta = DefaultColWidthEta;
+            settings.ColWidthStatus = DefaultColWidthStatus;
+            settings.ColWidthAddedDate = DefaultColWidthAddedDate;
+            settings.ColWidthCompletedDate = DefaultColWidthCompletedDate;
+            settings.ColWidthChecksum = DefaultColWidthChecksum;
+            settings.ColWidthActions = DefaultColWidthActions;
+            _settingsService.SaveSettings();
+        }
+
+        // Migrate status column width if it is at the old narrow default of 95 or uninitialized
+        if (settings.ColWidthStatus <= 0 || Math.Abs(settings.ColWidthStatus - 95.0) < 0.01)
+        {
+            settings.ColWidthStatus = DefaultColWidthStatus;
             _settingsService.SaveSettings();
         }
 
