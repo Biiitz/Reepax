@@ -1307,6 +1307,110 @@ public class PersistenceTests
         }
     }
 
+    [Fact]
+    public void LoadDownloads_CompletedItemWithOrphanedPartAndSegmentsFile_DoesNotOverwriteDownloadedBytes()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_OrphanTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testDownloads = Path.Combine(testDir, "downloads.json");
+        var completedFilePath = Path.Combine(testDir, "video.mp4");
+        var partFilePath = completedFilePath + ".part";
+        var segmentsFilePath = completedFilePath + ".part.segments";
+
+        try
+        {
+            // Simulate orphaned .part file (e.g. 500 bytes preallocated)
+            File.WriteAllBytes(partFilePath, new byte[500]);
+
+            // Simulate orphaned .part.segments file (showing 250 bytes done)
+            var segmentsJson = "{\"TotalBytes\":1000,\"Segments\":[{\"Start\":0,\"End\":999,\"Done\":250}]}";
+            File.WriteAllText(segmentsFilePath, segmentsJson);
+
+            // Create service and save a completed download item (1000/1000 bytes completed)
+            var service = new DownloadPersistenceService(testDownloads);
+            var pkg = new DownloadPackage
+            {
+                Name = "Completed_Package",
+                SaveDirectory = testDir,
+                Status = DownloadStatus.Completed
+            };
+            var completedItem = new DownloadItem
+            {
+                FileName = "video.mp4",
+                SaveFilePath = completedFilePath,
+                TotalBytes = 1000,
+                DownloadedBytes = 1000,
+                Status = DownloadStatus.Completed
+            };
+            pkg.Items.Add(completedItem);
+            service.SaveDownloads(new[] { pkg }, sync: true);
+
+            // Act: Reload downloads from disk
+            var loadedPackages = service.LoadDownloads();
+
+            // Assert: Completed item must retain its 1000 downloaded bytes and NOT be overwritten by the 250 bytes from .part.segments
+            Assert.Single(loadedPackages);
+            var loadedItem = loadedPackages[0].Items[0];
+            Assert.Equal(DownloadStatus.Completed, loadedItem.Status);
+            Assert.Equal(1000, loadedItem.TotalBytes);
+            Assert.Equal(1000, loadedItem.DownloadedBytes);
+            Assert.Equal(100.0, loadedItem.ProgressPercentage);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void LoadDownloads_PausedItemWithPartAndSegmentsFile_RestoresSegmentedDownloadedBytes()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PausedSegTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+        var testDownloads = Path.Combine(testDir, "downloads.json");
+        var pausedFilePath = Path.Combine(testDir, "data.bin");
+        var partFilePath = pausedFilePath + ".part";
+        var segmentsFilePath = pausedFilePath + ".part.segments";
+
+        try
+        {
+            File.WriteAllBytes(partFilePath, new byte[1000]);
+            var segmentsJson = "{\"TotalBytes\":1000,\"Segments\":[{\"Start\":0,\"End\":999,\"Done\":350}]}";
+            File.WriteAllText(segmentsFilePath, segmentsJson);
+
+            var service = new DownloadPersistenceService(testDownloads);
+            var pkg = new DownloadPackage
+            {
+                Name = "Paused_Package",
+                SaveDirectory = testDir,
+                Status = DownloadStatus.Paused
+            };
+            var pausedItem = new DownloadItem
+            {
+                FileName = "data.bin",
+                SaveFilePath = pausedFilePath,
+                TotalBytes = 1000,
+                DownloadedBytes = 100,
+                Status = DownloadStatus.Paused
+            };
+            pkg.Items.Add(pausedItem);
+            service.SaveDownloads(new[] { pkg }, sync: true);
+
+            // Act: Reload downloads from disk
+            var loadedPackages = service.LoadDownloads();
+
+            // Assert: Paused item should restore actual downloaded bytes (350) from the segments sidecar
+            Assert.Single(loadedPackages);
+            var loadedItem = loadedPackages[0].Items[0];
+            Assert.Equal(DownloadStatus.Paused, loadedItem.Status);
+            Assert.Equal(350, loadedItem.DownloadedBytes);
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
     private class FlakyEnumerable<T> : IEnumerable<T>
     {
         private readonly List<T> _items;

@@ -1814,7 +1814,8 @@ public class DownloadPersistenceService : IDisposable
                             CalculatedChecksum = itemDto.CalculatedChecksum
                         };
 
-                        if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+                        // Do not inspect orphaned .part or .part.segments files for already completed downloads
+                        if (itemDto.Status != DownloadStatus.Completed && !string.IsNullOrWhiteSpace(item.SaveFilePath))
                         {
                             var partFile = item.SaveFilePath + ".part";
                             if (File.Exists(partFile))
@@ -1846,6 +1847,10 @@ public class DownloadPersistenceService : IDisposable
                             item.Status = DownloadStatus.Completed;
                             item.StatusMessage = Loc.Get("Status_Completed");
                             item.ProgressPercentage = 100.0;
+                            if (item.TotalBytes > 0 && item.DownloadedBytes < item.TotalBytes)
+                            {
+                                item.DownloadedBytes = item.TotalBytes;
+                            }
                         }
                         else
                         {
