@@ -35,6 +35,12 @@ public class QueueManager
     /// <summary>Prevents stacked cooldown resumptions of the queue.</summary>
     private bool _continuationScheduled;
 
+    /// <summary>Guards against concurrent execution of ProcessQueue passes (0 = idle, 1 = processing).</summary>
+    private int _isProcessingQueue;
+
+    /// <summary>Tracks whether another queue pass was requested while processing was already underway (0 = none, 1 = requested).</summary>
+    private int _reprocessRequested;
+
     private int _maxConcurrentDownloads = 2;
     public int MaxConcurrentDownloads
     {
@@ -349,21 +355,73 @@ public class QueueManager
             }
         }
 
-        // 1. Ensure active downloads do not exceed limit (e.g. after reducing the limit)
-        EnforceMaxConcurrentDownloads();
+        // Signal that a queue processing pass is required
+        Interlocked.Exchange(ref _reprocessRequested, 1);
 
-        // 2. Scenario A: start waiting direct downloads
-        StartWaitingDirectDownloads();
+        // If another thread is currently processing the queue, it will observe _reprocessRequested == 1
+        // and run another iteration. Non-blocking reentry prevents deadlocks with the UI thread.
+        if (Interlocked.CompareExchange(ref _isProcessingQueue, 1, 0) != 0)
+        {
+            return;
+        }
 
-        // 3. Scenario B + C: browser windows (FastHost -> hidden/auto-resolving,
-        //    other hosters -> visible with captcha)
-        AssignBrowserWindows();
+        bool lockReleased = false;
+        try
+        {
+            while (true)
+            {
+                // Reset request flag prior to executing the pass. Any concurrent event during the pass will set it to 1.
+                Interlocked.Exchange(ref _reprocessRequested, 0);
 
-        // 4. Check for completed packages that have pending auto-extractions
-        CheckPendingExtractions();
+                // 1. Ensure active downloads do not exceed limit (e.g. after reducing the limit)
+                EnforceMaxConcurrentDownloads();
 
-        // 5. Update power management keep-awake state
-        UpdatePowerState();
+                // 2. Scenario A: start waiting direct downloads
+                StartWaitingDirectDownloads();
+
+                // 3. Scenario B + C: browser windows (FastHost -> hidden/auto-resolving,
+                //    other hosters -> visible with captcha)
+                AssignBrowserWindows();
+
+                // 4. Check for completed packages that have pending auto-extractions
+                CheckPendingExtractions();
+
+                // 5. Update power management keep-awake state
+                UpdatePowerState();
+
+                lock (_lock)
+                {
+                    if (!IsRunning)
+                    {
+                        break;
+                    }
+                }
+
+                // Check if another request arrived while this pass was executing
+                if (Volatile.Read(ref _reprocessRequested) == 0)
+                {
+                    lockReleased = true;
+                    Interlocked.Exchange(ref _isProcessingQueue, 0);
+
+                    // Recheck whether another request arrived just before or during releasing
+                    if (Volatile.Read(ref _reprocessRequested) != 0 &&
+                        Interlocked.CompareExchange(ref _isProcessingQueue, 1, 0) == 0)
+                    {
+                        lockReleased = false;
+                        continue;
+                    }
+
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            if (!lockReleased)
+            {
+                Interlocked.Exchange(ref _isProcessingQueue, 0);
+            }
+        }
     }
 
     /// <summary>

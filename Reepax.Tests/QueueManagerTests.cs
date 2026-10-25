@@ -20,36 +20,63 @@ public class QueueManagerTests
     /// </summary>
     private sealed class FakeBrowserWindowHost : IBrowserWindowHost
     {
+        private readonly object _sync = new();
         private int _nextWindowId;
 
         public Dictionary<int, DownloadItem> Windows { get; } = new();
         public Dictionary<int, bool> WindowHidden { get; } = new();
-        public int ActiveWindowCount => Windows.Count;
-        public int TotalWindowsOpened { get; private set; }
+        public int ActiveWindowCount
+        {
+            get { lock (_sync) return Windows.Count; }
+        }
+        public int TotalWindowsOpened
+        {
+            get { lock (_sync) return _totalWindowsOpened; }
+        }
+        private int _totalWindowsOpened;
         public event Action? WindowCapacityChanged;
+        public int ArtificialDelayMs { get; set; }
 
         public bool TryOpenWindow(DownloadItem item, bool hidden, out int windowId)
         {
-            TotalWindowsOpened++;
-            windowId = ++_nextWindowId;
-            Windows[windowId] = item;
-            WindowHidden[windowId] = hidden;
-            return true;
+            if (ArtificialDelayMs > 0)
+            {
+                Thread.Sleep(ArtificialDelayMs);
+            }
+            lock (_sync)
+            {
+                _totalWindowsOpened++;
+                windowId = ++_nextWindowId;
+                Windows[windowId] = item;
+                WindowHidden[windowId] = hidden;
+                return true;
+            }
         }
 
         public void CloseWindow(int windowId)
         {
-            if (Windows.Remove(windowId))
+            bool removed = false;
+            lock (_sync)
             {
-                WindowHidden.Remove(windowId);
+                if (Windows.Remove(windowId))
+                {
+                    WindowHidden.Remove(windowId);
+                    removed = true;
+                }
+            }
+            if (removed)
+            {
                 WindowCapacityChanged?.Invoke();
             }
         }
 
         public void CloseAllWindows()
         {
-            Windows.Clear();
-            WindowHidden.Clear();
+            lock (_sync)
+            {
+                Windows.Clear();
+                WindowHidden.Clear();
+            }
         }
     }
 
@@ -1060,5 +1087,44 @@ public class QueueManagerTests
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
-}
+    [Fact]
+    public void ProcessQueue_ConcurrentInvocations_DoNotOpenDuplicateBrowserWindows()
+    {
+        // Arrange
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 3 };
+        var host = new FakeBrowserWindowHost { ArtificialDelayMs = 5 };
+        queueManager.BrowserHost = host;
+        queueManager.ActiveDownloadsCountOverride = () => 0;
 
+        var packages = CreatePackages(
+            "https://rapidgator.net/file/1/Movie.part01.rar",
+            "https://rapidgator.net/file/2/Movie.part02.rar",
+            "https://rapidgator.net/file/3/Movie.part03.rar",
+            "https://rapidgator.net/file/4/Movie.part04.rar",
+            "https://rapidgator.net/file/5/Movie.part05.rar");
+        queueManager.Packages.Clear();
+        foreach (var p in packages)
+        {
+            queueManager.Packages.Add(p);
+        }
+
+        // Act: Start queue and fire multiple concurrent ProcessQueue calls
+        queueManager.StartQueue();
+        Parallel.For(0, 20, _ =>
+        {
+            queueManager.ProcessQueue();
+        });
+
+        // Assert: Exactly 3 windows opened, exactly 3 distinct items
+        Assert.Equal(3, host.ActiveWindowCount);
+        Assert.Equal(3, host.TotalWindowsOpened);
+
+        List<DownloadItem> assignedItems;
+        lock (host)
+        {
+            assignedItems = host.Windows.Values.ToList();
+        }
+        Assert.Equal(3, assignedItems.Count);
+        Assert.Equal(3, assignedItems.Distinct().Count());
+    }
+}
