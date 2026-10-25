@@ -880,7 +880,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- Nach Abschluss aller Downloads (Post-Download Action) - direkt unter Sprache -->
+                    <!-- Post-Download Action (after all downloads complete) - directly below language -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -954,7 +954,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- In Infobereich minimieren beim Schließen -->
+                    <!-- Minimize to notification area on close -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -975,7 +975,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- Benachrichtigungen aktivieren -->
+                    <!-- Enable notifications -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -996,7 +996,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- ==================== 1. ABSCHLUSS-SOUND ==================== -->
+                    <!-- ==================== 1. COMPLETION SOUND ==================== -->
                     <StackPanel Margin="0,0,0,8">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -1867,7 +1867,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- 1. Automatisches Entpacken (Standard) -->
+                    <!-- 1. Automatic extraction (Default) -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1888,7 +1888,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- 2. PC-schonender Entpackungsmodus (Standard) -->
+                    <!-- 2. Low-impact extraction mode (Default) -->
                     <Grid Margin="0,0,0,8"
                           Opacity="{Binding AutoExtractArchives, Converter={StaticResource BoolToOpacityConverter}}"
                           IsEnabled="{Binding AutoExtractArchives}">
@@ -1916,7 +1916,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,16,0,16" />
 
-                    <!-- 3. Archive nach dem Entpacken löschen (Standard) -->
+                    <!-- 3. Delete archives after extraction (Default) -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -1937,7 +1937,7 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,16,0,16" />
 
-                    <!-- 4. In den Papierkorb verschieben (Standard) -->
+                    <!-- 4. Move to Recycle Bin (Default) -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

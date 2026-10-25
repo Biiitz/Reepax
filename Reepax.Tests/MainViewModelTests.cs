@@ -298,6 +298,7 @@ https://rapidgator.net/file/182937105
     public void AccentColor_CanBeSelectedAndCustomized()
     {
         var vm = new MainViewModel();
+        vm.ResetAccentColor();
         Assert.Equal("#3B82F6", vm.CurrentAccentColor);
         Assert.Equal("#3B82F6", vm.CustomAccentColorHex);
         Assert.Equal("#3B82F6", Services.ThemeService.Instance.CurrentAccentColorHex);

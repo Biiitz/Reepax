@@ -1467,10 +1467,10 @@ public class ArchiveExtractionService
 
         if (isFile)
         {
-            // 0-Byte-Dateien oder temporäre Dateien (.part, .segments, .tmp, .bak etc.)
-            // enthalten keinerlei wiederherstellbaren Inhalt und gehören niemals in den
-            // Windows-Papierkorb. Sie werden direkt rückstandslos gelöscht oder bei
-            // Zugriffskonflikten in den Windows-Temp-Ordner verschoben.
+            // 0-byte or temporary files (.part, .segments, .tmp, .bak etc.)
+            // contain no recoverable content and should never go to the
+            // Windows Recycle Bin. They are deleted permanently without trace
+            // or moved to the Windows temp folder upon access conflicts.
             if (IsTempFile(path))
             {
                 DeleteOrMoveToTemp(path);

@@ -1716,7 +1716,7 @@ public partial class MainWindow : Window
                 if (pauseResumeMenuItem != null) pauseResumeMenuItem.Visibility = Visibility.Collapsed;
                 if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = Visibility.Collapsed;
 
-                // Only show "Paket entpacken" if all downloads are 100% completed, package has archives,
+                // Only show "Extract Package" if all downloads are 100% completed, package has archives,
                 // and the package has NOT already been extracted!
                 if (extractMenuItem != null)
                 {

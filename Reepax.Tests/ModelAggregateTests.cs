@@ -57,7 +57,7 @@ public class ModelAggregateTests
         Assert.Equal($"➔ {Loc.Get("NextTask_Extract")}", package.NextTaskSummary);
         Assert.Contains(Loc.Get("NextTask_TooltipExtractNormal"), package.NextTaskTooltip);
 
-        // 3. Auto-Extract + PC-schonend
+        // 3. Auto-Extract + low-impact mode
         package.LowResourceExtraction = true;
         Assert.Equal($"➔ {Loc.Get("NextTask_ExtractLowResource")}", package.NextTaskSummary);
         Assert.Contains(Loc.Get("NextTask_TooltipExtractLowResource"), package.NextTaskTooltip);

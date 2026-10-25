@@ -121,17 +121,24 @@ public class ColorPaletteTests
     public void AchromaticColor_PreservesPickerHue()
     {
         var vm = new MainViewModel();
-        vm.UpdateFromHsv(180.0, 0.8, 0.8); // Hue at 180 (Cyan)
+        try
+        {
+            vm.UpdateFromHsv(180.0, 0.8, 0.8); // Hue at 180 (Cyan)
 
-        // Switching to black (#000000) does not destroy the HueSlider position
-        vm.UpdateFromRgb(0, 0, 0);
-        Assert.Equal("#000000", vm.CurrentAccentColor);
-        Assert.Equal(180.0, vm.PickerHue, precision: 1);
+            // Switching to black (#000000) does not destroy the HueSlider position
+            vm.UpdateFromRgb(0, 0, 0);
+            Assert.Equal("#000000", vm.CurrentAccentColor);
+            Assert.Equal(180.0, vm.PickerHue, precision: 1);
 
-        // Switching to white (#FFFFFF) does not destroy the HueSlider position
-        vm.UpdateFromRgb(255, 255, 255);
-        Assert.Equal("#FFFFFF", vm.CurrentAccentColor);
-        Assert.Equal(180.0, vm.PickerHue, precision: 1);
+            // Switching to white (#FFFFFF) does not destroy the HueSlider position
+            vm.UpdateFromRgb(255, 255, 255);
+            Assert.Equal("#FFFFFF", vm.CurrentAccentColor);
+            Assert.Equal(180.0, vm.PickerHue, precision: 1);
+        }
+        finally
+        {
+            vm.ResetAccentColor();
+        }
     }
 
     [Fact]

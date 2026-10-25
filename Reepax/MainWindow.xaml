@@ -46,6 +46,13 @@
                     <Path Data="{StaticResource IconFolderOpen}" Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="{loc:Loc Menu_CreateGameInstallFolder}" Click="CreateGameInstallFolder_MenuItem_Click">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <Separator Background="{DynamicResource BorderDarkBrush}" />
+
             <MenuItem Header="{loc:Loc Menu_Rename}" Click="RenamePackage_MenuItem_Click">
                 <MenuItem.Icon>
                     <Path Data="{StaticResource IconAppLogo}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
@@ -62,6 +69,8 @@
                     <Path Data="{StaticResource IconPlus}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <Separator Background="{DynamicResource BorderDarkBrush}" />
+
             <MenuItem Header="{loc:Loc Menu_CopyAllUrls}" Click="CopyPackageUrls_MenuItem_Click">
                 <MenuItem.Icon>
                     <Path Data="{StaticResource IconCopy}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
@@ -73,11 +82,7 @@
                     <Path Data="{StaticResource IconExport}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
-            <MenuItem Header="{loc:Loc Menu_CreateGameInstallFolder}" Click="CreateGameInstallFolder_MenuItem_Click">
-                <MenuItem.Icon>
-                    <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
-                </MenuItem.Icon>
-            </MenuItem>
+
             <Separator x:Name="UnclipSeparator" Tag="UnclipSeparator" Background="{DynamicResource BorderDarkBrush}" />
             <MenuItem x:Name="UnclipPackageMenuItem" Tag="UnclipPackageMenuItem" Header="{loc:Loc Menu_UnclipFromPackage}" Click="UnclipPackage_MenuItem_Click">
                 <MenuItem.Icon>
@@ -85,7 +90,6 @@
                 </MenuItem.Icon>
             </MenuItem>
 
-            <!-- Neuer Trennungsstrich Ã¼ber "Paket lÃ¶schen" fÃ¼r Verifizierungs- und Entpackungs-Aktionen -->
             <Separator x:Name="VerificationSeparator" Tag="VerificationSeparator" Background="{DynamicResource BorderDarkBrush}" />
             <MenuItem x:Name="ExtractPackageMenuItem" Tag="ExtractPackageMenuItem"
                       Header="{loc:Loc Menu_ExtractPackage}" Click="ExtractPackage_MenuItem_Click">
@@ -138,9 +142,10 @@
                 </MenuItem.Icon>
             </MenuItem>
             <Separator Background="{DynamicResource BorderDarkBrush}" Visibility="{Binding Status, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='!Completed'}" />
-            <MenuItem Header="{loc:Loc Menu_Rename}" Click="RenameItem_MenuItem_Click">
+
+            <MenuItem Header="{loc:Loc Menu_ShowInExplorer}" Click="ShowItemInExplorer_MenuItem_Click">
                 <MenuItem.Icon>
-                    <Path Data="{StaticResource IconFile}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                    <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem x:Name="ExtractArchiveItemMenuItem" Tag="ExtractArchiveItemMenuItem"
@@ -149,9 +154,11 @@
                     <Path Data="{StaticResource IconArchive}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
-            <MenuItem Header="{loc:Loc Menu_ShowInExplorer}" Click="ShowItemInExplorer_MenuItem_Click">
+            <Separator Background="{DynamicResource BorderDarkBrush}" />
+
+            <MenuItem Header="{loc:Loc Menu_Rename}" Click="RenameItem_MenuItem_Click">
                 <MenuItem.Icon>
-                    <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                    <Path Data="{StaticResource IconFile}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem Header="{loc:Loc Menu_CopyOriginalUrl}" Click="CopyItemUrl_MenuItem_Click">
@@ -159,6 +166,7 @@
                     <Path Data="{StaticResource IconCopy}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+
             <Separator Background="{DynamicResource BorderDarkBrush}" />
             <MenuItem Header="{loc:Loc Menu_DeleteItem}" Click="DeleteItem_MenuItem_Click">
                 <MenuItem.Icon>
