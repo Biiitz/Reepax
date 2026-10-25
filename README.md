@@ -14,11 +14,11 @@
   [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078d4?style=flat-square&logo=windows&logoColor=white)](https://github.com/Biiitz/Reepax/releases)
   [![Framework](https://img.shields.io/badge/.NET-8.0-512bd4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
   [![Privacy](https://img.shields.io/badge/Telemetry-Zero-10b981?style=flat-square)](legal/DISCLAIMER.md)
-  [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE.md)
+  [![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 
   <br />
   
-  [Overview](#overview) • [Screenshots](#screenshots) • [Features](#features) • [Installation](#installation) • [Contributing](CONTRIBUTING.md) • [License](LICENSE.md)
+  [Overview](#overview) • [Screenshots](#screenshots) • [Features](#features) • [Installation](#installation) • [Contributing](CONTRIBUTING.md) • [License](LICENSE)
 
   <br />
 
@@ -76,6 +76,8 @@ Get the latest build from the **[Releases](https://github.com/Biiitz/Reepax/rele
 
 ## License
 
-Reepax is open-source software licensed under the [MIT License](LICENSE.md).
+Reepax is open-source software licensed under the [MIT License](LICENSE).
+
+Third-party open-source components and notices are documented in [legal/THIRD_PARTY_LICENSES.md](legal/THIRD_PARTY_LICENSES.md).
 
 Developed by [Biiitz](https://github.com/Biiitz).
