@@ -2675,6 +2675,7 @@
                             SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_Settings_ToolTip}"
                             PreviewMouseDown="QuickSettingsButton_PreviewMouseDown"
+                            PreviewMouseUp="QuickSettingsButton_PreviewMouseUp"
                             Click="QuickSettingsButton_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -2812,6 +2813,7 @@
                             Cursor="Hand"
                             SnapsToDevicePixels="True"
                             PreviewMouseDown="StatusFilterButton_PreviewMouseDown"
+                            PreviewMouseUp="StatusFilterButton_PreviewMouseUp"
                             Click="StatusFilterButton_Click">
                         <Button.Style>
                             <Style TargetType="Button">

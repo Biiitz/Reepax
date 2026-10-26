@@ -38,6 +38,7 @@ public partial class MainWindow : Window
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
 
         Loaded += MainWindow_TabIndicator_Loaded;
+        StatusFilterPopup.Opened += (s, e) => _isStatusFilterPopupOpen = true;
 
         // Browser-style navigation
         CommandBindings.Add(new CommandBinding(NavigationCommands.BrowseBack, (s, e) =>
@@ -587,6 +588,7 @@ public partial class MainWindow : Window
         {
             if (StatusFilterPopup != null && StatusFilterPopup.IsOpen)
             {
+                _isStatusFilterPopupOpen = false;
                 StatusFilterPopup.IsOpen = false;
             }
 
@@ -4124,6 +4126,14 @@ public partial class MainWindow : Window
         QuickSettingsPopup.HandlePreviewMouseDown(e);
     }
 
+    private void QuickSettingsButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (QuickSettingsPopup.HandlePreviewMouseUp(e))
+        {
+            e.Handled = true;
+        }
+    }
+
     private void QuickSettingsButton_Click(object sender, RoutedEventArgs e)
     {
         QuickSettingsPopup.Toggle(QuickSettingsButton);
@@ -4141,35 +4151,70 @@ public partial class MainWindow : Window
 
     #region Status Filter Popup Handlers
 
+    private bool _isStatusFilterPopupOpen = false;
     private long _statusFilterClosedTimestamp = 0;
+    private bool _ignoreNextStatusFilterClick = false;
 
     private void StatusFilterPopup_Closed(object? sender, EventArgs e)
     {
+        _isStatusFilterPopupOpen = false;
         _statusFilterClosedTimestamp = Environment.TickCount64;
     }
 
     private void StatusFilterButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (StatusFilterPopup.IsOpen)
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        // If popup is currently open or was open when the user pressed the mouse button, suppress reopen
+        if (_isStatusFilterPopupOpen || StatusFilterPopup.IsOpen || (Environment.TickCount64 - _statusFilterClosedTimestamp < 200))
         {
+            _isStatusFilterPopupOpen = false;
             StatusFilterPopup.IsOpen = false;
             _statusFilterClosedTimestamp = Environment.TickCount64;
+            _ignoreNextStatusFilterClick = true;
+            e.Handled = true;
+        }
+    }
+
+    private void StatusFilterButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        if (_ignoreNextStatusFilterClick || Environment.TickCount64 - _statusFilterClosedTimestamp < 200)
+        {
+            _ignoreNextStatusFilterClick = false;
             e.Handled = true;
         }
     }
 
     private void StatusFilterButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Environment.TickCount64 - _statusFilterClosedTimestamp < 100)
+        if (_ignoreNextStatusFilterClick)
+        {
+            _ignoreNextStatusFilterClick = false;
+            return;
+        }
+
+        if (_isStatusFilterPopupOpen)
+        {
+            _isStatusFilterPopupOpen = false;
+            StatusFilterPopup.IsOpen = false;
+            _statusFilterClosedTimestamp = Environment.TickCount64;
+            return;
+        }
+
+        if (Environment.TickCount64 - _statusFilterClosedTimestamp < 200)
         {
             return;
         }
 
-        StatusFilterPopup.IsOpen = !StatusFilterPopup.IsOpen;
+        _isStatusFilterPopupOpen = true;
+        StatusFilterPopup.IsOpen = true;
     }
 
     private void StatusFilterOption_Click(object sender, RoutedEventArgs e)
     {
+        _isStatusFilterPopupOpen = false;
         StatusFilterPopup.IsOpen = false;
     }
 

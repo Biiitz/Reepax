@@ -16,6 +16,7 @@ namespace Reepax.Views;
 public partial class QuickSettingsPopupView : UserControl
 {
     private long _closedTimestamp;
+    private bool _ignoreNextClick;
     private string _lastQuickSpeedLimit = "";
     private string _lastQuickMaxDownloads = "";
     private string _lastQuickConnections = "";
@@ -104,10 +105,13 @@ public partial class QuickSettingsPopupView : UserControl
 
     public void Toggle(FrameworkElement? anchor = null)
     {
-        if (Environment.TickCount64 - _closedTimestamp < 100)
+        if (_ignoreNextClick || Environment.TickCount64 - _closedTimestamp < 200)
         {
+            _ignoreNextClick = false;
             return;
         }
+
+        _ignoreNextClick = false;
 
         var target = anchor ?? PlacementTarget as FrameworkElement;
         if (target != null)
@@ -182,12 +186,28 @@ public partial class QuickSettingsPopupView : UserControl
 
     public void HandlePreviewMouseDown(MouseButtonEventArgs e)
     {
-        if (IsOpen)
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        if (IsOpen || (Environment.TickCount64 - _closedTimestamp < 150))
         {
             IsOpen = false;
             _closedTimestamp = Environment.TickCount64;
+            _ignoreNextClick = true;
             e.Handled = true;
         }
+    }
+
+    public bool HandlePreviewMouseUp(MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return false;
+
+        if (_ignoreNextClick || Environment.TickCount64 - _closedTimestamp < 200)
+        {
+            _ignoreNextClick = false;
+            return true;
+        }
+
+        return false;
     }
 
     private void PopupRoot_Closed(object? sender, EventArgs e)
