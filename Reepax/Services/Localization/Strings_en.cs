@@ -120,8 +120,6 @@ public static class Strings_en
         ["Settings_Sound_Chip_Label"] = "Sound {0}",
         ["Settings_AutoCollapse_Title"] = "Auto-collapse completed packages",
         ["Settings_AutoCollapse_Subtitle"] = "Automatically collapses the package when downloading and extraction are finished",
-        ["Settings_DimCompleted_Title"] = "Dim completed packages",
-        ["Settings_DimCompleted_Subtitle"] = "Slightly dims the opacity of completed packages to visually highlight active downloads",
         ["Settings_ClipboardMonitor_Title"] = "Clipboard Link Grabber",
         ["Settings_ClipboardMonitor_Subtitle"] = "Automatically captures copied download links and opens the Add Links dialog",
         ["Settings_EnableLogging_Title"] = "Create Logs & Error Reports",

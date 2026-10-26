@@ -94,7 +94,6 @@ public class AppSettings
         }
     }
     public bool AutoCollapseCompletedPackages { get; set; } = true;
-    public bool DimCompletedPackages { get; set; } = false;
     public bool EnableFileLogging { get; set; } = false;
     public bool EnableClipboardMonitor { get; set; } = false;
     public PostDownloadAction PostDownloadAction { get; set; } = PostDownloadAction.None;

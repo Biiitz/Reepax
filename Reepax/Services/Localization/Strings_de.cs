@@ -120,8 +120,6 @@ public static class Strings_de
         ["Settings_Sound_Chip_Label"] = "Sound {0}",
         ["Settings_AutoCollapse_Title"] = "Fertige Pakete zuklappen",
         ["Settings_AutoCollapse_Subtitle"] = "Klappt das Paket automatisch ein, wenn es fertig heruntergeladen und entpackt wurde",
-        ["Settings_DimCompleted_Title"] = "Fertige Pakete ausgrauen",
-        ["Settings_DimCompleted_Subtitle"] = "Reduziert die Deckkraft von fertigen Paketen leicht, um aktive Downloads optisch hervorzuheben",
         ["Settings_ClipboardMonitor_Title"] = "Zwischenablage-Überwachung",
         ["Settings_ClipboardMonitor_Subtitle"] = "Erkennt kopierte Download-Links automatisch und öffnet das Neue Links Hinzufügen Fenster",
         ["Settings_EnableLogging_Title"] = "Logs & Fehlerberichte erstellen",

@@ -1543,27 +1543,6 @@
 
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
-                    <!-- Dim completed packages -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="{loc:Loc Settings_DimCompleted_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_DimCompleted_Subtitle}">
-                                <Path Style="{StaticResource SettingInfoPathStyle}" />
-                            </Border>
-                        </StackPanel>
-                        <CheckBox Grid.Column="1"
-                                  HorizontalAlignment="Right"
-                                  IsChecked="{Binding DimCompletedPackages, Mode=TwoWay}"
-                                  VerticalAlignment="Center"
-                                  Cursor="Hand" />
-                    </Grid>
-
-                    <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
-
                     <!-- Clipboard Monitor -->
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>

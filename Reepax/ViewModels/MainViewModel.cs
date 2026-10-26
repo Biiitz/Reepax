@@ -513,7 +513,6 @@ public partial class MainViewModel : ObservableObject
         SelectedErrorSound = !string.IsNullOrWhiteSpace(settings.SelectedErrorSound) ? settings.SelectedErrorSound : "1.mp3";
         ErrorSoundVolume = Math.Clamp(settings.ErrorSoundVolume, 0, 100);
         AutoCollapseCompletedPackages = settings.AutoCollapseCompletedPackages;
-        DimCompletedPackages = settings.DimCompletedPackages;
         EnableFileLogging = settings.EnableFileLogging;
         AppLogger.IsLoggingEnabled = EnableFileLogging;
         EnableClipboardMonitor = settings.EnableClipboardMonitor;

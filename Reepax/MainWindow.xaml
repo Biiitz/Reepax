@@ -692,21 +692,6 @@
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="PackageDockTransform" X="0" Y="0" />
                     </StackPanel.RenderTransform>
-                    <StackPanel.Style>
-                        <Style TargetType="StackPanel">
-                            <Setter Property="Opacity" Value="1.0" />
-                            <Style.Triggers>
-                                <MultiDataTrigger>
-                                    <MultiDataTrigger.Conditions>
-                                        <Condition Binding="{Binding IsFullyCompleted}" Value="True" />
-                                        <Condition Binding="{Binding IsNewlyCompleted}" Value="False" />
-                                        <Condition Binding="{Binding DataContext.DimCompletedPackages, RelativeSource={RelativeSource AncestorType=Window}}" Value="True" />
-                                    </MultiDataTrigger.Conditions>
-                                    <Setter Property="Opacity" Value="0.65" />
-                                </MultiDataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </StackPanel.Style>
 
                     <!-- ================= PACKAGE ROW ================= -->
                     <Border x:Name="PackageBorder"

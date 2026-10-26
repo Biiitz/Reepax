@@ -189,24 +189,4 @@ public class SettingsServiceTests : IDisposable
         Assert.True(File.Exists(lockedFile), "Source file must be preserved intact!");
     }
 
-    [Fact]
-    public void DimCompletedPackages_DefaultsToFalse_AndPersistsCorrectly()
-    {
-        // 1. AppSettings default must be false
-        var defaultSettings = new AppSettings();
-        Assert.False(defaultSettings.DimCompletedPackages);
-
-        // 2. SettingsService roundtrip with custom value
-        var settingsPath = Path.Combine(_tempDirectory, "settings_dim.json");
-        var service = new SettingsService(settingsPath);
-        Assert.False(service.Settings.DimCompletedPackages);
-
-        // Toggle to true and save
-        service.Settings.DimCompletedPackages = true;
-        service.SaveSettings();
-
-        // Reload fresh from disk
-        var reloadedService = new SettingsService(settingsPath);
-        Assert.True(reloadedService.Settings.DimCompletedPackages);
-    }
 }
