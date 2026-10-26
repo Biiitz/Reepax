@@ -52,6 +52,7 @@ public partial class AddLinksDialog : Window
         _isAddingLinksToExisting = isAddingLinksToExisting;
         InitializeComponent();
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
+        DataObject.AddPastingHandler(LinksTextBox, LinksTextBox_Pasting);
 
         bool isPackageCompletedOrExtracted = _editingPackage != null &&
             (_editingPackage.CheckIsFullyCompleted() ||
@@ -65,6 +66,11 @@ public partial class AddLinksDialog : Window
             {
                 Title = Services.Localization.Loc.Format("Dialog_AddLinksToPackageTitle", _editingPackage.Name);
                 AddButton.Content = Services.Localization.Loc.Get("Menu_AddLinksToPackage").TrimEnd('.').Trim();
+
+                if (OptionsBorder != null)
+                {
+                    OptionsBorder.Visibility = Visibility.Collapsed;
+                }
 
                 // Lock package name & path to existing package
                 PackageNameTextBox.Text = _editingPackage.Name;
@@ -209,28 +215,93 @@ public partial class AddLinksDialog : Window
     {
         try
         {
-            string? clipboardText = null;
-            if (Clipboard.ContainsData(DataFormats.Html))
+            var data = Clipboard.GetDataObject();
+            if (data != null)
             {
-                clipboardText = Clipboard.GetData(DataFormats.Html) as string;
-            }
-            if (string.IsNullOrWhiteSpace(clipboardText) && Clipboard.ContainsText())
-            {
-                clipboardText = Clipboard.GetText();
-            }
-
-            if (!string.IsNullOrWhiteSpace(clipboardText))
-            {
-                var extracted = LinkExtractor.ExtractLinks(clipboardText);
-                if (extracted.Count > 0)
+                var urls = LinkExtractor.ExtractUrlsFromDataObject(data);
+                if (urls.Count > 0)
                 {
-                    return string.Join(Environment.NewLine, extracted.Select(l => l.Url));
+                    return string.Join(Environment.NewLine, urls);
                 }
             }
         }
         catch { }
 
         return null;
+    }
+
+    private void LinksTextBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        try
+        {
+            var urls = LinkExtractor.ExtractUrlsFromDataObject(e.DataObject);
+            if (urls.Count > 0)
+            {
+                var textToInsert = string.Join(Environment.NewLine, urls);
+                var newObj = new DataObject(DataFormats.UnicodeText, textToInsert);
+                e.DataObject = newObj;
+            }
+        }
+        catch { }
+    }
+
+    private static bool IsDropDataSupported(IDataObject? data)
+    {
+        if (data == null) return false;
+        return data.GetDataPresent(DataFormats.Html) ||
+               data.GetDataPresent("UniformResourceLocatorW") ||
+               data.GetDataPresent("UniformResourceLocator") ||
+               data.GetDataPresent("text/x-moz-url") ||
+               data.GetDataPresent(DataFormats.UnicodeText) ||
+               data.GetDataPresent(DataFormats.Text) ||
+               data.GetDataPresent(DataFormats.FileDrop);
+    }
+
+    private void Dialog_PreviewDragEnter(object sender, DragEventArgs e)
+    {
+        if (IsDropDataSupported(e.Data))
+        {
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    private void Dialog_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (IsDropDataSupported(e.Data))
+        {
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    private void Dialog_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!IsDropDataSupported(e.Data))
+            return;
+
+        e.Handled = true;
+
+        var urls = LinkExtractor.ExtractUrlsFromDataObject(e.Data);
+        if (urls.Count > 0)
+        {
+            AppendText(string.Join(Environment.NewLine, urls));
+            return;
+        }
+
+        if (e.Data.GetDataPresent(DataFormats.FileDrop) &&
+            e.Data.GetData(DataFormats.FileDrop) is string[] files &&
+            files.Length > 0)
+        {
+            Task.Run(() =>
+            {
+                var text = MainWindow.ReadDroppedFiles(files);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    Dispatcher.BeginInvoke(new Action(() => AppendText(text)));
+                }
+            });
+        }
     }
 
     private void AutoExtractCheckBox_CheckedChanged(object sender, RoutedEventArgs e)
@@ -377,7 +448,10 @@ public partial class AddLinksDialog : Window
         if (string.IsNullOrWhiteSpace(text))
             return;
 
-        var extracted = LinkExtractor.ExtractLinks(text);
+        var extracted = LinkExtractor.ExtractLinks(text, fileHostersOnly: true);
+        if (extracted.Count == 0)
+            extracted = LinkExtractor.ExtractLinks(text, fileHostersOnly: false);
+
         var normalized = extracted.Count > 0
             ? string.Join(Environment.NewLine, extracted.Select(l => l.Url))
             : LinkExtractor.NormalizeInputText(text);
@@ -443,7 +517,9 @@ public partial class AddLinksDialog : Window
         }
 
         var text = LinksTextBox.Text;
-        var links = LinkExtractor.ExtractLinks(text);
+        var links = LinkExtractor.ExtractLinks(text, fileHostersOnly: true);
+        if (links.Count == 0)
+            links = LinkExtractor.ExtractLinks(text, fileHostersOnly: false);
         ExtractionSummaryText.Text = Services.Localization.Loc.Format("AddLinks_LinksDetectedSummary", links.Count);
 
         // Smart Update detection:

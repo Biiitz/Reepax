@@ -355,4 +355,49 @@ public class LinkMetadataResolverTests
 
         Assert.Equal($"https://dl.{FastHostResolver.CanonicalDomain}/dl/abcdef#secret", item.DirectDownloadUrl);
     }
+
+    [Fact]
+    public async Task ResolvePackageMetadataAsync_WithTargetItems_ResolvesOnlySpecifiedTargetItems()
+    {
+        int probedCount = 0;
+        var mockHandler = new MockHttpHandler(req =>
+        {
+            Interlocked.Increment(ref probedCount);
+            var res = new HttpResponseMessage(HttpStatusCode.OK);
+            res.Content.Headers.ContentLength = 1000;
+            return res;
+        });
+
+        using var httpClient = new HttpClient(mockHandler);
+        var resolver = new LinkMetadataResolverService(httpClient);
+
+        var existingItem = new DownloadItem
+        {
+            OriginalUrl = "https://example.com/existing.bin",
+            FileName = "existing.bin",
+            TotalBytes = 500,
+            IsMetadataResolved = true
+        };
+
+        var newItem = new DownloadItem
+        {
+            OriginalUrl = "https://example.com/new.bin",
+            FileName = "new.bin",
+            TotalBytes = 0,
+            IsMetadataResolved = false
+        };
+
+        var package = new DownloadPackage
+        {
+            Name = "Example Package"
+        };
+        package.Items.Add(existingItem);
+        package.Items.Add(newItem);
+
+        await resolver.ResolvePackageMetadataAsync(package, targetItems: new[] { newItem });
+
+        Assert.Equal(1, probedCount);
+        Assert.True(newItem.IsMetadataResolved);
+        Assert.Equal(1000, newItem.TotalBytes);
+    }
 }

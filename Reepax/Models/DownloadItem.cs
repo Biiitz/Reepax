@@ -106,6 +106,9 @@ public partial class DownloadItem : ObservableObject
     [ObservableProperty]
     private string? _lastVerificationError;
 
+    [ObservableProperty]
+    private bool _isMetadataResolved;
+
     /// <summary>
     /// Transient (not persisted): true when the item is "paused" but continues
     /// at a heavily throttled speed (500 KB/s) so the connection/session does not drop.

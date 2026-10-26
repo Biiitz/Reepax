@@ -2383,7 +2383,11 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var extracted = LinkExtractor.ExtractLinks(rawText);
+        var extracted = LinkExtractor.ExtractLinks(rawText, fileHostersOnly: true);
+        if (extracted.Count == 0)
+        {
+            extracted = LinkExtractor.ExtractLinks(rawText, fileHostersOnly: false);
+        }
         if (extracted.Count == 0)
         {
             StatusSummary = Loc.Get("Status_NoValidLinksFound");
@@ -2430,7 +2434,11 @@ public partial class MainViewModel : ObservableObject
         if (package == null || string.IsNullOrWhiteSpace(rawText))
             return;
 
-        var extracted = LinkExtractor.ExtractLinks(rawText);
+        var extracted = LinkExtractor.ExtractLinks(rawText, fileHostersOnly: true);
+        if (extracted.Count == 0)
+        {
+            extracted = LinkExtractor.ExtractLinks(rawText, fileHostersOnly: false);
+        }
         if (extracted.Count == 0)
         {
             StatusSummary = Loc.Get("Status_NoValidLinksFound");
@@ -2451,6 +2459,7 @@ public partial class MainViewModel : ObservableObject
         bool autoQueue = _queueManager.IsRunning && package.IsEnabled;
         int crypticIndex = package.Items.Count;
         int added = 0;
+        var newlyAddedItems = new List<DownloadItem>();
 
         foreach (var link in extracted)
         {
@@ -2501,6 +2510,7 @@ public partial class MainViewModel : ObservableObject
             };
 
             package.Items.Add(item);
+            newlyAddedItems.Add(item);
             added++;
         }
 
@@ -2521,7 +2531,7 @@ public partial class MainViewModel : ObservableObject
             _queueManager.ProcessQueue();
         }
 
-        _ = ResolvePackageSizesAsync(new[] { package });
+        _ = ResolvePackageSizesAsync(new[] { package }, newlyAddedItems);
     }
 
     /// <summary>
@@ -2542,7 +2552,11 @@ public partial class MainViewModel : ObservableObject
         if (package == null || string.IsNullOrWhiteSpace(newRawText))
             return;
 
-        var newExtractedLinks = LinkExtractor.ExtractLinks(newRawText);
+        var newExtractedLinks = LinkExtractor.ExtractLinks(newRawText, fileHostersOnly: true);
+        if (newExtractedLinks.Count == 0)
+        {
+            newExtractedLinks = LinkExtractor.ExtractLinks(newRawText, fileHostersOnly: false);
+        }
         if (newExtractedLinks.Count == 0)
         {
             StatusSummary = Loc.Get("Status_NoValidLinksFound");
@@ -2692,7 +2706,7 @@ public partial class MainViewModel : ObservableObject
 
         if (newlyAddedItems.Count > 0)
         {
-            _ = ResolvePackageSizesAsync(new[] { package });
+            _ = ResolvePackageSizesAsync(new[] { package }, newlyAddedItems);
         }
 
         // 5. If extraction was enabled retroactively and all files are already completed, extract now
@@ -2774,9 +2788,19 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    public async Task ResolvePackageSizesAsync(IEnumerable<DownloadPackage> packages)
+    public async Task ResolvePackageSizesAsync(
+        IEnumerable<DownloadPackage> packages, 
+        IEnumerable<DownloadItem>? specificItems = null)
     {
-        var packageList = packages.Where(p => p.Items.Any(i => i.TotalBytes <= 0 || (FastHostResolver.IsFastHostUrl(i.OriginalUrl) && string.IsNullOrWhiteSpace(i.DirectDownloadUrl)))).ToList();
+        var specificList = specificItems?.ToList();
+        var packageList = packages.Where(p =>
+        {
+            var itemsToCheck = specificList != null 
+                ? p.Items.Where(specificList.Contains) 
+                : p.Items;
+            return itemsToCheck.Any(i => !i.IsMetadataResolved && (i.TotalBytes <= 0 || (FastHostResolver.IsFastHostUrl(i.OriginalUrl) && string.IsNullOrWhiteSpace(i.DirectDownloadUrl))));
+        }).ToList();
+
         if (packageList.Count == 0)
             return;
 
@@ -2792,7 +2816,10 @@ public partial class MainViewModel : ObservableObject
 
             foreach (var pkg in packageList)
             {
-                await LinkMetadataResolverService.Instance.ResolvePackageMetadataAsync(pkg, progress);
+                var pkgTargetItems = specificList != null 
+                    ? pkg.Items.Where(specificList.Contains).ToList() 
+                    : null;
+                await LinkMetadataResolverService.Instance.ResolvePackageMetadataAsync(pkg, progress, targetItems: pkgTargetItems);
                 pkg.RecalculateAggregates();
                 RecalculateGlobalStats();
                 UpdateDriveSpace();

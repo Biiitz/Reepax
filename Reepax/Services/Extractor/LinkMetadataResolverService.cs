@@ -120,7 +120,10 @@ public class LinkMetadataResolverService
         }
 
         if (item.TotalBytes > 0 && !string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
+        {
+            item.IsMetadataResolved = true;
             return true; // Size & Direct URL already known
+        }
 
         var targetUrl = !string.IsNullOrWhiteSpace(item.DirectDownloadUrl) ? item.DirectDownloadUrl : item.OriginalUrl;
         if (string.IsNullOrWhiteSpace(targetUrl) || !Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri))
@@ -192,23 +195,30 @@ public class LinkMetadataResolverService
             AppLogger.Warn($"[LinkMetadataResolver] Konnte Metadaten für '{item.FileName}' ({targetUrl}) nicht auflösen: {ex.Message}");
         }
 
+        item.IsMetadataResolved = true;
         return item.TotalBytes > 0;
     }
 
     public async Task ResolvePackageMetadataAsync(
         DownloadPackage package, 
         IProgress<string>? progress = null, 
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IEnumerable<DownloadItem>? targetItems = null)
     {
         if (package == null || package.Items.Count == 0)
             return;
 
-        var itemsToResolve = package.Items.Where(i => 
+        var sourceItems = targetItems != null 
+            ? targetItems.Where(package.Items.Contains) 
+            : package.Items;
+
+        var itemsToResolve = sourceItems.Where(i => 
+            !i.IsMetadataResolved && (
             i.TotalBytes <= 0 || 
             PackageGrouper.IsGenericOrCrypticName(i.FileName) ||
             i.FileName.StartsWith("download_file", StringComparison.OrdinalIgnoreCase) ||
             i.FileName.Contains("Package (") ||
-            (package.AutoResolveHostLinks && FastHostResolver.IsFastHostUrl(i.OriginalUrl) && string.IsNullOrWhiteSpace(i.DirectDownloadUrl))
+            (package.AutoResolveHostLinks && FastHostResolver.IsFastHostUrl(i.OriginalUrl) && string.IsNullOrWhiteSpace(i.DirectDownloadUrl)))
         ).ToList();
 
         if (itemsToResolve.Count == 0)
@@ -227,6 +237,11 @@ public class LinkMetadataResolverService
             try
             {
                 await ResolveItemMetadataAsync(item, cancellationToken, package.AutoResolveHostLinks);
+                item.IsMetadataResolved = true;
+            }
+            catch
+            {
+                item.IsMetadataResolved = true;
             }
             finally
             {

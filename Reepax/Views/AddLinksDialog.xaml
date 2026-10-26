@@ -9,7 +9,11 @@
         Background="{DynamicResource BgDarkBrush}"
         Foreground="{DynamicResource TextPrimaryBrush}"
         WindowStyle="SingleBorderWindow"
-        ResizeMode="CanResizeWithGrip">
+        ResizeMode="CanResizeWithGrip"
+        AllowDrop="True"
+        PreviewDragEnter="Dialog_PreviewDragEnter"
+        PreviewDragOver="Dialog_PreviewDragOver"
+        PreviewDrop="Dialog_PreviewDrop">
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
@@ -40,6 +44,10 @@
                          Foreground="{DynamicResource TextPrimaryBrush}"
                          CaretBrush="{DynamicResource TextPrimaryBrush}"
                          BorderThickness="0"
+                         AllowDrop="True"
+                         PreviewDragEnter="Dialog_PreviewDragEnter"
+                         PreviewDragOver="Dialog_PreviewDragOver"
+                         PreviewDrop="Dialog_PreviewDrop"
                          TextChanged="LinksTextBox_TextChanged"
                          PreviewMouseWheel="LinksTextBox_PreviewMouseWheel" />
                 <TextBlock x:Name="LinksWatermark" 
@@ -113,7 +121,7 @@
         </Border>
 
         <!-- 3: Options Row (Auto-extraction & low-resource mode) -->
-        <Border Grid.Row="3" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,7" Margin="0,0,0,10">
+        <Border x:Name="OptionsBorder" Grid.Row="3" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,7" Margin="0,0,0,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />

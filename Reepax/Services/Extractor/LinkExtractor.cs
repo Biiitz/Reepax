@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Windows;
 using Reepax.Models;
 
 namespace Reepax.Services.Extractor;
@@ -206,11 +207,173 @@ public static partial class LinkExtractor
         if (!looksLikeHtml)
             return rawText;
 
-        var links = ExtractLinks(rawText);
+        var links = ExtractLinks(rawText, fileHostersOnly: true);
+        if (links.Count == 0)
+            links = ExtractLinks(rawText, fileHostersOnly: false);
+
         if (links.Count == 0)
             return rawText;
 
         return string.Join(Environment.NewLine, links.Select(l => l.Url));
+    }
+
+    /// <summary>
+    /// Extracts destination URLs from a WPF IDataObject (drag & drop or clipboard).
+    /// Prioritizes HTML markup (resolving actual href destination URLs),
+    /// URL formats (UniformResourceLocatorW), and falls back to plain text.
+    /// </summary>
+    public static List<string> ExtractUrlsFromDataObject(IDataObject? data)
+    {
+        var urls = new List<string>();
+        if (data == null)
+            return urls;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 1. Try HTML Format first - browsers put the full anchor markup with href in DataFormats.Html,
+        // while DataFormats.UnicodeText often only contains the visible anchor text (e.g. "Part 1").
+        try
+        {
+            if (data.GetDataPresent(DataFormats.Html))
+            {
+                string? html = null;
+                var rawHtml = data.GetData(DataFormats.Html);
+                if (rawHtml is string s)
+                {
+                    html = s;
+                }
+                else if (rawHtml is MemoryStream ms)
+                {
+                    using var reader = new StreamReader(ms, System.Text.Encoding.UTF8);
+                    html = reader.ReadToEnd();
+                }
+
+                if (!string.IsNullOrWhiteSpace(html))
+                {
+                    var extracted = ExtractLinks(html, fileHostersOnly: true);
+                    if (extracted.Count == 0)
+                    {
+                        extracted = ExtractLinks(html, fileHostersOnly: false);
+                    }
+
+                    foreach (var link in extracted)
+                    {
+                        if (seen.Add(link.Url))
+                        {
+                            urls.Add(link.Url);
+                        }
+                    }
+
+                    if (urls.Count > 0)
+                        return urls;
+                }
+            }
+        }
+        catch { }
+
+        // 2. Try UniformResourceLocatorW / UniformResourceLocator / text/x-moz-url
+        try
+        {
+            string? url = ExtractDirectUrlFromDataObject(data);
+            if (!string.IsNullOrWhiteSpace(url))
+            {
+                var cleaned = CleanUrl(url);
+                if (!string.IsNullOrWhiteSpace(cleaned) &&
+                    (cleaned.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                     cleaned.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                     cleaned.StartsWith("ftp://", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (seen.Add(cleaned))
+                    {
+                        urls.Add(cleaned);
+                        return urls;
+                    }
+                }
+            }
+        }
+        catch { }
+
+        // 3. Fall back to UnicodeText / Text
+        try
+        {
+            string? text = null;
+            if (data.GetDataPresent(DataFormats.UnicodeText))
+            {
+                text = data.GetData(DataFormats.UnicodeText) as string;
+            }
+            else if (data.GetDataPresent(DataFormats.Text))
+            {
+                text = data.GetData(DataFormats.Text) as string;
+            }
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                var extracted = ExtractLinks(text, fileHostersOnly: true);
+                if (extracted.Count == 0)
+                {
+                    extracted = ExtractLinks(text, fileHostersOnly: false);
+                }
+
+                foreach (var link in extracted)
+                {
+                    if (seen.Add(link.Url))
+                    {
+                        urls.Add(link.Url);
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return urls;
+    }
+
+    private static string? ExtractDirectUrlFromDataObject(IDataObject data)
+    {
+        if (data.GetDataPresent("UniformResourceLocatorW"))
+        {
+            var obj = data.GetData("UniformResourceLocatorW");
+            if (obj is string s && !string.IsNullOrWhiteSpace(s))
+                return s.Trim('\0', ' ', '\r', '\n');
+            if (obj is MemoryStream ms)
+            {
+                var str = System.Text.Encoding.Unicode.GetString(ms.ToArray()).Trim('\0', ' ', '\r', '\n');
+                if (!string.IsNullOrWhiteSpace(str))
+                    return str;
+            }
+        }
+
+        if (data.GetDataPresent("UniformResourceLocator"))
+        {
+            var obj = data.GetData("UniformResourceLocator");
+            if (obj is string s && !string.IsNullOrWhiteSpace(s))
+                return s.Trim('\0', ' ', '\r', '\n');
+            if (obj is MemoryStream ms)
+            {
+                var str = System.Text.Encoding.Default.GetString(ms.ToArray()).Trim('\0', ' ', '\r', '\n');
+                if (!string.IsNullOrWhiteSpace(str))
+                    return str;
+            }
+        }
+
+        if (data.GetDataPresent("text/x-moz-url"))
+        {
+            var obj = data.GetData("text/x-moz-url");
+            string? mozText = null;
+            if (obj is string s)
+                mozText = s;
+            else if (obj is MemoryStream ms)
+                mozText = System.Text.Encoding.Unicode.GetString(ms.ToArray());
+
+            if (!string.IsNullOrWhiteSpace(mozText))
+            {
+                var firstLine = mozText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(firstLine))
+                    return firstLine.Trim('\0', ' ');
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

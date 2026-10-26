@@ -273,4 +273,45 @@ https://rapidgator.net/file/abc102/cp.part2.rar
         Assert.Equal("Example Project", links[0].ContextTitle);
         Assert.Equal("Example Project", links[1].ContextTitle);
     }
+
+    [Fact]
+    public void ExtractUrlsFromDataObject_HtmlFormatWithAnchorTags_ExtractsRealHrefUrlsNotAnchorText()
+    {
+        var dataObject = new System.Windows.DataObject();
+        string html = "<html><body><!--StartFragment--><a href=\"https://rapidgator.net/file/123/example.part1.rar\">Part 1</a><br><a href=\"https://rapidgator.net/file/124/example.part2.rar\">Part 2</a><!--EndFragment--></body></html>";
+        dataObject.SetData(System.Windows.DataFormats.Html, html);
+        dataObject.SetData(System.Windows.DataFormats.UnicodeText, "Part 1\nPart 2");
+
+        var urls = LinkExtractor.ExtractUrlsFromDataObject(dataObject);
+
+        Assert.Equal(2, urls.Count);
+        Assert.Equal("https://rapidgator.net/file/123/example.part1.rar", urls[0]);
+        Assert.Equal("https://rapidgator.net/file/124/example.part2.rar", urls[1]);
+        Assert.DoesNotContain(urls, u => u.Contains("Part 1") || u.Contains("Part 2"));
+    }
+
+    [Fact]
+    public void ExtractUrlsFromDataObject_UniformResourceLocator_ExtractsDirectUrl()
+    {
+        var dataObject = new System.Windows.DataObject();
+        dataObject.SetData("UniformResourceLocatorW", "https://rapidgator.net/file/999/single_file.rar");
+        dataObject.SetData(System.Windows.DataFormats.UnicodeText, "Download single file");
+
+        var urls = LinkExtractor.ExtractUrlsFromDataObject(dataObject);
+
+        Assert.Single(urls);
+        Assert.Equal("https://rapidgator.net/file/999/single_file.rar", urls[0]);
+    }
+
+    [Fact]
+    public void ExtractUrlsFromDataObject_PlainTextFallback_ExtractsUrls()
+    {
+        var dataObject = new System.Windows.DataObject();
+        dataObject.SetData(System.Windows.DataFormats.UnicodeText, "https://rapidgator.net/file/555/test.zip");
+
+        var urls = LinkExtractor.ExtractUrlsFromDataObject(dataObject);
+
+        Assert.Single(urls);
+        Assert.Equal("https://rapidgator.net/file/555/test.zip", urls[0]);
+    }
 }

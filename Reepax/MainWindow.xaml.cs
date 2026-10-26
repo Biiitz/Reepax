@@ -13,6 +13,7 @@ using System.Windows.Media.Animation;
 using Reepax.Helpers;
 using Reepax.Models;
 using Reepax.Services;
+using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -1118,10 +1119,13 @@ public partial class MainWindow : Window
         return data.GetDataPresent(DataFormats.Text) ||
                data.GetDataPresent(DataFormats.UnicodeText) ||
                data.GetDataPresent(DataFormats.Html) ||
+               data.GetDataPresent("UniformResourceLocatorW") ||
+               data.GetDataPresent("UniformResourceLocator") ||
+               data.GetDataPresent("text/x-moz-url") ||
                data.GetDataPresent(DataFormats.FileDrop);
     }
 
-    private void ProcessExternalDrop(DragEventArgs e)
+    private void ProcessExternalDrop(DragEventArgs e, DownloadPackage? targetPackage = null)
     {
         if (ViewModel.IsBusy)
             return;
@@ -1134,27 +1138,26 @@ public partial class MainWindow : Window
 
         try
         {
-            // For drag & drop from browsers, inspect HTML format first (contains real
-            // href links); plaintext selection often lacks the target URLs.
-            if (e.Data.GetDataPresent(DataFormats.Html))
+            // Extract destination URLs directly (handles HTML anchor hrefs, UniformResourceLocatorW, etc.)
+            var extractedUrls = LinkExtractor.ExtractUrlsFromDataObject(e.Data);
+            if (extractedUrls.Count > 0)
             {
-                droppedText = e.Data.GetData(DataFormats.Html) as string;
+                droppedText = string.Join(Environment.NewLine, extractedUrls);
             }
-
-            if (string.IsNullOrWhiteSpace(droppedText) && e.Data.GetDataPresent(DataFormats.Text))
-            {
-                droppedText = e.Data.GetData(DataFormats.Text) as string;
-            }
-            else if (string.IsNullOrWhiteSpace(droppedText) && e.Data.GetDataPresent(DataFormats.UnicodeText))
-            {
-                droppedText = e.Data.GetData(DataFormats.UnicodeText) as string;
-            }
-            else if (string.IsNullOrWhiteSpace(droppedText) && e.Data.GetDataPresent(DataFormats.FileDrop))
+            else if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 if (e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
                 {
                     droppedFiles = files;
                 }
+            }
+            else if (e.Data.GetDataPresent(DataFormats.Text))
+            {
+                droppedText = e.Data.GetData(DataFormats.Text) as string;
+            }
+            else if (e.Data.GetDataPresent(DataFormats.UnicodeText))
+            {
+                droppedText = e.Data.GetData(DataFormats.UnicodeText) as string;
             }
         }
         catch (Exception ex)
@@ -1165,7 +1168,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Remaining tasks (file reading, opening dialog) only after returning from OLE callback.
+        // Remaining tasks (file reading, link handling) only after returning from OLE callback.
         Dispatcher.BeginInvoke(new Action(async () =>
         {
             try
@@ -1193,7 +1196,15 @@ public partial class MainWindow : Window
 
                 if (!string.IsNullOrWhiteSpace(droppedText))
                 {
-                    ShowAddLinksDialog(droppedText);
+                    if (targetPackage != null)
+                    {
+                        // Direct drop into package: add directly without opening popup dialog
+                        ViewModel.AddLinksToPackage(targetPackage, droppedText, targetPackage.AutoResolveHostLinks);
+                    }
+                    else
+                    {
+                        ShowAddLinksDialog(droppedText);
+                    }
                 }
             }
             catch (Exception ex)
@@ -1230,7 +1241,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string ReadDroppedFiles(string[] files)
+    internal static string ReadDroppedFiles(string[] files)
     {
         var textBuilder = new System.Text.StringBuilder();
         const long maxSizeBytes = 5 * 1024 * 1024; // 5 MB
@@ -1281,20 +1292,7 @@ public partial class MainWindow : Window
         {
             if (targetPackage != null)
             {
-                bool isAlreadyCompletedOrExtracted = targetPackage.CheckIsFullyCompleted() ||
-                    targetPackage.Status == DownloadStatus.Completed ||
-                    targetPackage.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done);
-
-                if (!isAlreadyCompletedOrExtracted)
-                {
-                    targetPackage.AutoExtractArchives = dialog.AutoExtractArchives;
-                    targetPackage.LowResourceExtraction = dialog.LowResourceExtraction;
-                    targetPackage.DeleteArchiveAfterExtraction = dialog.DeleteArchiveAfterExtraction;
-                    targetPackage.MoveArchiveToRecycleBin = dialog.MoveArchiveToRecycleBin;
-                    targetPackage.EnsureNextTaskSteps();
-                }
-
-                ViewModel.AddLinksToPackage(targetPackage, dialog.EnteredText, dialog.AutoResolveHostLinks);
+                ViewModel.AddLinksToPackage(targetPackage, dialog.EnteredText, targetPackage.AutoResolveHostLinks);
             }
             else
             {
@@ -1617,7 +1615,16 @@ public partial class MainWindow : Window
     {
         if (IsExternalDropData(e.Data))
         {
-            ClearAllDropTargets();
+            var targetElement = sender as FrameworkElement;
+            var targetPkg = targetElement?.DataContext as DownloadPackage;
+            if (targetPkg != null)
+            {
+                SetPackageDropTarget(targetPkg, PackageDropAction.Clip);
+            }
+            else
+            {
+                ClearAllDropTargets();
+            }
             e.Effects = DragDropEffects.Copy;
             e.Handled = true;
             return;
@@ -1775,14 +1782,14 @@ public partial class MainWindow : Window
 
     private void PackageRow_Drop(object sender, DragEventArgs e)
     {
-        if (IsExternalDropData(e.Data))
-        {
-            ProcessExternalDrop(e);
-            return;
-        }
-
         var targetElement = sender as FrameworkElement;
         var targetPkg = targetElement?.DataContext as DownloadPackage;
+
+        if (IsExternalDropData(e.Data))
+        {
+            ProcessExternalDrop(e, targetPkg);
+            return;
+        }
 
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
@@ -2036,7 +2043,17 @@ public partial class MainWindow : Window
     {
         if (IsExternalDropData(e.Data))
         {
-            ClearAllDropTargets();
+            var targetElement = sender as FrameworkElement;
+            var targetItem = targetElement?.DataContext as DownloadItem;
+            var targetPkg = targetItem != null ? ViewModel?.Packages.FirstOrDefault(p => p.Id == targetItem.PackageId) : null;
+            if (targetPkg != null)
+            {
+                SetPackageDropTarget(targetPkg, PackageDropAction.Clip);
+            }
+            else
+            {
+                ClearAllDropTargets();
+            }
             e.Effects = DragDropEffects.Copy;
             e.Handled = true;
             return;
@@ -2192,14 +2209,15 @@ public partial class MainWindow : Window
 
     private void ItemRow_Drop(object sender, DragEventArgs e)
     {
-        if (IsExternalDropData(e.Data))
-        {
-            ProcessExternalDrop(e);
-            return;
-        }
-
         var targetElement = sender as FrameworkElement;
         var targetItem = targetElement?.DataContext as DownloadItem;
+        var targetPkg = targetItem != null ? ViewModel?.Packages.FirstOrDefault(p => p.Id == targetItem.PackageId) : null;
+
+        if (IsExternalDropData(e.Data))
+        {
+            ProcessExternalDrop(e, targetPkg);
+            return;
+        }
 
         if (e.Data.GetDataPresent("Reepax.DownloadItem"))
         {
@@ -2219,13 +2237,16 @@ public partial class MainWindow : Window
                 // Dispatch collection mutations asynchronously to prevent COM OLE drag-drop deadlock
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                 {
-                    if (action == ItemDropAction.InsertBefore)
+                    if (sourceItem != null && targetItem != null && ViewModel != null)
                     {
-                        ViewModel.MoveItemBefore(sourceItem, targetItem);
-                    }
-                    else if (action == ItemDropAction.InsertAfter)
-                    {
-                        ViewModel.MoveItemAfter(sourceItem, targetItem);
+                        if (action == ItemDropAction.InsertBefore)
+                        {
+                            ViewModel.MoveItemBefore(sourceItem, targetItem);
+                        }
+                        else if (action == ItemDropAction.InsertAfter)
+                        {
+                            ViewModel.MoveItemAfter(sourceItem, targetItem);
+                        }
                     }
                 });
                 return;

@@ -43,6 +43,7 @@ public class DownloadItemDto
     public string? ExpectedChecksum { get; set; }
     public string? CalculatedChecksum { get; set; }
     public bool IsCustomName { get; set; }
+    public bool IsMetadataResolved { get; set; }
 }
 
 public class NextTaskStepDto
@@ -872,7 +873,8 @@ public class DownloadPersistenceService : IDisposable
                         ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
                         ExpectedChecksum = item.ExpectedChecksum,
                         CalculatedChecksum = item.CalculatedChecksum,
-                        IsCustomName = item.IsCustomName
+                        IsCustomName = item.IsCustomName,
+                        IsMetadataResolved = item.IsMetadataResolved || item.TotalBytes > 0 || item.DownloadedBytes > 0 || itemStatus == DownloadStatus.Completed
                     });
                 }
 
@@ -1541,7 +1543,8 @@ public class DownloadPersistenceService : IDisposable
                             StatusMessage = itemDto.StatusMessage,
                             ProgressPercentage = itemDto.ProgressPercentage,
                             ExpectedChecksum = itemDto.ExpectedChecksum,
-                            CalculatedChecksum = itemDto.CalculatedChecksum
+                            CalculatedChecksum = itemDto.CalculatedChecksum,
+                            IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
                         };
 
                         package.Items.Add(item);
@@ -1819,7 +1822,8 @@ public class DownloadPersistenceService : IDisposable
                             CompletedAt = itemDto.CompletedAt,
                             ElapsedDurationMs = itemDto.ElapsedDurationMs,
                             ExpectedChecksum = itemDto.ExpectedChecksum,
-                            CalculatedChecksum = itemDto.CalculatedChecksum
+                            CalculatedChecksum = itemDto.CalculatedChecksum,
+                            IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
                         };
 
                         // Do not inspect orphaned .part or .part.segments files for already completed downloads

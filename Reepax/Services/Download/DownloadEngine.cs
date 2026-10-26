@@ -389,6 +389,7 @@ public class DownloadEngine
         }
         catch (Exception ex)
         {
+            item.Status = DownloadStatus.Failed;
             SafeInvokeAsync(() =>
             {
                 item.Status = DownloadStatus.Failed;
