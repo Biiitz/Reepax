@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private const int WM_EXITSIZEMOVE = 0x0232;
     private bool _isResizingOrMovingViaWin32;
     private System.Windows.Threading.DispatcherTimer? _windowBoundsDebounceTimer;
+    private long _lastAutoFitTimestamp;
 
     public MainWindow()
     {
@@ -194,12 +195,13 @@ public partial class MainWindow : Window
             if (_isResizingOrMovingViaWin32)
             {
                 UpdateWindowStateInMemory();
+                TryLiveAutoFitNameColumn();
             }
             else
             {
                 DebounceSaveWindowState();
+                AutoFitNameColumn();
             }
-            AutoFitNameColumn();
         };
 
         StateChanged += (_, _) => DebounceSaveWindowState();
@@ -942,6 +944,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _windowBoundsDebounceTimer?.Stop();
         try
         {
             Services.SystemIntegration.ClipboardMonitorService.Instance.Stop();
@@ -978,12 +981,16 @@ public partial class MainWindow : Window
         else if (msg == WM_ENTERSIZEMOVE)
         {
             _isResizingOrMovingViaWin32 = true;
+            if (ViewModel != null) ViewModel.IsResizingOrMovingWindow = true;
         }
         else if (msg == WM_EXITSIZEMOVE)
         {
             _isResizingOrMovingViaWin32 = false;
-            SaveWindowState(persistToDisk: true);
+            if (ViewModel != null) ViewModel.IsResizingOrMovingWindow = false;
+            UpdateWindowStateInMemory();
+            DebounceSaveWindowState();
             AutoFitNameColumn();
+            Services.Storage.SettingsService.Instance.RequestSaveSettings(500);
         }
         return IntPtr.Zero;
     }
@@ -3668,6 +3675,16 @@ public partial class MainWindow : Window
 
 
 
+    private void TryLiveAutoFitNameColumn()
+    {
+        long now = Environment.TickCount64;
+        if (now - _lastAutoFitTimestamp >= 16)
+        {
+            _lastAutoFitTimestamp = now;
+            AutoFitNameColumn();
+        }
+    }
+
     private bool _isAutoFittingName;
     public void AutoFitNameColumn()
     {
@@ -3692,14 +3709,14 @@ public partial class MainWindow : Window
         {
             if (remaining >= minNameWidth)
             {
-                if (Math.Abs(ViewModel.ColWidthName - remaining) > 0.5)
+                if (Math.Abs(ViewModel.ColWidthName - remaining) >= 1.0)
                 {
-                    ViewModel.ColWidthName = Math.Round(remaining, 1);
+                    ViewModel.ColWidthName = Math.Round(remaining);
                 }
             }
             else
             {
-                if (Math.Abs(ViewModel.ColWidthName - minNameWidth) > 0.5)
+                if (Math.Abs(ViewModel.ColWidthName - minNameWidth) >= 1.0)
                 {
                     ViewModel.ColWidthName = minNameWidth;
                 }
@@ -3735,35 +3752,43 @@ public partial class MainWindow : Window
 
         if (currentSum <= availableMetadataWidth) return;
 
-        if (availableMetadataWidth <= minSum)
+        vm.BeginColumnWidthUpdates();
+        try
         {
-            foreach (var col in visibleCols)
+            if (availableMetadataWidth <= minSum)
             {
-                SetColumnWidth(vm, col, GetColumnMinWidth(col));
+                foreach (var col in visibleCols)
+                {
+                    SetColumnWidth(vm, col, GetColumnMinWidth(col));
+                }
+                return;
             }
-            return;
+
+            double excessToReduce = currentSum - availableMetadataWidth;
+            double totalReducible = visibleCols.Sum(c => Math.Max(0, GetColumnWidth(vm, c) - GetColumnMinWidth(c)));
+
+            if (totalReducible > 0)
+            {
+                double sumAssigned = 0;
+                for (int i = 0; i < visibleCols.Count - 1; i++)
+                {
+                    string col = visibleCols[i];
+                    double cur = GetColumnWidth(vm, col);
+                    double min = GetColumnMinWidth(col);
+                    double reducible = Math.Max(0, cur - min);
+                    double share = reducible / totalReducible;
+                    double newWidth = Math.Max(min, Math.Round(cur - (excessToReduce * share), 1));
+                    SetColumnWidth(vm, col, newWidth);
+                    sumAssigned += newWidth;
+                }
+                string lastCol = visibleCols[^1];
+                double lastWidth = Math.Max(GetColumnMinWidth(lastCol), Math.Round(availableMetadataWidth - sumAssigned, 1));
+                SetColumnWidth(vm, lastCol, lastWidth);
+            }
         }
-
-        double excessToReduce = currentSum - availableMetadataWidth;
-        double totalReducible = visibleCols.Sum(c => Math.Max(0, GetColumnWidth(vm, c) - GetColumnMinWidth(c)));
-
-        if (totalReducible > 0)
+        finally
         {
-            double sumAssigned = 0;
-            for (int i = 0; i < visibleCols.Count - 1; i++)
-            {
-                string col = visibleCols[i];
-                double cur = GetColumnWidth(vm, col);
-                double min = GetColumnMinWidth(col);
-                double reducible = Math.Max(0, cur - min);
-                double share = reducible / totalReducible;
-                double newWidth = Math.Max(min, Math.Round(cur - (excessToReduce * share), 1));
-                SetColumnWidth(vm, col, newWidth);
-                sumAssigned += newWidth;
-            }
-            string lastCol = visibleCols[^1];
-            double lastWidth = Math.Max(GetColumnMinWidth(lastCol), Math.Round(availableMetadataWidth - sumAssigned, 1));
-            SetColumnWidth(vm, lastCol, lastWidth);
+            vm.EndColumnWidthUpdates();
         }
     }
 

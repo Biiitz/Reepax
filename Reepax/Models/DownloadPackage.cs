@@ -430,23 +430,66 @@ public partial class DownloadPackage : ObservableObject
     [NotifyPropertyChangedFor(nameof(AverageSpeedFormatted))]
     private long _elapsedDurationMs;
 
+    /// <summary>
+    /// Transient UTC timestamp marking when the package's current active download session started.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime? CurrentSessionStartedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public void StartDownloadSession()
+    {
+        if (!CurrentSessionStartedAt.HasValue)
+        {
+            CurrentSessionStartedAt = DateTime.UtcNow;
+            StartedAt ??= DateTime.Now;
+            OnPropertyChanged(nameof(Duration));
+            OnPropertyChanged(nameof(DurationFormatted));
+        }
+    }
+
+    public void RecordSessionDuration()
+    {
+        if (CurrentSessionStartedAt.HasValue)
+        {
+            var sessionMs = (long)(DateTime.UtcNow - CurrentSessionStartedAt.Value).TotalMilliseconds;
+            if (sessionMs > 0)
+            {
+                ElapsedDurationMs += sessionMs;
+            }
+            CurrentSessionStartedAt = null;
+            OnPropertyChanged(nameof(Duration));
+            OnPropertyChanged(nameof(DurationFormatted));
+        }
+    }
 
     public TimeSpan Duration
     {
         get
         {
-            if (ElapsedDurationMs > 0)
-                return TimeSpan.FromMilliseconds(ElapsedDurationMs);
+            long totalMs = ElapsedDurationMs;
+            if (Status == DownloadStatus.Downloading)
+            {
+                if (CurrentSessionStartedAt.HasValue)
+                {
+                    var cur = (DateTime.UtcNow - CurrentSessionStartedAt.Value).TotalMilliseconds;
+                    if (cur > 0) totalMs += (long)cur;
+                }
+                else if (StartedAt.HasValue && DateTime.Now >= StartedAt.Value)
+                {
+                    totalMs += (long)(DateTime.Now - StartedAt.Value).TotalMilliseconds;
+                }
+            }
+            if (totalMs > 0)
+                return TimeSpan.FromMilliseconds(totalMs);
+
             if (CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
                 return CompletedAt.Value - StartedAt.Value;
 
             var sumTicks = Items.ToArray().Sum(i => i.Duration.Ticks);
             if (sumTicks > 0)
                 return TimeSpan.FromTicks(sumTicks);
-
-            if (Status == DownloadStatus.Downloading && StartedAt.HasValue && DateTime.Now >= StartedAt.Value)
-                return DateTime.Now - StartedAt.Value;
 
             return TimeSpan.Zero;
         }
@@ -865,6 +908,7 @@ public partial class DownloadPackage : ObservableObject
         }
         else if (enabledCount > 0 && itemsSnapshot.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
         {
+            RecordSessionDuration();
             Status = DownloadStatus.Completed;
             ProgressPercentage = 100;
             if (TotalBytes > 0)
@@ -914,24 +958,28 @@ public partial class DownloadPackage : ObservableObject
         }
         else if (hasActive)
         {
+            StartDownloadSession();
             CompletedAt = null;
             Status = DownloadStatus.Downloading;
             StatusMessage = Loc.Get("Status_DownloadingPackage");
         }
         else if (hasCaptcha)
         {
+            RecordSessionDuration();
             CompletedAt = null;
             Status = DownloadStatus.SolvingCaptcha;
             StatusMessage = Loc.Get("Status_WaitingForCaptcha");
         }
         else if (hasError)
         {
+            RecordSessionDuration();
             CompletedAt = null;
             Status = DownloadStatus.Failed;
             StatusMessage = Loc.Get("Status_ErrorOccurred");
         }
         else if (itemsSnapshot.Where(i => i.IsEnabled && i.Status != DownloadStatus.Completed).All(i => i.Status == DownloadStatus.Paused))
         {
+            RecordSessionDuration();
             CompletedAt = null;
             Status = DownloadStatus.Paused;
             StatusMessage = Loc.Get("Status_Paused");
@@ -940,6 +988,7 @@ public partial class DownloadPackage : ObservableObject
         }
         else
         {
+            RecordSessionDuration();
             CompletedAt = null;
             Status = DownloadStatus.Queued;
             StatusMessage = Loc.Get("Status_Queued");

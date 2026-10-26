@@ -715,6 +715,7 @@ public class QueueManager
             }
 
             // Set status synchronously so FindNextBrowserItem won't pick the item again
+            nextItem.StartDownloadSession();
             nextItem.Status = DownloadStatus.InBrowser;
             nextItem.CurrentSlot = windowId;
             nextItem.StatusMessage = hidden
@@ -903,6 +904,7 @@ public class QueueManager
             if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha)
             {
                 item.Status = DownloadStatus.Paused;
+                item.RecordSessionDuration();
                 item.StatusMessage = Loc.Get("Status_BrowserWindowClosed");
                 item.CurrentSlot = null;
             }
@@ -1298,7 +1300,12 @@ public class QueueManager
                     item.TotalBytes = item.DownloadedBytes;
                 item.SpeedBytesPerSecond = 0;
                 item.RemainingSeconds = 0;
+                item.RecordSessionDuration();
                 item.CompletedAt = DateTime.Now;
+                if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
+                {
+                    item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
+                }
             });
 
             // Same completion pipeline as engine downloads (checksum verification, auto-extraction, ...)

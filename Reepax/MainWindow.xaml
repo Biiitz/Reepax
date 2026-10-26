@@ -18,6 +18,8 @@
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource BgDarkBrush}"
         Foreground="{DynamicResource TextPrimaryBrush}"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True"
         AllowDrop="True"
         DragEnter="Window_DragEnter"
         DragOver="Window_DragOver"
@@ -755,8 +757,8 @@
 
                     <!-- ================= PACKAGE ROW ================= -->
                     <Border x:Name="PackageBorder"
-                        Margin="0,0.5"
-                        Padding="0,1.5"
+                        Margin="0,1"
+                        Padding="0,2"
                         CornerRadius="4"
                         Focusable="True"
                         FocusVisualStyle="{x:Null}"
@@ -1197,7 +1199,7 @@
                         <!-- Selection Border at Edges with Inner Glow -->
                         <Grid x:Name="PackageSelectionBorder"
                               Grid.Column="0" Grid.ColumnSpan="20"
-                              Margin="0,-1.5"
+                              Margin="0,-2"
                               SnapsToDevicePixels="True"
                               IsHitTestVisible="False"
                               Opacity="0">

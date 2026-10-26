@@ -149,7 +149,7 @@ public class DownloadEngine
 
         SafeInvokeAsync(() =>
         {
-            item.StartedAt ??= DateTime.Now;
+            item.StartDownloadSession();
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_Connecting");
             item.ErrorMessage = null;
@@ -164,6 +164,9 @@ public class DownloadEngine
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
+                item.RecordSessionDuration();
+                item.Status = DownloadStatus.Failed;
+                item.ErrorMessage = ex.Message;
                 SafeInvokeAsync(() =>
                 {
                     item.Status = DownloadStatus.Failed;
@@ -175,6 +178,7 @@ public class DownloadEngine
             }
             finally
             {
+                item.RecordSessionDuration();
                 CompleteAndRemoveActiveDownload(item.Id);
             }
         });
@@ -198,6 +202,7 @@ public class DownloadEngine
 
         SafeInvokeAsync(() =>
         {
+            item.StartDownloadSession();
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_ResumingDownload");
             item.ErrorMessage = null;
@@ -212,6 +217,9 @@ public class DownloadEngine
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
+                item.RecordSessionDuration();
+                item.Status = DownloadStatus.Failed;
+                item.ErrorMessage = ex.Message;
                 SafeInvokeAsync(() =>
                 {
                     item.Status = DownloadStatus.Failed;
@@ -223,6 +231,7 @@ public class DownloadEngine
             }
             finally
             {
+                item.RecordSessionDuration();
                 CompleteAndRemoveActiveDownload(item.Id);
             }
         });
@@ -369,6 +378,7 @@ public class DownloadEngine
         }
         catch (OperationCanceledException)
         {
+            item.RecordSessionDuration();
             SafeInvokeAsync(() =>
             {
                 if (item.Status != DownloadStatus.Queued)
@@ -389,7 +399,9 @@ public class DownloadEngine
         }
         catch (Exception ex)
         {
+            item.RecordSessionDuration();
             item.Status = DownloadStatus.Failed;
+            item.ErrorMessage = ex.Message;
             SafeInvokeAsync(() =>
             {
                 item.Status = DownloadStatus.Failed;
@@ -839,6 +851,7 @@ public class DownloadEngine
         File.Move(tempFilePath, actualFinalPath, overwrite: true);
         Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segMetaPath);
 
+        item.RecordSessionDuration();
         SafeInvoke(() =>
         {
             item.DownloadedBytes = written;
@@ -848,7 +861,7 @@ public class DownloadEngine
             item.Status = DownloadStatus.Completed;
             item.StatusMessage = Loc.Get("Status_Completed");
             item.CompletedAt = DateTime.Now;
-            if (item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
+            if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
             {
                 item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
             }
@@ -1193,6 +1206,7 @@ public class DownloadEngine
 
             File.Move(tempFilePath, actualFinalPath, overwrite: true);
 
+            item.RecordSessionDuration();
             SafeInvoke(() =>
             {
                 item.DownloadedBytes = currentDownloaded;
@@ -1203,7 +1217,7 @@ public class DownloadEngine
                 item.Status = DownloadStatus.Completed;
                 item.StatusMessage = Loc.Get("Status_Completed");
                 item.CompletedAt = DateTime.Now;
-                if (item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
+                if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
                 {
                     item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
                 }

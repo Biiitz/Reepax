@@ -551,19 +551,156 @@ public partial class MainViewModel
     [ObservableProperty]
     private bool _isDraggingColumnWidth;
 
-    partial void OnColWidthNameChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthName = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthHosterChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthHoster = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthSavePathChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSavePath = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthSizeChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSize = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthProgressChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthProgress = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthSpeedChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthSpeed = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthEtaChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthEta = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthStatusChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthStatus = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthDurationChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthDuration = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthAddedDateChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthAddedDate = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthCompletedDateChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthCompletedDate = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthChecksumChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthChecksum = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
-    partial void OnColWidthActionsChanged(double value) { if (!IsDraggingColumnWidth) { _settingsService.Settings.ColWidthActions = value; _settingsService.SaveSettings(); } NotifyDividerChanges(); }
+    [ObservableProperty]
+    private bool _isResizingOrMovingWindow;
+
+    private bool _isBatchUpdatingColumnWidths;
+
+    public void BeginColumnWidthUpdates()
+    {
+        _isBatchUpdatingColumnWidths = true;
+    }
+
+    public void EndColumnWidthUpdates()
+    {
+        _isBatchUpdatingColumnWidths = false;
+        NotifySlotWidthChanges();
+        if (!IsDraggingColumnWidth && !IsResizingOrMovingWindow)
+        {
+            _settingsService.RequestSaveSettings(350);
+        }
+    }
+
+    public void NotifyColumnWidthChanged(string column)
+    {
+        if (_isBatchUpdatingColumnWidths) return;
+
+        int slot = GetColumnIndex(column);
+        if (slot >= 0)
+        {
+            NotifySlotWidth(slot);
+        }
+
+        switch (column)
+        {
+            case "Name": OnPropertyChanged(nameof(GridColWidthName)); break;
+            case "Hoster": OnPropertyChanged(nameof(GridColWidthHoster)); break;
+            case "SavePath": OnPropertyChanged(nameof(GridColWidthSavePath)); break;
+            case "Size": OnPropertyChanged(nameof(GridColWidthSize)); break;
+            case "Progress": OnPropertyChanged(nameof(GridColWidthProgress)); break;
+            case "Speed": OnPropertyChanged(nameof(GridColWidthSpeed)); break;
+            case "Eta": OnPropertyChanged(nameof(GridColWidthEta)); break;
+            case "Status": OnPropertyChanged(nameof(GridColWidthStatus)); break;
+            case "Duration": OnPropertyChanged(nameof(GridColWidthDuration)); break;
+            case "AddedDate": OnPropertyChanged(nameof(GridColWidthAddedDate)); break;
+            case "CompletedDate": OnPropertyChanged(nameof(GridColWidthCompletedDate)); break;
+            case "Checksum": OnPropertyChanged(nameof(GridColWidthChecksum)); break;
+            case "Actions": OnPropertyChanged(nameof(GridColWidthActions)); break;
+        }
+
+        OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
+        OnPropertyChanged(nameof(TotalContentMinWidth));
+    }
+
+    public void NotifySlotWidth(int slot)
+    {
+        switch (slot)
+        {
+            case 0:
+                OnPropertyChanged(nameof(GridColWidthSlot0));
+                OnPropertyChanged(nameof(ActualColWidthSlot0));
+                break;
+            case 1:
+                OnPropertyChanged(nameof(GridColWidthSlot1));
+                OnPropertyChanged(nameof(ActualColWidthSlot1));
+                break;
+            case 2:
+                OnPropertyChanged(nameof(GridColWidthSlot2));
+                OnPropertyChanged(nameof(ActualColWidthSlot2));
+                break;
+            case 3:
+                OnPropertyChanged(nameof(GridColWidthSlot3));
+                OnPropertyChanged(nameof(ActualColWidthSlot3));
+                break;
+            case 4:
+                OnPropertyChanged(nameof(GridColWidthSlot4));
+                OnPropertyChanged(nameof(ActualColWidthSlot4));
+                break;
+            case 5:
+                OnPropertyChanged(nameof(GridColWidthSlot5));
+                OnPropertyChanged(nameof(ActualColWidthSlot5));
+                break;
+            case 6:
+                OnPropertyChanged(nameof(GridColWidthSlot6));
+                OnPropertyChanged(nameof(ActualColWidthSlot6));
+                break;
+            case 7:
+                OnPropertyChanged(nameof(GridColWidthSlot7));
+                OnPropertyChanged(nameof(ActualColWidthSlot7));
+                break;
+            case 8:
+                OnPropertyChanged(nameof(GridColWidthSlot8));
+                OnPropertyChanged(nameof(ActualColWidthSlot8));
+                break;
+            case 9:
+                OnPropertyChanged(nameof(GridColWidthSlot9));
+                OnPropertyChanged(nameof(ActualColWidthSlot9));
+                break;
+            case 10:
+                OnPropertyChanged(nameof(GridColWidthSlot10));
+                OnPropertyChanged(nameof(ActualColWidthSlot10));
+                break;
+            case 11:
+                OnPropertyChanged(nameof(GridColWidthSlot11));
+                OnPropertyChanged(nameof(ActualColWidthSlot11));
+                break;
+            case 12:
+                OnPropertyChanged(nameof(GridColWidthSlot12));
+                OnPropertyChanged(nameof(ActualColWidthSlot12));
+                break;
+        }
+    }
+
+    private void OnColumnWidthUpdated(string column, double value)
+    {
+        switch (column)
+        {
+            case "Name": _settingsService.Settings.ColWidthName = value; break;
+            case "Hoster": _settingsService.Settings.ColWidthHoster = value; break;
+            case "SavePath": _settingsService.Settings.ColWidthSavePath = value; break;
+            case "Size": _settingsService.Settings.ColWidthSize = value; break;
+            case "Progress": _settingsService.Settings.ColWidthProgress = value; break;
+            case "Speed": _settingsService.Settings.ColWidthSpeed = value; break;
+            case "Eta": _settingsService.Settings.ColWidthEta = value; break;
+            case "Status": _settingsService.Settings.ColWidthStatus = value; break;
+            case "Duration": _settingsService.Settings.ColWidthDuration = value; break;
+            case "AddedDate": _settingsService.Settings.ColWidthAddedDate = value; break;
+            case "CompletedDate": _settingsService.Settings.ColWidthCompletedDate = value; break;
+            case "Checksum": _settingsService.Settings.ColWidthChecksum = value; break;
+            case "Actions": _settingsService.Settings.ColWidthActions = value; break;
+        }
+
+        if (!IsDraggingColumnWidth && !IsResizingOrMovingWindow && !_isBatchUpdatingColumnWidths)
+        {
+            _settingsService.RequestSaveSettings(350);
+        }
+
+        NotifyColumnWidthChanged(column);
+    }
+
+    partial void OnColWidthNameChanged(double value) => OnColumnWidthUpdated("Name", value);
+    partial void OnColWidthHosterChanged(double value) => OnColumnWidthUpdated("Hoster", value);
+    partial void OnColWidthSavePathChanged(double value) => OnColumnWidthUpdated("SavePath", value);
+    partial void OnColWidthSizeChanged(double value) => OnColumnWidthUpdated("Size", value);
+    partial void OnColWidthProgressChanged(double value) => OnColumnWidthUpdated("Progress", value);
+    partial void OnColWidthSpeedChanged(double value) => OnColumnWidthUpdated("Speed", value);
+    partial void OnColWidthEtaChanged(double value) => OnColumnWidthUpdated("Eta", value);
+    partial void OnColWidthStatusChanged(double value) => OnColumnWidthUpdated("Status", value);
+    partial void OnColWidthDurationChanged(double value) => OnColumnWidthUpdated("Duration", value);
+    partial void OnColWidthAddedDateChanged(double value) => OnColumnWidthUpdated("AddedDate", value);
+    partial void OnColWidthCompletedDateChanged(double value) => OnColumnWidthUpdated("CompletedDate", value);
+    partial void OnColWidthChecksumChanged(double value) => OnColumnWidthUpdated("Checksum", value);
+    partial void OnColWidthActionsChanged(double value) => OnColumnWidthUpdated("Actions", value);
 
     // =========================================================================
     // Column Sorting

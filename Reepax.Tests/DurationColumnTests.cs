@@ -158,4 +158,22 @@ public class DurationColumnTests
         Assert.Equal("PkgLong", sortedPkgsDesc[0].Name);
         Assert.Equal("PkgShort", sortedPkgsDesc[1].Name);
     }
+
+    [Fact]
+    public void DownloadItem_Duration_DoesNotAccumulateTimeWhilePaused()
+    {
+        var item = new DownloadItem
+        {
+            FileName = "archive.bin",
+            Status = DownloadStatus.Paused,
+            StartedAt = DateTime.Now.AddHours(-5)
+        };
+
+        Assert.Equal(TimeSpan.Zero, item.Duration);
+        Assert.Equal("--", item.DurationFormatted);
+
+        item.ElapsedDurationMs = 10_000;
+        Assert.Equal(TimeSpan.FromSeconds(10), item.Duration);
+        Assert.Equal("10s", item.DurationFormatted);
+    }
 }
