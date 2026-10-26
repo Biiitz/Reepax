@@ -303,14 +303,13 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
                             </Trigger>
-                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
-                                <Setter Property="BorderThickness" Value="0.65" />
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsEnabled}" Value="False" />
+                                    <Condition Binding="{Binding IsSelected}" Value="False" />
+                                </MultiDataTrigger.Conditions>
                                 <Setter Property="Opacity" Value="0.45" />
-                            </DataTrigger>
+                            </MultiDataTrigger>
                         </Style.Triggers>
                     </Style>
                 </Border.Style>
@@ -574,6 +573,67 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Selection Border at Edges with Inner Glow -->
+                    <Grid x:Name="ItemSelectionBorder"
+                          Grid.Column="0" Grid.ColumnSpan="20"
+                          Margin="0,-3"
+                          SnapsToDevicePixels="True"
+                          IsHitTestVisible="False"
+                          Opacity="0">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     To="1.0"
+                                                                     Duration="0:0:0.18">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <QuadraticEase EasingMode="EaseOut" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                     To="0.0"
+                                                                     Duration="0:0:0.14">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <QuadraticEase EasingMode="EaseIn" />
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+
+                        <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
+                        <Border CornerRadius="4"
+                                BorderThickness="1.5"
+                                BorderBrush="{DynamicResource AccentBlueBrush}"
+                                Background="{DynamicResource AccentSelectionBgBrush}" />
+
+                        <!-- Inner Glow Layer 1 -->
+                        <Border Margin="1"
+                                CornerRadius="3.2"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource AccentGlowBrush1}" />
+
+                        <!-- Inner Glow Layer 2 -->
+                        <Border Margin="2"
+                                CornerRadius="2.4"
+                                BorderThickness="1"
+                                BorderBrush="{DynamicResource AccentGlowBrush2}" />
+                    </Grid>
+
                 </Grid>
             </Border>
 
@@ -719,18 +779,17 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                 </Trigger>
-                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
-                                    <Setter Property="BorderThickness" Value="0.65" />
-                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
                                     <Setter Property="Background" Value="#2A3B82F6" />
                                 </DataTrigger>
-                                <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding IsEnabled}" Value="False" />
+                                        <Condition Binding="{Binding IsSelected}" Value="False" />
+                                    </MultiDataTrigger.Conditions>
                                     <Setter Property="Opacity" Value="0.5" />
-                                </DataTrigger>
+                                </MultiDataTrigger>
                             </Style.Triggers>
                         </Style>
                     </Border.Style>
@@ -1134,6 +1193,67 @@
                                 Background="#1038BDF8"
                                 BorderBrush="#3038BDF8"
                                 BorderThickness="1" />
+
+                        <!-- Selection Border at Edges with Inner Glow -->
+                        <Grid x:Name="PackageSelectionBorder"
+                              Grid.Column="0" Grid.ColumnSpan="20"
+                              Margin="0,-1.5"
+                              SnapsToDevicePixels="True"
+                              IsHitTestVisible="False"
+                              Opacity="0">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         To="1.0"
+                                                                         Duration="0:0:0.18">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <QuadraticEase EasingMode="EaseOut" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                         To="0.0"
+                                                                         Duration="0:0:0.14">
+                                                            <DoubleAnimation.EasingFunction>
+                                                                <QuadraticEase EasingMode="EaseIn" />
+                                                            </DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+
+                            <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
+                            <Border CornerRadius="4"
+                                    BorderThickness="1.5"
+                                    BorderBrush="{DynamicResource AccentBlueBrush}"
+                                    Background="{DynamicResource AccentSelectionBgBrush}" />
+
+                            <!-- Inner Glow Layer 1 -->
+                            <Border Margin="1"
+                                    CornerRadius="3.2"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource AccentGlowBrush1}" />
+
+                            <!-- Inner Glow Layer 2 -->
+                            <Border Margin="2"
+                                    CornerRadius="2.4"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource AccentGlowBrush2}" />
+                        </Grid>
 
 
 

@@ -29,6 +29,15 @@
     <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
     <SolidColorBrush x:Key="AccentBlueBrush" Color="{StaticResource AccentBlueColor}" />
     <SolidColorBrush x:Key="AccentBlueHoverBrush" Color="{StaticResource AccentBlueHoverColor}" />
+    <SolidColorBrush x:Key="AccentGlowBrush1" Color="#373B82F6" />
+    <SolidColorBrush x:Key="AccentGlowBrush2" Color="#1C3B82F6" />
+    <LinearGradientBrush x:Key="AccentSelectionBgBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#4D3B82F6" Offset="0.0" />
+        <GradientStop Color="#1E3B82F6" Offset="0.3" />
+        <GradientStop Color="#183B82F6" Offset="0.5" />
+        <GradientStop Color="#1E3B82F6" Offset="0.7" />
+        <GradientStop Color="#4D3B82F6" Offset="1.0" />
+    </LinearGradientBrush>
 
     <!-- ScrollBar Palette (Darker app tone with subtle outline border) -->
     <Color x:Key="ScrollBarThumbColor">#1C1C1C</Color>
