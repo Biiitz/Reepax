@@ -65,10 +65,12 @@ public static class Strings_de
         ["Menu_UnclipFromPackage"] = "Entkoppeln",
         ["Menu_VerifyBinFiles"] = "BIN-Dateien vor Installation prüfen (.bat)",
         ["Menu_ExtractPackage"] = "Paket entpacken",
+        ["Menu_ReextractPackage"] = "Paket erneut entpacken",
         ["Menu_PauseExtraction"] = "Entpacken pausieren",
         ["Menu_ResumeExtraction"] = "Entpacken fortsetzen",
         ["Menu_CancelExtraction"] = "Entpacken abbrechen",
         ["Menu_ExtractArchive"] = "Archiv entpacken",
+        ["Menu_ReextractArchive"] = "Archiv erneut entpacken",
         ["Menu_CreateGameInstallFolder"] = "Installationsordner erstellen & Pfad kopieren",
         ["Common_Recommended_Parentheses"] = "(Empfohlen)",
         ["Menu_CopyAllUrls"] = "Alle URLs kopieren",
@@ -273,6 +275,8 @@ public static class Strings_de
 
         // Dialogs
         ["Dialog_ErrorTitle"] = "Fehler",
+        ["Dialog_ReextractTitle"] = "Erneut entpacken",
+        ["Dialog_ReextractMessage"] = "Das Paket \"{0}\" wurde bereits entpackt.\n\nMöchtest du es erneut entpacken? Alle bereits vorhandenen Dateien werden dabei ersetzt.",
         ["Dialog_DeletePackageTitle"] = "Paket löschen",
         ["Dialog_DeletePackageMessage"] = "Möchtest du das Paket \"{0}\" wirklich aus Reepax entfernen?",
         ["Dialog_DeletePackageOptionFiles"] = "Auch alle {0} zugehörigen Dateien von der Festplatte löschen ({1})",

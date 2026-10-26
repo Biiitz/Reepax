@@ -25,7 +25,7 @@ public class ArchiveExtractionService
 
     private static readonly HashSet<string> _archiveExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".iso", ".cab"
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz"
     };
 
     /// <summary>
@@ -37,7 +37,7 @@ public class ArchiveExtractionService
     };
 
     private static readonly Regex _multiPartPattern = new(
-        @"\.part0*(\d+)\.rar$|\.part0*(\d+)$|\.r(\d+)$|\.0*(\d+)$",
+        @"\.part0*(\d+)\.rar$|\.part0*(\d+)$|\.r(\d+)$|\.(0\d+|\d{2,})$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
@@ -62,7 +62,7 @@ public class ArchiveExtractionService
         if (package == null || package.Items == null)
             return false;
 
-        return package.Items.Any(i => IsArchiveFile(i.SaveFilePath) || IsArchiveFile(i.FileName));
+        return package.Items.Any(i => i.IsEnabled && (IsArchiveFile(i.SaveFilePath) || IsArchiveFile(i.FileName)));
     }
 
     public bool IsPrimaryArchivePart(string filePath)
@@ -151,6 +151,114 @@ public class ArchiveExtractionService
         return false;
     }
 
+    /// <summary>
+    /// Returns all existing primary archive files for the package.
+    /// Checks enabled items that physically exist on disk, and falls back to scanning the package save directory
+    /// if items are not present on disk. Deduplicates multi-volume companion archives (.rar vs .r00).
+    /// </summary>
+    public List<string> GetPrimaryArchives(DownloadPackage package)
+    {
+        if (package == null)
+            return new List<string>();
+
+        var primaryArchives = new List<string>();
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // 1. Check enabled items that physically exist on disk and are primary archive parts
+        if (package.Items != null)
+        {
+            var enabledItems = package.Items.Where(i => i.IsEnabled).ToList();
+            foreach (var item in enabledItems)
+            {
+                var filePath = item.SaveFilePath;
+                if (!string.IsNullOrWhiteSpace(filePath) &&
+                    File.Exists(filePath) &&
+                    new FileInfo(filePath).Length > 0 &&
+                    IsPrimaryArchivePart(filePath) &&
+                    seenPaths.Add(filePath))
+                {
+                    primaryArchives.Add(filePath);
+                }
+            }
+        }
+
+        // 2. If no archives were found via items, scan package save directory if it exists on disk
+        if (primaryArchives.Count == 0 && !string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory))
+        {
+            try
+            {
+                var files = Directory.GetFiles(package.SaveDirectory);
+                foreach (var file in files)
+                {
+                    if (new FileInfo(file).Length > 0 &&
+                        IsPrimaryArchivePart(file) &&
+                        seenPaths.Add(file))
+                    {
+                        primaryArchives.Add(file);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"[ArchiveExtractor] Failed to scan directory '{package.SaveDirectory}': {ex.Message}");
+            }
+        }
+
+        // 3. Deduplicate multi-volume companion archives (.rar vs .r00)
+        if (primaryArchives.Count > 1)
+        {
+            var deduplicated = new List<string>();
+            foreach (var primary in primaryArchives)
+            {
+                bool isCoveredByOther = false;
+                foreach (var other in primaryArchives)
+                {
+                    if (!string.Equals(primary, other, StringComparison.OrdinalIgnoreCase) &&
+                        other.EndsWith(".rar", StringComparison.OrdinalIgnoreCase) &&
+                        ArePartOfSameArchive(other, primary))
+                    {
+                        isCoveredByOther = true;
+                        break;
+                    }
+                }
+
+                if (!isCoveredByOther)
+                {
+                    deduplicated.Add(primary);
+                }
+            }
+            primaryArchives = deduplicated;
+        }
+
+        return primaryArchives;
+    }
+
+    /// <summary>
+    /// Determines whether the package can currently be extracted via right-click or command.
+    /// Strict conditions:
+    /// 1. Package must not be null.
+    /// 2. Package must not be already extracted.
+    /// 3. Package must not be currently extracting.
+    /// 4. All enabled downloads must be 100% completed.
+    /// 5. At least one valid, non-empty primary archive file must physically exist on disk.
+    /// </summary>
+    public bool CanExtractPackage(DownloadPackage? package, bool allowReextract = true)
+    {
+        if (package == null)
+            return false;
+
+        if (!allowReextract && package.IsExtracted)
+            return false;
+
+        if (package.IsExtracting || IsPackageExtracting(package.Id))
+            return false;
+
+        if (!package.AreDownloadsCompleted)
+            return false;
+
+        return GetPrimaryArchives(package).Count > 0;
+    }
+
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, bool> _extractingPackages = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CancellationTokenSource> _packageCts = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Threading.ManualResetEventSlim> _packagePauseEvents = new();
@@ -230,13 +338,13 @@ public class ArchiveExtractionService
         }
     }
 
-    public async Task<bool> CheckAndExtractPackageAsync(DownloadPackage package, CancellationToken cancellationToken = default, bool force = false)
+    public async Task<bool> CheckAndExtractPackageAsync(DownloadPackage package, CancellationToken cancellationToken = default, bool force = false, bool forceReextract = false)
     {
         if (package == null)
             return false;
 
         // 1. Strict Check: If already extracted, do NOTHING!
-        if (package.IsExtracted)
+        if (package.IsExtracted && !forceReextract)
         {
             AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wurde bereits entpackt. Überspringe.");
             return true;
@@ -311,46 +419,11 @@ public class ArchiveExtractionService
             }
 
             // 5. Find primary archives to extract (.zip, .part1.rar, .7z.001, etc.)
-            var primaryArchives = new List<string>();
-            foreach (var item in enabledItems)
-            {
-                var filePath = item.SaveFilePath;
-                if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath) && IsPrimaryArchivePart(filePath))
-                {
-                    primaryArchives.Add(filePath);
-                }
-            }
-
-            // 5b. Deduplicate multi-volume parts: If a primary archive (like 'name.rar') is present,
-            // ensure companion volumes (like 'name.r00') are not duplicate-extracted.
-            if (primaryArchives.Count > 1)
-            {
-                var deduplicated = new List<string>();
-                foreach (var primary in primaryArchives)
-                {
-                    bool isCoveredByOther = false;
-                    foreach (var other in primaryArchives)
-                    {
-                        if (!string.Equals(primary, other, StringComparison.OrdinalIgnoreCase) &&
-                            other.EndsWith(".rar", StringComparison.OrdinalIgnoreCase) &&
-                            ArePartOfSameArchive(other, primary))
-                        {
-                            isCoveredByOther = true;
-                            break;
-                        }
-                    }
-
-                    if (!isCoveredByOther)
-                    {
-                        deduplicated.Add(primary);
-                    }
-                }
-                primaryArchives = deduplicated;
-            }
+            var primaryArchives = GetPrimaryArchives(package);
 
             if (primaryArchives.Count == 0)
             {
-                AppLogger.Info($"[ArchiveExtractor] No primary archive files found in package '{package.Name}'.");
+                AppLogger.Info($"[ArchiveExtractor] No primary archive files found on disk for package '{package.Name}'.");
                 return false;
             }
 

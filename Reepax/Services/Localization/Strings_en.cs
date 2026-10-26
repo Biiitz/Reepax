@@ -65,10 +65,12 @@ public static class Strings_en
         ["Menu_UnclipFromPackage"] = "Uncouple",
         ["Menu_VerifyBinFiles"] = "Verify BIN files before installation (.bat)",
         ["Menu_ExtractPackage"] = "Extract package",
+        ["Menu_ReextractPackage"] = "Re-extract package",
         ["Menu_PauseExtraction"] = "Pause extraction",
         ["Menu_ResumeExtraction"] = "Resume extraction",
         ["Menu_CancelExtraction"] = "Cancel extraction",
         ["Menu_ExtractArchive"] = "Extract archive",
+        ["Menu_ReextractArchive"] = "Re-extract archive",
         ["Menu_CreateGameInstallFolder"] = "Create install folder & copy path",
         ["Common_Recommended_Parentheses"] = "(Recommended)",
         ["Menu_CopyAllUrls"] = "Copy all URLs",
@@ -273,6 +275,8 @@ public static class Strings_en
 
         // Dialogs
         ["Dialog_ErrorTitle"] = "Error",
+        ["Dialog_ReextractTitle"] = "Re-extract",
+        ["Dialog_ReextractMessage"] = "The package \"{0}\" has already been extracted.\n\nDo you want to extract it again? All existing files will be replaced.",
         ["Dialog_DeletePackageTitle"] = "Delete Package",
         ["Dialog_DeletePackageMessage"] = "Are you sure you want to remove package \"{0}\" from Reepax?",
         ["Dialog_DeletePackageOptionFiles"] = "Also delete all {0} associated files from disk ({1})",

@@ -1620,7 +1620,47 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
-    public async Task MainViewModel_ExtractPackageAsync_SkipsWhenAlreadyExtracted()
+    public async Task MainViewModel_ExtractPackageAsync_SkipsWhenAlreadyExtracted_AndUserDeclines()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_DeclineReextract_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var zipPath = Path.Combine(tempDir, "archive.zip");
+            File.WriteAllBytes(zipPath, new byte[] { 0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+            var vm = new Reepax.ViewModels.MainViewModel();
+            var package = new DownloadPackage { Name = "AlreadyExtractedPkg", IsExtracted = true, SaveDirectory = tempDir };
+            package.Items.Add(new DownloadItem
+            {
+                FileName = "archive.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            });
+            vm.Packages.Add(package);
+
+            Reepax.Views.ConfirmDialog.ShowDialogOverrideForTesting = () => false;
+            try
+            {
+                await vm.ExtractPackageAsync(package);
+
+                Assert.Equal(Loc.Get("Status_CompletedAndExtracted"), vm.StatusSummary);
+                Assert.False(ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
+            }
+            finally
+            {
+                Reepax.Views.ConfirmDialog.ShowDialogOverrideForTesting = null;
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task MainViewModel_ExtractPackageAsync_SkipsWhenAlreadyExtracted_AndNoArchivesOnDisk()
     {
         var vm = new Reepax.ViewModels.MainViewModel();
         var package = new DownloadPackage { Name = "AlreadyExtractedPkg", IsExtracted = true };
@@ -1628,8 +1668,7 @@ public class ArchiveExtractionTests
 
         await vm.ExtractPackageAsync(package);
 
-        // StatusSummary should reflect that it is already completed and extracted
-        Assert.Equal(Loc.Get("Status_CompletedAndExtracted"), vm.StatusSummary);
+        Assert.Equal(Loc.Get("Status_NoExtractableArchivesFound"), vm.StatusSummary);
         Assert.False(ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
     }
 
@@ -1817,6 +1856,177 @@ public class ArchiveExtractionTests
         Assert.Equal(NextTaskStepState.Failed, par2Step.State);
         Assert.False(package.CheckIsFullyCompleted());
         Assert.False(package.IsFullyCompleted);
+    }
+
+    [Fact]
+    public void IsArchiveFile_RejectsSingleDigitExtensionsAndIso()
+    {
+        var service = ArchiveExtractionService.Instance;
+
+        Assert.False(service.IsArchiveFile("file.0"));
+        Assert.False(service.IsArchiveFile("file.1"));
+        Assert.False(service.IsArchiveFile("update_v1.0"));
+        Assert.False(service.IsArchiveFile("disc.iso"));
+        Assert.False(service.IsArchiveFile("driver.cab"));
+    }
+
+    [Fact]
+    public void CanExtractPackage_WhenNoArchivesOnDisk_ReturnsFalse()
+    {
+        var service = ArchiveExtractionService.Instance;
+        var package = new DownloadPackage { Name = "MissingOnDiskPackage" };
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "archive.zip",
+            SaveFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nonexistent.zip"),
+            Status = DownloadStatus.Completed,
+            IsEnabled = true
+        });
+
+        Assert.False(service.CanExtractPackage(package));
+    }
+
+    [Fact]
+    public void CanExtractPackage_WhenNonArchiveFiles_ReturnsFalse()
+    {
+        var service = ArchiveExtractionService.Instance;
+        var package = new DownloadPackage { Name = "BinOnlyPackage" };
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "setup.exe",
+            SaveFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "setup.exe"),
+            Status = DownloadStatus.Completed,
+            IsEnabled = true
+        });
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "data.bin",
+            SaveFilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "data.bin"),
+            Status = DownloadStatus.Completed,
+            IsEnabled = true
+        });
+
+        Assert.False(service.CanExtractPackage(package));
+    }
+
+    [Fact]
+    public void CanExtractPackage_WhenDownloadsIncomplete_ReturnsFalse()
+    {
+        var service = ArchiveExtractionService.Instance;
+        var package = new DownloadPackage { Name = "DownloadingPackage" };
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "archive.zip",
+            SaveFilePath = @"C:\Downloads\archive.zip",
+            Status = DownloadStatus.Downloading,
+            IsEnabled = true
+        });
+
+        Assert.False(service.CanExtractPackage(package));
+    }
+
+    [Fact]
+    public void CanExtractPackage_WhenAlreadyExtracted_ChecksAllowReextract()
+    {
+        var service = ArchiveExtractionService.Instance;
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var zipPath = Path.Combine(tempDir, "archive.zip");
+            File.WriteAllBytes(zipPath, new byte[] { 0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+            var package = new DownloadPackage { Name = "ExtractedPackage", IsExtracted = true, SaveDirectory = tempDir };
+            package.Items.Add(new DownloadItem
+            {
+                FileName = "archive.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            });
+
+            Assert.False(service.CanExtractPackage(package, allowReextract: false));
+            Assert.True(service.CanExtractPackage(package, allowReextract: true));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task CheckAndExtractPackage_WhenAlreadyExtracted_WithForceReextract_ExtractsSuccessfully()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_Reextract_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            DownloadPersistenceService.IsTestEnvironment = true;
+
+            var zipPath = Path.Combine(tempDir, "archive.zip");
+            using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("content.txt");
+                using var writer = new StreamWriter(entry.Open());
+                writer.WriteLine("Hello Reextract");
+            }
+
+            var package = new DownloadPackage
+            {
+                Name = "ReextractPkg",
+                SaveDirectory = tempDir,
+                AutoExtractArchives = true,
+                IsExtracted = true
+            };
+
+            package.Items.Add(new DownloadItem
+            {
+                FileName = "archive.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            });
+
+            var skipped = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true, forceReextract: false);
+            Assert.True(skipped);
+            Assert.False(File.Exists(Path.Combine(tempDir, "content.txt")));
+
+            var extracted = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true, forceReextract: true);
+            Assert.True(extracted);
+            Assert.True(File.Exists(Path.Combine(tempDir, "content.txt")));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void CanExtractPackage_WhenValidPrimaryArchiveOnDisk_ReturnsTrue()
+    {
+        var service = ArchiveExtractionService.Instance;
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var zipPath = Path.Combine(tempDir, "archive.zip");
+            File.WriteAllBytes(zipPath, new byte[] { 0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+            var package = new DownloadPackage { Name = "ValidPackage", SaveDirectory = tempDir };
+            package.Items.Add(new DownloadItem
+            {
+                FileName = "archive.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            });
+
+            Assert.True(service.CanExtractPackage(package));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
     }
 }
 

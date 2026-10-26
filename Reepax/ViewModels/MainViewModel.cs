@@ -1048,18 +1048,12 @@ public partial class MainViewModel : ObservableObject
         package ??= SelectedPackage;
         if (package == null) return;
 
-        if (package.IsExtracted)
-        {
-            StatusSummary = Loc.Get("Status_CompletedAndExtracted");
-            return;
-        }
-
         if (package.IsExtracting || Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
         {
             return;
         }
 
-        if (!Services.Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(package))
+        if (!Services.Extractor.ArchiveExtractionService.Instance.CanExtractPackage(package, allowReextract: true))
         {
             StatusSummary = Loc.Get("Status_NoExtractableArchivesFound");
             return;
@@ -1071,8 +1065,26 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        bool forceReextract = false;
+        if (package.IsExtracted)
+        {
+            bool confirmed = Views.ConfirmDialog.Show(
+                Loc.Get("Dialog_ReextractTitle"),
+                Loc.Format("Dialog_ReextractMessage", package.Name),
+                confirmText: Loc.Get("Common_Yes"),
+                cancelText: Loc.Get("Common_No"),
+                isDanger: false);
+
+            if (!confirmed)
+            {
+                StatusSummary = Loc.Get("Status_CompletedAndExtracted");
+                return;
+            }
+            forceReextract = true;
+        }
+
         StatusSummary = Loc.Format("Status_ExtractingPackage", package.Name);
-        await Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true);
+        await Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true, forceReextract: forceReextract);
     }
 
     [RelayCommand]

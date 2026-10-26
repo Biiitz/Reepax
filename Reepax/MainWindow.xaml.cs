@@ -2460,9 +2460,7 @@ public partial class MainWindow : Window
         {
             bool isExtracting = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id);
             bool isPaused = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtractionPaused(pkg.Id);
-            bool hasArchives = Services.Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(pkg);
-            bool isFullyDownloaded = pkg.AreDownloadsCompleted;
-            bool isAlreadyExtracted = pkg.IsExtracted;
+            bool canExtract = Services.Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg, allowReextract: true);
 
             if (isExtracting)
             {
@@ -2488,13 +2486,19 @@ public partial class MainWindow : Window
                 if (pauseResumeMenuItem != null) pauseResumeMenuItem.Visibility = Visibility.Collapsed;
                 if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = Visibility.Collapsed;
 
-                // Only show "Extract Package" if all downloads are 100% completed, package has archives,
-                // and the package has NOT already been extracted!
+                // Only show "Extract Package" if the package can be cleanly extracted
                 if (extractMenuItem != null)
                 {
-                    extractMenuItem.Visibility = (isFullyDownloaded && hasArchives && !isAlreadyExtracted)
+                    extractMenuItem.Visibility = canExtract
                         ? Visibility.Visible
                         : Visibility.Collapsed;
+
+                    if (canExtract)
+                    {
+                        extractMenuItem.Header = pkg.IsExtracted
+                            ? Loc.Get("Menu_ReextractPackage")
+                            : Loc.Get("Menu_ExtractPackage");
+                    }
                 }
             }
         }
@@ -2812,15 +2816,27 @@ public partial class MainWindow : Window
         var extractItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "ExtractArchiveItemMenuItem" || (string?)m.Tag == "ExtractArchiveItemMenuItem");
         if (extractItem != null)
         {
-            bool isArchive = item != null && (Services.Extractor.ArchiveExtractionService.Instance.IsArchiveFile(item.SaveFilePath) || Services.Extractor.ArchiveExtractionService.Instance.IsArchiveFile(item.FileName));
+            bool isArchiveOnDisk = item != null &&
+                                  !string.IsNullOrWhiteSpace(item.SaveFilePath) &&
+                                  File.Exists(item.SaveFilePath) &&
+                                  new FileInfo(item.SaveFilePath).Length > 0 &&
+                                  Services.Extractor.ArchiveExtractionService.Instance.IsArchiveFile(item.SaveFilePath);
             var package = item != null ? ViewModel.Packages.FirstOrDefault(p => p.Items.Contains(item)) : null;
             bool isPkgExtracting = package != null && (package.IsExtracting || Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
             bool isPkgExtracted = package != null && package.IsExtracted;
             bool isItemCompleted = item != null && item.Status == DownloadStatus.Completed;
 
-            extractItem.Visibility = (isArchive && isItemCompleted && !isPkgExtracting && !isPkgExtracted) 
+            bool canExtractItem = isArchiveOnDisk && isItemCompleted && !isPkgExtracting;
+            extractItem.Visibility = canExtractItem 
                 ? Visibility.Visible 
                 : Visibility.Collapsed;
+
+            if (canExtractItem)
+            {
+                extractItem.Header = isPkgExtracted
+                    ? Loc.Get("Menu_ReextractArchive")
+                    : Loc.Get("Menu_ExtractArchive");
+            }
         }
     }
 

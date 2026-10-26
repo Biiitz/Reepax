@@ -439,7 +439,7 @@ public class QueueManager
                 pkg.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed) &&
                 pkg.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Pending) &&
                 !Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id) &&
-                Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(pkg))
+                Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg))
             {
                 _ = Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(pkg);
             }
@@ -1431,8 +1431,8 @@ public class QueueManager
                 var package = packagesSnapshot.FirstOrDefault(p => p.Id == item.PackageId || p.Items.ToArray().Contains(item));
                 if (package != null)
                 {
-                    bool hasArchives = Extractor.ArchiveExtractionService.Instance.HasExtractableArchives(package);
-                    if (package.AutoExtractArchives && hasArchives && !package.IsExtracted)
+                    bool canExtract = Extractor.ArchiveExtractionService.Instance.CanExtractPackage(package);
+                    if (package.AutoExtractArchives && canExtract)
                     {
                         _ = Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
                     }

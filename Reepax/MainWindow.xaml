@@ -94,7 +94,8 @@
 
             <Separator x:Name="VerificationSeparator" Tag="VerificationSeparator" Background="{DynamicResource BorderDarkBrush}" />
             <MenuItem x:Name="ExtractPackageMenuItem" Tag="ExtractPackageMenuItem"
-                      Header="{loc:Loc Menu_ExtractPackage}" Click="ExtractPackage_MenuItem_Click">
+                      Header="{loc:Loc Menu_ExtractPackage}" Click="ExtractPackage_MenuItem_Click"
+                      Visibility="Collapsed">
                 <MenuItem.Icon>
                     <Path x:Name="ExtractPackageIconPath" Data="{StaticResource IconArchive}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
@@ -151,7 +152,8 @@
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem x:Name="ExtractArchiveItemMenuItem" Tag="ExtractArchiveItemMenuItem"
-                      Header="{loc:Loc Menu_ExtractArchive}" Click="ExtractItem_MenuItem_Click">
+                      Header="{loc:Loc Menu_ExtractArchive}" Click="ExtractItem_MenuItem_Click"
+                      Visibility="Collapsed">
                 <MenuItem.Icon>
                     <Path Data="{StaticResource IconArchive}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
