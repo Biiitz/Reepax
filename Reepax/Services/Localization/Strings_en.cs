@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Reepax.Services.Localization;
@@ -280,6 +280,9 @@ public static class Strings_en
         ["Dialog_DeleteItemTitle"] = "Delete Item",
         ["Dialog_DeleteItemMessage"] = "Are you sure you want to remove \"{0}\" from Reepax?",
         ["Dialog_DeleteItemOptionFiles"] = "Also delete the file from disk ({0})",
+        ["Dialog_DeleteMultipleTitle"] = "Delete Items",
+        ["Dialog_DeleteMultipleMessage"] = "Are you sure you want to remove the {0} selected items from Reepax?",
+        ["Dialog_DeleteMultipleOptionFiles"] = "Also delete all associated files from disk ({0})",
         ["Dialog_SelectDefaultDownloadDirTitle"] = "Select Default Download Directory",
         ["Dialog_SelectGameInstallDirTitle"] = "Select Game Installation Base Directory",
         ["Dialog_SelectGameInstallDestinationDirTitle"] = "Select destination directory to create game folder in",

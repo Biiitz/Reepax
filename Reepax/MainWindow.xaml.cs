@@ -1423,13 +1423,19 @@ public partial class MainWindow : Window
 
     private Point _dragStartPoint;
     private DownloadPackage? _draggedPackage;
+    private List<DownloadPackage>? _draggedPackages;
     private DownloadPackage? _currentDropTargetPackage;
     private bool _isDraggingPackage;
+    private bool _hasPackageDragged;
+    private bool _packageMouseDownWasSelected;
 
     private Point _itemDragStartPoint;
     private DownloadItem? _draggedItem;
+    private List<DownloadItem>? _draggedItems;
     private DownloadItem? _currentDropTargetItem;
     private bool _isDraggingItem;
+    private bool _hasItemDragged;
+    private bool _itemMouseDownWasSelected;
 
     private ContextMenu? _activeContextMenu;
     private DateTime _lastContextMenuClosedTime = DateTime.MinValue;
@@ -1534,7 +1540,10 @@ public partial class MainWindow : Window
         }
 
         _dragStartPoint = e.GetPosition(this);
-        _draggedPackage = (sender as FrameworkElement)?.DataContext as DownloadPackage;
+        var pkg = (sender as FrameworkElement)?.DataContext as DownloadPackage;
+        _draggedPackage = pkg;
+        _packageMouseDownWasSelected = pkg?.IsSelected == true;
+        _hasPackageDragged = false;
     }
 
     private void PackageRow_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -1557,15 +1566,36 @@ public partial class MainWindow : Window
         {
             var pkgToDrag = _draggedPackage;
             _isDraggingPackage = true;
+            _hasPackageDragged = true;
             try
             {
-                var data = new DataObject("Reepax.DownloadPackage", pkgToDrag);
+                var data = new DataObject();
+                data.SetData("Reepax.DownloadPackage", pkgToDrag);
+
+                List<DownloadPackage> pkgsToDrag;
+                if (pkgToDrag.IsSelected)
+                {
+                    pkgsToDrag = ViewModel.Packages.Where(p => p.IsSelected).ToList();
+                    if (!pkgsToDrag.Contains(pkgToDrag))
+                    {
+                        pkgsToDrag.Add(pkgToDrag);
+                    }
+                }
+                else
+                {
+                    pkgsToDrag = new List<DownloadPackage> { pkgToDrag };
+                }
+
+                _draggedPackages = pkgsToDrag;
+                data.SetData("Reepax.DownloadPackageList", pkgsToDrag);
+
                 DragDrop.DoDragDrop(sender as DependencyObject ?? this, data, DragDropEffects.Move);
             }
             finally
             {
                 _isDraggingPackage = false;
                 _draggedPackage = null;
+                _draggedPackages = null;
                 ClearAllDropTargets();
             }
         }
@@ -1573,8 +1603,40 @@ public partial class MainWindow : Window
 
     private void PackageRow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (!_hasPackageDragged && _draggedPackage != null)
+        {
+            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+            if (!isCtrlPressed && _packageMouseDownWasSelected)
+            {
+                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
+
+                if (totalSelected > 1)
+                {
+                    foreach (var p in ViewModel.Packages)
+                    {
+                        p.IsSelected = (p == _draggedPackage);
+                        foreach (var item in p.Items)
+                        {
+                            item.IsSelected = false;
+                        }
+                    }
+                    ViewModel.SelectedPackage = _draggedPackage;
+                    ViewModel.SelectedItem = null;
+                }
+                else
+                {
+                    _draggedPackage.IsSelected = false;
+                    ViewModel.SelectedPackage = null;
+                    ViewModel.SelectedItem = null;
+                }
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
+            }
+        }
+
         _draggedPackage = null;
+        _draggedPackages = null;
         _isDraggingPackage = false;
+        _hasPackageDragged = false;
         ClearAllDropTargets();
     }
 
@@ -1659,12 +1721,13 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var sourcePkg = _draggedPackage ?? (e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage);
+            var sourcePkgs = _draggedPackages ?? (e.Data.GetData("Reepax.DownloadPackageList") as List<DownloadPackage>);
             var targetElement = sender as FrameworkElement;
             var targetPkg = targetElement?.DataContext as DownloadPackage;
 
             if (sourcePkg != null && targetPkg != null && targetElement != null)
             {
-                if (sourcePkg == targetPkg)
+                if (sourcePkg == targetPkg || (sourcePkgs != null && sourcePkgs.Contains(targetPkg)))
                 {
                     // Dragging over self is a valid operation (no-op drop); keep Move cursor steady without flickering
                     SetPackageDropTarget(null, PackageDropAction.None);
@@ -1796,7 +1859,11 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var sourcePkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-            if (sourcePkg != null && targetPkg != null && targetElement != null && sourcePkg != targetPkg)
+            var sourcePkgs = (e.Data.GetData("Reepax.DownloadPackageList") as List<DownloadPackage>)
+                             ?? (sourcePkg != null ? new List<DownloadPackage> { sourcePkg } : null);
+
+            if (sourcePkg != null && targetPkg != null && targetElement != null && 
+                sourcePkg != targetPkg && (sourcePkgs == null || !sourcePkgs.Contains(targetPkg)))
             {
                 Point pos = e.GetPosition(targetElement);
                 double height = targetElement.ActualHeight;
@@ -1809,16 +1876,23 @@ public partial class MainWindow : Window
                 // Dispatch collection mutations asynchronously to prevent COM OLE drag-drop deadlock
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                 {
+                    var pkgs = sourcePkgs ?? new List<DownloadPackage> { sourcePkg };
                     switch (action)
                     {
                         case PackageDropAction.Clip:
-                            ViewModel.ClipPackage(sourcePkg, targetPkg);
+                            foreach (var p in pkgs)
+                            {
+                                if (p != targetPkg && MainViewModel.CanClip(p, targetPkg))
+                                {
+                                    ViewModel.ClipPackage(p, targetPkg);
+                                }
+                            }
                             break;
                         case PackageDropAction.InsertBefore:
-                            ViewModel.MovePackageBefore(sourcePkg, targetPkg);
+                            ViewModel.MovePackagesBefore(pkgs, targetPkg);
                             break;
                         case PackageDropAction.InsertAfter:
-                            ViewModel.MovePackageAfter(sourcePkg, targetPkg);
+                            ViewModel.MovePackagesAfter(pkgs, targetPkg);
                             break;
                     }
                 });
@@ -1879,6 +1953,7 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var pkg = _draggedPackage ?? (e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage);
+            var pkgs = _draggedPackages ?? (e.Data.GetData("Reepax.DownloadPackageList") as List<DownloadPackage>);
             if (pkg != null && ViewModel?.RootPackages != null)
             {
                 // If cursor is over any package row or child item element, keep Move cursor steady and let row handler handle it
@@ -1897,7 +1972,7 @@ public partial class MainWindow : Window
                 var lastPkg = ViewModel.RootPackages.LastOrDefault();
                 if (lastPkg != null)
                 {
-                    if (lastPkg != pkg)
+                    if (lastPkg != pkg && (pkgs == null || !pkgs.Contains(lastPkg)))
                     {
                         SetPackageDropTarget(lastPkg, PackageDropAction.InsertAfter);
                     }
@@ -1937,14 +2012,16 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-            if (pkg != null)
+            var pkgs = (e.Data.GetData("Reepax.DownloadPackageList") as List<DownloadPackage>)
+                       ?? (pkg != null ? new List<DownloadPackage> { pkg } : null);
+            if (pkgs != null && pkgs.Count > 0)
             {
                 e.Handled = true;
                 ClearAllDropTargets();
 
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                 {
-                    ViewModel.MovePackageToEnd(pkg);
+                    ViewModel.MovePackagesToEnd(pkgs);
                 });
                 return;
             }
@@ -1982,7 +2059,10 @@ public partial class MainWindow : Window
         }
 
         _itemDragStartPoint = e.GetPosition(this);
-        _draggedItem = (sender as FrameworkElement)?.DataContext as DownloadItem;
+        var item = (sender as FrameworkElement)?.DataContext as DownloadItem;
+        _draggedItem = item;
+        _itemMouseDownWasSelected = item?.IsSelected == true;
+        _hasItemDragged = false;
     }
 
     private void ItemRow_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -2004,15 +2084,37 @@ public partial class MainWindow : Window
         {
             var itemToDrag = _draggedItem;
             _isDraggingItem = true;
+            _hasItemDragged = true;
             try
             {
-                var data = new DataObject("Reepax.DownloadItem", itemToDrag);
+                var data = new DataObject();
+                data.SetData("Reepax.DownloadItem", itemToDrag);
+
+                var parentPkg = ViewModel.Packages.FirstOrDefault(p => p.Id == itemToDrag.PackageId);
+                List<DownloadItem> itemsToDrag;
+                if (itemToDrag.IsSelected && parentPkg != null)
+                {
+                    itemsToDrag = parentPkg.Items.Where(i => i.IsSelected).ToList();
+                    if (!itemsToDrag.Contains(itemToDrag))
+                    {
+                        itemsToDrag.Add(itemToDrag);
+                    }
+                }
+                else
+                {
+                    itemsToDrag = new List<DownloadItem> { itemToDrag };
+                }
+
+                _draggedItems = itemsToDrag;
+                data.SetData("Reepax.DownloadItemList", itemsToDrag);
+
                 DragDrop.DoDragDrop(sender as DependencyObject ?? this, data, DragDropEffects.Move);
             }
             finally
             {
                 _isDraggingItem = false;
                 _draggedItem = null;
+                _draggedItems = null;
                 ClearAllDropTargets();
             }
         }
@@ -2020,8 +2122,40 @@ public partial class MainWindow : Window
 
     private void ItemRow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (!_hasItemDragged && _draggedItem != null)
+        {
+            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+            if (!isCtrlPressed && _itemMouseDownWasSelected)
+            {
+                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
+
+                if (totalSelected > 1)
+                {
+                    foreach (var p in ViewModel.Packages)
+                    {
+                        p.IsSelected = false;
+                        foreach (var i in p.Items)
+                        {
+                            i.IsSelected = (i == _draggedItem);
+                        }
+                    }
+                    ViewModel.SelectedItem = _draggedItem;
+                    ViewModel.SelectedPackage = null;
+                }
+                else
+                {
+                    _draggedItem.IsSelected = false;
+                    ViewModel.SelectedItem = null;
+                    ViewModel.SelectedPackage = null;
+                }
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
+            }
+        }
+
         _draggedItem = null;
+        _draggedItems = null;
         _isDraggingItem = false;
+        _hasItemDragged = false;
         ClearAllDropTargets();
     }
 
@@ -2064,6 +2198,7 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadItem"))
         {
             var sourceItem = _draggedItem ?? (e.Data.GetData("Reepax.DownloadItem") as DownloadItem);
+            var sourceItems = _draggedItems ?? (e.Data.GetData("Reepax.DownloadItemList") as List<DownloadItem>);
             var targetElement = sender as FrameworkElement;
             var targetItem = targetElement?.DataContext as DownloadItem;
 
@@ -2072,7 +2207,7 @@ public partial class MainWindow : Window
             {
                 if (sourceItem.PackageId == targetItem.PackageId)
                 {
-                    if (sourceItem == targetItem)
+                    if (sourceItem == targetItem || (sourceItems != null && sourceItems.Contains(targetItem)))
                     {
                         // Hovering over self is a valid operation (no-op drop); keep Move cursor steady without flickering
                         SetItemDropTarget(null, ItemDropAction.None);
@@ -2145,6 +2280,7 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var sourcePkg = _draggedPackage ?? (e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage);
+            var sourcePkgs = _draggedPackages ?? (e.Data.GetData("Reepax.DownloadPackageList") as List<DownloadPackage>);
             var targetElement = sender as FrameworkElement;
             var targetItem = targetElement?.DataContext as DownloadItem;
 
@@ -2154,7 +2290,7 @@ public partial class MainWindow : Window
                 var parentPkg = ViewModel.Packages.FirstOrDefault(p => p.Id == targetItem.PackageId);
                 if (parentPkg != null)
                 {
-                    if (parentPkg == sourcePkg)
+                    if (parentPkg == sourcePkg || (sourcePkgs != null && sourcePkgs.Contains(parentPkg)))
                     {
                         // Dragging over own items: no-op drop, keep Move cursor steady without flickering
                         SetPackageDropTarget(null, PackageDropAction.None);
@@ -2224,9 +2360,13 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent("Reepax.DownloadItem"))
         {
             var sourceItem = e.Data.GetData("Reepax.DownloadItem") as DownloadItem;
+            var sourceItems = (e.Data.GetData("Reepax.DownloadItemList") as List<DownloadItem>)
+                              ?? (sourceItem != null ? new List<DownloadItem> { sourceItem } : null);
+
             // Strict folder isolation: only reordering within the same package is allowed
             if (sourceItem != null && targetItem != null && targetElement != null && 
-                sourceItem != targetItem && sourceItem.PackageId == targetItem.PackageId)
+                sourceItem != targetItem && sourceItem.PackageId == targetItem.PackageId &&
+                (sourceItems == null || !sourceItems.Contains(targetItem)))
             {
                 Point pos = e.GetPosition(targetElement);
                 double height = targetElement.ActualHeight;
@@ -2239,15 +2379,16 @@ public partial class MainWindow : Window
                 // Dispatch collection mutations asynchronously to prevent COM OLE drag-drop deadlock
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                 {
-                    if (sourceItem != null && targetItem != null && ViewModel != null)
+                    if (targetItem != null && ViewModel != null)
                     {
+                        var items = sourceItems ?? new List<DownloadItem> { sourceItem };
                         if (action == ItemDropAction.InsertBefore)
                         {
-                            ViewModel.MoveItemBefore(sourceItem, targetItem);
+                            ViewModel.MoveItemsBefore(items, targetItem);
                         }
                         else if (action == ItemDropAction.InsertAfter)
                         {
-                            ViewModel.MoveItemAfter(sourceItem, targetItem);
+                            ViewModel.MoveItemsAfter(items, targetItem);
                         }
                     }
                 });
@@ -2257,17 +2398,21 @@ public partial class MainWindow : Window
         else if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var sourcePkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
+            var sourcePkgs = (e.Data.GetData("Reepax.DownloadPackageList") as List<DownloadPackage>)
+                             ?? (sourcePkg != null ? new List<DownloadPackage> { sourcePkg } : null);
+
             if (sourcePkg != null && targetItem != null && ViewModel != null)
             {
                 var parentPkg = ViewModel.Packages.FirstOrDefault(p => p.Id == targetItem.PackageId);
-                if (parentPkg != null && parentPkg != sourcePkg)
+                if (parentPkg != null && parentPkg != sourcePkg && (sourcePkgs == null || !sourcePkgs.Contains(parentPkg)))
                 {
                     e.Handled = true;
                     ClearAllDropTargets();
 
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
                     {
-                        ViewModel.MovePackageAfter(sourcePkg, parentPkg);
+                        var pkgs = sourcePkgs ?? new List<DownloadPackage> { sourcePkg };
+                        ViewModel.MovePackagesAfter(pkgs, parentPkg);
                     });
                     return;
                 }
@@ -2606,6 +2751,15 @@ public partial class MainWindow : Window
         var package = GetPackageFromSender(sender);
         if (package != null)
         {
+            if (package.IsSelected)
+            {
+                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
+                if (totalSelected > 1)
+                {
+                    HandleDeleteSelected();
+                    return;
+                }
+            }
             ViewModel.RemovePackage(package);
         }
     }
@@ -2782,6 +2936,15 @@ public partial class MainWindow : Window
         var item = GetItemFromSender(sender);
         if (item != null)
         {
+            if (item.IsSelected)
+            {
+                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
+                if (totalSelected > 1)
+                {
+                    HandleDeleteSelected();
+                    return;
+                }
+            }
             ViewModel.RemoveItem(item);
         }
     }
@@ -2812,10 +2975,35 @@ public partial class MainWindow : Window
 
     private void PackageRow_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.OriginalSource is DependencyObject dep && (FindVisualParent<ButtonBase>(dep) != null || FindVisualParent<TextBox>(dep) != null))
+        {
+            return;
+        }
+
         if ((sender as FrameworkElement)?.DataContext is DownloadPackage pkg)
         {
-            // Toggle: clicking an already selected row deselects everything
-            if (pkg.IsSelected)
+            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+            if (isCtrlPressed)
+            {
+                pkg.IsSelected = !pkg.IsSelected;
+                if (pkg.IsSelected)
+                {
+                    ViewModel.SelectedPackage = pkg;
+                }
+                else
+                {
+                    if (ViewModel.SelectedPackage == pkg)
+                    {
+                        ViewModel.SelectedPackage = ViewModel.Packages.FirstOrDefault(p => p.IsSelected);
+                    }
+                }
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
+                (sender as UIElement)?.Focus();
+                return;
+            }
+
+            if (!_packageMouseDownWasSelected)
             {
                 foreach (var p in ViewModel.Packages)
                 {
@@ -2826,23 +3014,12 @@ public partial class MainWindow : Window
                     }
                 }
 
-                ViewModel.SelectedPackage = null;
+                pkg.IsSelected = true;
+                ViewModel.SelectedPackage = pkg;
                 ViewModel.SelectedItem = null;
-                return;
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
             }
 
-            foreach (var p in ViewModel.Packages)
-            {
-                p.IsSelected = false;
-                foreach (var item in p.Items)
-                {
-                    item.IsSelected = false;
-                }
-            }
-
-            pkg.IsSelected = true;
-            ViewModel.SelectedPackage = pkg;
-            ViewModel.SelectedItem = null;
             (sender as UIElement)?.Focus();
         }
     }
@@ -2851,18 +3028,23 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is DownloadPackage pkg)
         {
-            foreach (var p in ViewModel.Packages)
+            if (!pkg.IsSelected)
             {
-                p.IsSelected = false;
-                foreach (var item in p.Items)
+                foreach (var p in ViewModel.Packages)
                 {
-                    item.IsSelected = false;
+                    p.IsSelected = false;
+                    foreach (var item in p.Items)
+                    {
+                        item.IsSelected = false;
+                    }
                 }
+
+                pkg.IsSelected = true;
+                ViewModel.SelectedPackage = pkg;
+                ViewModel.SelectedItem = null;
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
             }
 
-            pkg.IsSelected = true;
-            ViewModel.SelectedPackage = pkg;
-            ViewModel.SelectedItem = null;
             (sender as UIElement)?.Focus();
         }
     }
@@ -2871,18 +3053,23 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is DownloadItem item)
         {
-            foreach (var p in ViewModel.Packages)
+            if (!item.IsSelected)
             {
-                p.IsSelected = false;
-                foreach (var i in p.Items)
+                foreach (var p in ViewModel.Packages)
                 {
-                    i.IsSelected = false;
+                    p.IsSelected = false;
+                    foreach (var i in p.Items)
+                    {
+                        i.IsSelected = false;
+                    }
                 }
+
+                item.IsSelected = true;
+                ViewModel.SelectedItem = item;
+                ViewModel.SelectedPackage = null;
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
             }
 
-            item.IsSelected = true;
-            ViewModel.SelectedItem = item;
-            ViewModel.SelectedPackage = null;
             (sender as UIElement)?.Focus();
         }
     }
@@ -3159,24 +3346,6 @@ public partial class MainWindow : Window
         if (ViewModel.SelectedMainTab != AppMainTab.Downloads)
             return;
 
-        // 1. Check if an item is selected
-        var itemToDelete = ViewModel.SelectedItem ?? ViewModel.Packages.SelectMany(p => p.Items).FirstOrDefault(i => i.IsSelected);
-        if (itemToDelete != null)
-        {
-            ViewModel.SelectedItem = itemToDelete;
-            ViewModel.RemoveItem(itemToDelete);
-            return;
-        }
-
-        // 2. Check if a package is selected
-        var packageToDelete = ViewModel.SelectedPackage ?? ViewModel.Packages.FirstOrDefault(p => p.IsSelected);
-        if (packageToDelete != null)
-        {
-            ViewModel.SelectedPackage = packageToDelete;
-            ViewModel.RemovePackage(packageToDelete);
-            return;
-        }
-
         if (ViewModel.DeleteSelectedCommand.CanExecute(null))
         {
             ViewModel.DeleteSelectedCommand.Execute(null);
@@ -3185,10 +3354,35 @@ public partial class MainWindow : Window
 
     private void ItemRow_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.OriginalSource is DependencyObject dep && (FindVisualParent<ButtonBase>(dep) != null || FindVisualParent<TextBox>(dep) != null))
+        {
+            return;
+        }
+
         if ((sender as FrameworkElement)?.DataContext is DownloadItem item)
         {
-            // Toggle: clicking an already selected row deselects everything
-            if (item.IsSelected)
+            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+            if (isCtrlPressed)
+            {
+                item.IsSelected = !item.IsSelected;
+                if (item.IsSelected)
+                {
+                    ViewModel.SelectedItem = item;
+                }
+                else
+                {
+                    if (ViewModel.SelectedItem == item)
+                    {
+                        ViewModel.SelectedItem = ViewModel.Packages.SelectMany(p => p.Items).FirstOrDefault(i => i.IsSelected);
+                    }
+                }
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
+                (sender as UIElement)?.Focus();
+                return;
+            }
+
+            if (!_itemMouseDownWasSelected)
             {
                 foreach (var p in ViewModel.Packages)
                 {
@@ -3199,23 +3393,12 @@ public partial class MainWindow : Window
                     }
                 }
 
+                item.IsSelected = true;
+                ViewModel.SelectedItem = item;
                 ViewModel.SelectedPackage = null;
-                ViewModel.SelectedItem = null;
-                return;
+                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
             }
 
-            foreach (var p in ViewModel.Packages)
-            {
-                p.IsSelected = false;
-                foreach (var i in p.Items)
-                {
-                    i.IsSelected = false;
-                }
-            }
-
-            item.IsSelected = true;
-            ViewModel.SelectedItem = item;
-            ViewModel.SelectedPackage = null;
             (sender as UIElement)?.Focus();
         }
     }

@@ -2043,6 +2043,87 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Moves multiple packages immediately before the specified target package.
+    /// Preserves the relative order of the moved packages.
+    /// </summary>
+    public void MovePackagesBefore(IList<DownloadPackage> packagesToMove, DownloadPackage targetPackage)
+    {
+        if (packagesToMove == null || packagesToMove.Count == 0 || targetPackage == null)
+            return;
+
+        if (packagesToMove.Count == 1)
+        {
+            MovePackageBefore(packagesToMove[0], targetPackage);
+            return;
+        }
+
+        if (packagesToMove.Contains(targetPackage))
+            return;
+
+        var validPkgs = packagesToMove.Where(p => p != null && RootPackages.Contains(p)).OrderBy(p => RootPackages.IndexOf(p)).ToList();
+        if (validPkgs.Count == 0)
+            return;
+
+        foreach (var pkg in validPkgs)
+        {
+            MovePackageBefore(pkg, targetPackage);
+        }
+    }
+
+    /// <summary>
+    /// Moves multiple packages immediately after the specified target package.
+    /// Preserves the relative order of the moved packages.
+    /// </summary>
+    public void MovePackagesAfter(IList<DownloadPackage> packagesToMove, DownloadPackage targetPackage)
+    {
+        if (packagesToMove == null || packagesToMove.Count == 0 || targetPackage == null)
+            return;
+
+        if (packagesToMove.Count == 1)
+        {
+            MovePackageAfter(packagesToMove[0], targetPackage);
+            return;
+        }
+
+        if (packagesToMove.Contains(targetPackage))
+            return;
+
+        var validPkgs = packagesToMove.Where(p => p != null && RootPackages.Contains(p)).OrderBy(p => RootPackages.IndexOf(p)).ToList();
+        if (validPkgs.Count == 0)
+            return;
+
+        for (int i = validPkgs.Count - 1; i >= 0; i--)
+        {
+            MovePackageAfter(validPkgs[i], targetPackage);
+        }
+    }
+
+    /// <summary>
+    /// Moves multiple packages to the end of the download queue.
+    /// Preserves the relative order of the moved packages.
+    /// </summary>
+    public void MovePackagesToEnd(IList<DownloadPackage> packagesToMove)
+    {
+        if (packagesToMove == null || packagesToMove.Count == 0)
+            return;
+
+        if (packagesToMove.Count == 1)
+        {
+            MovePackageToEnd(packagesToMove[0]);
+            return;
+        }
+
+        var validPkgs = packagesToMove.Where(p => p != null && RootPackages.Contains(p)).OrderBy(p => RootPackages.IndexOf(p)).ToList();
+        if (validPkgs.Count == 0)
+            return;
+
+        foreach (var pkg in validPkgs)
+        {
+            MovePackageToEnd(pkg);
+        }
+    }
+
     public void TriggerPackageMoveAnimation(DownloadPackage package, bool movedUp = true)
     {
         if (package == null) return;
@@ -2298,6 +2379,74 @@ public partial class MainViewModel : ObservableObject
 
             DownloadPersistenceService.Instance.RequestSave();
             TriggerItemMoveAnimation(itemToMove, movedUp: newIdx < oldIdx);
+        }
+    }
+
+    /// <summary>
+    /// Moves multiple download items immediately before the specified target item within the same package.
+    /// Preserves the relative order of the moved items.
+    /// </summary>
+    public void MoveItemsBefore(IList<DownloadItem> itemsToMove, DownloadItem targetItem)
+    {
+        if (itemsToMove == null || itemsToMove.Count == 0 || targetItem == null)
+            return;
+
+        if (itemsToMove.Count == 1)
+        {
+            MoveItemBefore(itemsToMove[0], targetItem);
+            return;
+        }
+
+        if (itemsToMove.Contains(targetItem))
+            return;
+
+        var targetPkg = Packages.FirstOrDefault(p => p.Id == targetItem.PackageId)
+                        ?? Packages.FirstOrDefault(p => p.Items.Contains(targetItem));
+        if (targetPkg == null)
+            return;
+
+        var validItems = itemsToMove.Where(i => i != null && i.PackageId == targetPkg.Id && targetPkg.Items.Contains(i)).ToList();
+        if (validItems.Count == 0)
+            return;
+
+        validItems = validItems.OrderBy(i => targetPkg.Items.IndexOf(i)).ToList();
+        foreach (var item in validItems)
+        {
+            MoveItemBefore(item, targetItem);
+        }
+    }
+
+    /// <summary>
+    /// Moves multiple download items immediately after the specified target item within the same package.
+    /// Preserves the relative order of the moved items.
+    /// </summary>
+    public void MoveItemsAfter(IList<DownloadItem> itemsToMove, DownloadItem targetItem)
+    {
+        if (itemsToMove == null || itemsToMove.Count == 0 || targetItem == null)
+            return;
+
+        if (itemsToMove.Count == 1)
+        {
+            MoveItemAfter(itemsToMove[0], targetItem);
+            return;
+        }
+
+        if (itemsToMove.Contains(targetItem))
+            return;
+
+        var targetPkg = Packages.FirstOrDefault(p => p.Id == targetItem.PackageId)
+                        ?? Packages.FirstOrDefault(p => p.Items.Contains(targetItem));
+        if (targetPkg == null)
+            return;
+
+        var validItems = itemsToMove.Where(i => i != null && i.PackageId == targetPkg.Id && targetPkg.Items.Contains(i)).ToList();
+        if (validItems.Count == 0)
+            return;
+
+        validItems = validItems.OrderBy(i => targetPkg.Items.IndexOf(i)).ToList();
+        for (int i = validItems.Count - 1; i >= 0; i--)
+        {
+            MoveItemAfter(validItems[i], targetItem);
         }
     }
 
@@ -3077,6 +3226,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var item in pkg.Items)
                 item.IsSelected = true;
         }
+        DeleteSelectedCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -3091,6 +3241,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var item in pkg.Items)
                 item.IsSelected = false;
         }
+        DeleteSelectedCommand.NotifyCanExecuteChanged();
     }
 
     public event EventHandler? RequestShowAddLinksDialog;

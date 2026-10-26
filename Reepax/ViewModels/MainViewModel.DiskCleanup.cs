@@ -667,17 +667,92 @@ public partial class MainViewModel
     public void DeleteSelected()
     {
         if (SelectedMainTab != AppMainTab.Downloads) return;
-        var itemToDelete = SelectedItem ?? Packages.SelectMany(p => p.Items).FirstOrDefault(i => i.IsSelected);
-        if (itemToDelete != null)
+
+        // Collect all selected packages
+        var selectedPackages = Packages.Where(p => p.IsSelected).Distinct().ToList();
+        if (selectedPackages.Count == 0 && SelectedPackage != null && SelectedItem == null)
         {
-            RemoveItem(itemToDelete);
+            selectedPackages.Add(SelectedPackage);
+        }
+
+        // Collect all selected items that are NOT in a selected package
+        var selectedItems = Packages
+            .Where(p => !selectedPackages.Contains(p))
+            .SelectMany(p => p.Items)
+            .Where(i => i.IsSelected)
+            .Distinct()
+            .ToList();
+
+        if (selectedPackages.Count == 0 && selectedItems.Count == 0 && SelectedItem != null)
+        {
+            selectedItems.Add(SelectedItem);
+        }
+
+        int totalCount = selectedPackages.Count + selectedItems.Count;
+        if (totalCount == 0)
+            return;
+
+        // Single item or single package: use existing single deletion methods
+        if (selectedPackages.Count == 1 && selectedItems.Count == 0)
+        {
+            RemovePackage(selectedPackages[0]);
             return;
         }
 
-        var packageToDelete = SelectedPackage ?? Packages.FirstOrDefault(p => p.IsSelected);
-        if (packageToDelete != null)
+        if (selectedPackages.Count == 0 && selectedItems.Count == 1)
         {
-            RemovePackage(packageToDelete);
+            RemoveItem(selectedItems[0]);
+            return;
+        }
+
+        // Multiple items/packages: show combined confirmation dialog
+        var allFilesOnDisk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pkg in selectedPackages)
+        {
+            foreach (var file in GetPackageFilesOnDisk(pkg, Packages))
+            {
+                allFilesOnDisk.Add(file);
+            }
+        }
+        foreach (var item in selectedItems)
+        {
+            var parentPkg = Packages.FirstOrDefault(p => p.Items.Contains(item));
+            foreach (var file in GetItemFilesOnDisk(item, parentPkg?.SaveDirectory))
+            {
+                allFilesOnDisk.Add(file);
+            }
+        }
+
+        string? optionText = null;
+        if (allFilesOnDisk.Count > 0)
+        {
+            long size = GetTotalFilesSizeOnDisk(allFilesOnDisk);
+            optionText = Loc.Format("Dialog_DeleteMultipleOptionFiles", BytesToHumanReadableConverter.FormatBytes(size));
+        }
+
+        bool deleteFiles = false;
+        if (!Views.ConfirmDialog.ShowWithOption(
+            Loc.Get("Dialog_DeleteMultipleTitle"),
+            Loc.Format("Dialog_DeleteMultipleMessage", totalCount),
+            optionText,
+            out deleteFiles,
+            defaultOptionChecked: false,
+            Loc.Get("Common_Yes"),
+            Loc.Get("Common_No")))
+        {
+            return;
+        }
+
+        // Delete items first
+        foreach (var item in selectedItems)
+        {
+            RemoveItem(item, deleteFiles);
+        }
+
+        // Delete packages
+        foreach (var pkg in selectedPackages)
+        {
+            RemovePackage(pkg, deleteFiles);
         }
     }
 }

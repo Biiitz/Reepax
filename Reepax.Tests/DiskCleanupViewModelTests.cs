@@ -211,4 +211,52 @@ public class DiskCleanupViewModelTests
         Assert.DoesNotContain(pkg, vm.Packages);
         Assert.False(vm.CanDeleteSelected);
     }
+
+    [Fact]
+    public void DeleteSelected_WhenMultipleItemsSelected_DeletesAllSelectedItems()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var pkg = new DownloadPackage { Id = Guid.NewGuid(), Name = "Package1" };
+        var item1 = new DownloadItem { FileName = "file1.bin", IsSelected = true };
+        var item2 = new DownloadItem { FileName = "file2.bin", IsSelected = false };
+        var item3 = new DownloadItem { FileName = "file3.bin", IsSelected = true };
+        pkg.Items.Add(item1);
+        pkg.Items.Add(item2);
+        pkg.Items.Add(item3);
+        vm.Packages.Add(pkg);
+        vm.SelectedMainTab = AppMainTab.Downloads;
+
+        Assert.True(vm.CanDeleteSelected);
+        vm.DeleteSelected();
+
+        Assert.DoesNotContain(item1, pkg.Items);
+        Assert.DoesNotContain(item3, pkg.Items);
+        Assert.Contains(item2, pkg.Items);
+        Assert.Single(pkg.Items);
+    }
+
+    [Fact]
+    public void DeleteSelected_WhenMultiplePackagesSelected_DeletesAllSelectedPackages()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var pkg1 = new DownloadPackage { Id = Guid.NewGuid(), Name = "Package1", IsSelected = true };
+        var pkg2 = new DownloadPackage { Id = Guid.NewGuid(), Name = "Package2", IsSelected = false };
+        var pkg3 = new DownloadPackage { Id = Guid.NewGuid(), Name = "Package3", IsSelected = true };
+        vm.Packages.Add(pkg1);
+        vm.Packages.Add(pkg2);
+        vm.Packages.Add(pkg3);
+        vm.SelectedMainTab = AppMainTab.Downloads;
+
+        Assert.True(vm.CanDeleteSelected);
+        vm.DeleteSelected();
+
+        Assert.DoesNotContain(pkg1, vm.Packages);
+        Assert.DoesNotContain(pkg3, vm.Packages);
+        Assert.Contains(pkg2, vm.Packages);
+        Assert.Single(vm.Packages);
+    }
 }

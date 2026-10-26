@@ -535,4 +535,119 @@ public class ItemAndPackageReorderingTests
         Assert.Null(dlc.ParentPackageId);
         Assert.Empty(parent.ClippedPackages);
     }
+
+    [Fact]
+    public void MoveItemsBefore_MultipleItems_PreservesRelativeOrder()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var pkg = new DownloadPackage { Name = "Package1" };
+        var i0 = new DownloadItem { FileName = "Item0", PackageId = pkg.Id };
+        var i1 = new DownloadItem { FileName = "Item1", PackageId = pkg.Id };
+        var i2 = new DownloadItem { FileName = "Item2", PackageId = pkg.Id };
+        var i3 = new DownloadItem { FileName = "Item3", PackageId = pkg.Id };
+        var i4 = new DownloadItem { FileName = "Item4", PackageId = pkg.Id };
+        pkg.Items.Add(i0);
+        pkg.Items.Add(i1);
+        pkg.Items.Add(i2);
+        pkg.Items.Add(i3);
+        pkg.Items.Add(i4);
+
+        vm.Packages.Add(pkg);
+        vm.RefreshRootPackages();
+
+        // Move Item1 and Item3 before Item0
+        vm.MoveItemsBefore(new[] { i1, i3 }, i0);
+        Assert.Equal(new[] { "Item1", "Item3", "Item0", "Item2", "Item4" }, pkg.Items.Select(x => x.FileName).ToArray());
+    }
+
+    [Fact]
+    public void MoveItemsAfter_MultipleItems_PreservesRelativeOrder()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var pkg = new DownloadPackage { Name = "Package1" };
+        var i0 = new DownloadItem { FileName = "Item0", PackageId = pkg.Id };
+        var i1 = new DownloadItem { FileName = "Item1", PackageId = pkg.Id };
+        var i2 = new DownloadItem { FileName = "Item2", PackageId = pkg.Id };
+        var i3 = new DownloadItem { FileName = "Item3", PackageId = pkg.Id };
+        var i4 = new DownloadItem { FileName = "Item4", PackageId = pkg.Id };
+        pkg.Items.Add(i0);
+        pkg.Items.Add(i1);
+        pkg.Items.Add(i2);
+        pkg.Items.Add(i3);
+        pkg.Items.Add(i4);
+
+        vm.Packages.Add(pkg);
+        vm.RefreshRootPackages();
+
+        // Move Item0 and Item2 after Item4
+        vm.MoveItemsAfter(new[] { i0, i2 }, i4);
+        Assert.Equal(new[] { "Item1", "Item3", "Item4", "Item0", "Item2" }, pkg.Items.Select(x => x.FileName).ToArray());
+    }
+
+    [Fact]
+    public void MovePackagesBefore_MultiplePackages_PreservesRelativeOrder()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var p0 = new DownloadPackage { Name = "Pkg0" };
+        var p1 = new DownloadPackage { Name = "Pkg1" };
+        var p2 = new DownloadPackage { Name = "Pkg2" };
+        var p3 = new DownloadPackage { Name = "Pkg3" };
+        vm.Packages.Add(p0);
+        vm.Packages.Add(p1);
+        vm.Packages.Add(p2);
+        vm.Packages.Add(p3);
+        vm.RefreshRootPackages();
+
+        // Move Pkg1 and Pkg2 before Pkg0
+        vm.MovePackagesBefore(new[] { p1, p2 }, p0);
+        Assert.Equal(new[] { "Pkg1", "Pkg2", "Pkg0", "Pkg3" }, vm.RootPackages.Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public void MovePackagesAfter_MultiplePackages_PreservesRelativeOrder()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var p0 = new DownloadPackage { Name = "Pkg0" };
+        var p1 = new DownloadPackage { Name = "Pkg1" };
+        var p2 = new DownloadPackage { Name = "Pkg2" };
+        var p3 = new DownloadPackage { Name = "Pkg3" };
+        vm.Packages.Add(p0);
+        vm.Packages.Add(p1);
+        vm.Packages.Add(p2);
+        vm.Packages.Add(p3);
+        vm.RefreshRootPackages();
+
+        // Move Pkg0 and Pkg1 after Pkg3
+        vm.MovePackagesAfter(new[] { p0, p1 }, p3);
+        Assert.Equal(new[] { "Pkg2", "Pkg3", "Pkg0", "Pkg1" }, vm.RootPackages.Select(p => p.Name).ToArray());
+    }
+
+    [Fact]
+    public void MovePackagesToEnd_MultiplePackages_PreservesRelativeOrder()
+    {
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+
+        var p0 = new DownloadPackage { Name = "Pkg0" };
+        var p1 = new DownloadPackage { Name = "Pkg1" };
+        var p2 = new DownloadPackage { Name = "Pkg2" };
+        var p3 = new DownloadPackage { Name = "Pkg3" };
+        vm.Packages.Add(p0);
+        vm.Packages.Add(p1);
+        vm.Packages.Add(p2);
+        vm.Packages.Add(p3);
+        vm.RefreshRootPackages();
+
+        // Move Pkg0 and Pkg2 to end
+        vm.MovePackagesToEnd(new[] { p0, p2 });
+        Assert.Equal(new[] { "Pkg1", "Pkg3", "Pkg0", "Pkg2" }, vm.RootPackages.Select(p => p.Name).ToArray());
+    }
 }
