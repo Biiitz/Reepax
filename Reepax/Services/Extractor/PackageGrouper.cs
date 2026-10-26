@@ -35,6 +35,42 @@ public static class PackageGrouper
         @"(?i)(?:package|paket|download)\s*\(\d+\s*(?:files|dateien)\)|^(?:download(?:_|\s+)?(?:package|paket)|package|paket|download|file)\b|^filecrypt\b",
         RegexOptions.Compiled);
 
+    private static readonly Regex EmbeddedUrlRegex = new(
+        @"(?i)https?:\/\/[^\s\]\)>]+",
+        RegexOptions.Compiled);
+
+    private static readonly Regex BracketedWebsiteRegex = new(
+        @"(?i)[\[\(\{<]\s*(?:https?:\/\/)?(?:www\.)?[-a-z0-9_]+(?:[\s.\-]+[-a-z0-9_]+)*(?:[.\s](?:site|com|org|net|to|ru|me|cc|io|co|xyz|info|biz|top|online|club|tv|is|ws)|\.[a-z]{2,10}|repacks?)\b\.*\s*[\]\)\}>]",
+        RegexOptions.Compiled);
+
+    private static readonly Regex BracketedReleaseTagRegex = new(
+        @"(?i)[\[\(\{<]\s*(?:[-a-z0-9_]+[\s\._\-])*(?:repacks?)\s*[\]\)\}>]",
+        RegexOptions.Compiled);
+
+    private static readonly Regex TrailingWebsiteRegex = new(
+        @"(?i)(?:\s*(?:--|–|—|~|\|)\s*|\s+-\s+|\s+(?:at|from|by)\s+)\s*(?:https?:\/\/)?(?:www\.)?[-a-z0-9_]+(?:[\s.\-]+[-a-z0-9_]+)*(?:[.\s](?:site|com|org|net|to|ru|me|cc|io|co|xyz|info|biz|top|online|club|tv|is|ws)|\.[a-z]{2,10}|repacks?)\b\.*\s*$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex TrailingReleaseTagRegex = new(
+        @"(?i)(?:\s*(?:--|–|—|~|\|)\s*|\s+-\s+|\s+(?:by|from)\s+)\s*(?:[-a-z0-9_]+[\s\._\-])*(?:repacks?)\.*\s*$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex LeadingWebsiteRegex = new(
+        @"(?i)^\s*(?:https?:\/\/)?(?:www\.)?[-a-z0-9_]+(?:[\s.\-]+[-a-z0-9_]+)*(?:[.\s](?:site|com|org|net|to|ru|me|cc|io|co|xyz|info|biz|top|online|club|tv|is|ws)|\.[a-z]{2,10}|repacks?)\b\.*(?:\s*(?:--|–|—|~|\|)\s*|\s*-\s+|\s+-\s*|\s+(?:at|from|by)\s+|\s+)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex LeadingReleaseTagRegex = new(
+        @"(?i)^\s*(?:[-a-z0-9_]+[\s\._\-])*(?:repacks?)\.*(?:\s*(?:--|–|—|~|\|)\s*|\s*-\s+|\s+-\s*|\s+(?:by|from)\s+)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex StandaloneWebsiteRegex = new(
+        @"(?i)(?<![-a-z0-9_])(?:https?:\/\/)?(?:www\.)?[-a-z0-9]+(?:\.[-a-z0-9]+)*\.(?:site|com|org|net|to|ru|me|cc|io|co|xyz|info|biz|top|online|club|tv|is|ws)\b\.?(?![-a-z0-9_])",
+        RegexOptions.Compiled);
+
+    private static readonly Regex StandaloneReleaseTagRegex = new(
+        @"(?i)(?<![-a-z0-9_])(?:repacks?)(?![-a-z0-9_])",
+        RegexOptions.Compiled);
+
     /// <summary>
     /// Groups extracted links into packages. By default, links from the same drop/paste action 
     /// are grouped into a SINGLE cohesive package unless explicitly separated by distinct section headers.
@@ -63,6 +99,14 @@ public static class PackageGrouper
             pkg.IsCustomName = true;
             packages.Add(pkg);
             return packages;
+        }
+
+        foreach (var l in linksList)
+        {
+            if (!string.IsNullOrWhiteSpace(l.ContextTitle))
+            {
+                l.ContextTitle = SanitizeCleanName(l.ContextTitle);
+            }
         }
 
         // Check if links have multiple distinct, non-empty ContextTitles
@@ -301,6 +345,9 @@ public static class PackageGrouper
             cleaned = HashPatternRegex.Replace(cleaned, "");
         } while (cleaned != prev && cleaned.Length > 0);
 
+        // First pass: strip websites and branding while dots and delimiters are intact
+        cleaned = SanitizeCleanName(cleaned);
+
         // Clean up separators: replace dots/underscores/plus with spaces
         cleaned = SpecialCharsRegex.Replace(cleaned, " ");
 
@@ -361,12 +408,38 @@ public static class PackageGrouper
         return false;
     }
 
+    /// <summary>
+    /// Strips website URLs, domain suffixes/prefixes
+    /// </summary>
+    public static string StripWebsitesAndBranding(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        text = EmbeddedUrlRegex.Replace(text, " ");
+        text = BracketedWebsiteRegex.Replace(text, " ");
+        text = BracketedReleaseTagRegex.Replace(text, " ");
+        text = TrailingWebsiteRegex.Replace(text, "");
+        text = TrailingReleaseTagRegex.Replace(text, "");
+        text = LeadingWebsiteRegex.Replace(text, "");
+        text = LeadingReleaseTagRegex.Replace(text, "");
+        text = StandaloneWebsiteRegex.Replace(text, " ");
+        text = StandaloneReleaseTagRegex.Replace(text, " ");
+        text = Regex.Replace(text, @"\s{2,}", " ");
+
+        return text.Trim();
+    }
+
     public static string SanitizeCleanName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
             return string.Empty;
 
-        name = name.Trim(' ', '-', '_', '.', ',', ':', ';', '|', '/', '\\');
+        name = StripWebsitesAndBranding(name);
+        if (string.IsNullOrWhiteSpace(name))
+            return string.Empty;
+
+        name = name.Trim(' ', '"', '\'', '`', '´', '-', '–', '—', '_', '.', ',', ':', ';', '|', '/', '\\', '~');
 
         // Clean unclosed/orphan brackets at edges
         if (name.EndsWith(")") && !name.Contains("(")) name = name[..^1].Trim();
@@ -381,7 +454,7 @@ public static class PackageGrouper
             name = string.Join(" ", words.Select(w => char.ToUpperInvariant(w[0]) + (w.Length > 1 ? w.Substring(1) : "")));
         }
 
-        return name.Trim();
+        return name.Trim(' ', '"', '\'', '`', '´', '-', '–', '—', '_', '.', ',', ':', ';', '|', '/', '\\', '~');
     }
 
     private static bool IsArchiveName(string fileName)

@@ -32,13 +32,13 @@ public class GameInstallFolderTests : IDisposable
     }
 
     [Theory]
-    [InlineData("Open_Adventure_Update_from_v1.0.1_to_v1.0.2.rar", "Open_Adventure_Update_from_v1.0.1_to_v1.0.2.rar")]
-    [InlineData("Space Quest - Updates", "Space Quest - Updates")]
-    [InlineData("Solar Explorer 2026", "Solar Explorer 2026")]
-    [InlineData("Solar.Explorer.v2.1-Setup", "Solar.Explorer.v2.1-Setup")]
-    [InlineData("Fantasy RPG [Deluxe Edition]", "Fantasy RPG [Deluxe Edition]")]
-    [InlineData("Game Name: Special Edition / Part 1", "Game Name Special Edition Part 1")]
-    [InlineData("Game *Test* <1> | New?", "Game Test 1 New")]
+    [InlineData("Open_Tool_Update_from_v1.0.1_to_v1.0.2.rar", "Open_Tool_Update_from_v1.0.1_to_v1.0.2.rar")]
+    [InlineData("Example App - Updates", "Example App - Updates")]
+    [InlineData("Example Software 2026", "Example Software 2026")]
+    [InlineData("Example.Software.v2.1-Setup", "Example.Software.v2.1-Setup")]
+    [InlineData("Example Suite [Deluxe Edition]", "Example Suite [Deluxe Edition]")]
+    [InlineData("Example Name: Special Edition / Part 1", "Example Name Special Edition Part 1")]
+    [InlineData("Example *Test* <1> | New?", "Example Test 1 New")]
     public void GetGameInstallName_RetainsExactInAppPackageName_AndSanitizesUnsupportedChars(string packageName, string expectedFolderName)
     {
         // Arrange
@@ -60,7 +60,7 @@ public class GameInstallFolderTests : IDisposable
         // Arrange
         var pkg = new DownloadPackage
         {
-            Name = "Space Quest"
+            Name = "Example App"
         };
 
         // Act
@@ -69,7 +69,7 @@ public class GameInstallFolderTests : IDisposable
         // Assert
         Assert.NotNull(createdPath);
         Assert.True(Directory.Exists(createdPath));
-        Assert.Equal(Path.Combine(_tempTestDir, "Space Quest"), createdPath);
+        Assert.Equal(Path.Combine(_tempTestDir, "Example App"), createdPath);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class GameInstallFolderTests : IDisposable
         // Arrange
         var pkg = new DownloadPackage
         {
-            Name = "Space Quest - Updates"
+            Name = "Example App - Updates"
         };
 
         // Act
@@ -88,14 +88,14 @@ public class GameInstallFolderTests : IDisposable
         Assert.NotNull(createdPath);
         Assert.True(Directory.Exists(createdPath));
         // Must point to the exact package folder name, not stripped!
-        Assert.Equal(Path.Combine(_tempTestDir, "Space Quest - Updates"), createdPath);
+        Assert.Equal(Path.Combine(_tempTestDir, "Example App - Updates"), createdPath);
     }
 
     [Fact]
     public void AppSettings_GameInstallDirectory_PersistsCorrectly()
     {
         // Arrange
-        var customPath = Path.Combine(_tempTestDir, "CustomGames");
+        var customPath = Path.Combine(_tempTestDir, "CustomApps");
         SettingsService.Instance.Settings.CreateGameInstallFolder = true;
         SettingsService.Instance.Settings.GameInstallDirectory = customPath;
 
@@ -116,13 +116,13 @@ public class GameInstallFolderTests : IDisposable
 
         var pkg = new DownloadPackage
         {
-            Name = "Stardew Valley",
+            Name = "Example Package",
             SaveDirectory = _tempTestDir,
             Status = DownloadStatus.Completed
         };
         var item = new DownloadItem
         {
-            FileName = "stardew_valley.zip",
+            FileName = "example_package.zip",
             Status = DownloadStatus.Completed,
             TotalBytes = 1000,
             DownloadedBytes = 1000
@@ -133,7 +133,7 @@ public class GameInstallFolderTests : IDisposable
         Services.Download.QueueManager.Instance.NotifyPackageCompletionIfEligible(pkg);
 
         // Assert
-        var expectedFolder = Path.Combine(_tempTestDir, "Stardew Valley");
+        var expectedFolder = Path.Combine(_tempTestDir, "Example Package");
         Assert.True(Directory.Exists(expectedFolder));
     }
 
@@ -143,7 +143,7 @@ public class GameInstallFolderTests : IDisposable
         // Arrange
         var pkg = new DownloadPackage
         {
-            Name = "Hollow Knight"
+            Name = "Example Project"
         };
 
         // Act 1: First call creates folder
@@ -169,7 +169,7 @@ public class GameInstallFolderTests : IDisposable
         var customBase = Path.Combine(_tempTestDir, "SelectedFolderAtRuntime");
         var pkg = new DownloadPackage
         {
-            Name = "Celeste"
+            Name = "Example Suite"
         };
 
         // Act
@@ -177,7 +177,7 @@ public class GameInstallFolderTests : IDisposable
 
         // Assert
         Assert.Equal(GameInstallFolderStatus.Created, result.Status);
-        var expected = Path.Combine(customBase, "Celeste");
+        var expected = Path.Combine(customBase, "Example Suite");
         Assert.Equal(expected, result.Path);
         Assert.True(Directory.Exists(expected));
     }

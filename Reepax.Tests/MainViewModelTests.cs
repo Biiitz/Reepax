@@ -49,7 +49,7 @@ https://rapidgator.net/file/103/Project_Omega_v3.part3.rar
         vm.Packages.Clear();
 
         string text = @"
-Title: Grand Theft Auto VI (2025)
+Title: Example App 2025
 https://rapidgator.net/file/823791283
 https://rapidgator.net/file/823791284
 ";
@@ -60,10 +60,10 @@ https://rapidgator.net/file/823791284
         // Assert
         Assert.Single(vm.Packages);
         var pkg = vm.Packages[0];
-        Assert.Equal("Grand Theft Auto VI (2025)", pkg.Name);
+        Assert.Equal("Example App 2025", pkg.Name);
         Assert.Equal(2, pkg.Items.Count);
-        Assert.Equal("Grand Theft Auto VI (2025).part01.rar", pkg.Items[0].FileName);
-        Assert.Equal("Grand Theft Auto VI (2025).part02.rar", pkg.Items[1].FileName);
+        Assert.Equal("Example App 2025.part01.rar", pkg.Items[0].FileName);
+        Assert.Equal("Example App 2025.part02.rar", pkg.Items[1].FileName);
     }
 
     [Fact]
@@ -125,13 +125,13 @@ https://rapidgator.net/file/182937105
 
         var package = new DownloadPackage
         {
-            Name = "BigGameRelease",
+            Name = "ExampleBigRelease",
             SaveDirectory = @"C:\Downloads\BigGameRelease"
         };
 
         var item1 = new DownloadItem
         {
-            FileName = "game.part1.rar",
+            FileName = "package.part1.rar",
             TotalBytes = 100_000_000,
             DownloadedBytes = 50_000_000,
             Status = DownloadStatus.Downloading,
@@ -140,7 +140,7 @@ https://rapidgator.net/file/182937105
 
         var item2 = new DownloadItem
         {
-            FileName = "game.part2.rar",
+            FileName = "package.part2.rar",
             TotalBytes = 200_000_000,
             DownloadedBytes = 0,
             Status = DownloadStatus.Queued,
@@ -149,7 +149,7 @@ https://rapidgator.net/file/182937105
 
         var item3 = new DownloadItem
         {
-            FileName = "game.part3.rar",
+            FileName = "package.part3.rar",
             TotalBytes = 300_000_000,
             DownloadedBytes = 300_000_000,
             Status = DownloadStatus.Completed,
@@ -748,10 +748,10 @@ https://other-hoster.net/dl/Movie.part01.rar
         vm.Packages.Clear();
 
         string initialLinks = @"
-https://rapidgator.net/file/101/game.part1.rar
-https://rapidgator.net/file/102/game.part2.rar
+https://rapidgator.net/file/101/package.part1.rar
+https://rapidgator.net/file/102/package.part2.rar
 ";
-        vm.AddLinksFromText(initialLinks, "Game Package", autoExtractArchives: false);
+        vm.AddLinksFromText(initialLinks, "Example Package", autoExtractArchives: false);
         Assert.Single(vm.Packages);
         var pkg = vm.Packages[0];
         Assert.Equal(2, pkg.Items.Count);
@@ -769,15 +769,15 @@ https://rapidgator.net/file/102/game.part2.rar
         // - Add URL 103
         // - Change options & Name & Directory
         string editedLinks = @"
-https://rapidgator.net/file/101/game.part1.rar
-https://rapidgator.net/file/103/game.part3.rar
+https://rapidgator.net/file/101/package.part1.rar
+https://rapidgator.net/file/103/package.part3.rar
 ";
         string newDir = Path.Combine(Path.GetTempPath(), "Reepax_EditTest_" + Guid.NewGuid().ToString("N"));
 
         vm.EditPackage(
             pkg,
             editedLinks,
-            newPackageName: "Game Package Updated",
+            newPackageName: "Example Package Updated",
             newDownloadDirectory: newDir,
             autoExtractArchives: true,
             lowResourceExtraction: true,
@@ -786,7 +786,7 @@ https://rapidgator.net/file/103/game.part3.rar
             autoResolveHostLinks: false);
 
         // Assert
-        Assert.Equal("Game Package Updated", pkg.Name);
+        Assert.Equal("Example Package Updated", pkg.Name);
         Assert.Equal(newDir, pkg.SaveDirectory);
         Assert.True(pkg.AutoExtractArchives);
         Assert.True(pkg.LowResourceExtraction);
@@ -931,7 +931,7 @@ https://rapidgator.net/file/202/archive.part2.rar
         var package = new DownloadPackage { Name = "Completed Package" };
         var item = new DownloadItem
         {
-            FileName = "game.zip",
+            FileName = "package.zip",
             Status = DownloadStatus.Completed,
             TotalBytes = 1000,
             DownloadedBytes = 1000,
@@ -1091,13 +1091,13 @@ https://rapidgator.net/file/202/archive.part2.rar
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgExt_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
-        var subDir = Path.Combine(tempDir, "GameFolder");
+        var subDir = Path.Combine(tempDir, "AppFolder");
         Directory.CreateDirectory(subDir);
 
         try
         {
-            var rarFile = Path.Combine(tempDir, "game.part1.rar");
-            var extractedExe = Path.Combine(subDir, "game.exe");
+            var rarFile = Path.Combine(tempDir, "package.part1.rar");
+            var extractedExe = Path.Combine(subDir, "app.exe");
             var extractedBin = Path.Combine(subDir, "data.bin");
 
             File.WriteAllBytes(rarFile, new byte[100]);
@@ -1107,8 +1107,8 @@ https://rapidgator.net/file/202/archive.part2.rar
             var vm = new MainViewModel();
             vm.Packages.Clear();
 
-            var pkg = new DownloadPackage { Name = "ExtractedGamePkg", SaveDirectory = tempDir };
-            pkg.Items.Add(new DownloadItem { FileName = "game.part1.rar", SaveFilePath = rarFile });
+            var pkg = new DownloadPackage { Name = "ExtractedAppPkg", SaveDirectory = tempDir };
+            pkg.Items.Add(new DownloadItem { FileName = "package.part1.rar", SaveFilePath = rarFile });
             vm.Packages.Add(pkg);
 
             var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
@@ -1142,7 +1142,7 @@ https://rapidgator.net/file/202/archive.part2.rar
 
         try
         {
-            var rarFile = Path.Combine(tempDir, "game.rar");
+            var rarFile = Path.Combine(tempDir, "package.rar");
             var extractedSetup = Path.Combine(tempDir, "setup.exe");
             File.WriteAllBytes(extractedSetup, new byte[500]);
 
@@ -1151,12 +1151,12 @@ https://rapidgator.net/file/202/archive.part2.rar
 
             var pkg = new DownloadPackage 
             { 
-                Name = "GameAlreadyExtracted", 
+                Name = "AppAlreadyExtracted", 
                 SaveDirectory = tempDir, 
                 DeleteArchiveAfterExtraction = true,
                 IsExtracted = true 
             };
-            pkg.Items.Add(new DownloadItem { FileName = "game.rar", SaveFilePath = rarFile });
+            pkg.Items.Add(new DownloadItem { FileName = "package.rar", SaveFilePath = rarFile });
             vm.Packages.Add(pkg);
 
             var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
@@ -1276,9 +1276,9 @@ https://rapidgator.net/file/202/archive.part2.rar
         Directory.CreateDirectory(tempDir);
         try
         {
-            var userFile = Path.Combine(tempDir, "game.iso");
-            var partFile = Path.Combine(tempDir, "game.iso.part");
-            var segFile = Path.Combine(tempDir, "game.iso.part.segments");
+            var userFile = Path.Combine(tempDir, "package.iso");
+            var partFile = Path.Combine(tempDir, "package.iso.part");
+            var segFile = Path.Combine(tempDir, "package.iso.part.segments");
             var tmpFile = Path.Combine(tempDir, "cache.tmp");
             var zeroFile = Path.Combine(tempDir, "empty.txt");
             var backupFile = Path.Combine(tempDir, "archive.rar.1");
@@ -1294,7 +1294,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             vm.Packages.Clear();
 
             var pkg = new DownloadPackage { Name = "TempPkg", SaveDirectory = tempDir };
-            var item = new DownloadItem { FileName = "game.iso", SaveFilePath = userFile };
+            var item = new DownloadItem { FileName = "package.iso", SaveFilePath = userFile };
             pkg.Items.Add(item);
             vm.Packages.Add(pkg);
 

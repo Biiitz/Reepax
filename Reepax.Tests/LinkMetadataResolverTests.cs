@@ -58,7 +58,7 @@ public class LinkMetadataResolverTests
                 response.Content.Headers.ContentLength = 1048576000; // 1000 MB
                 response.Content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment")
                 {
-                    FileName = "\"game.part01.rar\""
+                    FileName = "\"data.part01.rar\""
                 };
                 response.Headers.ETag = new EntityTagHeaderValue("\"a1b2c3d4e5f60718293a4b5c6d7e8f90\"");
                 return response;
@@ -72,7 +72,7 @@ public class LinkMetadataResolverTests
 
         var item = new DownloadItem
         {
-            OriginalUrl = "https://cdn.example.com/downloads/game.part01.rar",
+            OriginalUrl = "https://cdn.example.com/downloads/data.part01.rar",
             FileName = "download_file"
         };
 
@@ -80,7 +80,7 @@ public class LinkMetadataResolverTests
 
         Assert.True(success);
         Assert.Equal(1048576000, item.TotalBytes);
-        Assert.Equal("game.part01.rar", item.FileName);
+        Assert.Equal("data.part01.rar", item.FileName);
         Assert.Equal("a1b2c3d4e5f60718293a4b5c6d7e8f90", item.ExpectedChecksum);
     }
 
@@ -135,7 +135,7 @@ public class LinkMetadataResolverTests
 
         var package = new DownloadPackage
         {
-            Name = "MultiPart Game"
+            Name = "MultiPart Project"
         };
 
         for (int i = 1; i <= 3; i++)

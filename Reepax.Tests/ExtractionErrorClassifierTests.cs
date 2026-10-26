@@ -39,18 +39,18 @@ public class ExtractionErrorClassifierTests : IDisposable
     [Fact]
     public void FindMissingVolume_PartRarWithGap_ReturnsFirstMissingPart()
     {
-        var primary = Touch("game.part01.rar");
-        Touch("game.part03.rar");
+        var primary = Touch("data.part01.rar");
+        Touch("data.part03.rar");
 
-        Assert.Equal("game.part02.rar", ExtractionErrorClassifier.FindMissingVolume(primary));
+        Assert.Equal("data.part02.rar", ExtractionErrorClassifier.FindMissingVolume(primary));
     }
 
     [Fact]
     public void FindMissingVolume_CompletePartRarSequence_ReturnsNull()
     {
-        var primary = Touch("game.part1.rar");
-        Touch("game.part2.rar");
-        Touch("game.part3.rar");
+        var primary = Touch("data.part1.rar");
+        Touch("data.part2.rar");
+        Touch("data.part3.rar");
 
         Assert.Null(ExtractionErrorClassifier.FindMissingVolume(primary));
     }

@@ -15,8 +15,8 @@ public class ClipboardMonitorTests
         string html = @"
 <html>
   <body>
-    <a href=""https://rapidgator.net/file/123/game.part1.rar"">Part 1</a>
-    <a href=""https://ddownload.com/abc/game.part2.rar"">Part 2</a>
+    <a href=""https://rapidgator.net/file/123/data.part1.rar"">Part 1</a>
+    <a href=""https://ddownload.com/abc/data.part2.rar"">Part 2</a>
   </body>
 </html>";
         string text = "Part 1 Part 2"; // Plain text representation does not contain the URLs
@@ -24,8 +24,8 @@ public class ClipboardMonitorTests
         var result = ClipboardMonitorService.ExtractLinksFromData(html, text);
 
         Assert.Equal(2, result.Count);
-        Assert.Equal("https://rapidgator.net/file/123/game.part1.rar", result[0]);
-        Assert.Equal("https://ddownload.com/abc/game.part2.rar", result[1]);
+        Assert.Equal("https://rapidgator.net/file/123/data.part1.rar", result[0]);
+        Assert.Equal("https://ddownload.com/abc/data.part2.rar", result[1]);
     }
 
     [Fact]
@@ -124,15 +124,15 @@ https://spiegel.de/politik/nachrichten
   Check out my website at <a href=""https://myblog.example.com"">My Blog</a> or follow me:
   <a href=""https://twitter.com/user"">Twitter</a>.
   Download release here:
-  <a href=""https://rapidgator.net/file/888/game.part1.rar"">Part 1 (Rapidgator)</a>
-  <a href=""https://ddownload.com/999/game.part2.rar"">Part 2 (DDownload)</a>
+  <a href=""https://rapidgator.net/file/888/data.part1.rar"">Part 1 (Rapidgator)</a>
+  <a href=""https://ddownload.com/999/data.part2.rar"">Part 2 (DDownload)</a>
 </div>";
 
         var result = ClipboardMonitorService.ExtractLinksFromData(html, null);
 
         Assert.Equal(2, result.Count);
-        Assert.Contains("https://rapidgator.net/file/888/game.part1.rar", result);
-        Assert.Contains("https://ddownload.com/999/game.part2.rar", result);
+        Assert.Contains("https://rapidgator.net/file/888/data.part1.rar", result);
+        Assert.Contains("https://ddownload.com/999/data.part2.rar", result);
         Assert.DoesNotContain(result, u => u.Contains("myblog") || u.Contains("twitter"));
     }
 

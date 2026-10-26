@@ -63,8 +63,8 @@ public static class UpdateDetector
 
     /// <summary>
     /// Extracts the clean game name before the update descriptor.
-    /// Example: "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release.rar" -> "The Blood of Dawnwalker"
-    /// Example: "The Blood of Dawnwalker Updates" -> "The Blood of Dawnwalker"
+    /// Example: "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release.rar" -> "Software Project Alpha"
+    /// Example: "Software Project Alpha Updates" -> "Software Project Alpha"
     /// </summary>
     public static string ExtractGameName(string? text)
     {
@@ -116,6 +116,9 @@ public static class UpdateDetector
             }
         }
 
+        // Strip websites and branding before dots are replaced with spaces
+        gamePart = PackageGrouper.SanitizeCleanName(gamePart);
+
         // Replace separators (_ . + with space)
         gamePart = Regex.Replace(gamePart, @"[_\.\+]+", " ");
 
@@ -155,8 +158,8 @@ public static class UpdateDetector
     /// <summary>
     /// Determines subfolder name for archive extraction ("Extract to...").
     /// Strips part suffixes (.part01.rar) and archive extensions.
-    /// Example: "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release.part01.rar" 
-    ///        -> "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release"
+    /// Example: "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release.part01.rar" 
+    ///        -> "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release"
     /// </summary>
     public static string GetExtractionSubfolder(string archivePathOrName)
     {

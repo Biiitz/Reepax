@@ -18,12 +18,12 @@ public class ArchiveExtractionTests
     {
         var service = ArchiveExtractionService.Instance;
 
-        Assert.True(service.IsArchiveFile("game.zip"));
+        Assert.True(service.IsArchiveFile("archive.zip"));
         Assert.True(service.IsArchiveFile("movie.rar"));
         Assert.True(service.IsArchiveFile("pack.7z"));
         Assert.True(service.IsArchiveFile("data.tar.gz"));
-        Assert.True(service.IsArchiveFile("game.part1.rar"));
-        Assert.True(service.IsArchiveFile("game.part2.rar"));
+        Assert.True(service.IsArchiveFile("archive.part1.rar"));
+        Assert.True(service.IsArchiveFile("archive.part2.rar"));
         Assert.True(service.IsArchiveFile("file.001"));
 
         Assert.False(service.IsArchiveFile("song.mp3"));
@@ -37,12 +37,12 @@ public class ArchiveExtractionTests
         var service = ArchiveExtractionService.Instance;
 
         Assert.True(service.IsPrimaryArchivePart("standalone.zip"));
-        Assert.True(service.IsPrimaryArchivePart("game.part1.rar"));
-        Assert.True(service.IsPrimaryArchivePart("game.part01.rar"));
+        Assert.True(service.IsPrimaryArchivePart("archive.part1.rar"));
+        Assert.True(service.IsPrimaryArchivePart("archive.part01.rar"));
         Assert.True(service.IsPrimaryArchivePart("archive.001"));
 
-        Assert.False(service.IsPrimaryArchivePart("game.part2.rar"));
-        Assert.False(service.IsPrimaryArchivePart("game.part05.rar"));
+        Assert.False(service.IsPrimaryArchivePart("archive.part2.rar"));
+        Assert.False(service.IsPrimaryArchivePart("archive.part05.rar"));
         Assert.False(service.IsPrimaryArchivePart("archive.002"));
 
         // Legacy RAR subsequent volumes must never be primary
@@ -59,18 +59,18 @@ public class ArchiveExtractionTests
 
         try
         {
-            var rarFile = Path.Combine(tempDir, "game.rar");
-            var r00File = Path.Combine(tempDir, "game.r00");
-            var r01File = Path.Combine(tempDir, "game.r01");
+            var rarFile = Path.Combine(tempDir, "archive.rar");
+            var r00File = Path.Combine(tempDir, "archive.r00");
+            var r01File = Path.Combine(tempDir, "archive.r01");
 
             File.WriteAllText(r00File, "test r00");
             File.WriteAllText(r01File, "test r01");
 
-            // When game.rar does not exist, game.r00 is the starting volume
+            // When archive.rar does not exist, archive.r00 is the starting volume
             Assert.True(service.IsPrimaryArchivePart(r00File));
             Assert.False(service.IsPrimaryArchivePart(r01File));
 
-            // When game.rar exists, game.rar is the primary volume and game.r00 is secondary
+            // When archive.rar exists, archive.rar is the primary volume and archive.r00 is secondary
             File.WriteAllText(rarFile, "test rar");
             Assert.True(service.IsPrimaryArchivePart(rarFile));
             Assert.False(service.IsPrimaryArchivePart(r00File));
@@ -358,13 +358,13 @@ public class ArchiveExtractionTests
     {
         var service = ArchiveExtractionService.Instance;
 
-        Assert.True(service.ArePartOfSameArchive("game.part01.rar", "game.part02.rar"));
-        Assert.True(service.ArePartOfSameArchive("game.part1.rar", "game.part2.rar"));
+        Assert.True(service.ArePartOfSameArchive("archive.part01.rar", "archive.part02.rar"));
+        Assert.True(service.ArePartOfSameArchive("archive.part1.rar", "archive.part2.rar"));
         Assert.True(service.ArePartOfSameArchive("archive.001", "archive.002"));
         Assert.True(service.ArePartOfSameArchive("standalone.zip", "standalone.zip"));
 
-        Assert.False(service.ArePartOfSameArchive("game1.part01.rar", "game2.part01.rar"));
-        Assert.False(service.ArePartOfSameArchive("game.part01.rar", "readme.txt"));
+        Assert.False(service.ArePartOfSameArchive("archive1.part01.rar", "archive2.part01.rar"));
+        Assert.False(service.ArePartOfSameArchive("archive.part01.rar", "readme.txt"));
     }
 
     [Fact]
@@ -596,7 +596,7 @@ public class ArchiveExtractionTests
 
         try
         {
-            var zipPath = Path.Combine(testDir, "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release.zip");
+            var zipPath = Path.Combine(testDir, "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release.zip");
             using (var zipStream = new FileStream(zipPath, FileMode.Create))
             using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
             {
@@ -607,14 +607,14 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "The Blood of Dawnwalker - Updates",
+                Name = "Software Project Alpha - Updates",
                 SaveDirectory = testDir,
                 AutoExtractArchives = true
             };
 
             var item = new DownloadItem
             {
-                FileName = "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release.zip",
+                FileName = "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release.zip",
                 SaveFilePath = zipPath,
                 Status = DownloadStatus.Completed,
                 IsEnabled = true
@@ -623,7 +623,7 @@ public class ArchiveExtractionTests
 
             await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
 
-            var expectedSubfolder = Path.Combine(testDir, "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release");
+            var expectedSubfolder = Path.Combine(testDir, "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release");
             var extractedFile = Path.Combine(expectedSubfolder, "setup.exe");
 
             Assert.True(Directory.Exists(expectedSubfolder));
@@ -648,7 +648,7 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir
             };
 
@@ -667,7 +667,7 @@ public class ArchiveExtractionTests
     public void FindVerifyBatFilePath_WhenBatFileInSubfolder_FindsFilePath()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_BatTest_" + Guid.NewGuid().ToString("N"));
-        var subDir = Path.Combine(testDir, "Extracted Game");
+        var subDir = Path.Combine(testDir, "Extracted Content");
         Directory.CreateDirectory(subDir);
 
         try
@@ -677,7 +677,7 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir
             };
 
@@ -704,7 +704,7 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir
             };
 
@@ -730,7 +730,7 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir
             };
 
@@ -756,13 +756,13 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir,
                 Status = DownloadStatus.Downloading
             };
             var item = new DownloadItem
             {
-                FileName = "game.part1.rar",
+                FileName = "archive.part1.rar",
                 Status = DownloadStatus.Downloading,
                 IsEnabled = true
             };
@@ -792,14 +792,14 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir,
                 Status = DownloadStatus.Completed
             };
             var item = new DownloadItem
             {
-                FileName = "game.bin",
-                SaveFilePath = Path.Combine(testDir, "game.bin"),
+                FileName = "data.bin",
+                SaveFilePath = Path.Combine(testDir, "data.bin"),
                 Status = DownloadStatus.Completed,
                 IsEnabled = true
             };
@@ -829,7 +829,7 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game Package",
+                Name = "Sample Package",
                 SaveDirectory = testDir,
                 Status = DownloadStatus.Completed,
                 AutoExtractArchives = true
@@ -838,8 +838,8 @@ public class ArchiveExtractionTests
 
             var item = new DownloadItem
             {
-                FileName = "game.zip",
-                SaveFilePath = Path.Combine(testDir, "game.zip"),
+                FileName = "archive.zip",
+                SaveFilePath = Path.Combine(testDir, "archive.zip"),
                 Status = DownloadStatus.Completed,
                 IsEnabled = true
             };
@@ -934,7 +934,7 @@ public class ArchiveExtractionTests
     [InlineData("verify.bat", true)]
     [InlineData("verify.cmd", true)]
     [InlineData("verify bin.bat", true)]
-    [InlineData("MyGame_verify_bin.bat", true)]
+    [InlineData("App_verify_bin.bat", true)]
     [InlineData("setup.exe", false)]
     [InlineData("setup.bat", false)]
     [InlineData("install.bat", false)]
@@ -950,7 +950,7 @@ public class ArchiveExtractionTests
     public void FindVerifyBatFilePath_FindsBatInPackageNameSubdirectory()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_BatSubdirTest_" + Guid.NewGuid().ToString("N"));
-        var subDir = Path.Combine(testDir, "SuperGame");
+        var subDir = Path.Combine(testDir, "SampleApp");
         Directory.CreateDirectory(subDir);
 
         try
@@ -960,13 +960,13 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "SuperGame",
+                Name = "SampleApp",
                 SaveDirectory = testDir,
                 Status = DownloadStatus.Completed
             };
             package.Items.Add(new DownloadItem
             {
-                FileName = "game.bin",
+                FileName = "data.bin",
                 Status = DownloadStatus.Completed,
                 IsEnabled = true
             });
@@ -990,13 +990,13 @@ public class ArchiveExtractionTests
 
         try
         {
-            File.WriteAllText(Path.Combine(testDir, "game.iso"), "test");
+            File.WriteAllText(Path.Combine(testDir, "data.iso"), "test");
             var package = new DownloadPackage
             {
-                Name = "Game",
+                Name = "SampleData",
                 SaveDirectory = testDir
             };
-            package.Items.Add(new DownloadItem { FileName = "game.iso", SaveFilePath = Path.Combine(testDir, "game.iso") });
+            package.Items.Add(new DownloadItem { FileName = "data.iso", SaveFilePath = Path.Combine(testDir, "data.iso") });
 
             Assert.True(package.RefreshAndCheckExistsOnDisk());
             Assert.True(package.ExistsOnDisk());
@@ -1013,10 +1013,10 @@ public class ArchiveExtractionTests
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_ExistTest_" + Guid.NewGuid().ToString("N"));
         var package = new DownloadPackage
         {
-            Name = "NonExistentGame",
+            Name = "NonExistentPackage",
             SaveDirectory = testDir
         };
-        package.Items.Add(new DownloadItem { FileName = "game.iso", SaveFilePath = Path.Combine(testDir, "game.iso") });
+        package.Items.Add(new DownloadItem { FileName = "data.iso", SaveFilePath = Path.Combine(testDir, "data.iso") });
 
         Assert.False(package.RefreshAndCheckExistsOnDisk());
         Assert.False(package.ExistsOnDisk());
@@ -1026,8 +1026,8 @@ public class ArchiveExtractionTests
     public void RefreshAndCheckExistsOnDisk_WhenFolderRenamedInWindows_DetectsAndSelfHealsSaveDirectory()
     {
         var rootDir = Path.Combine(Path.GetTempPath(), "Reepax_RenameTest_" + Guid.NewGuid().ToString("N"));
-        var oldPkgDir = Path.Combine(rootDir, "Game_Original");
-        var newPkgDir = Path.Combine(rootDir, "Game_RenamedInWindows");
+        var oldPkgDir = Path.Combine(rootDir, "Package_Original");
+        var newPkgDir = Path.Combine(rootDir, "Package_RenamedInWindows");
         Directory.CreateDirectory(newPkgDir); // Simulating user renaming folder in Explorer
 
         try
@@ -1037,7 +1037,7 @@ public class ArchiveExtractionTests
 
             var package = new DownloadPackage
             {
-                Name = "Game_Original",
+                Name = "Package_Original",
                 SaveDirectory = oldPkgDir // Points to old directory that no longer exists
             };
             package.Items.Add(new DownloadItem { FileName = "data.pack", SaveFilePath = Path.Combine(oldPkgDir, "data.pack") });
@@ -1085,9 +1085,9 @@ public class ArchiveExtractionTests
     }
 
     [Theory]
-    [InlineData("game.zip.part")]
-    [InlineData("game.zip.part.segments")]
-    [InlineData("game.zip.segments")]
+    [InlineData("archive.zip.part")]
+    [InlineData("archive.zip.part.segments")]
+    [InlineData("archive.zip.segments")]
     [InlineData("download.tmp")]
     [InlineData("data.temp")]
     [InlineData("database.bak")]
@@ -1103,7 +1103,7 @@ public class ArchiveExtractionTests
     }
 
     [Theory]
-    [InlineData("game.zip")]
+    [InlineData("archive.zip")]
     [InlineData("archive.rar")]
     [InlineData("installer.exe")]
     [InlineData("video.mp4")]
@@ -1372,9 +1372,9 @@ public class ArchiveExtractionTests
     {
         var service = ArchiveExtractionService.Instance;
 
-        var packageWithArchives = new DownloadPackage { Name = "Game Package" };
-        packageWithArchives.Items.Add(new DownloadItem { FileName = "game.part01.rar", SaveFilePath = @"C:\Downloads\game.part01.rar" });
-        packageWithArchives.Items.Add(new DownloadItem { FileName = "game.part02.rar", SaveFilePath = @"C:\Downloads\game.part02.rar" });
+        var packageWithArchives = new DownloadPackage { Name = "Sample Package" };
+        packageWithArchives.Items.Add(new DownloadItem { FileName = "archive.part01.rar", SaveFilePath = @"C:\Downloads\archive.part01.rar" });
+        packageWithArchives.Items.Add(new DownloadItem { FileName = "archive.part02.rar", SaveFilePath = @"C:\Downloads\archive.part02.rar" });
         packageWithArchives.Items.Add(new DownloadItem { FileName = "fg-optional-voice.bin", SaveFilePath = @"C:\Downloads\fg-optional-voice.bin" });
 
         Assert.True(service.HasExtractableArchives(packageWithArchives));
@@ -1819,6 +1819,4 @@ public class ArchiveExtractionTests
         Assert.False(package.IsFullyCompleted);
     }
 }
-
-
 

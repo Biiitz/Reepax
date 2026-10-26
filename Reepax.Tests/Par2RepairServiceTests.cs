@@ -258,15 +258,15 @@ You need 4 more recovery blocks to be able to repair.
 
         package.Items.Add(new DownloadItem
         {
-            FileName = "game.par2",
-            SaveFilePath = @"C:\Downloads\game.par2",
+            FileName = "data.par2",
+            SaveFilePath = @"C:\Downloads\data.par2",
             IsEnabled = true
         });
 
         package.Items.Add(new DownloadItem
         {
-            FileName = "game.part01.rar",
-            SaveFilePath = @"C:\Downloads\game.part01.rar",
+            FileName = "data.part01.rar",
+            SaveFilePath = @"C:\Downloads\data.part01.rar",
             IsEnabled = true
         });
 
@@ -345,7 +345,7 @@ You need 4 more recovery blocks to be able to repair.
             var sampleRar = Path.Combine(tempDir, "sample.rar");
             var sampleRarBackup = Path.Combine(tempDir, "sample.rar.1");
             var patchFile = Path.Combine(tempDir, "patch.1");
-            var updateFile = Path.Combine(tempDir, "game_update.1");
+            var updateFile = Path.Combine(tempDir, "data_update.1");
             var part1Rar = Path.Combine(tempDir, "archive.part1.rar");
             var part1RarBackup = Path.Combine(tempDir, "archive.part1.rar.1");
 
@@ -354,7 +354,7 @@ You need 4 more recovery blocks to be able to repair.
             File.WriteAllText(part1Rar, "part1 content");
             File.WriteAllText(part1RarBackup, "part1 backup");
             File.WriteAllText(patchFile, "patch content");
-            File.WriteAllText(updateFile, "game update content");
+            File.WriteAllText(updateFile, "data update content");
 
             Par2RepairService.CleanBackupFiles(tempDir);
 
@@ -363,7 +363,7 @@ You need 4 more recovery blocks to be able to repair.
             Assert.True(File.Exists(part1Rar), "archive.part1.rar must be preserved");
             Assert.False(File.Exists(part1RarBackup), "archive.part1.rar.1 must be cleaned up");
             Assert.True(File.Exists(patchFile), "patch.1 must be preserved");
-            Assert.True(File.Exists(updateFile), "game_update.1 must be preserved");
+            Assert.True(File.Exists(updateFile), "data_update.1 must be preserved");
         }
         finally
         {

@@ -31,17 +31,17 @@ public class PackageAndItemRenameTests
         Assert.False(package.IsCustomName);
 
         // Act - user renames the package
-        package.Rename("My Custom Game Name", isUserAction: true);
+        package.Rename("My Custom Package Name", isUserAction: true);
 
         // Assert
         Assert.True(package.IsCustomName);
-        Assert.Equal("My Custom Game Name", package.Name);
+        Assert.Equal("My Custom Package Name", package.Name);
 
-        // Trigger automatic update detection (which would normally rename generic package to "The Game - Updates")
+        // Trigger automatic update detection (which would normally rename generic package to "Software - Updates")
         LinkMetadataResolverService.TryUpdatePackageName(package);
 
         // Assert that package name is preserved and was not overwritten
-        Assert.Equal("My Custom Game Name", package.Name);
+        Assert.Equal("My Custom Package Name", package.Name);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class PackageAndItemRenameTests
             {
                 Url = "https://rapidgator.net/file/123/CoolGame_v2.part1.rar",
                 RawFileName = "CoolGame_v2.part1.rar",
-                ContextTitle = "CoolGame v2"
+                ContextTitle = "Project Alpha v2"
             }
         };
 

@@ -223,7 +223,6 @@ public class DownloadListScrollBarTests
         Assert.Equal(0, vm.GridColWidthActions.Value);
     }
 
-
     [Fact]
     public void CustomizingColumnWidth_UpdatesActualWidthAndGridLength()
     {
@@ -505,8 +504,6 @@ public class DownloadListScrollBarTests
         Assert.Equal(990.0, vm.TotalVisibleColumnsWidth);
     }
 
-
-
     [Fact]
     public void LastVisibleColumn_IsNeverClipped_RegardlessOfNumberOfEnabledColumns()
     {
@@ -700,8 +697,6 @@ public class DownloadListScrollBarTests
         Assert.False(vm.IsDraggingColumnWidth);
     }
 
-
-
     [Fact]
     public void HeaderBorder_ClipToBounds_PreventsOverflowUnderGearButton()
     {
@@ -796,7 +791,6 @@ public class DownloadListScrollBarTests
         Assert.Equal(initialMin + 150, vm.TotalContentMinWidth);
     }
 
-
     [Fact]
     public void TrailingBreathingRoom_IsZero_EnsuringFlushAlignmentWithGearButton()
     {
@@ -804,7 +798,6 @@ public class DownloadListScrollBarTests
         Assert.Equal(0.0, MainViewModel.TrailingBreathingRoom);
         Assert.Equal(vm.TotalVisibleColumnsWidth, vm.TotalContentMinWidth);
     }
-
 
     [Fact]
     public void ScreenDeltaResize_MaintainsExact1To1MouseTracking_WithoutScrollJitter()
@@ -827,7 +820,6 @@ public class DownloadListScrollBarTests
         Assert.Equal(-40.0, deltaX);
         Assert.Equal(70.0, newWidth);
     }
-
 
     [Fact]
     public void ResetSingleColumnWidth_RestoresDefaultSize_ForAllColumns()
@@ -982,8 +974,6 @@ public class DownloadListScrollBarTests
         Assert.Equal(maximizedViewerWidth - rightMargin, totalWidth);
         Assert.True(totalWidth < maximizedViewerWidth);
     }
-
-
 
     [Fact]
     public void TableResize_MetadataColumn_Enlarging_AbsorbedByName_PreservesTotalWidth()
@@ -1246,7 +1236,6 @@ public class DownloadListScrollBarTests
         }
     }
 
-
     [Fact]
     public void TreeListHeaderGearButton_And_VerticalScrollBar_AlignsAtExactSameHorizontalCoordinate()
     {
@@ -1331,5 +1320,4 @@ public class DownloadListScrollBarTests
 
     #endregion
 }
-
 

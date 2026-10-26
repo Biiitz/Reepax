@@ -826,8 +826,8 @@ public class QueueManagerTests
             AutoExtractArchives = true 
         };
 
-        var rar1 = new DownloadItem { FileName = "game.part01.rar", SaveFilePath = @"C:\Downloads\game.part01.rar" };
-        var rar2 = new DownloadItem { FileName = "game.part02.rar", SaveFilePath = @"C:\Downloads\game.part02.rar" };
+        var rar1 = new DownloadItem { FileName = "data.part01.rar", SaveFilePath = @"C:\Downloads\data.part01.rar" };
+        var rar2 = new DownloadItem { FileName = "data.part02.rar", SaveFilePath = @"C:\Downloads\data.part02.rar" };
         var bin = new DownloadItem { FileName = "fg-optional-spanish-vo.bin", SaveFilePath = @"C:\Downloads\fg-optional-spanish-vo.bin" };
 
         pkg.Items.Add(rar1);

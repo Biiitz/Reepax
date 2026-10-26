@@ -241,14 +241,18 @@ public static partial class LinkExtractor
 
         // Strip common prefixes: "Download:", "Name:", "Title:", "Release:", "Links:"
         clean = Regex.Replace(clean, @"(?i)^(?:download[s]?|name|title|release|links|file|files|mirror[s]?|pw|password)\s*:\s*", "");
-        clean = clean.Trim(' ', '-', '_', ':', '|', ',', ';', '/', '\\');
+
+        // Strip website domains
+        clean = PackageGrouper.StripWebsitesAndBranding(clean);
+
+        clean = clean.Trim(' ', '"', '\'', '`', '´', '-', '–', '—', '_', ':', '|', ',', ';', '/', '\\', '~');
 
         if (clean.EndsWith(")") && !clean.Contains("(")) clean = clean[..^1].Trim();
         if (clean.EndsWith("]") && !clean.Contains("[")) clean = clean[..^1].Trim();
         if (clean.StartsWith("(") && !clean.Contains(")")) clean = clean[1..].Trim();
         if (clean.StartsWith("[") && !clean.Contains("]")) clean = clean[1..].Trim();
 
-        return clean;
+        return clean.Trim(' ', '"', '\'', '`', '´', '-', '–', '—', '_', ':', '|', ',', ';', '/', '\\', '~');
     }
 
     public static string CleanUrl(string url)

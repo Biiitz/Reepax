@@ -13,16 +13,16 @@ public class PackageClippingTests
     [Fact]
     public void CanClip_PreventsSelfAndInvalidClipping()
     {
-        var gamePkg = new DownloadPackage { Name = "Cyberpunk 2077" };
-        var updatePkg = new DownloadPackage { Name = "Cyberpunk 2077 - Updates" };
-        var thirdPkg = new DownloadPackage { Name = "Other Game" };
+        var gamePkg = new DownloadPackage { Name = "Example Project" };
+        var updatePkg = new DownloadPackage { Name = "Example Project - Updates" };
+        var thirdPkg = new DownloadPackage { Name = "Other Example" };
 
         // Cannot clip to null or self
         Assert.False(MainViewModel.CanClip(null!, gamePkg));
         Assert.False(MainViewModel.CanClip(gamePkg, null!));
         Assert.False(MainViewModel.CanClip(gamePkg, gamePkg));
 
-        // Can clip update to game
+        // Can clip update to parent
         Assert.True(MainViewModel.CanClip(updatePkg, gamePkg));
 
         // If target is already clipped, cannot clip to it
@@ -39,8 +39,8 @@ public class PackageClippingTests
     public void ClipPackage_LinksChildToParent_AndUpdatesCollections()
     {
         var vm = new MainViewModel();
-        var gamePkg = new DownloadPackage { Name = "The Witcher 3" };
-        var updatePkg = new DownloadPackage { Name = "The Witcher 3 - Updates" };
+        var gamePkg = new DownloadPackage { Name = "Sample Project" };
+        var updatePkg = new DownloadPackage { Name = "Sample Project - Updates" };
 
         vm.Packages.Add(gamePkg);
         vm.Packages.Add(updatePkg);
@@ -63,8 +63,8 @@ public class PackageClippingTests
     public void UnclipPackage_DetachesFromParent_AndRestoresToRoot()
     {
         var vm = new MainViewModel();
-        var gamePkg = new DownloadPackage { Name = "Elden Ring" };
-        var updatePkg = new DownloadPackage { Name = "Elden Ring - Updates" };
+        var gamePkg = new DownloadPackage { Name = "Demo Project" };
+        var updatePkg = new DownloadPackage { Name = "Demo Project - Updates" };
 
         vm.Packages.Add(gamePkg);
         vm.Packages.Add(updatePkg);
@@ -83,20 +83,20 @@ public class PackageClippingTests
     }
 
     [Fact]
-    public void FindSuggestedClipTarget_FindsMatchingGamePackage()
+    public void FindSuggestedClipTarget_FindsMatchingParentPackage()
     {
         var candidates = new List<DownloadPackage>
         {
-            new DownloadPackage { Name = "Grand Theft Auto V" },
-            new DownloadPackage { Name = "The Blood of Dawnwalker" },
-            new DownloadPackage { Name = "Cyberpunk 2077" }
+            new DownloadPackage { Name = "Alpha Package" },
+            new DownloadPackage { Name = "Software Project Alpha" },
+            new DownloadPackage { Name = "Example Project" }
         };
 
-        var updatePkg = new DownloadPackage { Name = "The_Blood_of_Dawnwalker_Update_from_v1.0.1_to_v1.0.2-Release.rar" };
+        var updatePkg = new DownloadPackage { Name = "Software_Project_Alpha_Update_from_v1.0.1_to_v1.0.2-Release.rar" };
         var target = MainViewModel.FindSuggestedClipTarget(updatePkg, candidates);
 
         Assert.NotNull(target);
-        Assert.Equal("The Blood of Dawnwalker", target!.Name);
+        Assert.Equal("Software Project Alpha", target!.Name);
 
         var genericPkg = new DownloadPackage { Name = "Filecrypt Package (2 files)" };
         var genericTarget = MainViewModel.FindSuggestedClipTarget(genericPkg, candidates);
@@ -127,7 +127,7 @@ public class PackageClippingTests
     public void RemovePackage_UnclipsChildrenSafelyToRoot()
     {
         var vm = new MainViewModel();
-        var gamePkg = new DownloadPackage { Name = "Red Dead Redemption 2" };
+        var gamePkg = new DownloadPackage { Name = "Main Suite" };
         var updatePkg = new DownloadPackage { Name = "Red Dead Redemption 2 - Updates" };
 
         vm.Packages.Add(gamePkg);
@@ -153,10 +153,10 @@ public class PackageClippingTests
     public void ClipAndUnclipPackage_PreservesActiveAndPausedDownloadStates()
     {
         var vm = new MainViewModel();
-        var gamePkg = new DownloadPackage { Name = "Cyberpunk 2077" };
+        var gamePkg = new DownloadPackage { Name = "Example Project" };
         var activeItem = new DownloadItem
         {
-            FileName = "Cyberpunk_part1.rar",
+            FileName = "Example_Project_part1.rar",
             Status = DownloadStatus.Downloading,
             DownloadedBytes = 500_000_000,
             TotalBytes = 1_000_000_000,
@@ -164,7 +164,7 @@ public class PackageClippingTests
         };
         gamePkg.Items.Add(activeItem);
 
-        var updatePkg = new DownloadPackage { Name = "Cyberpunk 2077 - Updates" };
+        var updatePkg = new DownloadPackage { Name = "Example Project - Updates" };
         var pausedItem = new DownloadItem
         {
             FileName = "Update_v2.1.rar",
@@ -178,7 +178,7 @@ public class PackageClippingTests
         vm.Packages.Add(updatePkg);
         vm.RefreshRootPackages();
 
-        // 1. Clip update to game
+        // 1. Clip update to parent
         vm.ClipPackage(updatePkg, gamePkg);
 
         // Verify active download state is completely preserved
@@ -190,7 +190,7 @@ public class PackageClippingTests
         Assert.Equal(DownloadStatus.Paused, pausedItem.Status);
         Assert.Equal(250_000_000, pausedItem.DownloadedBytes);
 
-        // 2. Unclip update from game
+        // 2. Unclip update from parent
         vm.UnclipPackage(updatePkg);
 
         // Verify both items and packages remain intact
@@ -214,10 +214,10 @@ public class PackageClippingTests
     [InlineData(28.0, 30.0, PackageDropAction.InsertAfter)]
     public void CalculatePackageDropAction_WhenCanClip_DeterminesZonesCorrectly(double posY, double height, PackageDropAction expectedAction)
     {
-        var game = new DownloadPackage { Name = "Elden Ring" };
-        var update = new DownloadPackage { Name = "Elden Ring - DLC" };
+        var targetPkg = new DownloadPackage { Name = "Demo Project" };
+        var update = new DownloadPackage { Name = "Demo Project - DLC" };
 
-        var action = MainWindow.CalculatePackageDropAction(update, game, posY, height);
+        var action = MainWindow.CalculatePackageDropAction(update, targetPkg, posY, height);
         Assert.Equal(expectedAction, action);
     }
 
@@ -228,8 +228,8 @@ public class PackageClippingTests
     [InlineData(25.0, 30.0, PackageDropAction.InsertAfter)]
     public void CalculatePackageDropAction_WhenCannotClip_SplitsTopBottom5050(double posY, double height, PackageDropAction expectedAction)
     {
-        var pkgA = new DownloadPackage { Name = "Game A" };
-        var pkgB = new DownloadPackage { Name = "Game B" };
+        var pkgA = new DownloadPackage { Name = "Package A" };
+        var pkgB = new DownloadPackage { Name = "Package B" };
         // If pkgB is already clipped, CanClip is false
         pkgB.ParentPackageId = Guid.NewGuid();
 
@@ -240,7 +240,7 @@ public class PackageClippingTests
     [Fact]
     public void CalculatePackageDropAction_WhenSelfOrNull_ReturnsNone()
     {
-        var pkg = new DownloadPackage { Name = "Cyberpunk 2077" };
+        var pkg = new DownloadPackage { Name = "Example Project" };
         Assert.Equal(PackageDropAction.None, MainWindow.CalculatePackageDropAction(pkg, pkg, 15, 30));
         Assert.Equal(PackageDropAction.None, MainWindow.CalculatePackageDropAction(null, pkg, 15, 30));
         Assert.Equal(PackageDropAction.None, MainWindow.CalculatePackageDropAction(pkg, null, 15, 30));
@@ -332,9 +332,9 @@ public class PackageClippingTests
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
-        var parentPkg = new DownloadPackage { Name = "Parent Game" };
+        var parentPkg = new DownloadPackage { Name = "Parent Package" };
         var clippedPkg = new DownloadPackage { Name = "DLC Expansion" };
-        var otherPkg = new DownloadPackage { Name = "Other Game" };
+        var otherPkg = new DownloadPackage { Name = "Other Example" };
 
         vm.Packages.Add(parentPkg);
         vm.Packages.Add(clippedPkg);
@@ -345,7 +345,7 @@ public class PackageClippingTests
         Assert.True(clippedPkg.IsClipped);
         Assert.DoesNotContain(clippedPkg, vm.RootPackages);
 
-        // Move clipped package before Other Game
+        // Move clipped package before Other Package
         vm.MovePackageBefore(clippedPkg, otherPkg);
 
         Assert.False(clippedPkg.IsClipped);
@@ -363,9 +363,9 @@ public class PackageClippingTests
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
-        var parent1 = new DownloadPackage { Name = "Game 1" };
-        var child1 = new DownloadPackage { Name = "Game 1 - DLC" };
-        var parent2 = new DownloadPackage { Name = "Game 2" };
+        var parent1 = new DownloadPackage { Name = "Package 1" };
+        var child1 = new DownloadPackage { Name = "Package 1 - DLC" };
+        var parent2 = new DownloadPackage { Name = "Package 2" };
 
         vm.Packages.Add(parent1);
         vm.Packages.Add(child1);
@@ -374,14 +374,14 @@ public class PackageClippingTests
 
         vm.ClipPackage(child1, parent1);
 
-        // Move Game 1 after Game 2
+        // Move Package 1 after Package 2
         vm.MovePackageAfter(parent1, parent2);
 
         Assert.Equal(2, vm.RootPackages.Count);
-        Assert.Equal("Game 2", vm.RootPackages[0].Name);
-        Assert.Equal("Game 1", vm.RootPackages[1].Name);
+        Assert.Equal("Package 2", vm.RootPackages[0].Name);
+        Assert.Equal("Package 1", vm.RootPackages[1].Name);
 
-        // In full Packages list, Game 1 and its child should both be after Game 2
+        // In full Packages list, Package 1 and its child should both be after Package 2
         int p2Idx = vm.Packages.IndexOf(parent2);
         int p1Idx = vm.Packages.IndexOf(parent1);
         int c1Idx = vm.Packages.IndexOf(child1);
@@ -395,7 +395,7 @@ public class PackageClippingTests
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
-        var parent = new DownloadPackage { Name = "Game" };
+        var parent = new DownloadPackage { Name = "Package" };
         var sub1 = new DownloadPackage { Name = "DLC 1" };
         var sub2 = new DownloadPackage { Name = "DLC 2" };
 

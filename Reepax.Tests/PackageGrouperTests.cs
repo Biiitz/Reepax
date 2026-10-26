@@ -24,8 +24,8 @@ public class PackageGrouperTests
         Assert.Equal("Linux Ubuntu 24 04 LTS", 
             PackageGrouper.CleanPackageBaseName("Linux_Ubuntu_24.04_LTS_part2.rar", "https://rapidgator.net/file/123/Linux_Ubuntu_24.04_LTS_part2.rar", hoster));
 
-        Assert.Equal("Sample Game Release", 
-            PackageGrouper.CleanPackageBaseName("Sample.Game.Release.7z.001", "https://rapidgator.net/file/123/Sample.Game.Release.7z.001", hoster));
+        Assert.Equal("Sample Media Release", 
+            PackageGrouper.CleanPackageBaseName("Sample.Media.Release.7z.001", "https://rapidgator.net/file/123/Sample.Media.Release.7z.001", hoster));
     }
 
     [Fact]
@@ -183,13 +183,13 @@ public class PackageGrouperTests
         Assert.EndsWith(".part02.rar", pkg.Items[1].FileName);
 
         // When metadata resolver discovers real filenames from Content-Disposition:
-        pkg.Items[0].FileName = "Elden.Ring.part01.rar";
-        pkg.Items[1].FileName = "Elden.Ring.part02.rar";
+        pkg.Items[0].FileName = "Example.App.part01.rar";
+        pkg.Items[1].FileName = "Example.App.part02.rar";
 
         LinkMetadataResolverService.TryUpdatePackageName(pkg);
 
-        Assert.Equal("Elden Ring", pkg.Name);
-        Assert.Equal(Path.Combine(_testBaseFolder, "Elden Ring"), pkg.SaveDirectory);
+        Assert.Equal("Example App", pkg.Name);
+        Assert.Equal(Path.Combine(_testBaseFolder, "Example App"), pkg.SaveDirectory);
     }
 
     [Fact]
@@ -197,9 +197,70 @@ public class PackageGrouperTests
     {
         string token = "y9PN0SnSOrlAL VPqdI HnfkzH7uS7rpsC8nKLtiMlZPDgPin0Ar-tWT9ZJ-fD6lDCMmQ3FhrA2B79qnCIhoC7LNv8IkTwElQaYaGMRKfHEXQkWCzJW8pfEf5MkNHb7TJ8xkKDkqG5dskmlx6s9jBU7m7yJLevY";
         string corruptedSaveDir = Path.Combine(_testBaseFolder, token);
-        string cleanPackageName = "Cyberpunk 2077";
+        string cleanPackageName = "Project Alpha";
 
         var healedDir = Services.Storage.DownloadPersistenceService.SanitizeSavedPackageDirectory(corruptedSaveDir, cleanPackageName);
-        Assert.Equal(Path.Combine(_testBaseFolder, "Cyberpunk 2077"), healedDir);
+        Assert.Equal(Path.Combine(_testBaseFolder, "Project Alpha"), healedDir);
+    }
+
+    [Theory]
+    [InlineData("\"dummy title\" -- example.com.", "Dummy Title")]
+    [InlineData("Software Suite 2 -- example.com.", "Software Suite 2")]
+    [InlineData("Example Project 2024 – sample.org", "Example Project 2024")]
+    [InlineData("Example Suite - downloads.net", "Example Suite")]
+    [InlineData("Document Editor [downloads.org]", "Document Editor")]
+    [InlineData("Audio Studio (archive.org)", "Audio Studio")]
+    [InlineData("downloads.org - Database Utility", "Database Utility")]
+    [InlineData("Example Package -- example.com", "Example Package")]
+    [InlineData("Video Editor - sample-site.com", "Video Editor")]
+    [InlineData("Office Suite (www.example.com)", "Office Suite")]
+    [InlineData("System Utility | web-archive.com", "System Utility")]
+    [InlineData("Media Suite 2: Pro -- example.com", "Media Suite 2: Pro")]
+    [InlineData("Utility Pack v1.0.3 -- example.com", "Utility Pack v1.0.3")]
+    [InlineData("Example Shell II -- example-site site", "Example Shell II")]
+    [InlineData("Example Shell II -- example.site.", "Example Shell II")]
+    [InlineData("Example Shell II -- example.site", "Example Shell II")]
+    [InlineData("Example Shell II – example.site", "Example Shell II")]
+    [InlineData("Example Shell II - example.site", "Example Shell II")]
+    [InlineData("Example Shell II [example.site]", "Example Shell II")]
+    [InlineData("Example Shell II (example site)", "Example Shell II")]
+    [InlineData("example.com", "")]
+    public void SanitizeCleanName_StripsWebsiteDomainsAndCleanTitle(string input, string expected)
+    {
+        var result = PackageGrouper.SanitizeCleanName(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void GroupLinksIntoPackages_WhenNoCustomNameGiven_ExtractsCleanPackageAndFolderNamesWithoutWebsites()
+    {
+        var links = new List<ExtractedLink>
+        {
+            new()
+            {
+                Url = "https://rapidgator.net/file/101/package.part1.rar",
+                RawFileName = "data.part1.rar",
+                ContextTitle = "Software Suite 2 -- example.com.",
+                Hoster = new HosterInfo { DisplayName = "Rapidgator" }
+            },
+            new()
+            {
+                Url = "https://rapidgator.net/file/102/package.part2.rar",
+                RawFileName = "data.part2.rar",
+                ContextTitle = "Software Suite 2 -- example.com.",
+                Hoster = new HosterInfo { DisplayName = "Rapidgator" }
+            }
+        };
+
+        var packages = PackageGrouper.GroupLinksIntoPackages(links, _testBaseFolder, customPackageName: null);
+
+        Assert.Single(packages);
+        var pkg = packages[0];
+        Assert.Equal("Software Suite 2", pkg.Name);
+        Assert.Equal(Path.Combine(_testBaseFolder, "Software Suite 2"), pkg.SaveDirectory);
+        Assert.DoesNotContain("example", pkg.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("com", pkg.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("example", pkg.SaveDirectory, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("com", pkg.SaveDirectory, StringComparison.OrdinalIgnoreCase);
     }
 }

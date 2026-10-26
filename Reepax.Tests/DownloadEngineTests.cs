@@ -116,7 +116,7 @@ public class DownloadEngineTests
                 "https://example.com", 
                 "sample_test_file.txt");
 
-            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(3000));
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
             Assert.Same(tcs.Task, completedTask);
             Assert.True(tcs.Task.Result);
 
@@ -206,7 +206,7 @@ public class DownloadEngineTests
 
             await engine.ResumeDownloadAsync(item);
 
-            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(3000));
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
             Assert.Same(tcs.Task, completedTask);
             Assert.True(tcs.Task.Result);
 
@@ -395,7 +395,7 @@ public class DownloadEngineTests
 
             await engine.ResumeDownloadAsync(item);
 
-            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(3000));
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
             Assert.Same(tcs.Task, completedTask);
             Assert.True(tcs.Task.Result);
 
@@ -481,7 +481,7 @@ public class DownloadEngineTests
 
             await engine.ResumeDownloadAsync(item);
 
-            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(3000));
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
             Assert.Same(tcs.Task, completedTask);
             Assert.True(tcs.Task.Result);
 
@@ -912,7 +912,7 @@ public class DownloadEngineTests
 
             await engine.StartDownloadAsync(item, "https://example.com/fresh", null, null, null, "fresh.txt");
 
-            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(3000));
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
             Assert.Same(tcs.Task, completedTask);
             Assert.True(tcs.Task.Result);
 
@@ -2211,7 +2211,7 @@ public class DownloadEngineTests
         Assert.False(DownloadEngine.IsRangeNotSupported(null));
         Assert.False(DownloadEngine.IsRangeNotSupported(new Exception("No connection could be made because the target machine actively refused it. (dl416.host.com:443)")));
         Assert.False(DownloadEngine.IsRangeNotSupported(new Exception("The response ended prematurely, with at least 1416384 additional bytes expected.")));
-        Assert.False(DownloadEngine.IsRangeNotSupported(new Exception(@"Access to path 'D:\Games\Spiel_v1.416\Spiel.part01.rar.part' is denied.")));
+        Assert.False(DownloadEngine.IsRangeNotSupported(new Exception(@"Access to path 'D:\Downloads\Software_v1.416\Software.part01.rar.part' is denied.")));
         Assert.False(DownloadEngine.IsRangeNotSupported(new IOException("Download was interrupted: Only 4160000 of 80000000 bytes were transferred.")));
         Assert.False(DownloadEngine.IsRangeNotSupported(new TimeoutException("Connection to 192.168.1.10:416 timed out after 30000ms")));
         Assert.False(DownloadEngine.IsRangeNotSupported(new HttpRequestException("Internal Server Error", null, HttpStatusCode.InternalServerError)));

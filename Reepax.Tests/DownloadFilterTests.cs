@@ -35,9 +35,9 @@ public class DownloadFilterTests : IDisposable
     public void SearchFilter_ByPackageName_FiltersCorrectly()
     {
         // Arrange
-        var pkg1 = new DownloadPackage { Name = "Cyberpunk 2077 Update" };
-        var pkg2 = new DownloadPackage { Name = "Witcher 3 Complete" };
-        var pkg3 = new DownloadPackage { Name = "Elden Ring DLC" };
+        var pkg1 = new DownloadPackage { Name = "Example Alpha Suite" };
+        var pkg2 = new DownloadPackage { Name = "Example Beta Pack" };
+        var pkg3 = new DownloadPackage { Name = "Example Gamma Update" };
 
         _viewModel.Packages.Add(pkg1);
         _viewModel.Packages.Add(pkg2);
@@ -47,14 +47,14 @@ public class DownloadFilterTests : IDisposable
         Assert.Equal(3, _viewModel.RootPackages.Count);
 
         // Act - case-insensitive substring
-        _viewModel.SearchFilterText = "cyber";
+        _viewModel.SearchFilterText = "alpha";
 
         // Assert
         Assert.Single(_viewModel.RootPackages);
         Assert.Equal(pkg1.Id, _viewModel.RootPackages[0].Id);
 
         // Act - match different package
-        _viewModel.SearchFilterText = "RING";
+        _viewModel.SearchFilterText = "GAMMA";
 
         // Assert
         Assert.Single(_viewModel.RootPackages);
@@ -276,8 +276,8 @@ public class DownloadFilterTests : IDisposable
     public void ClearSearchFilterCommand_ResetsSearchTextAndRestoresAllPackages()
     {
         // Arrange
-        var pkg1 = new DownloadPackage { Name = "Game Alpha" };
-        var pkg2 = new DownloadPackage { Name = "Game Beta" };
+        var pkg1 = new DownloadPackage { Name = "Example Alpha" };
+        var pkg2 = new DownloadPackage { Name = "Example Beta" };
         _viewModel.Packages.Add(pkg1);
         _viewModel.Packages.Add(pkg2);
         _viewModel.RefreshRootPackages();
@@ -325,10 +325,10 @@ public class DownloadFilterTests : IDisposable
     public void CombinedFilter_SearchAndStatus_MustSatisfyBothConditions()
     {
         // Arrange
-        var pkg1 = new DownloadPackage { Name = "Adventure Quest", Status = DownloadStatus.Downloading };
-        var pkg2 = new DownloadPackage { Name = "Adventure Quest DLC", Status = DownloadStatus.Completed };
-        var pkg3 = new DownloadPackage { Name = "Space Shooter", Status = DownloadStatus.Downloading };
-        var pkg4 = new DownloadPackage { Name = "Space Shooter", Status = DownloadStatus.Paused };
+        var pkg1 = new DownloadPackage { Name = "Example Project", Status = DownloadStatus.Downloading };
+        var pkg2 = new DownloadPackage { Name = "Example Project DLC", Status = DownloadStatus.Completed };
+        var pkg3 = new DownloadPackage { Name = "Sample Package", Status = DownloadStatus.Downloading };
+        var pkg4 = new DownloadPackage { Name = "Sample Package", Status = DownloadStatus.Paused };
 
         _viewModel.Packages.Add(pkg1);
         _viewModel.Packages.Add(pkg2);
@@ -336,8 +336,8 @@ public class DownloadFilterTests : IDisposable
         _viewModel.Packages.Add(pkg4);
         _viewModel.RefreshRootPackages();
 
-        // Act: Search for "Adventure" + Status "Downloading"
-        _viewModel.SearchFilterText = "Adventure";
+        // Act: Search for "Project" + Status "Downloading"
+        _viewModel.SearchFilterText = "Project";
         _viewModel.SelectedStatusFilter = DownloadStatusFilter.Running;
 
         // Assert: Only pkg1 matches both

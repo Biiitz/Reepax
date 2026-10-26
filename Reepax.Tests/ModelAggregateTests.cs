@@ -90,7 +90,7 @@ public class ModelAggregateTests
 
         var item = new DownloadItem
         {
-            FileName = "game.part1.rar",
+            FileName = "data.part1.rar",
             TotalBytes = 100 * 1024 * 1024,
             DownloadedBytes = 100 * 1024 * 1024,
             StartedAt = start,
@@ -667,7 +667,7 @@ public class ModelAggregateTests
     {
         var item = new DownloadItem
         {
-            FileName = "game.iso",
+            FileName = "data.iso",
             TotalBytes = 200_000_000L,
             DownloadedBytes = 0L
         };

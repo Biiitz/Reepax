@@ -100,7 +100,7 @@ public class ChecksumVerificationTests : IDisposable
     {
         var service = ChecksumVerificationService.Instance;
 
-        var s3ErrorFile = Path.Combine(_testDir, "game.zip");
+        var s3ErrorFile = Path.Combine(_testDir, "archive.zip");
         File.WriteAllText(s3ErrorFile, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>");
 
         Assert.True(service.IsHtmlErrorPage(s3ErrorFile));

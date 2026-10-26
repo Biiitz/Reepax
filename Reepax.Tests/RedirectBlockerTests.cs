@@ -75,7 +75,7 @@ public class RedirectBlockerTests
     [InlineData("https://downloadsite.com/file/abc", "https://dl1.downloadsite.com/dl/abc123", false)]
     [InlineData("https://example.co.uk/page", "https://cdn.example.co.uk/dl/file.zip", false)]
     // Genuine direct download links always allowed
-    [InlineData("https://downloadsite.com/file/abc", "https://othercdn.net/files/game.rar", false)]
+    [InlineData("https://downloadsite.com/file/abc", "https://othercdn.net/files/archive.rar", false)]
     // CAPTCHA / challenge domains never blocked (including cross-domain)
     [InlineData("https://downloadsite.com/file/abc", "https://challenges.cloudflare.com/turnstile/v0/api.js", false)]
     [InlineData("https://downloadsite.com/file/abc", "https://js.hcaptcha.com/1/api.js", false)]
@@ -174,6 +174,6 @@ public class RedirectBlockerTests
         Assert.True(BrowserSecurityGuard.IsDirectDownloadUrl("https://cdn.example.com/stream?file=video.mp4"));
         Assert.True(BrowserSecurityGuard.IsDirectDownloadUrl("https://example.com/files/archive.part1.rar"));
         Assert.True(BrowserSecurityGuard.IsDirectDownloadUrl("https://example.com/getfile/789"));
-        Assert.False(BrowserSecurityGuard.IsDirectDownloadUrl("https://rapidgator.net/file/123/game.rar.html"));
+        Assert.False(BrowserSecurityGuard.IsDirectDownloadUrl("https://rapidgator.net/file/123/archive.rar.html"));
     }
 }

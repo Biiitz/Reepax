@@ -1107,30 +1107,28 @@ public partial class MainWindow : Window
 
     private AddLinksDialog? _openAddLinksDialog;
 
-    private void Window_Drop(object sender, DragEventArgs e)
+    private static bool IsExternalDropData(IDataObject data)
+    {
+        if (data == null)
+            return false;
+
+        if (data.GetDataPresent("Reepax.DownloadPackage") || data.GetDataPresent("Reepax.DownloadItem"))
+            return false;
+
+        return data.GetDataPresent(DataFormats.Text) ||
+               data.GetDataPresent(DataFormats.UnicodeText) ||
+               data.GetDataPresent(DataFormats.Html) ||
+               data.GetDataPresent(DataFormats.FileDrop);
+    }
+
+    private void ProcessExternalDrop(DragEventArgs e)
     {
         if (ViewModel.IsBusy)
             return;
 
-        if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
-        {
-            var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
-            if (pkg != null && pkg.IsClipped)
-            {
-                e.Handled = true;
-                ClearAllDropTargets();
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
-                {
-                    ViewModel.UnclipPackage(pkg);
-                });
-                return;
-            }
-            return;
-        }
+        e.Handled = true;
+        ClearAllDropTargets();
 
-        // The IDataObject must be read synchronously in the drop event (OLE lifetime).
-        // Dialog/MessageBox must NOT be opened synchronously in the drop callback —
-        // the source browser would block until the dialog is closed.
         string? droppedText = null;
         string[]? droppedFiles = null;
 
@@ -1203,6 +1201,33 @@ public partial class MainWindow : Window
                 MessageBox.Show(Services.Localization.Loc.Format("Dialog_DropErrorMessage", ex.Message), Services.Localization.Loc.Get("Dialog_DropErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }));
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (ViewModel.IsBusy)
+            return;
+
+        if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
+        {
+            var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
+            if (pkg != null && pkg.IsClipped)
+            {
+                e.Handled = true;
+                ClearAllDropTargets();
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+                {
+                    ViewModel.UnclipPackage(pkg);
+                });
+                return;
+            }
+            return;
+        }
+
+        if (IsExternalDropData(e.Data))
+        {
+            ProcessExternalDrop(e);
+        }
     }
 
     private static string ReadDroppedFiles(string[] files)
@@ -1590,6 +1615,14 @@ public partial class MainWindow : Window
 
     private void PackageRow_DragOver(object sender, DragEventArgs e)
     {
+        if (IsExternalDropData(e.Data))
+        {
+            ClearAllDropTargets();
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Data.GetDataPresent("Reepax.DownloadItem"))
         {
             var sourceItem = _draggedItem ?? (e.Data.GetData("Reepax.DownloadItem") as DownloadItem);
@@ -1742,6 +1775,12 @@ public partial class MainWindow : Window
 
     private void PackageRow_Drop(object sender, DragEventArgs e)
     {
+        if (IsExternalDropData(e.Data))
+        {
+            ProcessExternalDrop(e);
+            return;
+        }
+
         var targetElement = sender as FrameworkElement;
         var targetPkg = targetElement?.DataContext as DownloadPackage;
 
@@ -1783,6 +1822,14 @@ public partial class MainWindow : Window
 
     private void PackagesScrollViewer_DragOver(object sender, DragEventArgs e)
     {
+        if (IsExternalDropData(e.Data))
+        {
+            ClearAllDropTargets();
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Data.GetDataPresent("Reepax.DownloadItem"))
         {
             var sourceItem = _draggedItem ?? (e.Data.GetData("Reepax.DownloadItem") as DownloadItem);
@@ -1872,6 +1919,12 @@ public partial class MainWindow : Window
 
     private void PackagesScrollViewer_Drop(object sender, DragEventArgs e)
     {
+        if (IsExternalDropData(e.Data))
+        {
+            ProcessExternalDrop(e);
+            return;
+        }
+
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
         {
             var pkg = e.Data.GetData("Reepax.DownloadPackage") as DownloadPackage;
@@ -1981,6 +2034,14 @@ public partial class MainWindow : Window
 
     private void ItemRow_DragOver(object sender, DragEventArgs e)
     {
+        if (IsExternalDropData(e.Data))
+        {
+            ClearAllDropTargets();
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+            return;
+        }
+
         if (e.Data.GetDataPresent("Reepax.DownloadItem"))
         {
             var sourceItem = _draggedItem ?? (e.Data.GetData("Reepax.DownloadItem") as DownloadItem);
@@ -2131,6 +2192,12 @@ public partial class MainWindow : Window
 
     private void ItemRow_Drop(object sender, DragEventArgs e)
     {
+        if (IsExternalDropData(e.Data))
+        {
+            ProcessExternalDrop(e);
+            return;
+        }
+
         var targetElement = sender as FrameworkElement;
         var targetItem = targetElement?.DataContext as DownloadItem;
 

@@ -17,13 +17,13 @@ public class DiskCleanupViewModelTests
 
         try
         {
-            string mainFile = Path.Combine(tempDir, "game.iso");
-            string partFile = Path.Combine(tempDir, "game.iso.part");
-            string partSegmentsFile = Path.Combine(tempDir, "game.iso.part.segments");
-            string directSegmentsFile = Path.Combine(tempDir, "game.iso.segments");
-            string tmpFile = Path.Combine(tempDir, "game.iso.tmp");
-            string tempFile = Path.Combine(tempDir, "game.iso.temp");
-            string reepaxTmpFile = Path.Combine(tempDir, "game.iso.reepax_tmp");
+            string mainFile = Path.Combine(tempDir, "data.iso");
+            string partFile = Path.Combine(tempDir, "data.iso.part");
+            string partSegmentsFile = Path.Combine(tempDir, "data.iso.part.segments");
+            string directSegmentsFile = Path.Combine(tempDir, "data.iso.segments");
+            string tmpFile = Path.Combine(tempDir, "data.iso.tmp");
+            string tempFile = Path.Combine(tempDir, "data.iso.temp");
+            string reepaxTmpFile = Path.Combine(tempDir, "data.iso.reepax_tmp");
 
             // Write 100 bytes to each file
             byte[] bytes = new byte[100];
@@ -37,12 +37,12 @@ public class DiskCleanupViewModelTests
 
             var pkg = new DownloadPackage
             {
-                Name = "GamePackage",
+                Name = "DataPackage",
                 SaveDirectory = tempDir
             };
             var item = new DownloadItem
             {
-                FileName = "game.iso",
+                FileName = "data.iso",
                 SaveFilePath = mainFile
             };
             pkg.Items.Add(item);
@@ -126,26 +126,26 @@ public class DiskCleanupViewModelTests
     public void DeletePackageFilesFromDisk_DeletesDedicatedFolderCompletely()
     {
         string tempBase = Path.Combine(Path.GetTempPath(), "Reepax_DedDelete_Test_" + Guid.NewGuid().ToString("N"));
-        string dedicatedDir = Path.Combine(tempBase, "DedicatedGameFolder");
+        string dedicatedDir = Path.Combine(tempBase, "DedicatedAppFolder");
         string extractedSub = Path.Combine(dedicatedDir, "extracted", "subfolder");
         Directory.CreateDirectory(extractedSub);
 
         try
         {
-            string file1 = Path.Combine(dedicatedDir, "game.part1.rar");
-            string file2 = Path.Combine(extractedSub, "game_data.bin");
+            string file1 = Path.Combine(dedicatedDir, "data.part1.rar");
+            string file2 = Path.Combine(extractedSub, "app_data.bin");
             File.WriteAllText(file1, "dummy archive data");
             File.WriteAllText(file2, "dummy extracted data");
 
             var pkg = new DownloadPackage
             {
                 Id = Guid.NewGuid(),
-                Name = "DedicatedGame",
+                Name = "DedicatedApp",
                 SaveDirectory = dedicatedDir
             };
             pkg.Items.Add(new DownloadItem
             {
-                FileName = "game.part1.rar",
+                FileName = "data.part1.rar",
                 SaveFilePath = file1
             });
 

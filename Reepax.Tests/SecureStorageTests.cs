@@ -146,13 +146,13 @@ public class SecureStorageTests
             var package = new DownloadPackage
             {
                 Id = Guid.NewGuid(),
-                Name = "TopSecretGameArchive",
-                SaveDirectory = "C:\\Games\\Secret"
+                Name = "TopSecretArchive",
+                SaveDirectory = "C:\\Data\\Secret"
             };
             package.Items.Add(new DownloadItem
             {
                 Id = Guid.NewGuid(),
-                FileName = "game.part01.rar",
+                FileName = "archive.part01.rar",
                 OriginalUrl = "https://example.com/secret_url_never_plaintext.rar",
                 Status = DownloadStatus.Queued
             });
@@ -164,12 +164,12 @@ public class SecureStorageTests
 
             var rawContent = File.ReadAllText(downloadsFile);
             Assert.StartsWith(SecureAppDataStorage.HeaderPrefix, rawContent);
-            Assert.DoesNotContain("TopSecretGameArchive", rawContent);
+            Assert.DoesNotContain("TopSecretArchive", rawContent);
             Assert.DoesNotContain("secret_url_never_plaintext", rawContent);
 
             var reloaded = persistence.LoadDownloads();
             Assert.Single(reloaded);
-            Assert.Equal("TopSecretGameArchive", reloaded[0].Name);
+            Assert.Equal("TopSecretArchive", reloaded[0].Name);
             Assert.Single(reloaded[0].Items);
             Assert.Equal("https://example.com/secret_url_never_plaintext.rar", reloaded[0].Items[0].OriginalUrl);
         }

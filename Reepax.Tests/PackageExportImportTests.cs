@@ -38,8 +38,8 @@ public class PackageExportImportTests : IDisposable
         // 1. Create a package with active progress, runtime errors, and speeds
         var package = new DownloadPackage
         {
-            Name = "My_Test_Game",
-            SaveDirectory = @"C:\Downloads\My_Test_Game",
+            Name = "My_Test_Package",
+            SaveDirectory = @"C:\Downloads\My_Test_Package",
             AutoExtractArchives = true,
             LowResourceExtraction = true,
             DeleteArchiveAfterExtraction = true,
@@ -59,9 +59,9 @@ public class PackageExportImportTests : IDisposable
         var item1 = new DownloadItem
         {
             PackageId = package.Id,
-            FileName = "game.part1.rar",
-            OriginalUrl = "https://rapidgator.net/file/123/game.part1.rar.html",
-            DirectDownloadUrl = "https://rg.download.direct/token123/game.part1.rar",
+            FileName = "package.part1.rar",
+            OriginalUrl = "https://rapidgator.net/file/123/package.part1.rar.html",
+            DirectDownloadUrl = "https://rg.download.direct/token123/package.part1.rar",
             TotalBytes = 1048576000,
             DownloadedBytes = 524288000,
             ProgressPercentage = 50.0,
@@ -73,7 +73,7 @@ public class PackageExportImportTests : IDisposable
             Cookies = "session=secret_token",
             UserAgent = "CustomAgent/1.0",
             Referer = "https://rapidgator.net/",
-            SaveFilePath = @"C:\Downloads\My_Test_Game\game.part1.rar",
+            SaveFilePath = @"C:\Downloads\My_Test_Package\package.part1.rar",
             HosterName = "Rapidgator",
             IsEnabled = true
         };
@@ -81,8 +81,8 @@ public class PackageExportImportTests : IDisposable
         var item2 = new DownloadItem
         {
             PackageId = package.Id,
-            FileName = "game.part2.rar",
-            OriginalUrl = "https://rapidgator.net/file/456/game.part2.rar.html",
+            FileName = "package.part2.rar",
+            OriginalUrl = "https://rapidgator.net/file/456/package.part2.rar.html",
             TotalBytes = 1048576000,
             DownloadedBytes = 0,
             ProgressPercentage = 0,
@@ -99,13 +99,13 @@ public class PackageExportImportTests : IDisposable
 
         // 3. Verify that metadata IS present
         Assert.Contains("\"format\": \"repx\"", json);
-        Assert.Contains("\"name\": \"My_Test_Game\"", json);
-        Assert.Contains("\"subDirectory\": \"My_Test_Game\"", json);
+        Assert.Contains("\"name\": \"My_Test_Package\"", json);
+        Assert.Contains("\"subDirectory\": \"My_Test_Package\"", json);
         Assert.Contains("\"autoExtractArchives\": true", json);
         Assert.Contains("\"lowResourceExtraction\": true", json);
         Assert.Contains("\"deleteArchiveAfterExtraction\": true", json);
-        Assert.Contains("\"fileName\": \"game.part1.rar\"", json);
-        Assert.Contains("\"originalUrl\": \"https://rapidgator.net/file/123/game.part1.rar.html\"", json);
+        Assert.Contains("\"fileName\": \"package.part1.rar\"", json);
+        Assert.Contains("\"originalUrl\": \"https://rapidgator.net/file/123/package.part1.rar.html\"", json);
         Assert.Contains("\"totalBytes\": 1048576000", json);
         Assert.Contains("\"hosterName\": \"Rapidgator\"", json);
 
@@ -195,7 +195,7 @@ public class PackageExportImportTests : IDisposable
             ""name"": ""Legacy_Package"",
             ""items"": [
                 {
-                    ""fileName"": ""legacy_game.rar"",
+                    ""fileName"": ""legacy_package.rar"",
                     ""originalUrl"": ""https://rapidgator.net/file/abc/legacy_game.rar"",
                     ""totalBytes"": 2048,
                     ""hosterName"": ""Rapidgator""
@@ -207,7 +207,7 @@ public class PackageExportImportTests : IDisposable
         Assert.NotNull(imported);
         Assert.Equal("Legacy_Package", imported.Name);
         Assert.Single(imported.Items);
-        Assert.Equal("legacy_game.rar", imported.Items[0].FileName);
+        Assert.Equal("legacy_package.rar", imported.Items[0].FileName);
     }
 
     [Fact]

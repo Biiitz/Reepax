@@ -93,7 +93,7 @@ public class PostDownloadActionTests : IDisposable
         var itemCompleted = new DownloadItem
         {
             Id = Guid.NewGuid(),
-            FileName = "game.iso",
+            FileName = "data.iso",
             Status = DownloadStatus.Completed,
             IsEnabled = true,
             TotalBytes = 1000,
@@ -137,7 +137,7 @@ public class PostDownloadActionTests : IDisposable
         var item = new DownloadItem
         {
             Id = Guid.NewGuid(),
-            FileName = "game.part1.rar",
+            FileName = "data.part1.rar",
             Status = DownloadStatus.Completed,
             IsEnabled = true
         };

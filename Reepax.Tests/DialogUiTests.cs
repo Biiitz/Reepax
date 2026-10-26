@@ -66,15 +66,15 @@ public class DialogUiTests
     {
         RunInSta(() =>
         {
-            var dialog = new AddLinksDialog("https://rapidgator.net/file/12345/Cyberpunk.2077.Update.v2.12-ELAMIGOS.rar");
+            var dialog = new AddLinksDialog("https://rapidgator.net/file/12345/Example.App.Update.v2.12-Release.rar");
 
             // Verify auto-detected update package name
             Assert.False(string.IsNullOrWhiteSpace(dialog.PackageNameTextBox.Text));
-            Assert.Contains("Cyberpunk", dialog.PackageNameTextBox.Text);
+            Assert.Contains("Example App", dialog.PackageNameTextBox.Text);
 
             // User typing custom package name
-            dialog.PackageNameTextBox.Text = "Cyberpunk2077";
-            Assert.Equal("Cyberpunk2077", dialog.PackageNameTextBox.Text);
+            dialog.PackageNameTextBox.Text = "ExampleApp";
+            Assert.Equal("ExampleApp", dialog.PackageNameTextBox.Text);
 
             // Enable AutoExtract first
             dialog.AutoExtractCheckBox.IsChecked = true;
@@ -110,16 +110,16 @@ public class DialogUiTests
         {
             var pkg = new DownloadPackage
             {
-                Name = "ExistingGame_v1",
-                SaveDirectory = @"C:\Downloads\ExistingGame_v1",
+                Name = "ExistingPackage_v1",
+                SaveDirectory = @"C:\Downloads\ExistingPackage_v1",
                 AutoExtractArchives = true,
                 DeleteArchiveAfterExtraction = true,
                 MoveArchiveToRecycleBin = false
             };
             pkg.Items.Add(new DownloadItem
             {
-                FileName = "game.zip",
-                OriginalUrl = "https://rapidgator.net/file/111/game.zip"
+                FileName = "example.zip",
+                OriginalUrl = "https://rapidgator.net/file/111/example.zip"
             });
 
             var dialog = new AddLinksDialog(pkg);
@@ -129,9 +129,9 @@ public class DialogUiTests
             Assert.Equal(pkg, dialog.EditingPackage);
 
             // Fields populated from existing package
-            Assert.Equal("ExistingGame_v1", dialog.PackageNameTextBox.Text);
-            Assert.Equal(@"C:\Downloads\ExistingGame_v1", dialog.DownloadPathTextBox.Text);
-            Assert.Contains("https://rapidgator.net/file/111/game.zip", dialog.LinksTextBox.Text);
+            Assert.Equal("ExistingPackage_v1", dialog.PackageNameTextBox.Text);
+            Assert.Equal(@"C:\Downloads\ExistingPackage_v1", dialog.DownloadPathTextBox.Text);
+            Assert.Contains("https://rapidgator.net/file/111/example.zip", dialog.LinksTextBox.Text);
             Assert.True(dialog.AutoExtractCheckBox.IsChecked);
             Assert.True(dialog.DeleteArchivesCheckBox.IsChecked);
             Assert.False(dialog.RecycleArchivesCheckBox.IsChecked);

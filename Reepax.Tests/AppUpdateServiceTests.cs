@@ -107,11 +107,11 @@ public class AppUpdateServiceTests
     [Fact]
     public void GenerateScripts_ProperlyEscapesSingleQuotesInPaths()
     {
-        string pathWithQuote = @"C:\Games\Florian's Folder\Reepax.exe";
+        string pathWithQuote = @"C:\Tools\User's Folder\Reepax.exe";
         string script = AppUpdateService.GenerateInstallerUpdateScript(999, @"C:\Temp\setup.exe", pathWithQuote);
 
-        Assert.Contains(@"C:\Games\Florian''s Folder\Reepax.exe", script);
-        Assert.DoesNotContain(@"Florian's Folder", script);
+        Assert.Contains(@"C:\Tools\User''s Folder\Reepax.exe", script);
+        Assert.DoesNotContain(@"User's Folder", script);
     }
 
     [Fact]

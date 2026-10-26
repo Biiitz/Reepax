@@ -79,10 +79,10 @@ EndFragment:0000001863
 <html><body>
 <!--StartFragment-->
 <div class=""post"">
-  <h2>My Game Release</h2>
-  <a href=""https://rapidgator.net/file/101/MyGame.part1.rar"">MyGame Part 1</a>
+  <h2>My Example Release</h2>
+  <a href=""https://rapidgator.net/file/101/ExampleApp.part1.rar"">ExampleApp Part 1</a>
   <span>und</span>
-  <a href=""https://ddownload.com/abc/MyGame.part2.rar"">MyGame Part 2</a>
+  <a href=""https://ddownload.com/abc/ExampleApp.part2.rar"">MyGame Part 2</a>
   <img src=""https://tracking.example.com/pixel.png"" />
 </div>
 <!--EndFragment-->
@@ -93,9 +93,9 @@ EndFragment:0000001863
 
         // Assert: exactly the two real href links, no fragment header garbage
         Assert.Equal(2, links.Count);
-        Assert.Equal("https://rapidgator.net/file/101/MyGame.part1.rar", links[0].Url);
-        Assert.Equal("https://ddownload.com/abc/MyGame.part2.rar", links[1].Url);
-        Assert.Equal("MyGame Part 1", links[0].ContextTitle);
+        Assert.Equal("https://rapidgator.net/file/101/ExampleApp.part1.rar", links[0].Url);
+        Assert.Equal("https://ddownload.com/abc/ExampleApp.part2.rar", links[1].Url);
+        Assert.Equal("ExampleApp Part 1", links[0].ContextTitle);
         Assert.DoesNotContain(links, l => l.Url.Contains("StartHTML") || l.Url.Contains("tracking.example"));
     }
 
@@ -122,16 +122,16 @@ StartHTML:0000000193
 EndHTML:0000000410
 StartFragment:0000000229
 EndFragment:0000000374
-SourceURL:https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#PengPong_Game.rar
+SourceURL:https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#Sample_Archive.rar
 <html>
 <body>
-<!--StartFragment--><a href=""https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#PengPong_Game.rar"" target=""_blank"" rel=""noopener"">Filehoster: FastHost</a><!--EndFragment-->
+<!--StartFragment--><a href=""https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#Sample_Archive.rar"" target=""_blank"" rel=""noopener"">Filehoster: FastHost</a><!--EndFragment-->
 </body>
 </html>";
 
         var normalized = LinkExtractor.NormalizeInputText(fragment);
 
-        Assert.Equal($"https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#PengPong_Game.rar", normalized);
+        Assert.Equal($"https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#Sample_Archive.rar", normalized);
     }
 
     [Fact]
@@ -146,17 +146,17 @@ SourceURL:https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#PengPong_Game.
     public void ExtractFileNameFromUrl_UsesFragmentAsFileName()
     {
         // Fragment links carry the actual filename in the #-fragment
-        Assert.Equal("PengPong_Game.rar",
-            LinkExtractor.ExtractFileNameFromUrl($"https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#PengPong_Game.rar"));
-        Assert.Equal("Adventure_Game.part01.rar",
-            LinkExtractor.ExtractFileNameFromUrl($"https://{FastHostResolver.CanonicalDomain}/yjoj5ds9m14e#Adventure_Game.part01.rar"));
+        Assert.Equal("Sample_Archive.rar",
+            LinkExtractor.ExtractFileNameFromUrl($"https://{FastHostResolver.CanonicalDomain}/cwxslzwhhl06#Sample_Archive.rar"));
+        Assert.Equal("Example_Project.part01.rar",
+            LinkExtractor.ExtractFileNameFromUrl($"https://{FastHostResolver.CanonicalDomain}/yjoj5ds9m14e#Example_Project.part01.rar"));
     }
 
     [Fact]
     public void ExtractLinks_FastHostFragmentLink_IsNotDirectDownload()
     {
         // Page link vs direct link (/dl/) - distinction for host auto-resolver
-        var pageLink = $"https://{FastHostResolver.CanonicalDomain}/yjoj5ds9m14e#Game.part01.rar";
+        var pageLink = $"https://{FastHostResolver.CanonicalDomain}/yjoj5ds9m14e#Example.part01.rar";
         var directLink = $"https://dl.{FastHostResolver.CanonicalDomain}/dl/bqJazo6Gf-pUZQ6fsJ9EL4cyKinMMnb";
 
         Assert.True(FastHostResolver.IsFastHostUrl(pageLink));
@@ -257,6 +257,20 @@ https://rapidgator.net/file/777/valid_archive.rar
     {
         Assert.Equal(expected, Reepax.Models.HosterInfo.IsFileHosterUrl(url));
     }
+
+    [Fact]
+    public void ExtractLinks_WithWebsiteHeading_CleansContextTitleWithoutWebsite()
+    {
+        string rawText = @"
+Example Project -- example.com.
+https://rapidgator.net/file/abc101/cp.part1.rar
+https://rapidgator.net/file/abc102/cp.part2.rar
+";
+
+        var links = LinkExtractor.ExtractLinks(rawText);
+
+        Assert.Equal(2, links.Count);
+        Assert.Equal("Example Project", links[0].ContextTitle);
+        Assert.Equal("Example Project", links[1].ContextTitle);
+    }
 }
-
-

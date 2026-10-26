@@ -192,11 +192,11 @@ public class PerformanceOptimizationTests
     [Fact]
     public async System.Threading.Tasks.Task SystemIconService_PreloadCommonIconsAsync_RunsWithoutError()
     {
-        var customFiles = new[] { "game_setup.exe", "movie.mkv", "archive.part01.rar", "document.pdf" };
+        var customFiles = new[] { "app_setup.exe", "movie.mkv", "archive.part01.rar", "document.pdf" };
         await Reepax.Services.SystemIconService.PreloadCommonIconsAsync(customFiles);
 
         // Subsequent calls for these cached items return immediately
-        var icon1 = Reepax.Services.SystemIconService.GetIconForFile("game_setup.exe");
+        var icon1 = Reepax.Services.SystemIconService.GetIconForFile("app_setup.exe");
         var icon2 = Reepax.Services.SystemIconService.GetIconForFile("archive.part01.rar");
         Assert.NotNull(icon1);
         Assert.NotNull(icon2);

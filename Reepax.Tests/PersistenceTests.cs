@@ -30,33 +30,33 @@ public class PersistenceTests
 
             var pkg1 = new DownloadPackage
             {
-                Name = "Game_Archive_Pack",
-                SaveDirectory = @"C:\Downloads\Game_Archive_Pack",
+                Name = "Data_Archive_Pack",
+                SaveDirectory = @"C:\Downloads\Data_Archive_Pack",
                 IsEnabled = true
             };
 
             var item1 = new DownloadItem
             {
-                FileName = "game.part1.rar",
+                FileName = "data.part1.rar",
                 OriginalUrl = "https://rapidgator.net/file/1",
                 HosterName = "rapidgator.net",
                 TotalBytes = 100_000_000,
                 DownloadedBytes = 65_000_000,
                 IsEnabled = true,
                 Status = DownloadStatus.Downloading,
-                SaveFilePath = @"C:\Downloads\Game_Archive_Pack\game.part1.rar"
+                SaveFilePath = @"C:\Downloads\Data_Archive_Pack\data.part1.rar"
             };
 
             var item2 = new DownloadItem
             {
-                FileName = "game.part2.rar",
+                FileName = "data.part2.rar",
                 OriginalUrl = "https://rapidgator.net/file/2",
                 HosterName = "rapidgator.net",
                 TotalBytes = 100_000_000,
                 DownloadedBytes = 0,
                 IsEnabled = false, // Deselected/disabled!
                 Status = DownloadStatus.Queued,
-                SaveFilePath = @"C:\Downloads\Game_Archive_Pack\game.part2.rar"
+                SaveFilePath = @"C:\Downloads\Data_Archive_Pack\data.part2.rar"
             };
 
             var item3 = new DownloadItem
@@ -68,7 +68,7 @@ public class PersistenceTests
                 DownloadedBytes = 5_000,
                 IsEnabled = true,
                 Status = DownloadStatus.Completed,
-                SaveFilePath = @"C:\Downloads\Game_Archive_Pack\bonus.txt"
+                SaveFilePath = @"C:\Downloads\Data_Archive_Pack\bonus.txt"
             };
 
             pkg1.Items.Add(item1);
@@ -85,12 +85,12 @@ public class PersistenceTests
             // Assert
             Assert.Single(loadedPackages);
             var loadedPkg = loadedPackages[0];
-            Assert.Equal("Game_Archive_Pack", loadedPkg.Name);
+            Assert.Equal("Data_Archive_Pack", loadedPkg.Name);
             Assert.Equal(3, loadedPkg.Items.Count);
 
             // Verify item 1 (was downloading -> restored as Paused with 65MB progress)
             var loadedItem1 = loadedPkg.Items[0];
-            Assert.Equal("game.part1.rar", loadedItem1.FileName);
+            Assert.Equal("data.part1.rar", loadedItem1.FileName);
             Assert.True(loadedItem1.IsEnabled);
             Assert.Equal(100_000_000, loadedItem1.TotalBytes);
             Assert.Equal(65_000_000, loadedItem1.DownloadedBytes);
@@ -100,7 +100,7 @@ public class PersistenceTests
 
             // Verify item 2 (was deselected/disabled -> restored as IsEnabled=false, Paused, Skipped)
             var loadedItem2 = loadedPkg.Items[1];
-            Assert.Equal("game.part2.rar", loadedItem2.FileName);
+            Assert.Equal("data.part2.rar", loadedItem2.FileName);
             Assert.False(loadedItem2.IsEnabled);
             Assert.Equal(DownloadStatus.Paused, loadedItem2.Status);
             Assert.Equal(Loc.Get("Status_Skipped"), loadedItem2.StatusMessage);
@@ -495,7 +495,7 @@ public class PersistenceTests
 
             var pkg = new DownloadPackage
             {
-                Name = "Archive_Game",
+                Name = "Archive_Data",
                 AutoExtractArchives = true,
                 DeleteArchiveAfterExtraction = true,
                 IsEnabled = true
@@ -503,7 +503,7 @@ public class PersistenceTests
 
             var item = new DownloadItem
             {
-                FileName = "game.zip",
+                FileName = "data.zip",
                 TotalBytes = 50_000_000,
                 DownloadedBytes = 50_000_000,
                 Status = DownloadStatus.Completed,
@@ -568,7 +568,7 @@ public class PersistenceTests
 
             var pkg = new DownloadPackage
             {
-                Name = "Partial_Game",
+                Name = "Partial_Data",
                 AutoExtractArchives = true,
                 DeleteArchiveAfterExtraction = true,
                 IsEnabled = true
@@ -576,7 +576,7 @@ public class PersistenceTests
 
             var item = new DownloadItem
             {
-                FileName = "game.zip",
+                FileName = "data.zip",
                 TotalBytes = 10_000,
                 DownloadedBytes = 10_000,
                 Status = DownloadStatus.Completed,
@@ -1127,20 +1127,20 @@ public class PersistenceTests
 
         try
         {
-            string expectedItemDir = @"C:\Games\SpecialDownload";
-            string expectedItemPath = Path.Combine(expectedItemDir, "game_setup.exe");
+            string expectedItemDir = @"C:\Data\SpecialDownload";
+            string expectedItemPath = Path.Combine(expectedItemDir, "data_setup.exe");
 
             // Write downloads.json with empty SaveDirectory but absolute item SaveFilePath
             string json = $$"""
             [
               {
                 "Id": "11111111-1111-1111-1111-111111111111",
-                "Name": "GamePackage",
+                "Name": "DataPackage",
                 "SaveDirectory": "",
                 "Items": [
                   {
                     "Id": "22222222-2222-2222-2222-222222222222",
-                    "FileName": "game_setup.exe",
+                    "FileName": "data_setup.exe",
                     "SaveFilePath": "{{expectedItemPath.Replace("\\", "\\\\")}}"
                   }
                 ]
@@ -1158,7 +1158,7 @@ public class PersistenceTests
 
             Assert.Single(pkg.Items);
             var item = pkg.Items[0];
-            // Must preserve the full absolute path and NOT truncate it to relative "game_setup.exe"
+            // Must preserve the full absolute path and NOT truncate it to relative "data_setup.exe"
             Assert.Equal(expectedItemPath, item.SaveFilePath);
         }
         finally
@@ -1214,7 +1214,6 @@ public class PersistenceTests
             try { Directory.Delete(testDir, true); } catch { }
         }
     }
-
 
     [Fact]
     public async Task Persistence_PackageOptionsChanged_TriggersRequestSaveAndPersists()

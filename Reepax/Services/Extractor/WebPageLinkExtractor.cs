@@ -233,6 +233,8 @@ public static class WebPageLinkExtractor
         // Trim common generic page suffixes
         name = Regex.Replace(name, @"\s*[–\-|]\s*(?:Download|Free Download|Home|Index).*$", string.Empty, RegexOptions.IgnoreCase).Trim();
 
+        name = PackageGrouper.SanitizeCleanName(name);
+
         return string.IsNullOrWhiteSpace(name) ? "Download Package" : name;
     }
 
