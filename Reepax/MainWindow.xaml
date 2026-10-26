@@ -244,14 +244,56 @@
         </Style>
         <!-- ================= SHARED DOWNLOAD ITEM TEMPLATE ================= -->
         <DataTemplate x:Key="DownloadItemTemplate" DataType="{x:Type models:DownloadItem}">
-            <Border Margin="0,1"
-                    Padding="0,3"
+            <DataTemplate.Resources>
+                <!-- Reorder Slide UP Storyboard -->
+                <Storyboard x:Key="ItemMoveUpStoryboard">
+                    <DoubleAnimation Storyboard.TargetName="ItemMoveTransform"
+                                     Storyboard.TargetProperty="Y"
+                                     From="14" To="0" Duration="0:0:0.16">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+
+                <!-- Reorder Slide DOWN Storyboard -->
+                <Storyboard x:Key="ItemMoveDownStoryboard">
+                    <DoubleAnimation Storyboard.TargetName="ItemMoveTransform"
+                                     Storyboard.TargetProperty="Y"
+                                     From="-14" To="0" Duration="0:0:0.16">
+                        <DoubleAnimation.EasingFunction>
+                            <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                    </DoubleAnimation>
+                </Storyboard>
+            </DataTemplate.Resources>
+
+            <Grid Margin="0"
+                  Background="Transparent"
+                  SnapsToDevicePixels="True"
+                  AllowDrop="True"
+                  DragOver="ItemRow_DragOver"
+                  DragLeave="ItemRow_DragLeave"
+                  Drop="ItemRow_Drop">
+                <Border x:Name="ItemBorder"
+                        Margin="0,1"
+                        Padding="0,3"
                     CornerRadius="4"
                     Focusable="True"
                     FocusVisualStyle="{x:Null}"
+                    AllowDrop="True"
+                    PreviewMouseLeftButtonDown="ItemRow_PreviewMouseLeftButtonDown"
+                    PreviewMouseMove="ItemRow_PreviewMouseMove"
+                    PreviewMouseLeftButtonUp="ItemRow_PreviewMouseLeftButtonUp"
                     MouseLeftButtonDown="ItemRow_MouseLeftButtonDown"
                     PreviewMouseRightButtonDown="ItemRow_PreviewMouseRightButtonDown"
+                    DragOver="ItemRow_DragOver"
+                    DragLeave="ItemRow_DragLeave"
+                    Drop="ItemRow_Drop"
                     ContextMenu="{StaticResource ItemContextMenu}">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="ItemMoveTransform" X="0" Y="0" />
+                </Border.RenderTransform>
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Background" Value="{DynamicResource BgCardAltBrush}" />
@@ -531,9 +573,54 @@
                             </Button>
                         </StackPanel>
                     </Border>
+
                 </Grid>
             </Border>
-        </DataTemplate>
+
+            <!-- Top Drop Indicator (Insert Before / Above Item) -->
+            <Grid x:Name="ItemTopDropIndicator"
+                  Height="4"
+                  VerticalAlignment="Top"
+                  Margin="0,-3,0,0"
+                  IsHitTestVisible="False"
+                  Panel.ZIndex="100"
+                  Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
+                <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+            </Grid>
+
+            <!-- Bottom Drop Indicator (Insert After / Below Item) -->
+            <Grid x:Name="ItemBottomDropIndicator"
+                  Height="4"
+                  VerticalAlignment="Bottom"
+                  Margin="0,0,0,-3"
+                  IsHitTestVisible="False"
+                  Panel.ZIndex="100"
+                  Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
+                <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+            </Grid>
+        </Grid>
+
+        <DataTemplate.Triggers>
+            <DataTrigger Binding="{Binding IsJustMovedUp}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="ItemMoveUpBegin" Storyboard="{StaticResource ItemMoveUpStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="ItemMoveUpBegin" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding IsJustMovedDown}" Value="True">
+                <DataTrigger.EnterActions>
+                    <BeginStoryboard Name="ItemMoveDownBegin" Storyboard="{StaticResource ItemMoveDownStoryboard}" />
+                </DataTrigger.EnterActions>
+                <DataTrigger.ExitActions>
+                    <StopStoryboard BeginStoryboardName="ItemMoveDownBegin" />
+                </DataTrigger.ExitActions>
+            </DataTrigger>
+        </DataTemplate.Triggers>
+    </DataTemplate>
         <!-- ================= SHARED DOWNLOAD PACKAGE TEMPLATE (ROOT & CLIPPED) ================= -->
         <DataTemplate x:Key="PackageTemplate" DataType="{x:Type models:DownloadPackage}">
             <DataTemplate.Resources>
@@ -554,64 +641,22 @@
                                      From="1.0" To="0.0" BeginTime="0:0:1.8" Duration="0:0:0.6" />
                 </Storyboard>
 
-                <!-- Docking Slide & Glow Storyboard for Clipped Package -->
+                <!-- Docking Glow Storyboard for Clipped Package (instant snap without container layout shift) -->
                 <Storyboard x:Key="PackageSnapStoryboard">
-                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
-                                     Storyboard.TargetProperty="X"
-                                     From="20" To="0" Duration="0:0:0.30">
-                        <DoubleAnimation.EasingFunction>
-                            <BackEase EasingMode="EaseOut" Amplitude="0.2" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
-                                     Storyboard.TargetProperty="Y"
-                                     From="-10" To="0" Duration="0:0:0.30">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.4" To="1.0" Duration="0:0:0.25">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
                     <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
                                      Storyboard.TargetProperty="Opacity"
-                                     From="0.65" To="0.0" Duration="0:0:0.45">
+                                     From="0.55" To="0.0" Duration="0:0:0.25">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
                     </DoubleAnimation>
                 </Storyboard>
 
-                <!-- Undocking Slide & Glow Storyboard -->
+                <!-- Undocking Glow Storyboard (instant unclip without container layout shift) -->
                 <Storyboard x:Key="PackageUnclipStoryboard">
-                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
-                                     Storyboard.TargetProperty="X"
-                                     From="18" To="0" Duration="0:0:0.30">
-                        <DoubleAnimation.EasingFunction>
-                            <BackEase EasingMode="EaseOut" Amplitude="0.22" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
-                                     Storyboard.TargetProperty="Y"
-                                     From="8" To="0" Duration="0:0:0.28">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.55" To="1.0" Duration="0:0:0.24">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
                     <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
                                      Storyboard.TargetProperty="Opacity"
-                                     From="0.55" To="0.0" Duration="0:0:0.40">
+                                     From="0.45" To="0.0" Duration="0:0:0.25">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
@@ -622,21 +667,7 @@
                 <Storyboard x:Key="PackageMoveUpStoryboard">
                     <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
                                      Storyboard.TargetProperty="Y"
-                                     From="32" To="0" Duration="0:0:0.34">
-                        <DoubleAnimation.EasingFunction>
-                            <BackEase EasingMode="EaseOut" Amplitude="0.28" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.55" To="1.0" Duration="0:0:0.22">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.5" To="0.0" Duration="0:0:0.38">
+                                     From="16" To="0" Duration="0:0:0.18">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
@@ -647,46 +678,7 @@
                 <Storyboard x:Key="PackageMoveDownStoryboard">
                     <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
                                      Storyboard.TargetProperty="Y"
-                                     From="-32" To="0" Duration="0:0:0.34">
-                        <DoubleAnimation.EasingFunction>
-                            <BackEase EasingMode="EaseOut" Amplitude="0.28" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.55" To="1.0" Duration="0:0:0.22">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.5" To="0.0" Duration="0:0:0.38">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                </Storyboard>
-
-                <!-- General Reorder Storyboard -->
-                <Storyboard x:Key="PackageMoveStoryboard">
-                    <DoubleAnimation Storyboard.TargetName="PackageDockTransform"
-                                     Storyboard.TargetProperty="Y"
-                                     From="20" To="0" Duration="0:0:0.30">
-                        <DoubleAnimation.EasingFunction>
-                            <BackEase EasingMode="EaseOut" Amplitude="0.25" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageBorder"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.6" To="1.0" Duration="0:0:0.24">
-                        <DoubleAnimation.EasingFunction>
-                            <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                    </DoubleAnimation>
-                    <DoubleAnimation Storyboard.TargetName="PackageDockOverlay"
-                                     Storyboard.TargetProperty="Opacity"
-                                     From="0.5" To="0.0" Duration="0:0:0.35">
+                                     From="-16" To="0" Duration="0:0:0.18">
                         <DoubleAnimation.EasingFunction>
                             <CubicEase EasingMode="EaseOut" />
                         </DoubleAnimation.EasingFunction>
@@ -694,9 +686,12 @@
                 </Storyboard>
             </DataTemplate.Resources>
 
-            <StackPanel Margin="0">
-                <!-- ================= PACKAGE CONTAINER (ROW & CHILD ITEMS) ================= -->
+            <Grid Margin="0" SnapsToDevicePixels="True">
+                <!-- ================= PACKAGE CONTAINER (ROW, CHILD ITEMS & CLIPPED SUB-PACKAGES) ================= -->
                 <StackPanel x:Name="PackageContentContainer">
+                    <StackPanel.RenderTransform>
+                        <TranslateTransform x:Name="PackageDockTransform" X="0" Y="0" />
+                    </StackPanel.RenderTransform>
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
                             <Setter Property="Opacity" Value="1.0" />
@@ -730,9 +725,6 @@
                         DragLeave="PackageRow_DragLeave"
                         Drop="PackageRow_Drop"
                         ContextMenu="{StaticResource PackageContextMenu}">
-                    <Border.RenderTransform>
-                        <TranslateTransform x:Name="PackageDockTransform" X="0" Y="0" />
-                    </Border.RenderTransform>
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
@@ -1158,31 +1150,8 @@
                                 BorderBrush="#3038BDF8"
                                 BorderThickness="1" />
 
-                        <!-- Top Drop Indicator (Insert Before / Above) -->
-                        <Grid x:Name="PackageTopDropIndicator"
-                              Grid.Column="0" Grid.ColumnSpan="13"
-                              Height="4"
-                              VerticalAlignment="Top"
-                              Margin="-0.5,-2,-0.5,0"
-                              IsHitTestVisible="False"
-                              Panel.ZIndex="50"
-                              Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
-                            <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
-                            <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
-                        </Grid>
 
-                        <!-- Bottom Drop Indicator (Insert After / Below) -->
-                        <Grid x:Name="PackageBottomDropIndicator"
-                              Grid.Column="0" Grid.ColumnSpan="13"
-                              Height="4"
-                              VerticalAlignment="Bottom"
-                              Margin="-0.5,0,-0.5,-2"
-                              IsHitTestVisible="False"
-                              Panel.ZIndex="50"
-                              Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
-                            <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
-                            <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
-                        </Grid>
+
                     </Grid>
                 </Border>
 
@@ -1192,22 +1161,46 @@
                                   ItemTemplate="{StaticResource DownloadItemTemplate}"
                                   Tag="{Binding IsClipped}" />
                 </helpers:AnimatedExpansionDecorator>
+
+                    <!-- ================= CLIPPED SUB-PACKAGES (DOCKED DIRECTLY UNDERNEATH) ================= -->
+                    <ItemsControl ItemsSource="{Binding ClippedPackages}"
+                                  ItemTemplate="{DynamicResource PackageTemplate}">
+                        <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsClipped}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.Style>
+                    </ItemsControl>
                 </StackPanel>
 
-                <!-- ================= CLIPPED SUB-PACKAGES (DOCKED DIRECTLY UNDERNEATH) ================= -->
-                <ItemsControl ItemsSource="{Binding ClippedPackages}"
-                              ItemTemplate="{DynamicResource PackageTemplate}">
-                    <ItemsControl.Style>
-                        <Style TargetType="ItemsControl">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsClipped}" Value="True">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ItemsControl.Style>
-                </ItemsControl>
-            </StackPanel>
+                <!-- Top Drop Indicator (Insert Before / Above Package) -->
+                <Grid x:Name="PackageTopDropIndicator"
+                      Height="4"
+                      VerticalAlignment="Top"
+                      Margin="0,-2,0,0"
+                      IsHitTestVisible="False"
+                      Panel.ZIndex="100"
+                      Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
+                    <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Bottom Drop Indicator (Insert After / Below Package - shown after entire package including child items) -->
+                <Grid x:Name="PackageBottomDropIndicator"
+                      Height="4"
+                      VerticalAlignment="Bottom"
+                      Margin="0,0,0,-2"
+                      IsHitTestVisible="False"
+                      Panel.ZIndex="100"
+                      Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
+                    <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                </Grid>
+            </Grid>
 
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding IsNewlyCompleted}" Value="True">
@@ -1220,29 +1213,37 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsJustSnapped}" Value="True">
                     <DataTrigger.EnterActions>
-                        <BeginStoryboard Storyboard="{StaticResource PackageSnapStoryboard}" />
+                        <BeginStoryboard Name="PackageSnapBegin" Storyboard="{StaticResource PackageSnapStoryboard}" />
                     </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="PackageSnapBegin" />
+                    </DataTrigger.ExitActions>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsJustUnclipped}" Value="True">
                     <DataTrigger.EnterActions>
-                        <BeginStoryboard Storyboard="{StaticResource PackageUnclipStoryboard}" />
+                        <BeginStoryboard Name="PackageUnclipBegin" Storyboard="{StaticResource PackageUnclipStoryboard}" />
                     </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="PackageUnclipBegin" />
+                    </DataTrigger.ExitActions>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsJustMovedUp}" Value="True">
                     <DataTrigger.EnterActions>
-                        <BeginStoryboard Storyboard="{StaticResource PackageMoveUpStoryboard}" />
+                        <BeginStoryboard Name="PackageMoveUpBegin" Storyboard="{StaticResource PackageMoveUpStoryboard}" />
                     </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="PackageMoveUpBegin" />
+                    </DataTrigger.ExitActions>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding IsJustMovedDown}" Value="True">
                     <DataTrigger.EnterActions>
-                        <BeginStoryboard Storyboard="{StaticResource PackageMoveDownStoryboard}" />
+                        <BeginStoryboard Name="PackageMoveDownBegin" Storyboard="{StaticResource PackageMoveDownStoryboard}" />
                     </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="PackageMoveDownBegin" />
+                    </DataTrigger.ExitActions>
                 </DataTrigger>
-                <DataTrigger Binding="{Binding IsJustMoved}" Value="True">
-                    <DataTrigger.EnterActions>
-                        <BeginStoryboard Storyboard="{StaticResource PackageMoveStoryboard}" />
-                    </DataTrigger.EnterActions>
-                </DataTrigger>
+
             </DataTemplate.Triggers>
         </DataTemplate>
     </Window.Resources>
@@ -2204,7 +2205,7 @@
                 <!-- Packages & Download Items List (TreeListView) -->
                 <ScrollViewer Grid.Row="1" 
                               x:Name="TreeListScrollViewer"
-                              CanContentScroll="True"
+                              CanContentScroll="False"
                               Background="{DynamicResource BgDarkBrush}"
                               VerticalScrollBarVisibility="Visible" 
                               HorizontalScrollBarVisibility="Disabled"
@@ -2466,15 +2467,10 @@
                         </ControlTemplate>
                     </ScrollViewer.Template>
                     <ItemsControl ItemsSource="{Binding RootPackages}"
-                                  ItemTemplate="{StaticResource PackageTemplate}"
-                                  VirtualizingPanel.IsVirtualizing="True"
-                                  VirtualizingPanel.VirtualizationMode="Recycling"
-                                  VirtualizingPanel.ScrollUnit="Pixel"
-                                  VirtualizingPanel.CacheLength="2,2"
-                                  VirtualizingPanel.CacheLengthUnit="Page">
+                                  ItemTemplate="{StaticResource PackageTemplate}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <VirtualizingStackPanel />
+                                <StackPanel />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                     </ItemsControl>

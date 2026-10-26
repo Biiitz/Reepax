@@ -174,6 +174,9 @@ public class AnimatedExpansionDecorator : Decorator
 
         double p = Math.Clamp(progress, 0.0, 1.0);
 
+        // Clip bounds during transitions; allow overlays/indicators to render cleanly when fully expanded
+        ClipToBounds = p < 0.999;
+
         // Smooth Opacity fade (0.0 -> 1.0)
         Child.Opacity = p;
 
@@ -243,11 +246,16 @@ public class AnimatedExpansionDecorator : Decorator
         {
             if (!IsExpanded)
             {
+                ClipToBounds = true;
                 if (Child != null)
                 {
                     Child.Visibility = Visibility.Hidden;
                     Child.IsHitTestVisible = false;
                 }
+            }
+            else
+            {
+                ClipToBounds = false;
             }
         };
 

@@ -343,6 +343,10 @@ public class DownloadPersistenceService : IDisposable
                     }
                 }
             }
+            else if (e.Action == NotifyCollectionChangedAction.Move)
+            {
+                // Reordered; existing hooks remain valid
+            }
             else
             {
                 if (e.OldItems != null)
@@ -633,6 +637,10 @@ public class DownloadPersistenceService : IDisposable
                         HookItemEvents(item, itemsCol);
                     }
                 }
+            }
+            else if (e.Action == NotifyCollectionChangedAction.Move)
+            {
+                // Reordered; existing hooks remain valid
             }
             else
             {

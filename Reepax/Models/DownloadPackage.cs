@@ -1532,3 +1532,10 @@ public enum PackageDropAction
     Clip,
     InsertAfter
 }
+
+public enum ItemDropAction
+{
+    None,
+    InsertBefore,
+    InsertAfter
+}

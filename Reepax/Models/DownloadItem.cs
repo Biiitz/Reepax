@@ -113,6 +113,26 @@ public partial class DownloadItem : ObservableObject
     [ObservableProperty]
     private bool _isTrickling;
 
+    /// <summary>Indicates whether another item is being dragged above this row (to insert before).</summary>
+    [ObservableProperty]
+    private bool _isDropBefore;
+
+    /// <summary>Indicates whether another item is being dragged below this row (to insert after).</summary>
+    [ObservableProperty]
+    private bool _isDropAfter;
+
+    /// <summary>Set briefly to true to trigger subtle move slide animation in XAML.</summary>
+    [ObservableProperty]
+    private bool _isJustMoved;
+
+    /// <summary>Set briefly to true when moved upwards in the list.</summary>
+    [ObservableProperty]
+    private bool _isJustMovedUp;
+
+    /// <summary>Set briefly to true when moved downwards in the list.</summary>
+    [ObservableProperty]
+    private bool _isJustMovedDown;
+
     /// <summary>
     /// Transient (not persisted): true if direct host resolution failed
     /// and the item should be routed through a browser window (Scenario C fallback).
