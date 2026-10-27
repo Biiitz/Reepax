@@ -456,10 +456,25 @@ public class ArchiveExtractionService
                         package.StatusMessage = Loc.Get("Status_Par2Verifying");
                     });
 
+                    long lastPar2ReportTicks = 0;
+                    double lastPar2ReportedPct = -1.0;
+                    long par2ReportIntervalTicks = Stopwatch.Frequency / 10;
+
                     var par2Success = await Verification.Par2RepairService.Instance.ProcessPackagePar2Async(
                         package,
                         msg => SafeInvoke(() => package.StatusMessage = msg),
-                        pct => SafeInvoke(() => package.StatusMessage = Loc.Format("Status_Par2Repairing", pct.ToString("0.0"))));
+                        pct =>
+                        {
+                            long nowTicks = Stopwatch.GetTimestamp();
+                            bool isEdge = (pct <= 0.0 && lastPar2ReportedPct < 0.0) || (pct >= 100.0 && lastPar2ReportedPct < 100.0);
+                            if (isEdge || (nowTicks - lastPar2ReportTicks >= par2ReportIntervalTicks && Math.Abs(pct - lastPar2ReportedPct) >= 0.1))
+                            {
+                                lastPar2ReportTicks = nowTicks;
+                                lastPar2ReportedPct = pct;
+                                string formatted = Loc.Format("Status_Par2Repairing", pct.ToString("0.0"));
+                                SafeInvoke(() => package.StatusMessage = formatted);
+                            }
+                        });
 
                     if (!par2Success)
                     {
@@ -489,6 +504,9 @@ public class ArchiveExtractionService
             allSuccess = true;
             string? firstErrorStatus = null;
             var successfullyExtractedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            long lastOverallReportTicks = 0;
+            double lastOverallReportedPct = -1.0;
+            long overallReportIntervalTicks = Stopwatch.Frequency / 10;
 
             for (int archiveIndex = 0; archiveIndex < primaryArchives.Count; archiveIndex++)
             {
@@ -544,8 +562,16 @@ public class ArchiveExtractionService
                                 ? ((currentIdx * 100.0) + currentArchivePct) / primaryArchives.Count
                                 : currentArchivePct;
 
-                            string pctStr = overallPct.ToString("0.00");
-                            SafeInvoke(() => package.StatusMessage = Loc.Format("Status_ExtractingProgress", pctStr));
+                            long nowTicks = Stopwatch.GetTimestamp();
+                            bool isEdge = (overallPct <= 0.0 && lastOverallReportedPct < 0.0) || (overallPct >= 100.0 && lastOverallReportedPct < 100.0);
+                            if (isEdge || (nowTicks - lastOverallReportTicks >= overallReportIntervalTicks && Math.Abs(overallPct - lastOverallReportedPct) >= 0.1))
+                            {
+                                lastOverallReportTicks = nowTicks;
+                                lastOverallReportedPct = overallPct;
+                                string pctStr = overallPct.ToString("0.00");
+                                string formatted = Loc.Format("Status_ExtractingProgress", pctStr);
+                                SafeInvoke(() => package.StatusMessage = formatted);
+                            }
                         },
                         cancellationToken: token,
                         pauseEvent: pauseEvent,
@@ -922,14 +948,18 @@ public class ArchiveExtractionService
                 }
 
                 long lastReportTicks = 0;
-                long reportIntervalTicks = Stopwatch.Frequency / 10; // 100ms Drosselung
+                double lastReportedPct = -1.0;
+                long reportIntervalTicks = Stopwatch.Frequency / 10; // Throttle to max 10 Hz (100ms)
 
                 void ReportCurrentProgress(double pct, bool force = false)
                 {
                     long nowTicks = Stopwatch.GetTimestamp();
-                    if (force || nowTicks - lastReportTicks >= reportIntervalTicks || pct >= 100.0)
+                    bool isCompletion = pct >= 100.0 && lastReportedPct < 100.0;
+                    bool hasMinDelta = lastReportedPct < 0.0 || Math.Abs(pct - lastReportedPct) >= 0.1;
+                    if ((force && Math.Abs(pct - lastReportedPct) > 0.0001) || isCompletion || (nowTicks - lastReportTicks >= reportIntervalTicks && hasMinDelta))
                     {
                         lastReportTicks = nowTicks;
+                        lastReportedPct = pct;
                         if (progressCallback != null)
                         {
                             progressCallback.Invoke(pct);

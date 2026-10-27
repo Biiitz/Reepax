@@ -1144,11 +1144,12 @@ public class ArchiveExtractionTests
             Assert.NotEmpty(progressValues);
             Assert.Equal(0.0, progressValues[0]);
             Assert.Equal(100.0, progressValues[^1]);
+            Assert.Equal(1, progressValues.Count(p => p >= 100.0));
 
-            // Ensure progress is monotonic (never goes backwards)
+            // Ensure progress is strictly increasing by at least 0.1% per notification
             for (int i = 1; i < progressValues.Count; i++)
             {
-                Assert.True(progressValues[i] >= progressValues[i - 1], $"Progress went backwards at index {i}: {progressValues[i - 1]} -> {progressValues[i]}");
+                Assert.True(progressValues[i] - progressValues[i - 1] >= 0.1, $"Progress delta too small at index {i}: {progressValues[i - 1]} -> {progressValues[i]}");
             }
 
             Assert.True(File.Exists(Path.Combine(extractDir, "file1.bin")));
