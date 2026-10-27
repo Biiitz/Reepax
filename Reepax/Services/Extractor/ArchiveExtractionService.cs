@@ -1297,7 +1297,8 @@ public class ArchiveExtractionService
             {
                 try
                 {
-                    foreach (var par2 in Directory.GetFiles(saveDir, "*.par2", SearchOption.TopDirectoryOnly))
+                    if (ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, saveDir))
+                        foreach (var par2 in Directory.GetFiles(saveDir, "*.par2", SearchOption.TopDirectoryOnly))
                     {
                         files.Add(par2);
                     }
@@ -1308,9 +1309,30 @@ public class ArchiveExtractionService
 
         if (package != null && !string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory))
         {
-            if (!ViewModels.MainViewModel.IsProtectedDirectory(package.SaveDirectory))
+            if (!ViewModels.MainViewModel.IsProtectedDirectory(package.SaveDirectory) &&
+                ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, package.SaveDirectory))
             {
                 PurgeTemporaryFilesInDirectory(package.SaveDirectory);
+            }
+            else
+            {
+                // Purge only item-specific temporary sidecar files for this package in shared or protected directories
+                try
+                {
+                    foreach (var item in package.Items.ToList())
+                    {
+                        if (item == null) continue;
+                        var itemFiles = ViewModels.MainViewModel.GetItemFilesOnDisk(item, package.SaveDirectory);
+                        foreach (var file in itemFiles)
+                        {
+                            if (IsTempFile(file))
+                            {
+                                DeleteOrMoveToTemp(file);
+                            }
+                        }
+                    }
+                }
+                catch { }
             }
         }
 

@@ -538,6 +538,166 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
+    public async Task CheckAndExtractPackage_SharedDirectory_PreservesOtherPackagesTemporaryAndPar2Files()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_SharedDirTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        var prevDeletePar2 = SettingsService.Instance.Settings.DeletePar2AfterExtraction;
+        var prevDeleteArchive = SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
+        SettingsService.Instance.Settings.DeletePar2AfterExtraction = true;
+        SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = true;
+
+        var qm = Services.Download.QueueManager.Instance;
+        qm.Packages.Clear();
+
+        try
+        {
+            var zipPath = Path.Combine(testDir, "packageA.zip");
+            using (var zipStream = new FileStream(zipPath, FileMode.Create))
+            using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+            {
+                var entry = archive.CreateEntry("contentA.txt");
+                using var writer = new StreamWriter(entry.Open());
+                writer.WriteLine("Package A content");
+            }
+
+            var packageA_tempPart = Path.Combine(testDir, "packageA.zip.part");
+            var packageA_tempSeg = Path.Combine(testDir, "packageA.zip.part.segments");
+            await File.WriteAllTextAsync(packageA_tempPart, "temp part A");
+            await File.WriteAllTextAsync(packageA_tempSeg, "temp seg A");
+
+            var packageB_activePart = Path.Combine(testDir, "packageB_file.bin.part");
+            var packageB_activeSeg = Path.Combine(testDir, "packageB_file.bin.part.segments");
+            var packageB_par2 = Path.Combine(testDir, "packageB_file.par2");
+            await File.WriteAllTextAsync(packageB_activePart, "in-flight part B");
+            await File.WriteAllTextAsync(packageB_activeSeg, "in-flight seg B");
+            await File.WriteAllTextAsync(packageB_par2, "PAR2 content B");
+
+            var packageA = new DownloadPackage
+            {
+                Name = "PackageA",
+                SaveDirectory = testDir,
+                AutoExtractArchives = true,
+                DeleteArchiveAfterExtraction = true
+            };
+            packageA.Items.Add(new DownloadItem
+            {
+                FileName = "packageA.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            });
+
+            var packageB = new DownloadPackage
+            {
+                Name = "PackageB",
+                SaveDirectory = testDir,
+                AutoExtractArchives = false
+            };
+            packageB.Items.Add(new DownloadItem
+            {
+                FileName = "packageB_file.bin",
+                SaveFilePath = Path.Combine(testDir, "packageB_file.bin"),
+                Status = DownloadStatus.Downloading,
+                IsEnabled = true
+            });
+
+            qm.Packages.Add(packageA);
+            qm.Packages.Add(packageB);
+
+            var success = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(packageA);
+
+            Assert.True(success);
+            Assert.True(packageA.IsExtracted);
+            Assert.True(File.Exists(Path.Combine(testDir, "contentA.txt")));
+            Assert.False(File.Exists(zipPath));
+            Assert.False(File.Exists(packageA_tempPart));
+            Assert.False(File.Exists(packageA_tempSeg));
+
+            // Package B's active in-flight files and PAR2 files must remain untouched
+            Assert.True(File.Exists(packageB_activePart));
+            Assert.True(File.Exists(packageB_activeSeg));
+            Assert.True(File.Exists(packageB_par2));
+        }
+        finally
+        {
+            qm.Packages.Clear();
+            SettingsService.Instance.Settings.DeletePar2AfterExtraction = prevDeletePar2;
+            SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = prevDeleteArchive;
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task CheckAndExtractPackage_DedicatedDirectory_PurgesTemporaryFilesAndArchives()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_DedicatedDirTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        var prevDeletePar2 = SettingsService.Instance.Settings.DeletePar2AfterExtraction;
+        var prevDeleteArchive = SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
+        SettingsService.Instance.Settings.DeletePar2AfterExtraction = true;
+        SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = true;
+
+        var qm = Services.Download.QueueManager.Instance;
+        qm.Packages.Clear();
+
+        try
+        {
+            var zipPath = Path.Combine(testDir, "packageA.zip");
+            using (var zipStream = new FileStream(zipPath, FileMode.Create))
+            using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+            {
+                var entry = archive.CreateEntry("contentA.txt");
+                using var writer = new StreamWriter(entry.Open());
+                writer.WriteLine("Package A content");
+            }
+
+            var tempPart = Path.Combine(testDir, "packageA.zip.part");
+            var tempSeg = Path.Combine(testDir, "packageA.zip.part.segments");
+            var orphanTmp = Path.Combine(testDir, "orphan_download.tmp");
+            await File.WriteAllTextAsync(tempPart, "temp part");
+            await File.WriteAllTextAsync(tempSeg, "temp seg");
+            await File.WriteAllTextAsync(orphanTmp, "orphan tmp");
+
+            var packageA = new DownloadPackage
+            {
+                Name = "PackageA",
+                SaveDirectory = testDir,
+                AutoExtractArchives = true,
+                DeleteArchiveAfterExtraction = true
+            };
+            packageA.Items.Add(new DownloadItem
+            {
+                FileName = "packageA.zip",
+                SaveFilePath = zipPath,
+                Status = DownloadStatus.Completed,
+                IsEnabled = true
+            });
+
+            qm.Packages.Add(packageA);
+
+            var success = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(packageA);
+
+            Assert.True(success);
+            Assert.True(packageA.IsExtracted);
+            Assert.True(File.Exists(Path.Combine(testDir, "contentA.txt")));
+            Assert.False(File.Exists(zipPath));
+            Assert.False(File.Exists(tempPart));
+            Assert.False(File.Exists(tempSeg));
+            Assert.False(File.Exists(orphanTmp));
+        }
+        finally
+        {
+            qm.Packages.Clear();
+            SettingsService.Instance.Settings.DeletePar2AfterExtraction = prevDeletePar2;
+            SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = prevDeleteArchive;
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task ZipSlip_ZipArchive_TraversingEntry_RejectedAndDoesNotExtractOutside()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_ZipSlip_" + Guid.NewGuid().ToString("N"));

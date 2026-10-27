@@ -188,7 +188,7 @@ public class Par2RepairService
         var saveDir = package.SaveDirectory;
         if (!string.IsNullOrWhiteSpace(saveDir) && Directory.Exists(saveDir))
         {
-            var found = FindPrimaryPar2File(saveDir);
+            var found = ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, saveDir) ? FindPrimaryPar2File(saveDir) : null;
             if (!string.IsNullOrEmpty(found))
             {
                 primaryPar2Path = found;
