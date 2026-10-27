@@ -585,12 +585,13 @@ public class ArchiveExtractionService
 
             token.ThrowIfCancellationRequested();
 
-            SafeInvoke(() => package.SetNextTaskDone("Extract"));
+
 
             if (allSuccess)
             {
                 SafeInvoke(() =>
                 {
+                    package.SetNextTaskDone("Extract");
                     package.IsExtracted = true;
                     package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
                     package.CompletedAt ??= DateTime.Now;
@@ -600,6 +601,7 @@ public class ArchiveExtractionService
             {
                 SafeInvoke(() =>
                 {
+                    package.SetNextTaskFailed("Extract");
                     if (!string.IsNullOrWhiteSpace(firstErrorStatus))
                     {
                         package.StatusMessage = firstErrorStatus;
@@ -618,7 +620,8 @@ public class ArchiveExtractionService
             var shouldDelete = package.DeleteArchiveAfterExtraction || SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
             var shouldRecycle = !shouldDelete && (package.MoveArchiveToRecycleBin || SettingsService.Instance.Settings.MoveArchiveToRecycleBin);
 
-            if ((shouldDelete || shouldRecycle) && successfullyExtractedFiles.Count > 0)
+            // Never delete archives or PAR2 files if extraction was only partially successful or failed
+            if (allSuccess && (shouldDelete || shouldRecycle) && successfullyExtractedFiles.Count > 0)
             {
                 var cleanupStepName = "Cleanup";
 
@@ -1267,6 +1270,13 @@ public class ArchiveExtractionService
 
     private void TryDeletePackageArchives(IEnumerable<string> archiveFilesToDelete, bool sendToRecycleBin, DownloadPackage? package = null)
     {
+        // Guard: never delete archives or PAR2 files if the package extraction was not completely successful
+        if (package != null && !package.IsExtracted)
+        {
+            AppLogger.Warn($"[ArchiveExtractor] Skipping archive/PAR2 deletion for '{package.Name}' because package extraction was not completely successful.");
+            return;
+        }
+
         var files = new HashSet<string>(archiveFilesToDelete, StringComparer.OrdinalIgnoreCase);
 
         if (SettingsService.Instance.Settings.DeletePar2AfterExtraction && package != null)

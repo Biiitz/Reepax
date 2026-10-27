@@ -460,6 +460,84 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
+    public async Task CheckAndExtractPackage_WhenPartialArchiveFails_DoesNotDeleteArchivesOrPar2Files()
+    {
+        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PartialFailTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDir);
+
+        try
+        {
+            var validZipPath = Path.Combine(testDir, "valid_archive.zip");
+            using (var zip = ZipFile.Open(validZipPath, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("valid.txt");
+                using var writer = new StreamWriter(entry.Open());
+                writer.WriteLine("Valid content");
+            }
+
+            var corruptZipPath = Path.Combine(testDir, "corrupt_archive.zip");
+            await File.WriteAllBytesAsync(corruptZipPath, new byte[] { 0x50, 0x4B, 0x03, 0x04, 0xFF, 0xFF, 0xFF });
+
+            var par2Path = Path.Combine(testDir, "archive.par2");
+            await File.WriteAllTextAsync(par2Path, "PAR2 dummy content");
+
+            var prevDeletePar2 = SettingsService.Instance.Settings.DeletePar2AfterExtraction;
+            SettingsService.Instance.Settings.DeletePar2AfterExtraction = true;
+
+            try
+            {
+                var package = new DownloadPackage
+                {
+                    Name = "PartialFailPkg",
+                    SaveDirectory = testDir,
+                    AutoExtractArchives = true,
+                    DeleteArchiveAfterExtraction = true
+                };
+
+                package.Items.Add(new DownloadItem
+                {
+                    FileName = "valid_archive.zip",
+                    SaveFilePath = validZipPath,
+                    Status = DownloadStatus.Completed,
+                    IsEnabled = true
+                });
+
+                package.Items.Add(new DownloadItem
+                {
+                    FileName = "corrupt_archive.zip",
+                    SaveFilePath = corruptZipPath,
+                    Status = DownloadStatus.Completed,
+                    IsEnabled = true
+                });
+
+                package.Items.Add(new DownloadItem
+                {
+                    FileName = "archive.par2",
+                    SaveFilePath = par2Path,
+                    Status = DownloadStatus.Completed,
+                    IsEnabled = true
+                });
+
+                var success = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
+
+                Assert.False(success);
+                Assert.False(package.IsExtracted);
+                Assert.True(File.Exists(validZipPath));
+                Assert.True(File.Exists(corruptZipPath));
+                Assert.True(File.Exists(par2Path));
+            }
+            finally
+            {
+                SettingsService.Instance.Settings.DeletePar2AfterExtraction = prevDeletePar2;
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task ZipSlip_ZipArchive_TraversingEntry_RejectedAndDoesNotExtractOutside()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_ZipSlip_" + Guid.NewGuid().ToString("N"));
