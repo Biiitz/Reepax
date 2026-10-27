@@ -1438,44 +1438,58 @@ public class DownloadEngine
         }
     }
 
-    private class RollingSpeedTracker
+    internal sealed class RollingSpeedTracker
     {
+        private const double WindowSeconds = 4.0;
+        private const double EmaAlpha = 0.28;
         private readonly Queue<(long Timestamp, long CumulativeBytes)> _samples = new();
         private readonly object _lock = new();
+        private double _smoothedSpeed;
 
-        public RollingSpeedTracker(long initialCumulativeBytes = 0)
+        public RollingSpeedTracker(long initialCumulativeBytes = 0, long? initialTimestamp = null)
         {
-            _samples.Enqueue((Stopwatch.GetTimestamp(), initialCumulativeBytes));
+            _samples.Enqueue((initialTimestamp ?? Stopwatch.GetTimestamp(), initialCumulativeBytes));
         }
 
         public double CalculateSpeed(long currentCumulativeBytes)
+            => CalculateSpeed(currentCumulativeBytes, Stopwatch.GetTimestamp());
+
+        internal double CalculateSpeed(long currentCumulativeBytes, long nowTimestamp)
         {
             lock (_lock)
             {
-                var now = Stopwatch.GetTimestamp();
-                _samples.Enqueue((now, currentCumulativeBytes));
-                PruneOldSamples(now);
+                _samples.Enqueue((nowTimestamp, currentCumulativeBytes));
+                PruneOldSamples(nowTimestamp);
 
                 if (_samples.Count < 2)
-                    return 0;
+                    return _smoothedSpeed;
 
                 var earliest = _samples.Peek();
-                var duration = (double)(now - earliest.Timestamp) / Stopwatch.Frequency;
+                var duration = (double)(nowTimestamp - earliest.Timestamp) / Stopwatch.Frequency;
 
                 if (duration <= 0.05)
-                    return 0;
+                    return _smoothedSpeed;
 
                 long bytesDiff = currentCumulativeBytes - earliest.CumulativeBytes;
                 if (bytesDiff <= 0)
+                {
+                    _smoothedSpeed = 0;
                     return 0;
+                }
 
-                return bytesDiff / duration;
+                double windowSpeed = bytesDiff / duration;
+                _smoothedSpeed = _smoothedSpeed <= 0
+                    ? windowSpeed
+                    : (EmaAlpha * windowSpeed) + ((1.0 - EmaAlpha) * _smoothedSpeed);
+
+                return _smoothedSpeed;
             }
         }
 
         private void PruneOldSamples(long now)
         {
-            while (_samples.Count > 1 && (((double)(now - _samples.Peek().Timestamp) / Stopwatch.Frequency) > 1.5))
+            // Keep a 4-second sliding window while always retaining at least one prior sample
+            while (_samples.Count > 2 && (((double)(now - _samples.Peek().Timestamp) / Stopwatch.Frequency) > WindowSeconds))
             {
                 _samples.Dequeue();
             }

@@ -738,6 +738,11 @@ public partial class DownloadPackage : ObservableObject
         SafeInvoke(RecalculateAggregatesInternal);
     }
 
+    private const double PackageEtaSmoothingAlpha = 0.28;
+    private double _smoothedPackageSpeed;
+    private int _lastActiveDownloadingCount;
+    private int _lastEnabledCount;
+
     private void RecalculateAggregatesInternal()
     {
         EnsureNextTaskSteps();
@@ -746,6 +751,9 @@ public partial class DownloadPackage : ObservableObject
         TotalItemsCount = itemsSnapshot.Length;
         if (TotalItemsCount == 0)
         {
+            _smoothedPackageSpeed = 0;
+            _lastActiveDownloadingCount = 0;
+            _lastEnabledCount = 0;
             TotalBytes = 0;
             DownloadedBytes = 0;
             ProgressPercentage = 0;
@@ -766,6 +774,7 @@ public partial class DownloadPackage : ObservableObject
         double speed = 0;
         int completed = 0;
         bool hasActive = false;
+        int activeDownloadingCount = 0;
         bool hasError = false;
         bool hasCaptcha = false;
         int enabledCount = 0;
@@ -820,7 +829,10 @@ public partial class DownloadPackage : ObservableObject
                     sumItemProgress += itemPct;
 
                     if (item.Status == DownloadStatus.Downloading)
+                    {
                         hasActive = true;
+                        activeDownloadingCount++;
+                    }
                     else if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)
                         hasCaptcha = true;
                     else if (item.Status is DownloadStatus.Failed or DownloadStatus.Aborted)
@@ -919,17 +931,26 @@ public partial class DownloadPackage : ObservableObject
         OnPropertyChanged(nameof(CanEditPackage));
         OnPropertyChanged(nameof(IsFullyCompleted));
 
+        bool structureChanged = activeDownloadingCount != _lastActiveDownloadingCount || enabledCount != _lastEnabledCount;
+        _lastActiveDownloadingCount = activeDownloadingCount;
+        _lastEnabledCount = enabledCount;
+
         if (speed > 0 && enabledRemainingBytes > 0)
         {
-            double naiveEta = (double)enabledRemainingBytes / speed;
+            _smoothedPackageSpeed = (_smoothedPackageSpeed <= 0 || structureChanged)
+                ? speed
+                : (PackageEtaSmoothingAlpha * speed) + ((1.0 - PackageEtaSmoothingAlpha) * _smoothedPackageSpeed);
+            double naiveEta = (double)enabledRemainingBytes / _smoothedPackageSpeed;
             RemainingSeconds = Math.Max(naiveEta, maxActiveItemEta);
         }
         else if (maxActiveItemEta > 0)
         {
+            _smoothedPackageSpeed = 0;
             RemainingSeconds = maxActiveItemEta;
         }
         else
         {
+            _smoothedPackageSpeed = 0;
             RemainingSeconds = 0;
         }
 
@@ -944,6 +965,7 @@ public partial class DownloadPackage : ObservableObject
             StatusMessage = Loc.Get("Status_Skipped");
             SpeedBytesPerSecond = 0;
             RemainingSeconds = 0;
+            _smoothedPackageSpeed = 0;
         }
         else if (itemsSnapshot.Length > 0 && enabledCount == 0)
         {
@@ -951,15 +973,18 @@ public partial class DownloadPackage : ObservableObject
             StatusMessage = Loc.Get("Status_Skipped");
             SpeedBytesPerSecond = 0;
             RemainingSeconds = 0;
+            _smoothedPackageSpeed = 0;
         }
         else if (itemsSnapshot.Length == 0)
         {
             // Package has no items: preserve current status and status message
             SpeedBytesPerSecond = 0;
             RemainingSeconds = 0;
+            _smoothedPackageSpeed = 0;
         }
         else if (enabledCount > 0 && itemsSnapshot.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
         {
+            _smoothedPackageSpeed = 0;
             RecordSessionDuration();
             Status = DownloadStatus.Completed;
             ProgressPercentage = 100;

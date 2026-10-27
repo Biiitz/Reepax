@@ -201,4 +201,53 @@ public class PerformanceOptimizationTests
         Assert.NotNull(icon1);
         Assert.NotNull(icon2);
     }
+
+    [Fact]
+    public void RollingSpeedTracker_SmoothsShortSocketDipsWithEmaAndFourSecondWindow()
+    {
+        long freq = Stopwatch.Frequency;
+        long t0 = 1_000_000L;
+        var tracker = new Reepax.Services.Download.DownloadEngine.RollingSpeedTracker(0, t0);
+
+        // Steady 10 MB/s for 3 seconds (in 1s increments)
+        double s1 = tracker.CalculateSpeed(10_000_000, t0 + freq * 1);
+        double s2 = tracker.CalculateSpeed(20_000_000, t0 + freq * 2);
+        double s3 = tracker.CalculateSpeed(30_000_000, t0 + freq * 3);
+
+        Assert.InRange(s1, 9_900_000, 10_100_000);
+        Assert.InRange(s3, 9_900_000, 10_100_000);
+
+        // Brief 1-second socket stall at t=4s (still 30 MB total over 4s window -> 7.5 MB/s window, smoothed via EMA)
+        double s4 = tracker.CalculateSpeed(30_000_000, t0 + freq * 4);
+        Assert.True(s4 > 8_500_000, $"Expected smoothed speed > 8.5 MB/s during brief stall, got {s4}");
+    }
+
+    [Fact]
+    public void DownloadItem_And_DownloadPackage_SmoothEtaDuringTransientSpeedDip()
+    {
+        var package = new DownloadPackage { Name = "EMA ETA Package" };
+        var item = new DownloadItem
+        {
+            FileName = "archive.part1.rar",
+            TotalBytes = 100_000_000L,
+            DownloadedBytes = 0L,
+            Status = DownloadStatus.Downloading,
+            IsEnabled = true
+        };
+        package.Items.Add(item);
+
+        // Initial steady speed: 10 MB/s with 90 MB left -> 9s ETA
+        item.UpdateProgress(10_000_000L, 100_000_000L, 10_000_000);
+        package.RecalculateAggregates(force: true);
+        Assert.Equal(9.0, item.RemainingSeconds, 2);
+        Assert.Equal(9.0, package.RemainingSeconds, 2);
+
+        // Sudden 1-tick dip to 1 MB/s with 90 MB left: unsmoothed ETA would jump from 9s to 90s (10x spike)
+        item.UpdateProgress(10_000_000L, 100_000_000L, 1_000_000);
+        package.RecalculateAggregates(force: true);
+
+        // With EMA (alpha = 0.28), smoothed speed is 7.48 MB/s -> ETA ~12.03s instead of 90s
+        Assert.InRange(item.RemainingSeconds, 10.0, 15.0);
+        Assert.InRange(package.RemainingSeconds, 10.0, 15.0);
+    }
 }

@@ -258,6 +258,17 @@ public partial class DownloadItem : ObservableObject
         }
     }
 
+    private const double EtaSmoothingAlpha = 0.28;
+    private double _smoothedEtaSpeed;
+
+    partial void OnSpeedBytesPerSecondChanged(double value)
+    {
+        if (value <= 0)
+        {
+            _smoothedEtaSpeed = 0;
+        }
+    }
+
 #pragma warning disable MVVMTK0034 // Direct field access is intentional to batch updates atomically before raising PropertyChanged events
     public void UpdateProgress(long downloaded, long total, double speed)
     {
@@ -278,10 +289,14 @@ public partial class DownloadItem : ObservableObject
 
         if (speed > 0 && total > downloaded)
         {
-            _remainingSeconds = (total - downloaded) / speed;
+            _smoothedEtaSpeed = _smoothedEtaSpeed <= 0
+                ? speed
+                : (EtaSmoothingAlpha * speed) + ((1.0 - EtaSmoothingAlpha) * _smoothedEtaSpeed);
+            _remainingSeconds = (total - downloaded) / _smoothedEtaSpeed;
         }
         else
         {
+            _smoothedEtaSpeed = 0;
             _remainingSeconds = 0;
         }
 
