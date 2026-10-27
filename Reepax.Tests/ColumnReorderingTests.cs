@@ -256,5 +256,30 @@ public class ColumnReorderingTests : System.IDisposable
         Assert.True(atEnd3);
         Assert.True(indicatorXEnd > 0);
     }
+
+    [Fact]
+    public void ColumnWidthChange_NotifiesOnlyAffectedSlotAndTotalsOnce()
+    {
+        var vm = new MainViewModel();
+        vm.ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
+        vm.ColWidthName = 220;
+        vm.ColWidthSize = 75;
+
+        var changedProps = new List<string>();
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != null)
+                changedProps.Add(e.PropertyName);
+        };
+
+        MainWindow.ResizeMetadataColumn(vm, "Size", 75, 220, 25);
+
+        Assert.Contains(nameof(MainViewModel.GridColWidthSlot0), changedProps);
+        Assert.Contains(nameof(MainViewModel.GridColWidthSlot3), changedProps);
+        Assert.DoesNotContain(nameof(MainViewModel.GridColWidthSlot1), changedProps);
+        Assert.DoesNotContain(nameof(MainViewModel.ShowDividerName), changedProps);
+        Assert.Equal(1, changedProps.Count(p => p == nameof(MainViewModel.TotalVisibleColumnsWidth)));
+        Assert.Equal(1, changedProps.Count(p => p == nameof(MainViewModel.TotalContentMinWidth)));
+    }
 }
 

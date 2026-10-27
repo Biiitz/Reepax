@@ -32,80 +32,54 @@ public partial class MainViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthName))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthName = DefaultColWidthName;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthHoster))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthHoster = DefaultColWidthHoster;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthSavePath))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthSavePath = DefaultColWidthSavePath;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthSize))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthSize = DefaultColWidthSize;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthProgress))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthProgress = DefaultColWidthProgress;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthSpeed))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthSpeed = DefaultColWidthSpeed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthEta))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthEta = DefaultColWidthEta;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthStatus))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthStatus = DefaultColWidthStatus;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthDuration))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthDuration = DefaultColWidthDuration;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthAddedDate))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthAddedDate = DefaultColWidthAddedDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthCompletedDate))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthCompletedDate = DefaultColWidthCompletedDate;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthChecksum))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthChecksum = DefaultColWidthChecksum;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthActions))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private double _colWidthActions = DefaultColWidthActions;
 
     // =========================================================================
@@ -555,6 +529,7 @@ public partial class MainViewModel
     private bool _isResizingOrMovingWindow;
 
     private bool _isBatchUpdatingColumnWidths;
+    private readonly HashSet<string> _batchDirtyColumns = new(StringComparer.Ordinal);
 
     public void BeginColumnWidthUpdates()
     {
@@ -564,7 +539,16 @@ public partial class MainViewModel
     public void EndColumnWidthUpdates()
     {
         _isBatchUpdatingColumnWidths = false;
-        NotifySlotWidthChanges();
+        if (_batchDirtyColumns.Count > 0)
+        {
+            foreach (var column in _batchDirtyColumns)
+            {
+                NotifySingleColumnWidth(column);
+            }
+            _batchDirtyColumns.Clear();
+            OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
+            OnPropertyChanged(nameof(TotalContentMinWidth));
+        }
         if (!IsDraggingColumnWidth && !IsResizingOrMovingWindow)
         {
             _settingsService.RequestSaveSettings(350);
@@ -573,8 +557,19 @@ public partial class MainViewModel
 
     public void NotifyColumnWidthChanged(string column)
     {
-        if (_isBatchUpdatingColumnWidths) return;
+        if (_isBatchUpdatingColumnWidths)
+        {
+            _batchDirtyColumns.Add(column);
+            return;
+        }
 
+        NotifySingleColumnWidth(column);
+        OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
+        OnPropertyChanged(nameof(TotalContentMinWidth));
+    }
+
+    private void NotifySingleColumnWidth(string column)
+    {
         int slot = GetColumnIndex(column);
         if (slot >= 0)
         {
@@ -597,9 +592,6 @@ public partial class MainViewModel
             case "Checksum": OnPropertyChanged(nameof(GridColWidthChecksum)); break;
             case "Actions": OnPropertyChanged(nameof(GridColWidthActions)); break;
         }
-
-        OnPropertyChanged(nameof(TotalVisibleColumnsWidth));
-        OnPropertyChanged(nameof(TotalContentMinWidth));
     }
 
     public void NotifySlotWidth(int slot)
@@ -977,18 +969,27 @@ public partial class MainViewModel
     [RelayCommand]
     public void AutoFitColumns()
     {
-        if (ShowColHoster) ColWidthHoster = DefaultColWidthHoster;
-        if (ShowColSavePath) ColWidthSavePath = DefaultColWidthSavePath;
-        if (ShowColSize) ColWidthSize = DefaultColWidthSize;
-        if (ShowColProgress) ColWidthProgress = DefaultColWidthProgress;
-        if (ShowColSpeed) ColWidthSpeed = DefaultColWidthSpeed;
-        if (ShowColEta) ColWidthEta = DefaultColWidthEta;
-        if (ShowColStatus) ColWidthStatus = DefaultColWidthStatus;
-        if (ShowColDuration) ColWidthDuration = DefaultColWidthDuration;
-        if (ShowColAddedDate) ColWidthAddedDate = DefaultColWidthAddedDate;
-        if (ShowColCompletedDate) ColWidthCompletedDate = DefaultColWidthCompletedDate;
-        if (ShowColChecksum) ColWidthChecksum = DefaultColWidthChecksum;
-        if (ShowColActions) ColWidthActions = DefaultColWidthActions;
+        BeginColumnWidthUpdates();
+        try
+        {
+            if (ShowColHoster) ColWidthHoster = DefaultColWidthHoster;
+            if (ShowColSavePath) ColWidthSavePath = DefaultColWidthSavePath;
+            if (ShowColSize) ColWidthSize = DefaultColWidthSize;
+            if (ShowColProgress) ColWidthProgress = DefaultColWidthProgress;
+            if (ShowColSpeed) ColWidthSpeed = DefaultColWidthSpeed;
+            if (ShowColEta) ColWidthEta = DefaultColWidthEta;
+            if (ShowColStatus) ColWidthStatus = DefaultColWidthStatus;
+            if (ShowColDuration) ColWidthDuration = DefaultColWidthDuration;
+            if (ShowColAddedDate) ColWidthAddedDate = DefaultColWidthAddedDate;
+            if (ShowColCompletedDate) ColWidthCompletedDate = DefaultColWidthCompletedDate;
+            if (ShowColChecksum) ColWidthChecksum = DefaultColWidthChecksum;
+            if (ShowColActions) ColWidthActions = DefaultColWidthActions;
+        }
+        finally
+        {
+            _batchDirtyColumns.Clear();
+            _isBatchUpdatingColumnWidths = false;
+        }
 
         _settingsService.Settings.ColWidthHoster = ColWidthHoster;
         _settingsService.Settings.ColWidthSavePath = ColWidthSavePath;
@@ -1004,26 +1005,34 @@ public partial class MainViewModel
         _settingsService.Settings.ColWidthActions = ColWidthActions;
         _settingsService.SaveSettings();
         NotifyDividerChanges();
-        NotifySlotWidthChanges();
         ColumnLayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
     public void ResetColumns()
     {
-        ColWidthName = DefaultColWidthName;
-        ColWidthHoster = DefaultColWidthHoster;
-        ColWidthSavePath = DefaultColWidthSavePath;
-        ColWidthSize = DefaultColWidthSize;
-        ColWidthProgress = DefaultColWidthProgress;
-        ColWidthSpeed = DefaultColWidthSpeed;
-        ColWidthEta = DefaultColWidthEta;
-        ColWidthStatus = DefaultColWidthStatus;
-        ColWidthDuration = DefaultColWidthDuration;
-        ColWidthAddedDate = DefaultColWidthAddedDate;
-        ColWidthCompletedDate = DefaultColWidthCompletedDate;
-        ColWidthChecksum = DefaultColWidthChecksum;
-        ColWidthActions = DefaultColWidthActions;
+        BeginColumnWidthUpdates();
+        try
+        {
+            ColWidthName = DefaultColWidthName;
+            ColWidthHoster = DefaultColWidthHoster;
+            ColWidthSavePath = DefaultColWidthSavePath;
+            ColWidthSize = DefaultColWidthSize;
+            ColWidthProgress = DefaultColWidthProgress;
+            ColWidthSpeed = DefaultColWidthSpeed;
+            ColWidthEta = DefaultColWidthEta;
+            ColWidthStatus = DefaultColWidthStatus;
+            ColWidthDuration = DefaultColWidthDuration;
+            ColWidthAddedDate = DefaultColWidthAddedDate;
+            ColWidthCompletedDate = DefaultColWidthCompletedDate;
+            ColWidthChecksum = DefaultColWidthChecksum;
+            ColWidthActions = DefaultColWidthActions;
+        }
+        finally
+        {
+            _batchDirtyColumns.Clear();
+            _isBatchUpdatingColumnWidths = false;
+        }
 
         ShowColName = true;
         ShowColHoster = true;
@@ -1072,7 +1081,6 @@ public partial class MainViewModel
         s.ShowColActions = ShowColActions;
 
         NotifyDividerChanges();
-        NotifyColumnOrderChanges();
         ClearColumnSort();
         _settingsService.SaveSettings();
         StatusSummary = Loc.Get("Status_ColumnWidthsReset");
@@ -1082,19 +1090,28 @@ public partial class MainViewModel
     [RelayCommand]
     public void ResetColumnWidths()
     {
-        ColWidthName = DefaultColWidthName;
-        ColWidthHoster = DefaultColWidthHoster;
-        ColWidthSavePath = DefaultColWidthSavePath;
-        ColWidthSize = DefaultColWidthSize;
-        ColWidthProgress = DefaultColWidthProgress;
-        ColWidthSpeed = DefaultColWidthSpeed;
-        ColWidthEta = DefaultColWidthEta;
-        ColWidthStatus = DefaultColWidthStatus;
-        ColWidthDuration = DefaultColWidthDuration;
-        ColWidthAddedDate = DefaultColWidthAddedDate;
-        ColWidthCompletedDate = DefaultColWidthCompletedDate;
-        ColWidthChecksum = DefaultColWidthChecksum;
-        ColWidthActions = DefaultColWidthActions;
+        BeginColumnWidthUpdates();
+        try
+        {
+            ColWidthName = DefaultColWidthName;
+            ColWidthHoster = DefaultColWidthHoster;
+            ColWidthSavePath = DefaultColWidthSavePath;
+            ColWidthSize = DefaultColWidthSize;
+            ColWidthProgress = DefaultColWidthProgress;
+            ColWidthSpeed = DefaultColWidthSpeed;
+            ColWidthEta = DefaultColWidthEta;
+            ColWidthStatus = DefaultColWidthStatus;
+            ColWidthDuration = DefaultColWidthDuration;
+            ColWidthAddedDate = DefaultColWidthAddedDate;
+            ColWidthCompletedDate = DefaultColWidthCompletedDate;
+            ColWidthChecksum = DefaultColWidthChecksum;
+            ColWidthActions = DefaultColWidthActions;
+        }
+        finally
+        {
+            _batchDirtyColumns.Clear();
+            _isBatchUpdatingColumnWidths = false;
+        }
 
         ColumnOrder = new List<string>(AppSettings.DefaultColumnOrder);
 
@@ -1116,7 +1133,6 @@ public partial class MainViewModel
         _settingsService.SaveSettings();
         StatusSummary = Loc.Get("Status_ColumnWidthsReset");
         NotifyDividerChanges();
-        NotifyColumnOrderChanges();
         ColumnLayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 }

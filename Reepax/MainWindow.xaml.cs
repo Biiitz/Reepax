@@ -4201,8 +4201,16 @@ public partial class MainWindow : Window
             requestedColWidth = startColWidth + maxAbsorbable;
         }
 
-        vm.ColWidthName = Math.Round(newNameWidth, 1);
-        SetColumnWidth(vm, col, Math.Round(requestedColWidth, 1));
+        vm.BeginColumnWidthUpdates();
+        try
+        {
+            vm.ColWidthName = Math.Round(newNameWidth, 1);
+            SetColumnWidth(vm, col, Math.Round(requestedColWidth, 1));
+        }
+        finally
+        {
+            vm.EndColumnWidthUpdates();
+        }
     }
 
     internal static void ResizeNameColumn(
@@ -4217,56 +4225,64 @@ public partial class MainWindow : Window
         double targetNameWidth = Math.Max(minNameWidth, startNameWidth + deltaX);
         double delta = targetNameWidth - startNameWidth;
 
-        if (delta > 0)
+        vm.BeginColumnWidthUpdates();
+        try
         {
-            // Name wants to expand: metadata columns must shrink proportionally to absorb delta
-            double totalReducible = startMetadataWidths.Sum(kv => Math.Max(0, kv.Value - GetColumnMinWidth(kv.Key)));
-            if (totalReducible <= 0) return;
-
-            double actualDelta = Math.Min(delta, totalReducible);
-            targetNameWidth = startNameWidth + actualDelta;
-
-            double sumAssigned = 0;
-            var list = startMetadataWidths.ToList();
-            for (int i = 0; i < list.Count - 1; i++)
+            if (delta > 0)
             {
-                var kv = list[i];
-                double colMin = GetColumnMinWidth(kv.Key);
-                double colReducible = Math.Max(0, kv.Value - colMin);
-                double share = colReducible / totalReducible;
-                double newColWidth = Math.Max(colMin, Math.Round(kv.Value - (actualDelta * share), 1));
-                SetColumnWidth(vm, kv.Key, newColWidth);
-                sumAssigned += (kv.Value - newColWidth);
+                // Name wants to expand: metadata columns must shrink proportionally to absorb delta
+                double totalReducible = startMetadataWidths.Sum(kv => Math.Max(0, kv.Value - GetColumnMinWidth(kv.Key)));
+                if (totalReducible <= 0) return;
+
+                double actualDelta = Math.Min(delta, totalReducible);
+                targetNameWidth = startNameWidth + actualDelta;
+
+                double sumAssigned = 0;
+                var list = startMetadataWidths.ToList();
+                for (int i = 0; i < list.Count - 1; i++)
+                {
+                    var kv = list[i];
+                    double colMin = GetColumnMinWidth(kv.Key);
+                    double colReducible = Math.Max(0, kv.Value - colMin);
+                    double share = colReducible / totalReducible;
+                    double newColWidth = Math.Max(colMin, Math.Round(kv.Value - (actualDelta * share), 1));
+                    SetColumnWidth(vm, kv.Key, newColWidth);
+                    sumAssigned += (kv.Value - newColWidth);
+                }
+                var lastKv = list[^1];
+                double lastColMin = GetColumnMinWidth(lastKv.Key);
+                double lastNewColWidth = Math.Max(lastColMin, Math.Round(lastKv.Value - (actualDelta - sumAssigned), 1));
+                SetColumnWidth(vm, lastKv.Key, lastNewColWidth);
             }
-            var lastKv = list[^1];
-            double lastColMin = GetColumnMinWidth(lastKv.Key);
-            double lastNewColWidth = Math.Max(lastColMin, Math.Round(lastKv.Value - (actualDelta - sumAssigned), 1));
-            SetColumnWidth(vm, lastKv.Key, lastNewColWidth);
+            else if (delta < 0)
+            {
+                // Name wants to shrink: metadata columns expand proportionally to fill freed space
+                double freedSpace = -delta;
+                double currentMetadataSum = startMetadataWidths.Values.Sum();
+                if (currentMetadataSum <= 0) return;
+
+                double sumAssigned = 0;
+                var list = startMetadataWidths.ToList();
+                for (int i = 0; i < list.Count - 1; i++)
+                {
+                    var kv = list[i];
+                    double share = kv.Value / currentMetadataSum;
+                    double added = Math.Round(freedSpace * share, 1);
+                    double newColWidth = kv.Value + added;
+                    SetColumnWidth(vm, kv.Key, newColWidth);
+                    sumAssigned += added;
+                }
+                var lastKv = list[^1];
+                double lastNewColWidth = Math.Round(lastKv.Value + (freedSpace - sumAssigned), 1);
+                SetColumnWidth(vm, lastKv.Key, lastNewColWidth);
+            }
+
+            vm.ColWidthName = Math.Round(targetNameWidth, 1);
         }
-        else if (delta < 0)
+        finally
         {
-            // Name wants to shrink: metadata columns expand proportionally to fill freed space
-            double freedSpace = -delta;
-            double currentMetadataSum = startMetadataWidths.Values.Sum();
-            if (currentMetadataSum <= 0) return;
-
-            double sumAssigned = 0;
-            var list = startMetadataWidths.ToList();
-            for (int i = 0; i < list.Count - 1; i++)
-            {
-                var kv = list[i];
-                double share = kv.Value / currentMetadataSum;
-                double added = Math.Round(freedSpace * share, 1);
-                double newColWidth = kv.Value + added;
-                SetColumnWidth(vm, kv.Key, newColWidth);
-                sumAssigned += added;
-            }
-            var lastKv = list[^1];
-            double lastNewColWidth = Math.Round(lastKv.Value + (freedSpace - sumAssigned), 1);
-            SetColumnWidth(vm, lastKv.Key, lastNewColWidth);
+            vm.EndColumnWidthUpdates();
         }
-
-        vm.ColWidthName = Math.Round(targetNameWidth, 1);
     }
 
     private void HeaderDivider_MouseMove(object sender, MouseEventArgs e)
