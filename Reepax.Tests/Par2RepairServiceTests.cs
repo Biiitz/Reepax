@@ -402,5 +402,34 @@ You need 4 more recovery blocks to be able to repair.
             try { Directory.Delete(tempDir, true); } catch { }
         }
     }
+
+    [Fact]
+    public void RestoreBackupFiles_WhenBaseArchiveMissingAfterAbort_RestoresBackupFile()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_RestoreMissingBaseTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var partRar = Path.Combine(tempDir, "archive.part01.rar");
+            var partRarBackup = Path.Combine(tempDir, "archive.part01.rar.1");
+            var patchFile = Path.Combine(tempDir, "patch.1");
+
+            // Simulate par2 having renamed archive.part01.rar -> archive.part01.rar.1 before aborting (baseFile not yet created)
+            File.WriteAllText(partRarBackup, "original archive part content");
+            File.WriteAllText(patchFile, "legitimate patch file");
+
+            Par2RepairService.RestoreBackupFiles(tempDir);
+
+            Assert.True(File.Exists(partRar), "archive.part01.rar must be restored even when base file was not yet created");
+            Assert.Equal("original archive part content", File.ReadAllText(partRar));
+            Assert.False(File.Exists(partRarBackup), "archive.part01.rar.1 must have been moved back to archive.part01.rar");
+            Assert.True(File.Exists(patchFile), "patch.1 with no base file must be kept intact");
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
 

@@ -496,12 +496,17 @@ public class Par2RepairService
                     if (string.IsNullOrWhiteSpace(Path.GetFileName(baseFile)))
                         continue;
 
+                    bool baseExists = File.Exists(baseFile);
+                    if (!baseExists && !Path.HasExtension(baseFile))
+                        continue;
+
                     // If baseFile was partially written during failed repair, delete it and restore original backup
-                    if (File.Exists(baseFile))
+                    if (baseExists)
                     {
                         try { File.Delete(baseFile); } catch { }
-                        File.Move(backupFile, baseFile);
                     }
+
+                    File.Move(backupFile, baseFile, overwrite: true);
                 }
                 catch (Exception ex)
                 {
