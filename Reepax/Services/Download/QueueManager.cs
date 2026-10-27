@@ -577,6 +577,13 @@ public class QueueManager
 
     public void DemoteActiveItemToQueued(DownloadItem item)
     {
+        item.Status = DownloadStatus.Queued;
+        item.StatusMessage = Loc.Get("Status_Queued");
+        item.IsTrickling = false;
+        item.SpeedBytesPerSecond = 0;
+        item.RemainingSeconds = 0;
+        item.CurrentSlot = null;
+
         SafeInvoke(() =>
         {
             item.IsTrickling = false;
@@ -589,7 +596,7 @@ public class QueueManager
 
         if (DownloadEngine.Instance.IsDownloading(item.Id))
         {
-            var pauseTask = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: false);
+            var pauseTask = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: false, demotingToQueued: true);
             if (pauseTask != null && !pauseTask.IsCompleted)
             {
                 _ = pauseTask.ContinueWith(_ => ProcessQueue(), TaskScheduler.Default);

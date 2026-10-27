@@ -1127,4 +1127,26 @@ public class QueueManagerTests
         Assert.Equal(3, assignedItems.Count);
         Assert.Equal(3, assignedItems.Distinct().Count());
     }
+
+    [Fact]
+    public void DemoteActiveItemToQueued_SetsItemStatusToQueuedSynchronously()
+    {
+        var queueManager = new QueueManager();
+        var item = new DownloadItem
+        {
+            FileName = "demote_test.bin",
+            Status = DownloadStatus.Downloading,
+            SpeedBytesPerSecond = 100000,
+            RemainingSeconds = 42,
+            CurrentSlot = 1
+        };
+
+        queueManager.DemoteActiveItemToQueued(item);
+
+        Assert.Equal(DownloadStatus.Queued, item.Status);
+        Assert.Equal(0, item.SpeedBytesPerSecond);
+        Assert.Equal(0, item.RemainingSeconds);
+        Assert.Null(item.CurrentSlot);
+        Assert.False(item.IsTrickling);
+    }
 }

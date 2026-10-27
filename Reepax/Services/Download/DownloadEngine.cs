@@ -25,6 +25,7 @@ public class DownloadEngine
 
     private readonly HttpClient _httpClient;
     private readonly ConcurrentDictionary<Guid, (CancellationTokenSource Cts, TaskCompletionSource<bool> Tcs)> _activeDownloads = new();
+    private readonly ConcurrentDictionary<Guid, bool> _demotedToQueuedItems = new();
     private readonly BandwidthThrottler _throttler = new();
 
     public int ActiveDownloadsCount => _activeDownloads.Count;
@@ -33,6 +34,7 @@ public class DownloadEngine
 
     private void CompleteAndRemoveActiveDownload(Guid itemId)
     {
+        _demotedToQueuedItems.TryRemove(itemId, out _);
         if (_activeDownloads.TryRemove(itemId, out var entry))
         {
             try { entry.Cts.Dispose(); } catch { }
@@ -379,9 +381,14 @@ public class DownloadEngine
         catch (OperationCanceledException)
         {
             item.RecordSessionDuration();
+            bool isDemoted = _demotedToQueuedItems.ContainsKey(item.Id) || item.Status == DownloadStatus.Queued;
+            if (!isDemoted)
+            {
+                item.Status = DownloadStatus.Paused;
+            }
             SafeInvokeAsync(() =>
             {
-                if (item.Status != DownloadStatus.Queued)
+                if (!isDemoted && item.Status != DownloadStatus.Queued)
                 {
                     item.Status = DownloadStatus.Paused;
                     item.StatusMessage = !item.IsEnabled ? Loc.Get("Status_Skipped") : Loc.Get("Status_Paused");
@@ -1293,8 +1300,13 @@ public class DownloadEngine
         return extractedFileName;
     }
 
-    public Task? CancelOrPauseDownload(Guid itemId, bool waitForCompletion = false, int timeoutMs = 2000)
+    public Task? CancelOrPauseDownload(Guid itemId, bool waitForCompletion = false, int timeoutMs = 2000, bool demotingToQueued = false)
     {
+        if (demotingToQueued)
+        {
+            _demotedToQueuedItems[itemId] = true;
+        }
+
         if (_activeDownloads.TryGetValue(itemId, out var entry))
         {
             try { entry.Cts.Cancel(); } catch { }

@@ -2587,4 +2587,53 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task DownloadEngine_CancelOrPauseDownload_WithDemotingToQueued_RetainsQueuedStatus()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxDemoteQueued_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "demote_test.bin");
+            var item = new DownloadItem
+            {
+                FileName = "demote_test.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/demote_test.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            var downloadStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var handler = new TestMockHttpMessageHandler(async (req, ct) =>
+            {
+                downloadStarted.TrySetResult(true);
+                await Task.Delay(10000, ct);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            var startTask = engine.StartDownloadAsync(item, "https://example.com/demote_test.bin", null, null, null, null);
+            await downloadStarted.Task;
+
+            // Demote: pass demotingToQueued = true
+            item.Status = DownloadStatus.Queued;
+            var pauseTask = engine.CancelOrPauseDownload(item.Id, waitForCompletion: true, demotingToQueued: true);
+            if (pauseTask != null)
+            {
+                await pauseTask;
+            }
+
+            await startTask;
+
+            Assert.Equal(DownloadStatus.Queued, item.Status);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
