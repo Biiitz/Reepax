@@ -2766,4 +2766,110 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task DownloadEngine_CancelOrPauseWithWaitForCompletion_ReleasesPartFileHandleImmediatelyWithoutDeadlock()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxSyncCancelDelete_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "active_delete.bin");
+            var partFile = destinationFile + ".part";
+            var pkg = new DownloadPackage
+            {
+                Name = "ActiveDeletePkg",
+                SaveDirectory = tempFolder
+            };
+            var item = new DownloadItem
+            {
+                PackageId = pkg.Id,
+                FileName = "active_delete.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/active_delete.bin",
+                Status = DownloadStatus.Queued
+            };
+            pkg.Items.Add(item);
+
+            var chunkWritten = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var streamContent = new TestSlowStream(chunkWritten, totalBytes: 1024 * 1024);
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                var resp = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StreamContent(streamContent)
+                };
+                resp.Content.Headers.ContentLength = 1024 * 1024;
+                return Task.FromResult(resp);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 1 };
+
+            var downloadTask = engine.StartDownloadAsync(item, item.DirectDownloadUrl, null, null, null, null);
+            await chunkWritten.Task;
+            await Task.Delay(30);
+
+            Assert.True(File.Exists(partFile));
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var task = engine.CancelOrPauseDownload(item.Id, waitForCompletion: true, timeoutMs: 2000);
+            sw.Stop();
+
+            Assert.NotNull(task);
+            Assert.True(task.IsCompleted);
+            Assert.True(sw.ElapsedMilliseconds < 1000, $"Expected synchronous cancel wait to complete quickly without deadlock, took {sw.ElapsedMilliseconds}ms");
+
+            // File handle on .part must already be released so immediate deletion succeeds without IOException
+            File.Delete(partFile);
+            Assert.False(File.Exists(partFile));
+
+            await downloadTask;
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    private sealed class TestSlowStream : Stream
+    {
+        private readonly TaskCompletionSource<bool> _firstReadTcs;
+        private readonly long _totalBytes;
+        private long _position;
+
+        public TestSlowStream(TaskCompletionSource<bool> firstReadTcs, long totalBytes)
+        {
+            _firstReadTcs = firstReadTcs;
+            _totalBytes = totalBytes;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => _totalBytes;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_position == 0)
+            {
+                int toWrite = Math.Min(buffer.Length, 4096);
+                buffer.Span.Slice(0, toWrite).Fill(0x42);
+                _position += toWrite;
+                _firstReadTcs.TrySetResult(true);
+                return toWrite;
+            }
+
+            await Task.Delay(10000, cancellationToken);
+            return 0;
+        }
+    }
 }

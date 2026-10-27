@@ -881,7 +881,19 @@ public class DownloadEngine
         Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segMetaPath);
 
         item.RecordSessionDuration();
-        SafeInvoke(() =>
+        item.DownloadedBytes = written;
+        item.ProgressPercentage = 100;
+        item.SpeedBytesPerSecond = 0;
+        item.RemainingSeconds = 0;
+        item.Status = DownloadStatus.Completed;
+        var completedAt = DateTime.Now;
+        item.CompletedAt = completedAt;
+        if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && completedAt >= item.StartedAt.Value)
+        {
+            item.ElapsedDurationMs = (long)(completedAt - item.StartedAt.Value).TotalMilliseconds;
+        }
+
+        SafeInvokeAsync(() =>
         {
             item.DownloadedBytes = written;
             item.ProgressPercentage = 100;
@@ -889,11 +901,7 @@ public class DownloadEngine
             item.RemainingSeconds = 0;
             item.Status = DownloadStatus.Completed;
             item.StatusMessage = Loc.Get("Status_Completed");
-            item.CompletedAt = DateTime.Now;
-            if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
-            {
-                item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
-            }
+            item.CompletedAt = completedAt;
         });
 
         CompleteAndRemoveActiveDownload(item.Id);
@@ -1209,6 +1217,7 @@ public class DownloadEngine
             finally
             {
                 try { await fileStream.FlushAsync(); } catch { }
+                try { fileStream.Close(); } catch { }
                 item.DownloadedBytes = currentDownloaded;
                 if (totalBytes > 0) item.TotalBytes = totalBytes;
                 SafeInvokeAsync(() =>
@@ -1272,8 +1281,14 @@ public class DownloadEngine
         item.SpeedBytesPerSecond = 0;
         item.RemainingSeconds = 0;
         item.Status = DownloadStatus.Completed;
+        var completedAt = DateTime.Now;
+        item.CompletedAt = completedAt;
+        if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && completedAt >= item.StartedAt.Value)
+        {
+            item.ElapsedDurationMs = (long)(completedAt - item.StartedAt.Value).TotalMilliseconds;
+        }
 
-        SafeInvoke(() =>
+        SafeInvokeAsync(() =>
         {
             item.DownloadedBytes = currentDownloaded;
             if (totalBytes <= 0) item.TotalBytes = currentDownloaded;
@@ -1283,11 +1298,7 @@ public class DownloadEngine
             item.RemainingSeconds = 0;
             item.Status = DownloadStatus.Completed;
             item.StatusMessage = Loc.Get("Status_Completed");
-            item.CompletedAt = DateTime.Now;
-            if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
-            {
-                item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
-            }
+            item.CompletedAt = completedAt;
         });
 
         CompleteAndRemoveActiveDownload(item.Id);

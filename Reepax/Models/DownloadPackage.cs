@@ -607,6 +607,7 @@ public partial class DownloadPackage : ObservableObject
     private const int ProgressRecalcIntervalMs = 300;
     private long _lastAggregateRecalcTicks; // Environment.TickCount64 of the last aggregation
     private volatile bool _isAggregatesDirty = true;
+    private int _asyncRecalcQueued;
 
     public bool IsDirty => _isAggregatesDirty;
 
@@ -623,7 +624,7 @@ public partial class DownloadPackage : ObservableObject
         {
             if (!IsCustomName)
             {
-                Reepax.Services.Extractor.LinkMetadataResolverService.TryUpdatePackageName(this);
+                SafeInvokeAsync(() => Reepax.Services.Extractor.LinkMetadataResolverService.TryUpdatePackageName(this));
             }
             return;
         }
@@ -631,8 +632,8 @@ public partial class DownloadPackage : ObservableObject
         if (e.PropertyName is nameof(DownloadItem.Status) or
             nameof(DownloadItem.IsEnabled))
         {
-            // Structural changes: recalculate aggregates immediately
-            RecalculateAggregates();
+            // Structural changes: recalculate aggregates immediately (asynchronously if on a background thread)
+            RecalculateAggregatesFromEvent(force: false);
             return;
         }
 
@@ -649,8 +650,59 @@ public partial class DownloadPackage : ObservableObject
             if (Environment.TickCount64 - Interlocked.Read(ref _lastAggregateRecalcTicks) < ProgressRecalcIntervalMs)
                 return;
 
-            RecalculateAggregates();
+            RecalculateAggregatesFromEvent(force: false);
         }
+    }
+
+    private void RecalculateAggregatesFromEvent(bool force)
+    {
+        var app = System.Windows.Application.Current;
+        if (!Services.Storage.DownloadPersistenceService.IsTestEnvironment &&
+            app?.Dispatcher != null &&
+            app.Dispatcher.Thread?.IsAlive == true &&
+            !app.Dispatcher.HasShutdownStarted &&
+            !app.Dispatcher.HasShutdownFinished &&
+            !app.Dispatcher.CheckAccess())
+        {
+            // Dispatch asynchronously from background threads to prevent deadlocks when UI thread awaits task completion
+            if (Interlocked.CompareExchange(ref _asyncRecalcQueued, 1, 0) == 0)
+            {
+                Interlocked.Exchange(ref _lastAggregateRecalcTicks, Environment.TickCount64);
+                app.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    Interlocked.Exchange(ref _asyncRecalcQueued, 0);
+                    try { RecalculateAggregatesInternal(); } catch { }
+                }), System.Windows.Threading.DispatcherPriority.DataBind);
+            }
+            return;
+        }
+
+        RecalculateAggregates(force);
+    }
+
+    private static void SafeInvokeAsync(Action action)
+    {
+        try
+        {
+            var app = System.Windows.Application.Current;
+            if (!Services.Storage.DownloadPersistenceService.IsTestEnvironment &&
+                app?.Dispatcher != null &&
+                app.Dispatcher.Thread?.IsAlive == true &&
+                !app.Dispatcher.HasShutdownStarted &&
+                !app.Dispatcher.HasShutdownFinished &&
+                !app.Dispatcher.CheckAccess())
+            {
+                app.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try { action(); } catch { }
+                }), System.Windows.Threading.DispatcherPriority.DataBind);
+            }
+            else
+            {
+                action();
+            }
+        }
+        catch { }
     }
 
     private static void SafeInvoke(Action action)
