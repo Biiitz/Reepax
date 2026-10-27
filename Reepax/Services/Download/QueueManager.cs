@@ -960,11 +960,7 @@ public class QueueManager
         if (host == null)
             return;
 
-        UiInvoke(() =>
-        {
-            host.CloseWindow(windowId);
-            return true;
-        });
+        SafeInvoke(() => host.CloseWindow(windowId));
     }
 
     /// <summary>
@@ -1052,11 +1048,7 @@ public class QueueManager
         if (host == null)
             return;
 
-        UiInvoke(() =>
-        {
-            host.CloseAllWindows();
-            return true;
-        });
+        SafeInvoke(host.CloseAllWindows);
     }
 
     // ==================== Pause / Resume ====================
@@ -1665,25 +1657,47 @@ public class QueueManager
         });
     }
 
-    private static T UiInvoke<T>(Func<T> func)
+    internal static T UiInvoke<T>(Func<T> func, int timeoutMs = 2000)
     {
-        try
+        if (!Storage.DownloadPersistenceService.IsTestEnvironment)
         {
-            if (!Storage.DownloadPersistenceService.IsTestEnvironment)
+            var app = Application.Current;
+            if (app?.Dispatcher != null)
             {
-                var app = Application.Current;
-                if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
-                {
-                    if (!app.Dispatcher.CheckAccess())
-                    {
-                        return app.Dispatcher.Invoke(func);
-                    }
-                }
+                return InvokeOnDispatcherWithTimeout(app.Dispatcher, func, timeoutMs);
             }
         }
-        catch { }
 
         return func();
+    }
+
+    internal static T InvokeOnDispatcherWithTimeout<T>(System.Windows.Threading.Dispatcher dispatcher, Func<T> func, int timeoutMs = 2000)
+    {
+        if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished || dispatcher.Thread?.IsAlive != true)
+        {
+            return default!;
+        }
+
+        if (dispatcher.CheckAccess())
+        {
+            return func();
+        }
+
+        try
+        {
+            var op = dispatcher.InvokeAsync(func, System.Windows.Threading.DispatcherPriority.Normal);
+            if (op.Wait(TimeSpan.FromMilliseconds(Math.Max(1, timeoutMs))) == System.Windows.Threading.DispatcherOperationStatus.Completed)
+            {
+                return op.Result;
+            }
+
+            _ = op.Abort();
+        }
+        catch
+        {
+        }
+
+        return default!;
     }
 
     /// <summary>

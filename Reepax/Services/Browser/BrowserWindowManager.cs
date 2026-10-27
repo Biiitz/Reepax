@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Download;
@@ -18,13 +19,14 @@ namespace Reepax.Services.Browser;
 public class BrowserWindowManager : IBrowserWindowHost
 {
     private readonly Dictionary<int, BrowserWindow> _windows = new();
+    private int _activeWindowCount;
     private int _nextWindowId;
     private DateTime _lastWindowOpenedUtc = DateTime.MinValue;
     private bool _cooldownNotificationScheduled;
 
     public event Action? WindowCapacityChanged;
 
-    public int ActiveWindowCount => _windows.Count;
+    public int ActiveWindowCount => Volatile.Read(ref _activeWindowCount);
 
     public bool TryOpenWindow(DownloadItem item, bool hidden, out int windowId)
     {
@@ -43,11 +45,13 @@ public class BrowserWindowManager : IBrowserWindowHost
         var id = ++_nextWindowId;
         var window = new BrowserWindow(id, item, hidden);
         _windows[id] = window;
+        Volatile.Write(ref _activeWindowCount, _windows.Count);
         _lastWindowOpenedUtc = DateTime.UtcNow;
 
         window.Closed += (_, _) =>
         {
             _windows.Remove(id);
+            Volatile.Write(ref _activeWindowCount, _windows.Count);
             // Report item back to the queue (no-op if the download was already intercepted)
             QueueManager.Instance.OnBrowserWindowClosed(id);
             WindowCapacityChanged?.Invoke();
@@ -78,6 +82,7 @@ public class BrowserWindowManager : IBrowserWindowHost
             try { window.Close(); } catch { }
         }
         _windows.Clear();
+        Volatile.Write(ref _activeWindowCount, 0);
     }
 
     private void ScheduleCapacityNotification(TimeSpan delay)

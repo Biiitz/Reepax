@@ -1243,4 +1243,54 @@ public class QueueManagerTests
         Assert.Equal(DownloadStatus.InBrowser, item2.Status);
         Assert.Equal(1, host.ActiveWindowCount);
     }
+
+    [Fact]
+    public void InvokeOnDispatcherWithTimeout_WhenDispatcherIsBlocked_TimesOutCleanlyWithoutDeadlock()
+    {
+        using var dispatcherReady = new ManualResetEventSlim(false);
+        using var unblockDispatcher = new ManualResetEventSlim(false);
+        System.Windows.Threading.Dispatcher? targetDispatcher = null;
+
+        var thread = new Thread(() =>
+        {
+            targetDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            targetDispatcher.BeginInvoke(new Action(() =>
+            {
+                dispatcherReady.Set();
+                unblockDispatcher.Wait(TimeSpan.FromSeconds(5));
+                targetDispatcher.InvokeShutdown();
+            }));
+            System.Windows.Threading.Dispatcher.Run();
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+
+        try
+        {
+            Assert.True(dispatcherReady.Wait(TimeSpan.FromSeconds(5)));
+            Assert.NotNull(targetDispatcher);
+
+            bool executedOnBlockedDispatcher = false;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            bool result = QueueManager.InvokeOnDispatcherWithTimeout(
+                targetDispatcher!,
+                () =>
+                {
+                    executedOnBlockedDispatcher = true;
+                    return true;
+                },
+                timeoutMs: 120);
+            sw.Stop();
+
+            Assert.False(result);
+            Assert.False(executedOnBlockedDispatcher);
+            Assert.True(sw.ElapsedMilliseconds < 1500, $"Expected timeout without deadlock, actual: {sw.ElapsedMilliseconds}ms");
+        }
+        finally
+        {
+            unblockDispatcher.Set();
+            thread.Join(TimeSpan.FromSeconds(2));
+        }
+    }
 }
