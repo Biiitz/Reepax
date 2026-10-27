@@ -98,7 +98,7 @@ public class AnimatedExpansionDecorator : Decorator
             SetCurrentValue(ExpansionProgressProperty, pkg.IsExpanded ? 1.0 : 0.0);
             if (Child != null)
             {
-                Child.Visibility = pkg.IsExpanded ? Visibility.Visible : Visibility.Hidden;
+                Child.Visibility = pkg.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
                 Child.IsHitTestVisible = pkg.IsExpanded;
             }
         }
@@ -123,7 +123,7 @@ public class AnimatedExpansionDecorator : Decorator
             {
                 SetCurrentValue(IsExpandedProperty, false);
                 SetCurrentValue(ExpansionProgressProperty, 0.0);
-                Child.Visibility = Visibility.Hidden;
+                Child.Visibility = Visibility.Collapsed;
                 Child.IsHitTestVisible = false;
             }
             else
@@ -189,7 +189,7 @@ public class AnimatedExpansionDecorator : Decorator
         // Toggle visibility to avoid unnecessary hit testing or layout overhead when fully closed
         if (p <= 0.0001 && !IsExpanded)
         {
-            Child.Visibility = Visibility.Hidden;
+            Child.Visibility = Visibility.Collapsed;
             Child.IsHitTestVisible = false;
         }
         else if (Child.Visibility != Visibility.Visible)
@@ -249,7 +249,7 @@ public class AnimatedExpansionDecorator : Decorator
                 ClipToBounds = true;
                 if (Child != null)
                 {
-                    Child.Visibility = Visibility.Hidden;
+                    Child.Visibility = Visibility.Collapsed;
                     Child.IsHitTestVisible = false;
                 }
             }
@@ -268,9 +268,9 @@ public class AnimatedExpansionDecorator : Decorator
 
         if (DataContext is DownloadPackage pkg && !pkg.IsExpanded && ExpansionProgress <= 0.0001)
         {
-            if (Child.Visibility != Visibility.Hidden)
+            if (Child.Visibility != Visibility.Collapsed)
             {
-                Child.Visibility = Visibility.Hidden;
+                Child.Visibility = Visibility.Collapsed;
                 Child.IsHitTestVisible = false;
             }
             return new Size(0, 0);
@@ -279,9 +279,9 @@ public class AnimatedExpansionDecorator : Decorator
         // If collapsed and not animating, occupy zero vertical height immediately without measuring children!
         if (ExpansionProgress <= 0.0001 && !IsExpanded)
         {
-            if (Child.Visibility != Visibility.Hidden)
+            if (Child.Visibility != Visibility.Collapsed)
             {
-                Child.Visibility = Visibility.Hidden;
+                Child.Visibility = Visibility.Collapsed;
                 Child.IsHitTestVisible = false;
             }
             return new Size(0, 0);
@@ -324,5 +324,143 @@ public class AnimatedExpansionDecorator : Decorator
         Child.Arrange(new Rect(0, 0, arrangeSize.Width, Math.Max(arrangeSize.Height, fullHeight)));
 
         return arrangeSize;
+    }
+}
+
+/// <summary>
+/// Vertical stack panel that realizes and measures child item containers in lightweight chunks
+/// across background Dispatcher turns when expanding large packages, preventing UI frame drops.
+/// </summary>
+public class StagedStackPanel : Panel
+{
+    public const int DefaultBatchSize = 25;
+    public const double FallbackRowHeight = 28.0;
+
+    private static readonly DependencyProperty IsStagedRealizedProperty =
+        DependencyProperty.RegisterAttached(
+            "IsStagedRealized",
+            typeof(bool),
+            typeof(StagedStackPanel),
+            new PropertyMetadata(false));
+
+    public static readonly DependencyProperty BatchSizeProperty =
+        DependencyProperty.Register(
+            nameof(BatchSize),
+            typeof(int),
+            typeof(StagedStackPanel),
+            new PropertyMetadata(DefaultBatchSize));
+
+    private bool _isStageScheduled;
+
+    public int BatchSize
+    {
+        get => (int)GetValue(BatchSizeProperty);
+        set => SetValue(BatchSizeProperty, value);
+    }
+
+    public int RealizedChildrenCount { get; private set; }
+
+    protected override Size MeasureOverride(Size constraint)
+    {
+        var children = InternalChildren;
+        int count = children.Count;
+        if (count == 0)
+        {
+            RealizedChildrenCount = 0;
+            return new Size(0, 0);
+        }
+
+        int batchLimit = Math.Max(1, BatchSize);
+        var childConstraint = new Size(constraint.Width, double.PositiveInfinity);
+
+        double maxWidth = 0;
+        double realizedHeight = 0;
+        int realizedCount = 0;
+        int newlyRealizedInPass = 0;
+        int pendingCount = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            var child = children[i];
+            if (child == null) continue;
+
+            bool isRealized = (bool)child.GetValue(IsStagedRealizedProperty);
+            if (!isRealized)
+            {
+                if (newlyRealizedInPass < batchLimit)
+                {
+                    child.SetValue(IsStagedRealizedProperty, true);
+                    newlyRealizedInPass++;
+                    isRealized = true;
+                }
+                else
+                {
+                    pendingCount++;
+                    continue;
+                }
+            }
+
+            child.Measure(childConstraint);
+            var desired = child.DesiredSize;
+            if (desired.Width > maxWidth)
+            {
+                maxWidth = desired.Width;
+            }
+            realizedHeight += desired.Height;
+            realizedCount++;
+        }
+
+        RealizedChildrenCount = realizedCount;
+
+        double totalHeight = realizedHeight;
+        if (pendingCount > 0)
+        {
+            double avgRowHeight = realizedCount > 0 && realizedHeight > 0
+                ? realizedHeight / realizedCount
+                : FallbackRowHeight;
+            totalHeight += pendingCount * avgRowHeight;
+            ScheduleNextStage();
+        }
+
+        return new Size(maxWidth, totalHeight);
+    }
+
+    protected override Size ArrangeOverride(Size arrangeSize)
+    {
+        var children = InternalChildren;
+        int count = children.Count;
+        double y = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            var child = children[i];
+            if (child == null) continue;
+
+            if (!(bool)child.GetValue(IsStagedRealizedProperty))
+            {
+                continue;
+            }
+
+            double h = child.DesiredSize.Height;
+            child.Arrange(new Rect(0, y, arrangeSize.Width, h));
+            y += h;
+        }
+
+        return arrangeSize;
+    }
+
+    private void ScheduleNextStage()
+    {
+        if (_isStageScheduled) return;
+        _isStageScheduled = true;
+
+        Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Background,
+            new Action(() =>
+            {
+                _isStageScheduled = false;
+                InvalidateMeasure();
+                InvalidateArrange();
+            }));
     }
 }

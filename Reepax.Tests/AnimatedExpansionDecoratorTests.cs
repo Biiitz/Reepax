@@ -123,4 +123,39 @@ public class AnimatedExpansionDecoratorTests
             Assert.Equal(100, child.RenderSize.Height);
         });
     }
+
+    [Fact]
+    public void StagedStackPanel_RealizesLargeChildListsInChunksAndPreservesFullHeight()
+    {
+        RunInSta(() =>
+        {
+            var panel = new StagedStackPanel { BatchSize = 20 };
+            for (int i = 0; i < 65; i++)
+            {
+                panel.Children.Add(new Border { Width = 300, Height = 28 });
+            }
+
+            // Pass 1: realizes first 20 items, estimates full height (65 * 28 = 1820)
+            panel.Measure(new Size(300, double.PositiveInfinity));
+            Assert.Equal(20, panel.RealizedChildrenCount);
+            Assert.Equal(65 * 28, panel.DesiredSize.Height);
+
+            // Pass 2: realizes next 20 items (40 total)
+            panel.InvalidateMeasure();
+            panel.Measure(new Size(300, double.PositiveInfinity));
+            Assert.Equal(40, panel.RealizedChildrenCount);
+            Assert.Equal(65 * 28, panel.DesiredSize.Height);
+
+            // Pass 3: realizes next 20 items (60 total)
+            panel.InvalidateMeasure();
+            panel.Measure(new Size(300, double.PositiveInfinity));
+            Assert.Equal(60, panel.RealizedChildrenCount);
+
+            // Pass 4: realizes remaining 5 items (all 65 total)
+            panel.InvalidateMeasure();
+            panel.Measure(new Size(300, double.PositiveInfinity));
+            Assert.Equal(65, panel.RealizedChildrenCount);
+            Assert.Equal(65 * 28, panel.DesiredSize.Height);
+        });
+    }
 }

@@ -1268,7 +1268,13 @@
                 <helpers:AnimatedExpansionDecorator IsExpanded="{Binding IsExpanded}">
                     <ItemsControl ItemsSource="{Binding Items}"
                                   ItemTemplate="{StaticResource DownloadItemTemplate}"
-                                  Tag="{Binding IsClipped}" />
+                                  Tag="{Binding IsClipped}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <helpers:StagedStackPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
                 </helpers:AnimatedExpansionDecorator>
 
                     <!-- ================= CLIPPED SUB-PACKAGES (DOCKED DIRECTLY UNDERNEATH) ================= -->
