@@ -310,7 +310,13 @@ public class DownloadEngine
             }
             else if (File.Exists(segMetaPath))
             {
+                // Corrupt segment state: discard pre-allocated .part file so uninitialized bytes are never treated as complete.
                 try { File.Delete(segMetaPath); } catch { }
+                if (File.Exists(tempFilePath))
+                {
+                    Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(tempFilePath);
+                }
+                existingBytes = 0;
             }
 
             if (MaxConnectionsPerDownload > 1)
@@ -441,6 +447,13 @@ public class DownloadEngine
             existingBytes = new FileInfo(tempFilePath).Length;
         }
 
+        // Finalize directly if .part file already holds the complete payload (e.g. previous File.Move failed on transient lock).
+        if (existingBytes > 0 && item.TotalBytes > 0 && existingBytes == item.TotalBytes)
+        {
+            FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, item.TotalBytes);
+            return;
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
         ApplyRequestHeaders(request, item);
 
@@ -454,6 +467,15 @@ public class DownloadEngine
 
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
+            long? remoteTotal = response.Content.Headers.ContentRange?.Length;
+            if (existingBytes > 0 &&
+                ((remoteTotal.HasValue && remoteTotal.Value > 0 && existingBytes == remoteTotal.Value) ||
+                 (item.TotalBytes > 0 && existingBytes == item.TotalBytes)))
+            {
+                FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, existingBytes);
+                return;
+            }
+
             // Range invalid or file changed on server, restart file
             existingBytes = 0;
             if (File.Exists(tempFilePath))
@@ -1101,6 +1123,8 @@ public class DownloadEngine
             catch { }
         }
 
+        if (totalBytes > 0) item.TotalBytes = totalBytes;
+        item.DownloadedBytes = initialDownloadedBytes;
         SafeInvokeAsync(() =>
         {
             if (totalBytes > 0) item.TotalBytes = totalBytes;
@@ -1185,11 +1209,14 @@ public class DownloadEngine
             finally
             {
                 try { await fileStream.FlushAsync(); } catch { }
+                item.DownloadedBytes = currentDownloaded;
+                if (totalBytes > 0) item.TotalBytes = totalBytes;
                 SafeInvokeAsync(() =>
                 {
                     item.DownloadedBytes = currentDownloaded;
                     if (totalBytes > 0)
                     {
+                        item.TotalBytes = totalBytes;
                         item.ProgressPercentage = Math.Clamp((double)currentDownloaded / totalBytes * 100.0, 0, 100);
                     }
                     item.SpeedBytesPerSecond = 0;
@@ -1211,34 +1238,7 @@ public class DownloadEngine
             }
 
             // Download completed, atomically rename temp file to final destination
-            var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
-            var targetDir = Path.GetDirectoryName(actualFinalPath);
-            if (!string.IsNullOrWhiteSpace(targetDir) && !Directory.Exists(targetDir))
-            {
-                Directory.CreateDirectory(targetDir);
-            }
-
-            File.Move(tempFilePath, actualFinalPath, overwrite: true);
-
-            item.RecordSessionDuration();
-            SafeInvoke(() =>
-            {
-                item.DownloadedBytes = currentDownloaded;
-                if (totalBytes <= 0) item.TotalBytes = currentDownloaded;
-                item.ProgressPercentage = 100;
-                item.SpeedBytesPerSecond = 0;
-                item.RemainingSeconds = 0;
-                item.Status = DownloadStatus.Completed;
-                item.StatusMessage = Loc.Get("Status_Completed");
-                item.CompletedAt = DateTime.Now;
-                if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
-                {
-                    item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
-                }
-            });
-
-            CompleteAndRemoveActiveDownload(item.Id);
-            DownloadCompleted?.Invoke(item);
+            FinalizeCompletedPartFile(item, tempFilePath, finalFilePath, currentDownloaded, totalBytes);
         }
         finally
         {
@@ -1247,6 +1247,51 @@ public class DownloadEngine
                 ArrayPool<byte>.Shared.Return(rentedBuffer);
             }
         }
+    }
+
+    private void FinalizeCompletedPartFile(
+        DownloadItem item,
+        string tempFilePath,
+        string finalFilePath,
+        long currentDownloaded,
+        long totalBytes)
+    {
+        var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
+        var targetDir = Path.GetDirectoryName(actualFinalPath);
+        if (!string.IsNullOrWhiteSpace(targetDir) && !Directory.Exists(targetDir))
+        {
+            Directory.CreateDirectory(targetDir);
+        }
+
+        File.Move(tempFilePath, actualFinalPath, overwrite: true);
+
+        item.RecordSessionDuration();
+        item.DownloadedBytes = currentDownloaded;
+        item.TotalBytes = totalBytes > 0 ? totalBytes : currentDownloaded;
+        item.ProgressPercentage = 100;
+        item.SpeedBytesPerSecond = 0;
+        item.RemainingSeconds = 0;
+        item.Status = DownloadStatus.Completed;
+
+        SafeInvoke(() =>
+        {
+            item.DownloadedBytes = currentDownloaded;
+            if (totalBytes <= 0) item.TotalBytes = currentDownloaded;
+            else item.TotalBytes = totalBytes;
+            item.ProgressPercentage = 100;
+            item.SpeedBytesPerSecond = 0;
+            item.RemainingSeconds = 0;
+            item.Status = DownloadStatus.Completed;
+            item.StatusMessage = Loc.Get("Status_Completed");
+            item.CompletedAt = DateTime.Now;
+            if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
+            {
+                item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
+            }
+        });
+
+        CompleteAndRemoveActiveDownload(item.Id);
+        DownloadCompleted?.Invoke(item);
     }
 
     /// <summary>

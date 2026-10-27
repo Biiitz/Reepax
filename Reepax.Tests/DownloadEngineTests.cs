@@ -2636,4 +2636,134 @@ public class DownloadEngineTests
             try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
         }
     }
+
+    [Fact]
+    public async Task DownloadEngine_ResumeAfterTransientFinalMoveFailure_FinalizesCompletePartFileWithoutRedownload()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "ReepaxMoveRetry_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "complete_payload.bin");
+            var partFile = destinationFile + ".part";
+            var payload = new byte[16384];
+            for (int i = 0; i < payload.Length; i++)
+                payload[i] = (byte)((i * 31) % 251);
+
+            var item = new DownloadItem
+            {
+                FileName = "complete_payload.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/complete_payload.bin",
+                Status = DownloadStatus.Queued
+            };
+
+            int httpRequests = 0;
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                Interlocked.Increment(ref httpRequests);
+                var resp = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(payload)
+                };
+                resp.Content.Headers.ContentLength = payload.Length;
+                return Task.FromResult(resp);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 1 };
+
+            // Lock destination file so the initial File.Move(tempFilePath, actualFinalPath, overwrite: true) fails
+            using (var lockStream = new FileStream(destinationFile, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                await engine.StartDownloadAsync(item, item.DirectDownloadUrl, null, null, null, null);
+                Assert.Equal(DownloadStatus.Failed, item.Status);
+                Assert.True(File.Exists(partFile));
+                Assert.Equal(payload.Length, new FileInfo(partFile).Length);
+                Assert.Equal(1, httpRequests);
+            }
+
+            var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += i => { if (i.Id == item.Id) completedTcs.TrySetResult(true); };
+            engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) completedTcs.TrySetException(ex); };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var done = await Task.WhenAny(completedTcs.Task, Task.Delay(5000));
+            Assert.Same(completedTcs.Task, done);
+            Assert.True(await completedTcs.Task);
+            Assert.Equal(1, httpRequests);
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.False(File.Exists(partFile));
+            Assert.True(File.Exists(destinationFile));
+            Assert.Equal(payload, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_ResumeWith416WhenPartFileEqualsContentRangeLength_FinalizesWithoutDeletingPartFile()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax416Complete_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var destinationFile = Path.Combine(tempFolder, "range_complete.bin");
+            var partFile = destinationFile + ".part";
+            var payload = new byte[4096];
+            for (int i = 0; i < payload.Length; i++)
+                payload[i] = (byte)((i * 17) % 253);
+
+            File.WriteAllBytes(partFile, payload);
+
+            var item = new DownloadItem
+            {
+                FileName = "range_complete.bin",
+                SaveFilePath = destinationFile,
+                DirectDownloadUrl = "https://example.com/range_complete.bin",
+                Status = DownloadStatus.Paused,
+                TotalBytes = 0,
+                DownloadedBytes = payload.Length
+            };
+
+            int httpRequests = 0;
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                Interlocked.Increment(ref httpRequests);
+                var resp = new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable)
+                {
+                    Content = new ByteArrayContent(Array.Empty<byte>())
+                };
+                resp.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(payload.Length);
+                return Task.FromResult(resp);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 1 };
+
+            var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += i => { if (i.Id == item.Id) completedTcs.TrySetResult(true); };
+            engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) completedTcs.TrySetException(ex); };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var done = await Task.WhenAny(completedTcs.Task, Task.Delay(5000));
+            Assert.Same(completedTcs.Task, done);
+            Assert.True(await completedTcs.Task);
+            Assert.Equal(1, httpRequests);
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.False(File.Exists(partFile));
+            Assert.True(File.Exists(destinationFile));
+            Assert.Equal(payload, File.ReadAllBytes(destinationFile));
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempFolder)) Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
 }
