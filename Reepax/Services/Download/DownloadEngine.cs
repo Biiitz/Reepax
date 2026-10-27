@@ -1065,15 +1065,22 @@ public class DownloadEngine
             SafeInvoke(() => item.Rename(extractedFileName, isUserAction: false));
             var newTempPath = item.SaveFilePath + ".part";
 
-            if (!string.Equals(oldTempPath, newTempPath, StringComparison.OrdinalIgnoreCase) && File.Exists(oldTempPath))
+            if (!string.Equals(oldTempPath, newTempPath, StringComparison.OrdinalIgnoreCase))
             {
-                try
+                if (!string.IsNullOrWhiteSpace(oldTempPath) && File.Exists(oldTempPath))
                 {
-                    if (File.Exists(newTempPath)) File.Delete(newTempPath);
-                    File.Move(oldTempPath, newTempPath);
-                    tempFilePath = newTempPath;
+                    try
+                    {
+                        if (File.Exists(newTempPath)) File.Delete(newTempPath);
+                        File.Move(oldTempPath, newTempPath);
+                    }
+                    catch { }
                 }
-                catch { }
+                tempFilePath = newTempPath;
+                if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+                {
+                    finalFilePath = item.SaveFilePath;
+                }
             }
 
             try

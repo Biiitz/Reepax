@@ -230,6 +230,169 @@ public class DownloadEngineTests
     }
 
     [Fact]
+    public async Task DownloadEngine_ResumeWithContentDispositionRename_PreservesExistingBytesAndCompletesWithoutCorruption()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_ResumeRename_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var initialFile = Path.Combine(tempFolder, "initial_name.bin");
+            var initialPartFile = initialFile + ".part";
+            var renamedFile = Path.Combine(tempFolder, "server_assigned_name.bin");
+            var renamedPartFile = renamedFile + ".part";
+
+            // 1. Write first 500 bytes of 'A' to initial .part file
+            var initial500 = new byte[500];
+            Array.Fill(initial500, (byte)'A');
+            File.WriteAllBytes(initialPartFile, initial500);
+
+            var item = new DownloadItem
+            {
+                FileName = "initial_name.bin",
+                SaveFilePath = initialFile,
+                DirectDownloadUrl = "https://example.com/download?id=123",
+                Status = DownloadStatus.Paused,
+                DownloadedBytes = 500,
+                TotalBytes = 1000
+            };
+
+            // 2. Prepare remaining 500 bytes of 'B'
+            var remaining500 = new byte[500];
+            Array.Fill(remaining500, (byte)'B');
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                {
+                    Content = new ByteArrayContent(remaining500)
+                };
+                response.Content.Headers.ContentLength = remaining500.Length;
+                response.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(500, 999, 1000);
+                response.Content.Headers.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+                {
+                    FileName = "server_assigned_name.bin"
+                };
+                return Task.FromResult(response);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += downloadedItem =>
+            {
+                if (downloadedItem.Id == item.Id)
+                    tcs.TrySetResult(true);
+            };
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    tcs.TrySetException(ex);
+            };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(1000, item.TotalBytes);
+            Assert.Equal(1000, item.DownloadedBytes);
+            Assert.Equal("server_assigned_name.bin", item.FileName);
+            Assert.True(File.Exists(renamedFile));
+            Assert.False(File.Exists(initialPartFile));
+            Assert.False(File.Exists(renamedPartFile));
+
+            var finalBytes = File.ReadAllBytes(renamedFile);
+            Assert.Equal(1000, finalBytes.Length);
+            for (int i = 0; i < 500; i++) Assert.Equal((byte)'A', finalBytes[i]);
+            for (int i = 500; i < 1000; i++) Assert.Equal((byte)'B', finalBytes[i]);
+        }
+        finally
+        {
+            try { Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task DownloadEngine_FreshDownloadWithContentDispositionRename_DownloadsAndCompletesUnderNewName()
+    {
+        var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_FreshRename_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempFolder);
+
+        try
+        {
+            var initialFile = Path.Combine(tempFolder, "initial_fresh.txt");
+            var initialPartFile = initialFile + ".part";
+            var renamedFile = Path.Combine(tempFolder, "server_fresh.txt");
+            var renamedPartFile = renamedFile + ".part";
+
+            var item = new DownloadItem
+            {
+                FileName = "initial_fresh.txt",
+                SaveFilePath = initialFile,
+                DirectDownloadUrl = "https://example.com/fresh.txt",
+                Status = DownloadStatus.Queued,
+                DownloadedBytes = 0,
+                TotalBytes = 0
+            };
+
+            var testData = Encoding.UTF8.GetBytes("Fresh content verified!");
+
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(testData)
+                };
+                response.Content.Headers.ContentLength = testData.Length;
+                response.Content.Headers.ContentDisposition = new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+                {
+                    FileName = "server_fresh.txt"
+                };
+                return Task.FromResult(response);
+            });
+
+            using var httpClient = new HttpClient(handler);
+            var engine = new DownloadEngine(httpClient);
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            engine.DownloadCompleted += downloadedItem =>
+            {
+                if (downloadedItem.Id == item.Id)
+                    tcs.TrySetResult(true);
+            };
+            engine.DownloadFailed += (failedItem, ex) =>
+            {
+                if (failedItem.Id == item.Id)
+                    tcs.TrySetException(ex);
+            };
+
+            await engine.ResumeDownloadAsync(item);
+
+            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(10000));
+            Assert.Same(tcs.Task, completedTask);
+            Assert.True(tcs.Task.Result);
+
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(testData.Length, item.TotalBytes);
+            Assert.Equal(testData.Length, item.DownloadedBytes);
+            Assert.Equal("server_fresh.txt", item.FileName);
+            Assert.True(File.Exists(renamedFile));
+            Assert.False(File.Exists(initialFile));
+            Assert.False(File.Exists(initialPartFile));
+            Assert.False(File.Exists(renamedPartFile));
+            Assert.Equal("Fresh content verified!", File.ReadAllText(renamedFile));
+        }
+        finally
+        {
+            try { Directory.Delete(tempFolder, true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task DownloadEngine_SingleConnectionDownload_DoesNotPreallocatePartFile_AllowsResumeWithout416()
     {
         var tempFolder = Path.Combine(Path.GetTempPath(), "Reepax_NoPrealloc_" + Guid.NewGuid().ToString("N"));
