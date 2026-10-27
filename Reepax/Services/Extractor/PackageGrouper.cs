@@ -296,7 +296,8 @@ public static class PackageGrouper
                 HosterIconKey = link.Hoster.IconKey,
                 SaveFilePath = Path.Combine(saveDir, cleanFileName),
                 Status = DownloadStatus.Paused,
-                StatusMessage = Loc.Get("Status_Paused")
+                StatusMessage = Loc.Get("Status_Paused"),
+                IsNormalized = true
             };
 
             package.Items.Add(item);

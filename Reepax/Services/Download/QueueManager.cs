@@ -761,8 +761,9 @@ public class QueueManager
                         item.DirectDownloadUrl = null;
                     }
 
+                    item.IsNormalized = true;
                     bool hidden = package.AutoResolveHostLinks &&
-                                  FastHostResolver.IsFastHostUrl(item.OriginalUrl) &&
+                                  item.IsFastHost &&
                                   !item.FastHostResolveFailed;
                     return (item, hidden);
                 }
@@ -1103,10 +1104,12 @@ public class QueueManager
         }
     }
 
-    public void ResumeItem(DownloadItem? item)
+    public void ResumeItem(DownloadItem? item) => ResumeItemCore(item, triggerProcessQueue: true);
+
+    private bool ResumeItemCore(DownloadItem? item, bool triggerProcessQueue)
     {
         if (item == null || !item.IsEnabled || item.Status == DownloadStatus.Completed)
-            return;
+            return false;
 
         item.IsTrickling = false;
 
@@ -1145,6 +1148,7 @@ public class QueueManager
                     item.CurrentSlot = null;
                 });
             }
+            return false;
         }
         else
         {
@@ -1158,7 +1162,11 @@ public class QueueManager
                 item.StatusMessage = Loc.Get("Status_Queued");
                 item.CurrentSlot = null;
             });
-            ProcessQueue();
+            if (triggerProcessQueue)
+            {
+                ProcessQueue();
+            }
+            return true;
         }
     }
 
@@ -1294,12 +1302,15 @@ public class QueueManager
         ProcessQueue();
     }
 
-    public void ResumePackage(DownloadPackage? package)
+    public void ResumePackage(DownloadPackage? package) => ResumePackage(package, processQueue: true);
+
+    public void ResumePackage(DownloadPackage? package, bool processQueue)
     {
         if (package == null || package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
             return;
 
         var itemsSnapshot = package.Items.ToArray();
+        bool needsProcessQueue = false;
         foreach (var item in itemsSnapshot)
         {
             if (!item.IsEnabled || item.Status == DownloadStatus.Completed)
@@ -1307,8 +1318,18 @@ public class QueueManager
 
             if (item.Status is DownloadStatus.Paused or DownloadStatus.Failed)
             {
-                ResumeItem(item);
+                if (ResumeItemCore(item, triggerProcessQueue: false))
+                {
+                    needsProcessQueue = true;
+                }
             }
+        }
+
+        SafeInvoke(() => package.RecalculateAggregates());
+
+        if (processQueue && needsProcessQueue)
+        {
+            ProcessQueue();
         }
     }
 

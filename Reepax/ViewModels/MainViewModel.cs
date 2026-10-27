@@ -808,7 +808,7 @@ public partial class MainViewModel : ObservableObject
         if (SelectedMainTab != AppMainTab.Downloads) return;
         foreach (var pkg in Packages)
         {
-            _queueManager.ResumePackage(pkg);
+            _queueManager.ResumePackage(pkg, processQueue: false);
         }
         Services.Extractor.ArchiveExtractionService.Instance.ResumeAllExtractions();
         _queueManager.StartQueue();
@@ -2960,7 +2960,7 @@ public partial class MainViewModel : ObservableObject
             var itemsToCheck = specificList != null 
                 ? p.Items.Where(specificList.Contains) 
                 : p.Items;
-            return itemsToCheck.Any(i => !i.IsMetadataResolved && (i.TotalBytes <= 0 || (FastHostResolver.IsFastHostUrl(i.OriginalUrl) && string.IsNullOrWhiteSpace(i.DirectDownloadUrl))));
+            return itemsToCheck.Any(i => !i.IsMetadataResolved && (i.TotalBytes <= 0 || (i.IsFastHost && string.IsNullOrWhiteSpace(i.DirectDownloadUrl))));
         }).ToList();
 
         if (packageList.Count == 0)

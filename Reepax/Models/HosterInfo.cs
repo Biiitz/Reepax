@@ -19,6 +19,25 @@ public class HosterInfo
     public string DomainPattern { get; set; } = string.Empty;
     public string PrimaryColor { get; set; } = "#3B82F6";
 
+    private Regex? _compiledDomainRegex;
+    private string? _compiledPatternSource;
+
+    public bool MatchesDomain(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(DomainPattern))
+            return false;
+
+        var regex = _compiledDomainRegex;
+        if (regex == null || !string.Equals(_compiledPatternSource, DomainPattern, StringComparison.Ordinal))
+        {
+            regex = new Regex(DomainPattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+            _compiledPatternSource = DomainPattern;
+            _compiledDomainRegex = regex;
+        }
+
+        return regex.IsMatch(url);
+    }
+
     public static readonly List<HosterInfo> KnownHosters = new()
     {
         // Tier 1 Major Hosters
@@ -111,10 +130,37 @@ public class HosterInfo
         if (string.IsNullOrWhiteSpace(url)) return false;
         foreach (var hoster in KnownHosters)
         {
-            if (Regex.IsMatch(url, hoster.DomainPattern, RegexOptions.IgnoreCase))
+            if (hoster.MatchesDomain(url))
                 return true;
         }
         return false;
+    }
+
+    public static bool TryMatchFileHoster(string url, bool fileHostersOnly, out HosterInfo hoster)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            hoster = new HosterInfo { Name = "generic", DisplayName = "Web", IconKey = "Globe", Domain = "generic", PrimaryColor = "#718096" };
+            return false;
+        }
+
+        foreach (var known in KnownHosters)
+        {
+            if (known.MatchesDomain(url))
+            {
+                hoster = known;
+                return true;
+            }
+        }
+
+        if (fileHostersOnly && !DirectDownloadExtensionRegex.IsMatch(url))
+        {
+            hoster = new HosterInfo { Name = "generic", DisplayName = "Web", IconKey = "Globe", Domain = "generic", PrimaryColor = "#718096" };
+            return false;
+        }
+
+        hoster = DetectFallbackHoster(url);
+        return true;
     }
 
     public static HosterInfo DetectHoster(string url)
@@ -124,12 +170,17 @@ public class HosterInfo
 
         foreach (var hoster in KnownHosters)
         {
-            if (Regex.IsMatch(url, hoster.DomainPattern, RegexOptions.IgnoreCase))
+            if (hoster.MatchesDomain(url))
             {
                 return hoster;
             }
         }
 
+        return DetectFallbackHoster(url);
+    }
+
+    private static HosterInfo DetectFallbackHoster(string url)
+    {
         try
         {
             var cleaned = Regex.Replace(url.Trim(), @"^(https?://)?[.\s]+", "$1");

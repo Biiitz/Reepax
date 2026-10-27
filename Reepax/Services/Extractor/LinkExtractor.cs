@@ -83,7 +83,7 @@ public static partial class LinkExtractor
                  !cleanedUrl.StartsWith("ftp", StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            if (fileHostersOnly && !HosterInfo.IsFileHosterUrl(cleanedUrl))
+            if (!HosterInfo.TryMatchFileHoster(cleanedUrl, fileHostersOnly, out var anchorHoster))
                 continue;
 
             if (seenUrls.Add(cleanedUrl))
@@ -105,7 +105,7 @@ public static partial class LinkExtractor
                     Url = cleanedUrl,
                     RawFileName = ExtractFileNameFromUrl(cleanedUrl),
                     ContextTitle = title,
-                    Hoster = HosterInfo.DetectHoster(cleanedUrl)
+                    Hoster = anchorHoster
                 });
             }
         }
@@ -124,7 +124,7 @@ public static partial class LinkExtractor
                  !cleanedUrl.StartsWith("ftp", StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            if (fileHostersOnly && !HosterInfo.IsFileHosterUrl(cleanedUrl))
+            if (!HosterInfo.TryMatchFileHoster(cleanedUrl, fileHostersOnly, out var hrefHoster))
                 continue;
 
             if (seenUrls.Add(cleanedUrl))
@@ -133,7 +133,7 @@ public static partial class LinkExtractor
                 {
                     Url = cleanedUrl,
                     RawFileName = ExtractFileNameFromUrl(cleanedUrl),
-                    Hoster = HosterInfo.DetectHoster(cleanedUrl)
+                    Hoster = hrefHoster
                 });
             }
         }
@@ -168,12 +168,11 @@ public static partial class LinkExtractor
                     if (string.IsNullOrWhiteSpace(cleanedUrl))
                         continue;
 
-                    if (fileHostersOnly && !HosterInfo.IsFileHosterUrl(cleanedUrl))
+                    if (!HosterInfo.TryMatchFileHoster(cleanedUrl, fileHostersOnly, out var hoster))
                         continue;
 
                     if (seenUrls.Add(cleanedUrl))
                     {
-                        var hoster = HosterInfo.DetectHoster(cleanedUrl);
                         var rawFileName = ExtractFileNameFromUrl(cleanedUrl);
 
                         result.Add(new ExtractedLink

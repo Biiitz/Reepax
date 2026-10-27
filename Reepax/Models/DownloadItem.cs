@@ -110,6 +110,22 @@ public partial class DownloadItem : ObservableObject
     private bool _isMetadataResolved;
 
     /// <summary>
+    /// Marks that link validation and hoster normalization have already been evaluated for this item.
+    /// </summary>
+    public bool IsNormalized { get; set; }
+
+    private bool? _isFastHostUrl;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool IsFastHost => _isFastHostUrl ??= Services.Extractor.FastHostResolver.IsFastHostUrl(OriginalUrl);
+
+    partial void OnOriginalUrlChanged(string value)
+    {
+        _isFastHostUrl = null;
+        IsNormalized = false;
+    }
+
+    /// <summary>
     /// Transient (not persisted): true when the item is "paused" but continues
     /// at a heavily throttled speed (500 KB/s) so the connection/session does not drop.
     /// </summary>

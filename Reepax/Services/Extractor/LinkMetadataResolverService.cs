@@ -106,7 +106,7 @@ public class LinkMetadataResolverService
 
         // If it's a FastHost page and doesn't have a direct download URL yet, resolve it!
         // (only when host resolution is enabled for this package)
-        if (allowFastHostResolve && FastHostResolver.IsFastHostUrl(item.OriginalUrl) && (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) || !FastHostResolver.IsDirectDownloadUrl(item.DirectDownloadUrl)))
+        if (allowFastHostResolve && item.IsFastHost && (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) || !FastHostResolver.IsDirectDownloadUrl(item.DirectDownloadUrl)))
         {
             var directUrl = await FastHostResolver.ResolveDirectUrlAsync(_httpClient, item.OriginalUrl, cancellationToken);
             if (!string.IsNullOrWhiteSpace(directUrl))
@@ -218,7 +218,7 @@ public class LinkMetadataResolverService
             PackageGrouper.IsGenericOrCrypticName(i.FileName) ||
             i.FileName.StartsWith("download_file", StringComparison.OrdinalIgnoreCase) ||
             i.FileName.Contains("Package (") ||
-            (package.AutoResolveHostLinks && FastHostResolver.IsFastHostUrl(i.OriginalUrl) && string.IsNullOrWhiteSpace(i.DirectDownloadUrl)))
+            (package.AutoResolveHostLinks && i.IsFastHost && string.IsNullOrWhiteSpace(i.DirectDownloadUrl)))
         ).ToList();
 
         if (itemsToResolve.Count == 0)

@@ -250,4 +250,47 @@ public class PerformanceOptimizationTests
         Assert.InRange(item.RemainingSeconds, 10.0, 15.0);
         Assert.InRange(package.RemainingSeconds, 10.0, 15.0);
     }
+
+    [Fact]
+    public void QueueManager_ResumePackage_And_LinkNormalization_AvoidRedundantReevaluation()
+    {
+        var extracted = Reepax.Services.Extractor.LinkExtractor.ExtractLinks("https://rapidgator.net/file/abc/part1.rar");
+        Assert.Single(extracted);
+
+        var grouped = Reepax.Services.Extractor.PackageGrouper.GroupLinksIntoPackages(extracted, @"C:\Downloads");
+        Assert.Single(grouped);
+        var createdItem = grouped[0].Items[0];
+        Assert.True(createdItem.IsNormalized);
+        Assert.False(createdItem.IsFastHost);
+
+        // Changing OriginalUrl invalidates cached normalization state
+        createdItem.OriginalUrl = $"https://{Reepax.Services.Extractor.FastHostResolver.CanonicalDomain}/abc123";
+        Assert.False(createdItem.IsNormalized);
+        Assert.True(createdItem.IsFastHost);
+
+        // Resuming a package with 500 paused items batches queue processing into a single pass
+        var qm = new Reepax.Services.Download.QueueManager();
+        qm.Packages.Clear();
+        var largePkg = new DownloadPackage { Name = "LargeQueuePkg", SaveDirectory = @"C:\Downloads\LargeQueuePkg" };
+        for (int i = 0; i < 500; i++)
+        {
+            largePkg.Items.Add(new DownloadItem
+            {
+                FileName = $"part{i:D3}.rar",
+                OriginalUrl = $"https://rapidgator.net/file/{i}/part{i:D3}.rar",
+                Status = DownloadStatus.Paused,
+                IsEnabled = true,
+                IsNormalized = true
+            });
+        }
+        qm.Packages.Add(largePkg);
+
+        var sw = Stopwatch.StartNew();
+        qm.ResumePackage(largePkg);
+        sw.Stop();
+
+        Assert.All(largePkg.Items, it => Assert.Equal(DownloadStatus.Queued, it.Status));
+        Assert.True(sw.ElapsedMilliseconds < 500, $"Expected < 500ms for resuming 500 items, took {sw.ElapsedMilliseconds}ms");
+        qm.StopQueue();
+    }
 }
