@@ -792,6 +792,14 @@ public class QueueManager
             _windowItems.Remove(windowId);
         }
 
+        // Guard against items removed from the queue while their browser window was open
+        if (!Packages.Any(p => p.Items.Contains(item)))
+        {
+            CloseBrowserWindow(windowId);
+            ProcessQueue();
+            return;
+        }
+
         bool isBlob = directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase);
 
         // Update item details on UI thread
@@ -957,6 +965,80 @@ public class QueueManager
             host.CloseWindow(windowId);
             return true;
         });
+    }
+
+    /// <summary>
+    /// Detaches and closes any active browser window associated with the specified item.
+    /// </summary>
+    public void CloseBrowserWindowForItem(DownloadItem? item)
+    {
+        if (item == null)
+            return;
+
+        List<int> windowIdsToClose = new();
+        lock (_lock)
+        {
+            foreach (var kv in _windowItems)
+            {
+                if (ReferenceEquals(kv.Value, item) || kv.Value.Id == item.Id)
+                {
+                    windowIdsToClose.Add(kv.Key);
+                }
+            }
+
+            foreach (var id in windowIdsToClose)
+            {
+                _windowItems.Remove(id);
+            }
+        }
+
+        item.CurrentSlot = null;
+
+        foreach (var id in windowIdsToClose)
+        {
+            CloseBrowserWindow(id);
+        }
+    }
+
+    /// <summary>
+    /// Detaches and closes any active browser windows associated with the specified items.
+    /// </summary>
+    public void CloseBrowserWindowsForItems(IEnumerable<DownloadItem>? items)
+    {
+        if (items == null)
+            return;
+
+        var itemList = items.ToList();
+        if (itemList.Count == 0)
+            return;
+
+        var itemIds = new HashSet<Guid>(itemList.Select(i => i.Id));
+        List<int> windowIdsToClose = new();
+        lock (_lock)
+        {
+            foreach (var kv in _windowItems)
+            {
+                if (itemIds.Contains(kv.Value.Id) || itemList.Any(i => ReferenceEquals(kv.Value, i)))
+                {
+                    windowIdsToClose.Add(kv.Key);
+                }
+            }
+
+            foreach (var id in windowIdsToClose)
+            {
+                _windowItems.Remove(id);
+            }
+        }
+
+        foreach (var item in itemList)
+        {
+            item.CurrentSlot = null;
+        }
+
+        foreach (var id in windowIdsToClose)
+        {
+            CloseBrowserWindow(id);
+        }
     }
 
     private void CloseAllBrowserWindows()

@@ -723,4 +723,97 @@ public class MainViewModelUiAndSettingsTests
         Assert.Null(child.ParentPackageId);
         Assert.Null(child.ParentPackageName);
     }
+
+    [Fact]
+    public void RemoveItemAndRemovePackage_WhenItemsInBrowserWindow_ClosesBrowserWindowsAndFreesSlots()
+    {
+        var qm = QueueManager.Instance;
+        var prevHost = qm.BrowserHost;
+        var prevOverride = qm.ActiveDownloadsCountOverride;
+        var prevMax = qm.MaxConcurrentDownloads;
+
+        try
+        {
+            var vm = new MainViewModel();
+            vm.Packages.Clear();
+            vm.RootPackages.Clear();
+
+            var host = new TestBrowserHost();
+            qm.BrowserHost = host;
+            qm.ActiveDownloadsCountOverride = () => 0;
+            qm.MaxConcurrentDownloads = 1;
+
+            var pkg = new DownloadPackage { Name = "BrowserCleanupPkg", IsEnabled = true };
+            var item1 = new DownloadItem
+            {
+                PackageId = pkg.Id,
+                FileName = "part1.rar",
+                OriginalUrl = "https://example.com/file/1/part1.rar",
+                Status = DownloadStatus.Queued,
+                IsEnabled = true
+            };
+            var item2 = new DownloadItem
+            {
+                PackageId = pkg.Id,
+                FileName = "part2.rar",
+                OriginalUrl = "https://example.com/file/2/part2.rar",
+                Status = DownloadStatus.Queued,
+                IsEnabled = true
+            };
+            pkg.Items.Add(item1);
+            pkg.Items.Add(item2);
+            vm.Packages.Add(pkg);
+
+            qm.StartQueue();
+            Assert.Equal(DownloadStatus.InBrowser, item1.Status);
+            Assert.Equal(1, host.ActiveWindowCount);
+
+            // Removing item1 closes window 1 and promotes item2 to window 2
+            vm.RemoveItem(item1, deleteFilesFromDisk: false);
+            Assert.Null(qm.GetWindowItem(1));
+            Assert.Equal(DownloadStatus.InBrowser, item2.Status);
+            Assert.Same(item2, qm.GetWindowItem(2));
+
+            // Removing pkg closes window 2
+            vm.RemovePackage(pkg, deleteFilesFromDisk: false);
+            Assert.Null(qm.GetWindowItem(2));
+            Assert.Equal(0, host.ActiveWindowCount);
+        }
+        finally
+        {
+            qm.StopQueue();
+            qm.BrowserHost = prevHost;
+            qm.ActiveDownloadsCountOverride = prevOverride;
+            qm.MaxConcurrentDownloads = prevMax;
+            qm.Packages.Clear();
+        }
+    }
+
+    private sealed class TestBrowserHost : Reepax.Services.Browser.IBrowserWindowHost
+    {
+        private int _nextId;
+        private readonly System.Collections.Generic.HashSet<int> _open = new();
+        public int ActiveWindowCount => _open.Count;
+        public event Action? WindowCapacityChanged;
+
+        public bool TryOpenWindow(DownloadItem item, bool hidden, out int windowId)
+        {
+            windowId = ++_nextId;
+            _open.Add(windowId);
+            return true;
+        }
+
+        public void CloseWindow(int windowId)
+        {
+            if (_open.Remove(windowId))
+            {
+                WindowCapacityChanged?.Invoke();
+            }
+        }
+
+        public void CloseAllWindows()
+        {
+            _open.Clear();
+        }
+    }
 }

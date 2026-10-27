@@ -1149,4 +1149,98 @@ public class QueueManagerTests
         Assert.Null(item.CurrentSlot);
         Assert.False(item.IsTrickling);
     }
+
+    [Fact]
+    public async Task CloseBrowserWindowForItem_ClosesWindowAndPreventsGhostDownloadOnInterception()
+    {
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 1 };
+        var host = new FakeBrowserWindowHost();
+        queueManager.BrowserHost = host;
+        queueManager.ActiveDownloadsCountOverride = () => 0;
+
+        var pkg = new DownloadPackage { Name = "BrowserRemoveItemPkg", IsEnabled = true };
+        var item1 = new DownloadItem
+        {
+            PackageId = pkg.Id,
+            FileName = "part1.rar",
+            OriginalUrl = "https://example.com/file/1/part1.rar",
+            Status = DownloadStatus.Queued,
+            IsEnabled = true
+        };
+        var item2 = new DownloadItem
+        {
+            PackageId = pkg.Id,
+            FileName = "part2.rar",
+            OriginalUrl = "https://example.com/file/2/part2.rar",
+            Status = DownloadStatus.Queued,
+            IsEnabled = true
+        };
+        pkg.Items.Add(item1);
+        pkg.Items.Add(item2);
+        queueManager.Packages.Add(pkg);
+
+        queueManager.StartQueue();
+
+        Assert.Equal(DownloadStatus.InBrowser, item1.Status);
+        Assert.Equal(DownloadStatus.Queued, item2.Status);
+        Assert.Equal(1, host.ActiveWindowCount);
+        Assert.Same(item1, queueManager.GetWindowItem(1));
+
+        queueManager.CloseBrowserWindowForItem(item1);
+        pkg.Items.Remove(item1);
+
+        Assert.Null(queueManager.GetWindowItem(1));
+        Assert.False(host.Windows.ContainsKey(1));
+        Assert.Equal(DownloadStatus.InBrowser, item2.Status);
+        Assert.Equal(1, host.ActiveWindowCount);
+
+        await queueManager.OnDownloadInterceptedAsync(1, "https://example.com/direct/part1.rar", null, null, null, "part1.rar");
+        Assert.False(DownloadEngine.Instance.IsDownloading(item1.Id));
+    }
+
+    [Fact]
+    public void CloseBrowserWindowsForItems_ClosesWindowsForRemovedPackage()
+    {
+        var queueManager = new QueueManager { MaxConcurrentDownloads = 1 };
+        var host = new FakeBrowserWindowHost();
+        queueManager.BrowserHost = host;
+        queueManager.ActiveDownloadsCountOverride = () => 0;
+
+        var pkg1 = new DownloadPackage { Name = "RemovedPkg", IsEnabled = true };
+        var item1 = new DownloadItem
+        {
+            PackageId = pkg1.Id,
+            FileName = "pkg1_part1.rar",
+            OriginalUrl = "https://example.com/file/1/pkg1_part1.rar",
+            Status = DownloadStatus.Queued,
+            IsEnabled = true
+        };
+        pkg1.Items.Add(item1);
+
+        var pkg2 = new DownloadPackage { Name = "RemainingPkg", IsEnabled = true };
+        var item2 = new DownloadItem
+        {
+            PackageId = pkg2.Id,
+            FileName = "pkg2_part1.rar",
+            OriginalUrl = "https://example.com/file/2/pkg2_part1.rar",
+            Status = DownloadStatus.Queued,
+            IsEnabled = true
+        };
+        pkg2.Items.Add(item2);
+
+        queueManager.Packages.Add(pkg1);
+        queueManager.Packages.Add(pkg2);
+
+        queueManager.StartQueue();
+
+        Assert.Equal(DownloadStatus.InBrowser, item1.Status);
+        Assert.Equal(DownloadStatus.Queued, item2.Status);
+
+        queueManager.Packages.Remove(pkg1);
+        queueManager.CloseBrowserWindowsForItems(pkg1.Items);
+
+        Assert.Null(queueManager.GetWindowItem(1));
+        Assert.Equal(DownloadStatus.InBrowser, item2.Status);
+        Assert.Equal(1, host.ActiveWindowCount);
+    }
 }

@@ -2794,6 +2794,7 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var item in itemsToRemove)
         {
+            _queueManager.CloseBrowserWindowForItem(item);
             _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
             package.Items.Remove(item);
         }

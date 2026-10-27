@@ -70,8 +70,14 @@ public partial class MainViewModel
 
         foreach (var item in package.Items)
         {
+            if (item.Status == DownloadStatus.Queued)
+            {
+                item.Status = DownloadStatus.Paused;
+            }
             _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
         }
+
+        _queueManager.CloseBrowserWindowsForItems(package.Items);
 
         if (deleteFiles)
         {
@@ -105,6 +111,10 @@ public partial class MainViewModel
         }
         RecalculateGlobalStats();
         DownloadPersistenceService.Instance.RequestSave();
+        if (_queueManager.IsRunning)
+        {
+            _queueManager.ProcessQueue();
+        }
     }
 
     [RelayCommand]
@@ -158,6 +168,11 @@ public partial class MainViewModel
             }
         }
 
+        if (item.Status == DownloadStatus.Queued)
+        {
+            item.Status = DownloadStatus.Paused;
+        }
+        _queueManager.CloseBrowserWindowForItem(item);
         _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
 
         if (deleteFiles)
@@ -192,6 +207,10 @@ public partial class MainViewModel
         }
 
         RecalculateGlobalStats();
+        if (_queueManager.IsRunning)
+        {
+            _queueManager.ProcessQueue();
+        }
     }
 
     #region Disk Cleanup Helpers
