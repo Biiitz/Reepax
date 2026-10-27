@@ -982,26 +982,39 @@ public class DownloadEngine
                         int spaceInBuffer = bufferSize - bufferedBytes;
                         long remainingInSegment = segmentLength - (segment.Done + bufferedBytes);
                         int toRead = (int)Math.Min(spaceInBuffer, remainingInSegment);
-                        toRead = _throttler.GetOptimalReadChunkSize(toRead, item.IsTrickling ? 500 * 1024 : 0, activeSegmentsCount);
+                        bool applyTrickle = item.IsTrickling;
+                        toRead = _throttler.GetOptimalReadChunkSize(toRead, applyTrickle ? 500 * 1024 : 0, activeSegmentsCount);
 
                         await _throttler.AcquireReadQuotaAsync(toRead, cancellationToken);
-                        if (item.IsTrickling)
+                        int bytesRead = 0;
+                        bool trickleAcquired = false;
+                        try
                         {
-                            await trickleThrottler.AcquireReadQuotaAsync(toRead, cancellationToken);
+                            if (applyTrickle)
+                            {
+                                await trickleThrottler.AcquireReadQuotaAsync(toRead, cancellationToken);
+                                trickleAcquired = true;
+                            }
+
+                            bytesRead = await stream.ReadAsync(rentedBuffer.AsMemory(bufferedBytes, toRead), cancellationToken);
+                        }
+                        finally
+                        {
+                            // Refund unused quota on EOF, partial reads, or socket/cancellation exceptions.
+                            int unusedBytes = toRead - Math.Max(0, bytesRead);
+                            if (unusedBytes > 0)
+                            {
+                                _throttler.RefundUnusedQuota(unusedBytes);
+                                if (trickleAcquired)
+                                {
+                                    trickleThrottler.RefundUnusedQuota(unusedBytes);
+                                }
+                            }
                         }
 
-                        int bytesRead = await stream.ReadAsync(rentedBuffer.AsMemory(bufferedBytes, toRead), cancellationToken);
                         if (bytesRead <= 0)
                         {
-                            _throttler.RefundUnusedQuota(toRead);
-                            if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead);
                             break;
-                        }
-
-                        if (bytesRead < toRead)
-                        {
-                            _throttler.RefundUnusedQuota(toRead - bytesRead);
-                            if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead - bytesRead);
                         }
 
                         bufferedBytes += bytesRead;
@@ -1171,29 +1184,41 @@ public class DownloadEngine
 
             try
             {
-                int bytesRead;
                 int effectiveReadSize = buffer != null ? buffer.Length : bufferSize;
                 while (true)
                 {
-                    int toRead = _throttler.GetOptimalReadChunkSize(effectiveReadSize, item.IsTrickling ? 500 * 1024 : 0, 1);
+                    bool applyTrickle = item.IsTrickling;
+                    int toRead = _throttler.GetOptimalReadChunkSize(effectiveReadSize, applyTrickle ? 500 * 1024 : 0, 1);
                     await _throttler.AcquireReadQuotaAsync(toRead, cancellationToken);
-                    if (item.IsTrickling)
+                    int bytesRead = 0;
+                    bool trickleAcquired = false;
+                    try
                     {
-                        await trickleThrottler.AcquireReadQuotaAsync(toRead, cancellationToken);
+                        if (applyTrickle)
+                        {
+                            await trickleThrottler.AcquireReadQuotaAsync(toRead, cancellationToken);
+                            trickleAcquired = true;
+                        }
+
+                        bytesRead = await contentStream.ReadAsync(rentedBuffer.AsMemory(0, toRead), cancellationToken);
+                    }
+                    finally
+                    {
+                        // Refund unused quota on EOF, partial reads, or socket/cancellation exceptions.
+                        int unusedBytes = toRead - Math.Max(0, bytesRead);
+                        if (unusedBytes > 0)
+                        {
+                            _throttler.RefundUnusedQuota(unusedBytes);
+                            if (trickleAcquired)
+                            {
+                                trickleThrottler.RefundUnusedQuota(unusedBytes);
+                            }
+                        }
                     }
 
-                    bytesRead = await contentStream.ReadAsync(rentedBuffer.AsMemory(0, toRead), cancellationToken);
                     if (bytesRead <= 0)
                     {
-                        _throttler.RefundUnusedQuota(toRead);
-                        if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead);
                         break;
-                    }
-
-                    if (bytesRead < toRead)
-                    {
-                        _throttler.RefundUnusedQuota(toRead - bytesRead);
-                        if (item.IsTrickling) trickleThrottler.RefundUnusedQuota(toRead - bytesRead);
                     }
 
                     await fileStream.WriteAsync(rentedBuffer.AsMemory(0, bytesRead), cancellationToken);

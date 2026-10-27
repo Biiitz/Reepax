@@ -1,7 +1,11 @@
 using System;
 using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Reepax.Models;
 using Reepax.Services.Download;
 using Xunit;
 
@@ -230,5 +234,65 @@ public class BandwidthThrottlerTests
         sw.Stop();
 
         Assert.True(sw.ElapsedMilliseconds < 350, $"Expected < 350ms after refund, actual: {sw.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public async Task DownloadEngine_AbortedStreamRead_RefundsUnusedQuotaToThrottler()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "ReepaxQuotaRefundTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            int requestNum = 0;
+            var payload = new byte[128];
+            var handler = new TestMockHttpMessageHandler((req, ct) =>
+            {
+                int current = Interlocked.Increment(ref requestNum);
+                if (current == 1)
+                {
+                    var failResp = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StreamContent(new InterruptibleMemoryStream(new byte[8192], 0))
+                    };
+                    failResp.Content.Headers.ContentLength = 8192;
+                    return Task.FromResult(failResp);
+                }
+
+                var okResp = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(payload)
+                };
+                okResp.Content.Headers.ContentLength = payload.Length;
+                return Task.FromResult(okResp);
+            });
+
+            var engine = new DownloadEngine(new HttpClient(handler));
+            // 4 KB/s: a 4 KB read slice reserves a full 1000ms window unless refunded on read failure.
+            engine.SetSpeedLimit(4 * 1024);
+
+            var item1 = new DownloadItem
+            {
+                FileName = "aborted.bin",
+                SaveFilePath = Path.Combine(tempDir, "aborted.bin")
+            };
+            await engine.StartDownloadAsync(item1, "https://example.com/aborted.bin", null, null, null, "aborted.bin");
+
+            var item2 = new DownloadItem
+            {
+                FileName = "second.bin",
+                SaveFilePath = Path.Combine(tempDir, "second.bin")
+            };
+            var sw = Stopwatch.StartNew();
+            await engine.StartDownloadAsync(item2, "https://example.com/second.bin", null, null, null, "second.bin");
+            sw.Stop();
+
+            Assert.Equal(DownloadStatus.Completed, item2.Status);
+            Assert.True(sw.ElapsedMilliseconds < 500, $"Expected < 500ms when unused quota is refunded, actual: {sw.ElapsedMilliseconds}ms");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
     }
 }
