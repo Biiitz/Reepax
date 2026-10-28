@@ -1,6 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
@@ -238,5 +241,193 @@ public class CompletionNotificationTests
 
         pkg.SetNextTaskDone("Extract");
         Assert.Contains(nameof(pkg.IsFullyCompleted), notifiedProperties);
+    }
+
+    [Fact]
+    public async Task RefreshVerifyFile_WhenSearchIsBlocked_LeavesDispatcherResponsive()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "verify_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "verify.bat");
+        File.WriteAllText(file, "@echo off");
+        var (thread, dispatcher) = StartDispatcher();
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var package = new DownloadPackage { SaveDirectory = directory };
+        int updateThread = 0;
+        package.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadPackage.HasVerifyBatFile))
+                updateThread = Environment.CurrentManagedThreadId;
+        };
+        Task operation = Task.CompletedTask;
+        try
+        {
+            operation = dispatcher.InvokeAsync(new Func<Task>(() => package.RefreshVerifyBatFileAsync(() =>
+            {
+                started.TrySetResult(Environment.CurrentManagedThreadId);
+                release.Wait();
+                return file;
+            }, dispatcher))).Task.Unwrap();
+            int searchThread = await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await dispatcher.InvokeAsync(() => Assert.False(package.HasVerifyBatFile)).Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotEqual(dispatcher.Thread.ManagedThreadId, searchThread);
+            Assert.False(operation.IsCompleted);
+            release.Set();
+            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(package.HasVerifyBatFile);
+            Assert.Equal(file, package.VerifyBatFilePath);
+            Assert.Equal(dispatcher.Thread.ManagedThreadId, updateThread);
+        }
+        finally
+        {
+            release.Set();
+            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            thread.Join(TimeSpan.FromSeconds(5));
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    public async Task RefreshVerifyFile_WhenStateChanges_DiscardsStaleResults(bool startNewSearch, bool extracting, bool synchronousSearch)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "verify_test_" + Guid.NewGuid().ToString("N"));
+        var firstDirectory = Path.Combine(root, "first");
+        var secondDirectory = Path.Combine(root, "second");
+        Directory.CreateDirectory(firstDirectory);
+        Directory.CreateDirectory(secondDirectory);
+        var firstFile = Path.Combine(firstDirectory, "verify.bat");
+        var secondFile = Path.Combine(secondDirectory, "verify.cmd");
+        File.WriteAllText(firstFile, "@echo off");
+        File.WriteAllText(secondFile, "@echo off");
+        var (thread, dispatcher) = StartDispatcher();
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var package = new DownloadPackage { SaveDirectory = firstDirectory, VerifyBatFilePath = firstFile, HasVerifyBatFile = true };
+        Task operation = Task.CompletedTask;
+        try
+        {
+            operation = dispatcher.InvokeAsync(new Func<Task>(() => package.RefreshVerifyBatFileAsync(() =>
+            {
+                started.TrySetResult(true);
+                release.Wait();
+                return firstFile;
+            }, dispatcher))).Task.Unwrap();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await dispatcher.InvokeAsync(() =>
+            {
+                if (extracting) package.IsExtracting = true;
+                else package.SaveDirectory = secondDirectory;
+            }).Task.WaitAsync(TimeSpan.FromSeconds(5));
+            if (startNewSearch)
+            {
+                await dispatcher.InvokeAsync(new Func<Task>(() => package.RefreshVerifyBatFileAsync(null, dispatcher)))
+                    .Task.Unwrap().WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            if (synchronousSearch)
+                await dispatcher.InvokeAsync(() => Assert.True(package.CheckAndRefreshVerifyBatFile())).Task.WaitAsync(TimeSpan.FromSeconds(10));
+            release.Set();
+            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(!extracting, package.HasVerifyBatFile);
+            Assert.Equal(extracting ? null : secondFile, package.VerifyBatFilePath);
+        }
+        finally
+        {
+            release.Set();
+            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            thread.Join(TimeSpan.FromSeconds(5));
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task RefreshVerifyFile_WhenItemDirectoryChanges_SearchesCurrentDirectory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "verify_test_" + Guid.NewGuid().ToString("N"));
+        var firstDirectory = Path.Combine(root, "first");
+        var secondDirectory = Path.Combine(root, "second");
+        Directory.CreateDirectory(firstDirectory);
+        Directory.CreateDirectory(secondDirectory);
+        var firstFile = Path.Combine(firstDirectory, "verify.bat");
+        var secondFile = Path.Combine(secondDirectory, "verify.cmd");
+        File.WriteAllText(firstFile, "@echo off");
+        File.WriteAllText(secondFile, "@echo off");
+        var package = new DownloadPackage { IsCustomName = true };
+        var item = new DownloadItem { SaveFilePath = Path.Combine(firstDirectory, "data.bin"), Status = DownloadStatus.Completed };
+        package.Items.Add(item);
+        await package.RefreshVerifyBatFileAsync();
+        var (thread, dispatcher) = StartDispatcher();
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task operation = Task.CompletedTask;
+        try
+        {
+            operation = dispatcher.InvokeAsync(new Func<Task>(() => package.RefreshVerifyBatFileAsync(() =>
+            {
+                started.TrySetResult(true);
+                release.Wait();
+                return firstFile;
+            }, dispatcher))).Task.Unwrap();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await dispatcher.InvokeAsync(() => item.SaveFilePath = Path.Combine(secondDirectory, "data.bin")).Task.WaitAsync(TimeSpan.FromSeconds(5));
+            release.Set();
+            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(package.HasVerifyBatFile);
+            Assert.Equal(secondFile, package.VerifyBatFilePath);
+        }
+        finally
+        {
+            release.Set();
+            await operation.WaitAsync(TimeSpan.FromSeconds(10));
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            thread.Join(TimeSpan.FromSeconds(5));
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task SetNextTaskDone_RefreshesVerificationFile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "verify_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var file = Path.Combine(directory, "verify.cmd");
+            File.WriteAllText(file, "@echo off");
+            var package = new DownloadPackage { SaveDirectory = directory, AutoExtractArchives = true, AutoPar2Repair = false };
+            package.EnsureNextTaskSteps();
+            var refreshed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            package.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(DownloadPackage.HasVerifyBatFile) && package.HasVerifyBatFile)
+                    refreshed.TrySetResult(true);
+            };
+            package.SetNextTaskDone("Extract");
+            await refreshed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(file, package.VerifyBatFilePath);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static (Thread Thread, Dispatcher Dispatcher) StartDispatcher()
+    {
+        var ready = new TaskCompletionSource<Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            ready.SetResult(Dispatcher.CurrentDispatcher);
+            Dispatcher.Run();
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return (thread, ready.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult());
     }
 }

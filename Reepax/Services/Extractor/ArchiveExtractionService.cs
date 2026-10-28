@@ -719,16 +719,27 @@ public class ArchiveExtractionService
             }
             _pausedPackages.TryRemove(package.Id, out _);
             _extractingPackages.TryRemove(package.Id, out _);
-            SafeInvoke(() =>
+            await SafeInvokeAsync(() =>
             {
                 package.IsExtracting = false;
                 package.IsExtractionPaused = false;
-                package.CheckAndRefreshVerifyBatFile();
-            });
+            }).ConfigureAwait(false);
+
+            await package.RefreshVerifyBatFileAsync().ConfigureAwait(false);
 
             SystemIntegration.PostDownloadActionService.Instance.Evaluate(Download.QueueManager.Instance.Packages);
         }
         return allSuccess;
+    }
+
+    private static Task SafeInvokeAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
+            return dispatcher.InvokeAsync(action).Task;
+
+        action();
+        return Task.CompletedTask;
     }
 
     private static void SafeInvoke(Action action)

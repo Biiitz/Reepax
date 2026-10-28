@@ -193,8 +193,11 @@ public class ArchiveExtractionTests
             using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
             {
                 var entry = zip.CreateEntry("extracted_result.txt");
-                using var writer = new StreamWriter(entry.Open());
-                writer.WriteLine("Finished unpacking perfectly!");
+                using (var writer = new StreamWriter(entry.Open()))
+                    writer.WriteLine("Finished unpacking perfectly!");
+                var verification = zip.CreateEntry("verify.bat");
+                using var verificationWriter = new StreamWriter(verification.Open());
+                verificationWriter.WriteLine("@echo off");
             }
 
             var package = new DownloadPackage
@@ -219,6 +222,8 @@ public class ArchiveExtractionTests
             var text = File.ReadAllText(extractedFile).Trim();
             Assert.Equal("Finished unpacking perfectly!", text);
             Assert.Equal(Loc.Get("Status_CompletedAndExtracted"), package.StatusMessage);
+            Assert.True(package.HasVerifyBatFile);
+            Assert.Equal(Path.Combine(testDir, "verify.bat"), package.VerifyBatFilePath);
         }
         finally
         {

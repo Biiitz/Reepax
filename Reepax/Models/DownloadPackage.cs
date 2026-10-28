@@ -198,7 +198,7 @@ public partial class DownloadPackage : ObservableObject
         OnPropertyChanged(nameof(IsFullyCompleted));
         if (value == DownloadStatus.Completed)
         {
-            CheckAndRefreshVerifyBatFile();
+            _ = RefreshVerifyBatFileAsync();
         }
     }
 
@@ -390,7 +390,7 @@ public partial class DownloadPackage : ObservableObject
         if (stepKeyOrName == "Extract")
         {
             IsExtracted = true;
-            CheckAndRefreshVerifyBatFile();
+            _ = RefreshVerifyBatFileAsync();
         }
         OnPropertyChanged(nameof(IsFullyCompleted));
     }
@@ -1471,14 +1471,24 @@ public partial class DownloadPackage : ObservableObject
     /// </summary>
     public bool CheckAndRefreshVerifyBatFile()
     {
+        Interlocked.Increment(ref _verifyBatScanVersion);
+        if (!CanSearchForVerifyBatFile())
+        {
+            return SetVerifyBatFile(null, false);
+        }
+
+        var batPath = FindVerifyBatFilePath(this);
+        return SetVerifyBatFile(batPath, !string.IsNullOrEmpty(batPath) && File.Exists(batPath));
+    }
+
+    private bool CanSearchForVerifyBatFile()
+    {
         // 1. If package is actively extracting right now, wait until extraction completes
         if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(Id))
         {
             var extractStep = NextTaskSteps.FirstOrDefault(s => s.Key == "Extract");
             if (extractStep == null || extractStep.State != NextTaskStepState.Done)
             {
-                HasVerifyBatFile = false;
-                VerifyBatFilePath = null;
                 return false;
             }
         }
@@ -1487,8 +1497,6 @@ public partial class DownloadPackage : ObservableObject
             StatusMessage == "Entpacken..." ||
             StatusMessage == "Entpacke...")
         {
-            HasVerifyBatFile = false;
-            VerifyBatFilePath = null;
             return false;
         }
 
@@ -1498,8 +1506,6 @@ public partial class DownloadPackage : ObservableObject
             var extractStep = NextTaskSteps.FirstOrDefault(s => s.Key == "Extract");
             if (extractStep != null && extractStep.State != NextTaskStepState.Done)
             {
-                HasVerifyBatFile = false;
-                VerifyBatFilePath = null;
                 return false;
             }
         }
@@ -1508,15 +1514,16 @@ public partial class DownloadPackage : ObservableObject
         var enabledItems = Items.Where(i => i.IsEnabled).ToList();
         if (enabledItems.Count > 0 && !enabledItems.All(i => i.Status == DownloadStatus.Completed))
         {
-            HasVerifyBatFile = false;
-            VerifyBatFilePath = null;
             return false;
         }
 
-        // 4. Direct physical scan on disk for the verify batch file
-        var batPath = FindVerifyBatFilePath(this);
+        return true;
+    }
+
+    private bool SetVerifyBatFile(string? batPath, bool exists)
+    {
         VerifyBatFilePath = batPath;
-        HasVerifyBatFile = !string.IsNullOrEmpty(batPath) && File.Exists(batPath);
+        HasVerifyBatFile = exists;
         return HasVerifyBatFile;
     }
 
@@ -1524,19 +1531,24 @@ public partial class DownloadPackage : ObservableObject
     {
         if (package == null) return null;
 
+        return FindVerifyBatFilePath(package.SaveDirectory, package.Name,
+            package.Items.Select(item => item.SaveFilePath).ToArray());
+    }
+
+    private static string? FindVerifyBatFilePath(string saveDir, string name, string?[] itemPaths)
+    {
         var checkedDirs = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // 1. Search in SaveDirectory
-        var saveDir = package.SaveDirectory;
         if (!string.IsNullOrWhiteSpace(saveDir) && Directory.Exists(saveDir))
         {
             var found = FindVerifyBatInDirectory(saveDir, checkedDirs);
             if (found != null) return found;
 
             // Also check subfolder matching package name if present
-            if (!string.IsNullOrWhiteSpace(package.Name))
+            if (!string.IsNullOrWhiteSpace(name))
             {
-                var pkgSubdir = Path.Combine(saveDir, package.Name);
+                var pkgSubdir = Path.Combine(saveDir, name);
                 if (Directory.Exists(pkgSubdir) && checkedDirs.Add(pkgSubdir))
                 {
                     var subFound = FindVerifyBatInDirectory(pkgSubdir, checkedDirs);
@@ -1546,12 +1558,12 @@ public partial class DownloadPackage : ObservableObject
         }
 
         // 2. Search in item directories (if different from SaveDirectory)
-        foreach (var item in package.Items)
+        foreach (var itemPath in itemPaths)
         {
-            if (string.IsNullOrWhiteSpace(item.SaveFilePath)) continue;
+            if (string.IsNullOrWhiteSpace(itemPath)) continue;
             try
             {
-                var itemDir = Path.GetDirectoryName(item.SaveFilePath);
+                var itemDir = Path.GetDirectoryName(itemPath);
                 if (!string.IsNullOrWhiteSpace(itemDir) && Directory.Exists(itemDir) && checkedDirs.Add(itemDir))
                 {
                     var found = FindVerifyBatInDirectory(itemDir, checkedDirs);
