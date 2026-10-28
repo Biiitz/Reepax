@@ -119,11 +119,18 @@ public class QueueManager
 
     public ObservableCollection<DownloadPackage> Packages { get; set; } = new();
 
-    public QueueManager()
+    public QueueManager() : this(subscribeToDownloadEvents: true)
     {
-        DownloadEngine.Instance.DownloadCompleted += OnBackgroundDownloadCompleted;
-        DownloadEngine.Instance.DownloadFailed += OnBackgroundDownloadFailed;
-        DownloadEngine.Instance.DownloadCancelled += OnBackgroundDownloadCancelled;
+    }
+
+    internal QueueManager(bool subscribeToDownloadEvents)
+    {
+        if (subscribeToDownloadEvents)
+        {
+            DownloadEngine.Instance.DownloadCompleted += OnBackgroundDownloadCompleted;
+            DownloadEngine.Instance.DownloadFailed += OnBackgroundDownloadFailed;
+            DownloadEngine.Instance.DownloadCancelled += OnBackgroundDownloadCancelled;
+        }
 
         // Restore saved download packages, items, progress, and selection states from AppData
         try
@@ -436,7 +443,7 @@ public class QueueManager
             if (pkg.AutoExtractArchives &&
                 !pkg.IsExtracted &&
                 pkg.Items.Count > 0 &&
-                pkg.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed) &&
+                pkg.AreDownloadsCompleted &&
                 pkg.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Pending) &&
                 !Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id) &&
                 Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg))
@@ -544,7 +551,7 @@ public class QueueManager
                 if (!item.IsEnabled)
                     continue;
 
-                if (IsItemActive(item))
+                if (item.IsVerifyingIntegrity || IsItemActive(item))
                     return true;
 
                 if (IsRunning && (item.Status == DownloadStatus.Queued || item.Status == DownloadStatus.WaitingForBrowser))
@@ -557,7 +564,8 @@ public class QueueManager
 
     internal bool IsItemActive(DownloadItem item)
     {
-        if (item.Status == DownloadStatus.Queued ||
+        if (item.IsVerifyingIntegrity ||
+            item.Status == DownloadStatus.Queued ||
             item.Status == DownloadStatus.Paused ||
             item.Status == DownloadStatus.Completed ||
             item.Status == DownloadStatus.Failed ||
@@ -1383,6 +1391,8 @@ public class QueueManager
 
         if (success)
         {
+            item.IsVerifyingIntegrity = true;
+            item.Status = DownloadStatus.Completed;
             SafeInvoke(() =>
             {
                 if (!string.IsNullOrWhiteSpace(filePath))
@@ -1411,7 +1421,7 @@ public class QueueManager
             });
 
             // Same completion pipeline as engine downloads (checksum verification, auto-extraction, ...)
-            HandleDownloadCompleted(item);
+            _ = HandleDownloadCompleted(item);
         }
         else
         {
@@ -1429,32 +1439,30 @@ public class QueueManager
 
     private void OnBackgroundDownloadCompleted(DownloadItem item)
     {
-        HandleDownloadCompleted(item);
+        _ = HandleDownloadCompleted(item);
     }
 
-    private void HandleDownloadCompleted(DownloadItem item)
+    internal Task HandleDownloadCompleted(DownloadItem item)
     {
-        _ = Task.Run(async () =>
+        item.IsVerifyingIntegrity = true;
+        return Task.Run(async () =>
         {
             try
             {
+                ChecksumVerificationResult? verification = null;
                 // Background Checksum and File Integrity Verification
                 if (SettingsService.Instance.Settings.EnableChecksumVerification)
                 {
-                    SafeInvoke(() =>
+                    await ApplyCompletionUpdateAsync(() =>
                     {
                         item.StatusMessage = Loc.Get("Status_VerifyingChecksum");
                     });
 
-                    var verification = await ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(item);
+                    ProcessQueue();
+                    verification = await ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(item);
                     if (!verification.IsValid)
                     {
                         var maxRetries = SettingsService.Instance.Settings.MaxAutoRetryOnCorruption;
-                        SafeInvoke(() =>
-                        {
-                            item.LastVerificationError = verification.ErrorMessage;
-                        });
-
                         if (item.RetryCount < maxRetries)
                         {
                             AppLogger.Warn($"[QueueManager] Prüfsummenfehler bei '{item.FileName}': {verification.ErrorMessage}. Lösche beschädigte Datei und reihe Part erneut ein (Versuch {item.RetryCount + 1}/{maxRetries}).");
@@ -1475,8 +1483,9 @@ public class QueueManager
                                 Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segFile);
                             }
 
-                            SafeInvoke(() =>
+                            await ApplyCompletionUpdateAsync(() =>
                             {
+                                item.LastVerificationError = verification.ErrorMessage;
                                 item.RetryCount++;
                                 item.DownloadedBytes = 0;
                                 item.ProgressPercentage = 0;
@@ -1487,6 +1496,7 @@ public class QueueManager
                                 item.Status = DownloadStatus.Queued;
                                 item.StatusMessage = Loc.Format("Status_RetryingAfterChecksumError", item.RetryCount, maxRetries);
                                 item.CurrentSlot = null;
+                                item.IsVerifyingIntegrity = false;
                             });
 
                             ProcessQueue();
@@ -1495,11 +1505,13 @@ public class QueueManager
                         else
                         {
                             AppLogger.Error($"[QueueManager] Prüfsummenfehler bei '{item.FileName}' nach {maxRetries} Versuchen: {verification.ErrorMessage}");
-                            SafeInvoke(() =>
+                            await ApplyCompletionUpdateAsync(() =>
                             {
+                                item.LastVerificationError = verification.ErrorMessage;
                                 item.Status = DownloadStatus.Failed;
                                 item.StatusMessage = Loc.Format("Status_ChecksumError", verification.ErrorMessage ?? string.Empty);
                                 item.CurrentSlot = null;
+                                item.IsVerifyingIntegrity = false;
                             });
 
                             ProcessQueue();
@@ -1508,24 +1520,21 @@ public class QueueManager
                     }
 
                     AppLogger.Info($"[QueueManager] Datei '{item.FileName}' erfolgreich verifiziert ({verification.Algorithm}: {verification.CalculatedChecksum}).");
-
-                    SafeInvoke(() =>
-                    {
-                        if (!string.IsNullOrWhiteSpace(verification.CalculatedChecksum))
-                        {
-                            item.CalculatedChecksum = verification.CalculatedChecksum;
-                        }
-                    });
                 }
 
                 // Mark Item as Completed
-                SafeInvoke(() =>
+                await ApplyCompletionUpdateAsync(() =>
                 {
+                    if (!string.IsNullOrWhiteSpace(verification?.CalculatedChecksum))
+                    {
+                        item.CalculatedChecksum = verification.CalculatedChecksum;
+                    }
                     item.Status = DownloadStatus.Completed;
                     item.StatusMessage = Loc.Get("Status_Completed");
                     item.SpeedBytesPerSecond = 0;
                     item.RemainingSeconds = 0;
                     item.CurrentSlot = null;
+                    item.IsVerifyingIntegrity = false;
                 });
 
                 // Trigger Auto-Extract if enabled in settings and package contains extractable archives
@@ -1547,12 +1556,39 @@ public class QueueManager
             catch (Exception ex)
             {
                 AppLogger.Error($"[QueueManager] Fehler bei Download-Abschlussprüfung für '{item.FileName}'", ex);
+                if (item.IsVerifyingIntegrity)
+                {
+                    await ApplyCompletionUpdateAsync(() =>
+                    {
+                        item.LastVerificationError = ex.Message;
+                        item.Status = DownloadStatus.Failed;
+                        item.StatusMessage = Loc.Format("Status_ChecksumError", ex.Message);
+                        item.CurrentSlot = null;
+                        item.IsVerifyingIntegrity = false;
+                    });
+                }
             }
             finally
             {
                 ProcessQueue();
             }
         });
+    }
+
+    private static Task ApplyCompletionUpdateAsync(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (!DownloadPersistenceService.IsTestEnvironment &&
+            dispatcher?.Thread?.IsAlive == true &&
+            !dispatcher.HasShutdownStarted &&
+            !dispatcher.HasShutdownFinished &&
+            !dispatcher.CheckAccess())
+        {
+            return dispatcher.InvokeAsync(action).Task;
+        }
+
+        action();
+        return Task.CompletedTask;
     }
 
     private void OnBackgroundDownloadFailed(DownloadItem item, Exception ex)

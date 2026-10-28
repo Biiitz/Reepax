@@ -393,7 +393,7 @@ public class ArchiveExtractionService
             if (enabledItems.Count == 0)
                 return false;
 
-            var pendingCount = enabledItems.Count(i => i.Status != DownloadStatus.Completed);
+            var pendingCount = enabledItems.Count(i => !i.IsReadyForPostProcessing);
             if (pendingCount > 0)
             {
                 AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wartet noch auf {pendingCount} unvollständige Datei(en) ({enabledItems.Count - pendingCount}/{enabledItems.Count} abgeschlossen).");

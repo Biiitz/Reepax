@@ -630,6 +630,7 @@ public partial class DownloadPackage : ObservableObject
         }
 
         if (e.PropertyName is nameof(DownloadItem.Status) or
+            nameof(DownloadItem.IsVerifyingIntegrity) or
             nameof(DownloadItem.IsEnabled))
         {
             // Structural changes: recalculate aggregates immediately (asynchronously if on a background thread)
@@ -1080,7 +1081,7 @@ public partial class DownloadPackage : ObservableObject
     /// <summary>
     /// Checks whether the package is fully completed:
     /// - At least one enabled item exists
-    /// - All enabled items have status Completed
+    /// - All enabled items are completed with no pending or failed integrity checks
     /// - If AutoExtractArchives is active and NextTaskSteps exist: all steps must have state 'Done'.
     /// </summary>
     public bool CheckIsFullyCompleted()
@@ -1089,7 +1090,7 @@ public partial class DownloadPackage : ObservableObject
         var enabledItems = itemsSnapshot.Where(i => i.IsEnabled).ToList();
         if (enabledItems.Count == 0) return false;
 
-        bool allItemsCompleted = enabledItems.All(i => i.Status == DownloadStatus.Completed);
+        bool allItemsCompleted = enabledItems.All(i => i.IsReadyForPostProcessing);
         if (!allItemsCompleted) return false;
 
         if (AutoExtractArchives && NextTaskSteps.Count > 0)
@@ -1103,14 +1104,14 @@ public partial class DownloadPackage : ObservableObject
     public bool IsFullyCompleted => CheckIsFullyCompleted();
 
     /// <summary>
-    /// Returns true if all enabled download items in this package are in Completed status.
+    /// Returns true if all enabled downloads are ready for post-processing.
     /// </summary>
     public bool AreDownloadsCompleted
     {
         get
         {
             var enabledItems = Items.Where(i => i.IsEnabled).ToList();
-            return enabledItems.Count > 0 && enabledItems.All(i => i.Status == DownloadStatus.Completed);
+            return enabledItems.Count > 0 && enabledItems.All(i => i.IsReadyForPostProcessing);
         }
     }
 

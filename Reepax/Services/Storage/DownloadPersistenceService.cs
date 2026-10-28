@@ -817,7 +817,9 @@ public class DownloadPersistenceService : IDisposable
                     if (item == null) continue;
 
                     // Incomplete downloads are normalized to Paused (or Skipped) when saved
-                    var itemStatus = item.Status == DownloadStatus.Completed ? DownloadStatus.Completed : DownloadStatus.Paused;
+                    var itemStatus = item.IsReadyForPostProcessing
+                        ? DownloadStatus.Completed
+                        : DownloadStatus.Paused;
                     var itemStatusMsg = !item.IsEnabled ? Loc.Get("Status_Skipped") : (itemStatus == DownloadStatus.Completed ? Loc.Get("Status_Completed") : Loc.Get("Status_Paused"));
 
                     long downloaded = item.DownloadedBytes;

@@ -95,6 +95,12 @@ public class DownloadEngineTests
             using var httpClient = new HttpClient(handler);
             var engine = new DownloadEngine(httpClient);
 
+            bool completionWasGuarded = false;
+            item.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(DownloadItem.Status) && item.Status == DownloadStatus.Completed)
+                    completionWasGuarded = item.IsVerifyingIntegrity;
+            };
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             engine.DownloadCompleted += downloadedItem =>
             {
@@ -122,6 +128,7 @@ public class DownloadEngineTests
 
             // Assert
             Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(completionWasGuarded);
             Assert.Equal(100.0, item.ProgressPercentage);
             Assert.True(File.Exists(destinationFile));
             Assert.False(File.Exists(destinationFile + ".part"));
@@ -1188,6 +1195,12 @@ public class DownloadEngineTests
             using var httpClient = new HttpClient(handler);
             var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 4 };
 
+            bool completionWasGuarded = false;
+            item.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(DownloadItem.Status) && item.Status == DownloadStatus.Completed)
+                    completionWasGuarded = item.IsVerifyingIntegrity;
+            };
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             engine.DownloadCompleted += i => { if (i.Id == item.Id) tcs.TrySetResult(true); };
             engine.DownloadFailed += (i, ex) => { if (i.Id == item.Id) tcs.TrySetException(ex); };
@@ -1200,6 +1213,7 @@ public class DownloadEngineTests
 
             // Assert: file is byte-identical, no chunk residue
             Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(completionWasGuarded);
             Assert.True(File.Exists(destinationFile));
             Assert.False(File.Exists(destinationFile + ".part"));
             Assert.False(File.Exists(destinationFile + ".part.segments"));

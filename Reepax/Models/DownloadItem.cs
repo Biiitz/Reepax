@@ -106,6 +106,36 @@ public partial class DownloadItem : ObservableObject
     [ObservableProperty]
     private string? _lastVerificationError;
 
+    private enum IntegrityVerificationState
+    {
+        None,
+        Pending,
+        Succeeded,
+        Failed
+    }
+
+    private volatile IntegrityVerificationState _integrityVerificationState;
+
+    /// <summary>Blocks post-processing until the completion result is applied.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsVerifyingIntegrity
+    {
+        get => _integrityVerificationState == IntegrityVerificationState.Pending;
+        internal set
+        {
+            var state = value ? IntegrityVerificationState.Pending
+                : Status == DownloadStatus.Completed ? IntegrityVerificationState.Succeeded : IntegrityVerificationState.Failed;
+            if (_integrityVerificationState == state)
+                return;
+
+            _integrityVerificationState = state;
+            OnPropertyChanged();
+        }
+    }
+
+    internal bool IsReadyForPostProcessing => Status == DownloadStatus.Completed &&
+        _integrityVerificationState is IntegrityVerificationState.None or IntegrityVerificationState.Succeeded;
+
     [ObservableProperty]
     private bool _isMetadataResolved;
 

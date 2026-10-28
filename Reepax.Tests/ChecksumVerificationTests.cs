@@ -3,9 +3,14 @@ using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Download;
+using Reepax.Services.Extractor;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
 using Xunit;
 
@@ -224,6 +229,213 @@ public class ChecksumVerificationTests : IDisposable
         var result = await service.VerifyFileIntegrityAsync(item);
 
         Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData(true, true, 0, false)]
+    [InlineData(true, false, 0, false)]
+    [InlineData(true, false, 1, false)]
+    [InlineData(false, false, 0, false)]
+    [InlineData(true, true, 0, true)]
+    [InlineData(true, false, 1, true)]
+    public async Task DownloadCompletion_BlocksExtractionUntilAllIntegrityChecksFinish(
+        bool enableVerification, bool checksumMatches, int maxRetries, bool browserNative)
+    {
+        var settings = SettingsService.Instance.Settings;
+        var previousVerification = settings.EnableChecksumVerification;
+        var previousRetries = settings.MaxAutoRetryOnCorruption;
+        using var releaseVerification = new ManualResetEventSlim(false);
+        var verificationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completionApplied = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var extractionFinished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var package = CreateArchivePackage();
+        var archive = package.Items[0];
+        archive.IsVerifyingIntegrity = true;
+        var data = Encoding.UTF8.GetBytes("Integrity verification content");
+        var filePath = Path.Combine(_testDir, "data.bin");
+        File.WriteAllBytes(filePath, data);
+        var item = new DownloadItem
+        {
+            FileName = "data.bin",
+            SaveFilePath = filePath,
+            TotalBytes = data.Length,
+            DownloadedBytes = data.Length,
+            Status = DownloadStatus.Completed,
+            ExpectedChecksum = checksumMatches ? Convert.ToHexString(SHA256.HashData(data)) : new string('0', 64)
+        };
+        package.Items.Add(item);
+        package.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadPackage.IsExtracting) && !package.IsExtracting && package.IsExtracted)
+                extractionFinished.TrySetResult(true);
+        };
+        item.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadItem.IsVerifyingIntegrity) && !item.IsVerifyingIntegrity)
+                completionApplied.TrySetResult(true);
+            if (e.PropertyName == nameof(DownloadItem.StatusMessage) && item.StatusMessage == Loc.Get("Status_VerifyingChecksum"))
+            {
+                verificationStarted.TrySetResult(true);
+                releaseVerification.Wait();
+            }
+        };
+        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        queue.Packages.Clear();
+        queue.Packages.Add(package);
+        Task completion = Task.CompletedTask;
+        bool shouldExtract = !enableVerification || checksumMatches;
+
+        try
+        {
+            settings.EnableChecksumVerification = enableVerification;
+            settings.MaxAutoRetryOnCorruption = maxRetries;
+            if (browserNative)
+            {
+                item.Status = DownloadStatus.InBrowser;
+                var windows = (Dictionary<int, DownloadItem>)typeof(QueueManager).GetField("_windowItems",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(queue)!;
+                windows.Add(1, item);
+                completion = completionApplied.Task;
+                queue.OnBrowserNativeDownloadCompleted(1, true, null, filePath);
+            }
+            else
+            {
+                completion = queue.HandleDownloadCompleted(item);
+            }
+            if (enableVerification)
+            {
+                await verificationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.True(item.IsVerifyingIntegrity);
+                Assert.False(queue.IsItemActive(item));
+                Assert.False(package.AreDownloadsCompleted);
+                Assert.False(package.CheckIsFullyCompleted());
+                Assert.False(ArchiveExtractionService.Instance.CanExtractPackage(package));
+                Assert.True(queue.HasActiveDownloads());
+                Assert.True(PostDownloadActionService.CheckHasActiveWork(new[] { package }));
+                typeof(QueueManager).GetMethod("CheckPendingExtractions",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(queue, null);
+                Assert.False(ArchiveExtractionService.Instance.IsPackageExtracting(package.Id));
+                Assert.False(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true, forceReextract: true));
+                Assert.False(File.Exists(Path.Combine(_testDir, "payload.txt")));
+                var persistence = new DownloadPersistenceService(Path.Combine(_testDir, "downloads.json"));
+                persistence.SaveDownloads(new[] { package });
+                var restored = Assert.Single(persistence.LoadDownloads());
+                Assert.All(restored.Items, saved => Assert.Equal(DownloadStatus.Paused, saved.Status));
+            }
+            releaseVerification.Set();
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.False(item.IsVerifyingIntegrity);
+            Assert.False(ArchiveExtractionService.Instance.CanExtractPackage(package));
+            Assert.False(File.Exists(Path.Combine(_testDir, "payload.txt")));
+            await queue.HandleDownloadCompleted(archive).WaitAsync(TimeSpan.FromSeconds(10));
+
+            if (shouldExtract)
+            {
+                await extractionFinished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(DownloadStatus.Completed, item.Status);
+                Assert.Equal(enableVerification ? Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant() : null, item.CalculatedChecksum);
+                Assert.Equal("Archive content", File.ReadAllText(Path.Combine(_testDir, "payload.txt")));
+            }
+            else
+            {
+                Assert.Equal(maxRetries > 0 ? DownloadStatus.Queued : DownloadStatus.Failed, item.Status);
+                Assert.Equal(maxRetries > 0 ? 1 : 0, item.RetryCount);
+                Assert.False(string.IsNullOrWhiteSpace(item.LastVerificationError));
+                Assert.Equal(maxRetries == 0, File.Exists(filePath));
+                Assert.False(File.Exists(Path.Combine(_testDir, "payload.txt")));
+            }
+        }
+        finally
+        {
+            releaseVerification.Set();
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
+            if (ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
+                await extractionFinished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            settings.EnableChecksumVerification = previousVerification;
+            settings.MaxAutoRetryOnCorruption = previousRetries;
+        }
+    }
+
+    [Fact]
+    public async Task Extraction_IgnoresDisabledItemsWithPendingIntegrityChecks()
+    {
+        var package = CreateArchivePackage();
+        package.Items.Add(new DownloadItem { IsEnabled = false, IsVerifyingIntegrity = true });
+
+        Assert.True(package.AreDownloadsCompleted);
+        Assert.True(ArchiveExtractionService.Instance.CanExtractPackage(package));
+        Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true));
+        Assert.True(package.IsFullyCompleted);
+    }
+
+    [Fact]
+    public async Task Extraction_WhenCompletionStatusArrivesAfterVerificationFailure_RemainsBlocked()
+    {
+        var package = CreateArchivePackage();
+        var item = package.Items[0];
+        item.IsVerifyingIntegrity = true;
+        item.Status = DownloadStatus.Failed;
+        item.IsVerifyingIntegrity = false;
+        item.Status = DownloadStatus.Completed;
+
+        Assert.False(item.IsVerifyingIntegrity);
+        Assert.False(package.AreDownloadsCompleted);
+        Assert.False(ArchiveExtractionService.Instance.CanExtractPackage(package));
+        Assert.False(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true));
+    }
+
+    [Fact]
+    public async Task DownloadCompletion_WhenVerificationUpdateThrows_BlocksExtractionAndReleasesGuard()
+    {
+        var settings = SettingsService.Instance.Settings;
+        var previousVerification = settings.EnableChecksumVerification;
+        var package = CreateArchivePackage();
+        var item = package.Items[0];
+        item.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadItem.StatusMessage) && item.StatusMessage == Loc.Get("Status_VerifyingChecksum"))
+                throw new InvalidOperationException("Verification update failed");
+        };
+        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        try
+        {
+            settings.EnableChecksumVerification = true;
+            await queue.HandleDownloadCompleted(item).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.False(item.IsVerifyingIntegrity);
+            Assert.False(ArchiveExtractionService.Instance.CanExtractPackage(package));
+            Assert.Equal("Verification update failed", item.LastVerificationError);
+        }
+        finally
+        {
+            settings.EnableChecksumVerification = previousVerification;
+        }
+    }
+
+    private DownloadPackage CreateArchivePackage()
+    {
+        var archivePath = Path.Combine(_testDir, "archive.zip");
+        using (var zip = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+        {
+            var entry = zip.CreateEntry("payload.txt");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write("Archive content");
+        }
+        var package = new DownloadPackage
+        {
+            Name = "Integrity package",
+            IsCustomName = true,
+            SaveDirectory = _testDir,
+            AutoExtractArchives = true,
+            AutoPar2Repair = false
+        };
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "archive.zip",
+            SaveFilePath = archivePath,
+            Status = DownloadStatus.Completed
+        });
+        return package;
     }
 
     [Fact]
