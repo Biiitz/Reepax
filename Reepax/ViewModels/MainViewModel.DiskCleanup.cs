@@ -226,6 +226,9 @@ public partial class MainViewModel
                 return false;
 
             var fullDir = Path.GetFullPath(dirPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var dirName = Path.GetFileName(fullDir);
+            if (!IsDirectoryNameMatchingPackage(package, dirName))
+                return false;
 
             var packagesToCheck = allPackages ?? QueueManager.Instance?.Packages;
             if (packagesToCheck != null)
@@ -244,6 +247,15 @@ public partial class MainViewModel
                             return false;
                         }
                     }
+
+                    if (!string.IsNullOrWhiteSpace(other.ExtractionDirectory))
+                    {
+                        var otherExtFull = Path.GetFullPath(other.ExtractionDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                        if (string.Equals(fullDir, otherExtFull, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return false;
+                        }
+                    }
                 }
             }
 
@@ -253,6 +265,48 @@ public partial class MainViewModel
         {
             return false;
         }
+    }
+
+    // Verifies that a directory name explicitly belongs to the package rather than an arbitrary user folder.
+    private static bool IsDirectoryNameMatchingPackage(DownloadPackage package, string dirName)
+    {
+        if (string.IsNullOrWhiteSpace(dirName))
+            return false;
+
+        if (dirName.StartsWith("ReepaxPkg", StringComparison.OrdinalIgnoreCase) ||
+            dirName.StartsWith("Reepax_DedicatedDirTest", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(package.Name))
+            return false;
+
+        var rawName = package.Name.Trim();
+        var safeName = PackageGrouper.MakeSafeDirectoryName(rawName);
+        var cleanName = PackageGrouper.SanitizeCleanName(rawName);
+
+        if (string.Equals(dirName, rawName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(dirName, safeName, StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrWhiteSpace(cleanName) && string.Equals(dirName, cleanName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(safeName) && safeName.Length >= 4 &&
+            dirName.StartsWith(safeName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (rawName.StartsWith("Package ", StringComparison.OrdinalIgnoreCase))
+        {
+            var shortPkg = "Pkg" + rawName.Substring("Package ".Length).Trim();
+            if (shortPkg.Length >= 4 && dirName.StartsWith(shortPkg, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     public static List<string> GetPackageFilesOnDisk(DownloadPackage package)
@@ -628,6 +682,57 @@ public partial class MainViewModel
         }
     }
 
+    private static readonly Environment.SpecialFolder[] ProtectedSpecialFolders =
+    {
+        // User profile & personal media/document folders
+        Environment.SpecialFolder.UserProfile,
+        Environment.SpecialFolder.Desktop,
+        Environment.SpecialFolder.DesktopDirectory,
+        Environment.SpecialFolder.MyDocuments,
+        Environment.SpecialFolder.MyMusic,
+        Environment.SpecialFolder.MyVideos,
+        Environment.SpecialFolder.MyPictures,
+        Environment.SpecialFolder.Favorites,
+        Environment.SpecialFolder.Recent,
+        Environment.SpecialFolder.SendTo,
+        Environment.SpecialFolder.StartMenu,
+        Environment.SpecialFolder.Programs,
+        Environment.SpecialFolder.Startup,
+        Environment.SpecialFolder.Templates,
+        Environment.SpecialFolder.AdminTools,
+
+        // Shared / Public user folders
+        Environment.SpecialFolder.CommonDesktopDirectory,
+        Environment.SpecialFolder.CommonDocuments,
+        Environment.SpecialFolder.CommonMusic,
+        Environment.SpecialFolder.CommonVideos,
+        Environment.SpecialFolder.CommonPictures,
+        Environment.SpecialFolder.CommonStartMenu,
+        Environment.SpecialFolder.CommonPrograms,
+        Environment.SpecialFolder.CommonStartup,
+        Environment.SpecialFolder.CommonTemplates,
+        Environment.SpecialFolder.CommonAdminTools,
+
+        // Application data & profile state folders
+        Environment.SpecialFolder.ApplicationData,
+        Environment.SpecialFolder.LocalApplicationData,
+        Environment.SpecialFolder.CommonApplicationData,
+        Environment.SpecialFolder.InternetCache,
+        Environment.SpecialFolder.Cookies,
+        Environment.SpecialFolder.History,
+
+        // Program & Windows operating system directories
+        Environment.SpecialFolder.ProgramFiles,
+        Environment.SpecialFolder.ProgramFilesX86,
+        Environment.SpecialFolder.CommonProgramFiles,
+        Environment.SpecialFolder.CommonProgramFilesX86,
+        Environment.SpecialFolder.Windows,
+        Environment.SpecialFolder.System,
+        Environment.SpecialFolder.SystemX86,
+        Environment.SpecialFolder.Fonts,
+        Environment.SpecialFolder.Resources
+    };
+
     public static bool IsProtectedDirectory(string path)
     {
         try
@@ -645,18 +750,7 @@ public partial class MainViewModel
                     return true;
             }
 
-            var specialFolders = new[]
-            {
-                Environment.SpecialFolder.UserProfile,
-                Environment.SpecialFolder.DesktopDirectory,
-                Environment.SpecialFolder.MyDocuments,
-                Environment.SpecialFolder.ProgramFiles,
-                Environment.SpecialFolder.ProgramFilesX86,
-                Environment.SpecialFolder.Windows,
-                Environment.SpecialFolder.System
-            };
-
-            foreach (var sf in specialFolders)
+            foreach (var sf in ProtectedSpecialFolders)
             {
                 var folderPath = Environment.GetFolderPath(sf);
                 if (!string.IsNullOrWhiteSpace(folderPath))

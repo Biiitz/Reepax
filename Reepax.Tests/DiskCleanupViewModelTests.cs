@@ -259,4 +259,65 @@ public class DiskCleanupViewModelTests
         Assert.Contains(pkg2, vm.Packages);
         Assert.Single(vm.Packages);
     }
+
+    [Fact]
+    public void DeletePackageFilesFromDisk_InCustomExistingUserDirectory_PreservesForeignFilesAndSubfolders()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"Reepax_CustomDirTest_{Guid.NewGuid()}");
+        var customUserDir = Path.Combine(tempRoot, "Spiele");
+        var foreignSubDir = Path.Combine(customUserDir, "OtherProject");
+        Directory.CreateDirectory(foreignSubDir);
+
+        try
+        {
+            var foreignFile1 = Path.Combine(customUserDir, "existing_launcher.exe");
+            var foreignFile2 = Path.Combine(customUserDir, "important_notes.txt");
+            var foreignNestedFile = Path.Combine(foreignSubDir, "save_data.bin");
+            var pkgArchive = Path.Combine(customUserDir, "release.part1.rar");
+            var pkgPart = Path.Combine(customUserDir, "release.part1.rar.part");
+
+            File.WriteAllText(foreignFile1, "foreign exe");
+            File.WriteAllText(foreignFile2, "foreign notes");
+            File.WriteAllText(foreignNestedFile, "nested foreign data");
+            File.WriteAllText(pkgArchive, "package archive");
+            File.WriteAllText(pkgPart, "package part");
+
+            var pkg = new DownloadPackage
+            {
+                Id = Guid.NewGuid(),
+                Name = "MyReleaseBundle",
+                SaveDirectory = customUserDir
+            };
+            pkg.Items.Add(new DownloadItem
+            {
+                FileName = "release.part1.rar",
+                SaveFilePath = pkgArchive
+            });
+
+            var allPackages = new List<DownloadPackage> { pkg };
+
+            Assert.False(MainViewModel.IsDedicatedPackageDirectory(pkg, customUserDir, allPackages));
+
+            var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, allPackages);
+            Assert.Contains(pkgArchive, filesOnDisk, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(pkgPart, filesOnDisk, StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain(foreignFile1, filesOnDisk, StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain(foreignFile2, filesOnDisk, StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain(foreignNestedFile, filesOnDisk, StringComparer.OrdinalIgnoreCase);
+
+            MainViewModel.DeletePackageFilesFromDisk(pkg, allPackages);
+
+            Assert.False(File.Exists(pkgArchive));
+            Assert.False(File.Exists(pkgPart));
+            Assert.True(Directory.Exists(customUserDir));
+            Assert.True(File.Exists(foreignFile1));
+            Assert.True(File.Exists(foreignFile2));
+            Assert.True(File.Exists(foreignNestedFile));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }
 }
