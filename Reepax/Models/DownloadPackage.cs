@@ -88,11 +88,22 @@ public partial class DownloadPackage : ObservableObject
     /// </summary>
     public bool IsExtracted
     {
-        get => _isExtracted ||
-               (NextTaskSteps != null && NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done)) ||
-               StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
-               StatusMessage == "Fertig & Entpackt" ||
-               StatusMessage == "Completed & Extracted";
+        get
+        {
+            if (_isExtracted)
+                return true;
+
+            for (int i = 0; NextTaskSteps != null && i < NextTaskSteps.Count; i++)
+            {
+                var step = NextTaskSteps[i];
+                if (step.Key == "Extract" && step.State == NextTaskStepState.Done)
+                    return true;
+            }
+
+            return StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
+                   StatusMessage == "Fertig & Entpackt" ||
+                   StatusMessage == "Completed & Extracted";
+        }
         set
         {
             if (SetProperty(ref _isExtracted, value))
@@ -213,7 +224,14 @@ public partial class DownloadPackage : ObservableObject
 
     public long RequiredDiskSpaceBytes => TotalBytes * 3;
 
-    public string PrimaryHosterName => Items.FirstOrDefault()?.HosterName ?? "Archive";
+    public string PrimaryHosterName
+    {
+        get
+        {
+            var items = Volatile.Read(ref _itemsSnapshot);
+            return items.Length > 0 ? items[0]?.HosterName ?? "Archive" : "Archive";
+        }
+    }
 
     public bool HasNextTasks => AutoExtractArchives;
 
@@ -487,7 +505,9 @@ public partial class DownloadPackage : ObservableObject
             if (CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
                 return CompletedAt.Value - StartedAt.Value;
 
-            var sumTicks = Items.ToArray().Sum(i => i.Duration.Ticks);
+            long sumTicks = 0;
+            foreach (var item in Volatile.Read(ref _itemsSnapshot))
+                sumTicks = checked(sumTicks + item.Duration.Ticks);
             if (sumTicks > 0)
                 return TimeSpan.FromTicks(sumTicks);
 
@@ -531,24 +551,25 @@ public partial class DownloadPackage : ObservableObject
     }
 
     public System.Collections.Generic.List<string> UsedHosters =>
-        Items.ToArray().Select(i => i.HosterName).Where(h => !string.IsNullOrWhiteSpace(h) && h != "Unknown").Distinct().ToList();
+        GetUsedHosters(Volatile.Read(ref _itemsSnapshot));
 
-    public int DeselectedItemsCount => Items.ToArray().Count(i => !i.IsEnabled);
+    public int DeselectedItemsCount
+    {
+        get
+        {
+            var items = Volatile.Read(ref _itemsSnapshot);
+            return items.Length - CountEnabledItems(items);
+        }
+    }
 
-    public int EnabledItemsCount => Items.ToArray().Count(i => i.IsEnabled);
+    public int EnabledItemsCount => CountEnabledItems(Volatile.Read(ref _itemsSnapshot));
 
     public string ItemsCountSummary
     {
         get
         {
-            int deselected = DeselectedItemsCount;
-            string filesLabel = Loc.Get("Common_Files");
-            if (deselected > 0)
-            {
-                string deselectedLabel = Loc.Get("Common_Deselected");
-                return $"{CompletedItemsCount} / {EnabledItemsCount} {filesLabel} ({deselected} {deselectedLabel})";
-            }
-            return $"{CompletedItemsCount} / {TotalItemsCount} {filesLabel}";
+            var items = Volatile.Read(ref _itemsSnapshot);
+            return FormatItemsCountSummary(items.Length, CountEnabledItems(items));
         }
     }
 
@@ -562,6 +583,8 @@ public partial class DownloadPackage : ObservableObject
 
     private void Items_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        Volatile.Write(ref _itemsSnapshot, Items.ToArray());
+        Interlocked.Exchange(ref _hosterNotificationsDirty, 1);
         if (e.Action == NotifyCollectionChangedAction.Reset)
         {
             foreach (var item in _hookedItems)
@@ -620,6 +643,15 @@ public partial class DownloadPackage : ObservableObject
     {
         _isAggregatesDirty = true;
 
+        bool allPropertiesChanged = string.IsNullOrEmpty(e.PropertyName);
+        if (allPropertiesChanged || e.PropertyName is nameof(DownloadItem.HosterName))
+        {
+            Interlocked.Exchange(ref _hosterNotificationsDirty, 1);
+            SafeInvokeAsync(() => PublishHosterChanges(Volatile.Read(ref _itemsSnapshot)));
+            if (!allPropertiesChanged)
+                return;
+        }
+
         if (e.PropertyName is nameof(DownloadItem.FileName))
         {
             if (!IsCustomName)
@@ -629,7 +661,7 @@ public partial class DownloadPackage : ObservableObject
             return;
         }
 
-        if (e.PropertyName is nameof(DownloadItem.Status) or
+        if (allPropertiesChanged || e.PropertyName is nameof(DownloadItem.Status) or
             nameof(DownloadItem.IsVerifyingIntegrity) or
             nameof(DownloadItem.IsEnabled))
         {
@@ -748,7 +780,7 @@ public partial class DownloadPackage : ObservableObject
     {
         EnsureNextTaskSteps();
 
-        var itemsSnapshot = Items.ToArray();
+        var itemsSnapshot = Volatile.Read(ref _itemsSnapshot);
         TotalItemsCount = itemsSnapshot.Length;
         if (TotalItemsCount == 0)
         {
@@ -763,8 +795,7 @@ public partial class DownloadPackage : ObservableObject
             CompletedItemsCount = 0;
             Status = DownloadStatus.Queued;
             StatusMessage = "Leer";
-            OnPropertyChanged(nameof(EnabledItemsCount));
-            OnPropertyChanged(nameof(ItemsCountSummary));
+            PublishStructuralChanges(itemsSnapshot, 0);
             _isAggregatesDirty = false;
             return;
         }
@@ -920,17 +951,6 @@ public partial class DownloadPackage : ObservableObject
         }
 
         SpeedBytesPerSecond = speed;
-        OnPropertyChanged(nameof(PrimaryHosterName));
-        OnPropertyChanged(nameof(RequiredDiskSpaceBytes));
-        OnPropertyChanged(nameof(Duration));
-        OnPropertyChanged(nameof(DurationFormatted));
-        OnPropertyChanged(nameof(AverageSpeedFormatted));
-        OnPropertyChanged(nameof(UsedHosters));
-        OnPropertyChanged(nameof(DeselectedItemsCount));
-        OnPropertyChanged(nameof(EnabledItemsCount));
-        OnPropertyChanged(nameof(ItemsCountSummary));
-        OnPropertyChanged(nameof(CanEditPackage));
-        OnPropertyChanged(nameof(IsFullyCompleted));
 
         bool structureChanged = activeDownloadingCount != _lastActiveDownloadingCount || enabledCount != _lastEnabledCount;
         _lastActiveDownloadingCount = activeDownloadingCount;
@@ -1072,6 +1092,9 @@ public partial class DownloadPackage : ObservableObject
             StatusMessage = Loc.Get("Status_Queued");
         }
 
+        PublishStructuralChanges(itemsSnapshot, enabledCount);
+        PublishTimeChanges();
+
         if (Status != DownloadStatus.Downloading && SpeedBytesPerSecond <= 0)
         {
             _isAggregatesDirty = false;
@@ -1086,16 +1109,18 @@ public partial class DownloadPackage : ObservableObject
     /// </summary>
     public bool CheckIsFullyCompleted()
     {
-        var itemsSnapshot = Items.ToArray();
-        var enabledItems = itemsSnapshot.Where(i => i.IsEnabled).ToList();
-        if (enabledItems.Count == 0) return false;
-
-        bool allItemsCompleted = enabledItems.All(i => i.IsReadyForPostProcessing);
-        if (!allItemsCompleted) return false;
+        bool hasEnabledItems = false;
+        foreach (var item in Volatile.Read(ref _itemsSnapshot))
+        {
+            if (!item.IsEnabled) continue;
+            hasEnabledItems = true;
+            if (!item.IsReadyForPostProcessing) return false;
+        }
+        if (!hasEnabledItems) return false;
 
         if (AutoExtractArchives && NextTaskSteps.Count > 0)
         {
-            return NextTaskSteps.All(s => s.State == NextTaskStepState.Done);
+            return AreAllNextTaskStepsDone();
         }
 
         return true;
@@ -1110,8 +1135,14 @@ public partial class DownloadPackage : ObservableObject
     {
         get
         {
-            var enabledItems = Items.Where(i => i.IsEnabled).ToList();
-            return enabledItems.Count > 0 && enabledItems.All(i => i.IsReadyForPostProcessing);
+            bool hasEnabledItems = false;
+            foreach (var item in Volatile.Read(ref _itemsSnapshot))
+            {
+                if (!item.IsEnabled) continue;
+                hasEnabledItems = true;
+                if (!item.IsReadyForPostProcessing) return false;
+            }
+            return hasEnabledItems;
         }
     }
 
@@ -1122,11 +1153,22 @@ public partial class DownloadPackage : ObservableObject
             if (Status == DownloadStatus.Completed || IsFullyCompleted || IsExtracted)
                 return false;
 
-            var enabledItems = Items.Where(i => i.IsEnabled).ToList();
-            if (enabledItems.Count > 0 && enabledItems.All(i => i.Status == DownloadStatus.Completed))
+            bool hasEnabledItems = false;
+            bool allEnabledItemsCompleted = true;
+            foreach (var item in Volatile.Read(ref _itemsSnapshot))
+            {
+                if (!item.IsEnabled) continue;
+                hasEnabledItems = true;
+                if (item.Status != DownloadStatus.Completed)
+                {
+                    allEnabledItemsCompleted = false;
+                    break;
+                }
+            }
+            if (hasEnabledItems && allEnabledItemsCompleted)
                 return false;
 
-            if (NextTaskSteps.Count > 0 && NextTaskSteps.All(s => s.State == NextTaskStepState.Done))
+            if (NextTaskSteps.Count > 0 && AreAllNextTaskStepsDone())
                 return false;
 
             if (StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||

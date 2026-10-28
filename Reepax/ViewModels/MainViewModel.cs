@@ -535,6 +535,11 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(SelectedStatusFilterText));
             OnPropertyChanged(nameof(ClipboardMonitorTooltip));
             OnPropertyChanged(nameof(PostDownloadActionTooltip));
+            SafeDispatch(() =>
+            {
+                foreach (var package in Packages.ToArray())
+                    package.RefreshLocalizedAggregateText();
+            });
         };
         
         SpeedLimitMBps = settings.SpeedLimitMBps;
@@ -3028,82 +3033,33 @@ public partial class MainViewModel : ObservableObject
 
     private void RecalculateGlobalStatsInternal()
     {
-        long total = 0;
-        long downloaded = 0;
-        double speed = 0;
-        int active = 0;
-        int totalItems = 0;
-
         var packageSnapshot = Packages.ToArray();
-        foreach (var pkg in packageSnapshot)
+        var stats = CollectGlobalStats(packageSnapshot);
+        TotalBytes = stats.TotalBytes;
+        DownloadedBytes = stats.DownloadedBytes;
+        OverallSpeedBytesPerSecond = stats.Speed;
+        ActiveDownloadsCount = stats.ActiveDownloads;
+        TotalDownloadsCount = stats.TotalDownloads;
+
+        if (stats.TotalBytes > 0)
         {
-            if (pkg.IsDirty || pkg.Status == DownloadStatus.Downloading || pkg.SpeedBytesPerSecond > 0)
-            {
-                pkg.RecalculateAggregates();
-            }
-
-            // Completely skipped/disabled packages are excluded from overall active download totals
-            if (!pkg.IsEnabled || (pkg.Items.Count > 0 && pkg.Items.All(i => !i.IsEnabled)))
-            {
-                continue;
-            }
-
-            total += pkg.TotalBytes;
-            downloaded += pkg.DownloadedBytes;
-            speed += pkg.SpeedBytesPerSecond;
-
-            var itemsSnapshot = pkg.Items.ToArray();
-            if (itemsSnapshot.Length == 0)
-            {
-                totalItems++;
-                if (pkg.Status == DownloadStatus.Downloading)
-                {
-                    active++;
-                }
-            }
-            else
-            {
-                foreach (var item in itemsSnapshot)
-                {
-                    if (item.IsEnabled)
-                    {
-                        totalItems++;
-                        if (item.Status == DownloadStatus.Downloading)
-                        {
-                            active++;
-                        }
-                    }
-                }
-            }
-        }
-
-        TotalBytes = total;
-        DownloadedBytes = downloaded;
-        OverallSpeedBytesPerSecond = speed;
-        ActiveDownloadsCount = active;
-        TotalDownloadsCount = totalItems;
-
-        var activePkgs = packageSnapshot.Where(p => p.IsEnabled && (p.Items.Count == 0 || p.Items.Any(i => i.IsEnabled))).ToList();
-        if (total > 0)
-        {
-            if (activePkgs.Count > 0 && activePkgs.All(p => p.Status == DownloadStatus.Completed))
+            if (stats.IncludedPackages > 0 && stats.AllCompleted)
             {
                 OverallProgressPercentage = 100.0;
                 DownloadedBytes = TotalBytes;
             }
             else
             {
-                OverallProgressPercentage = Math.Clamp((double)downloaded / total * 100.0, 0, 99.99);
+                OverallProgressPercentage = Math.Clamp((double)stats.DownloadedBytes / stats.TotalBytes * 100.0, 0, 99.99);
             }
         }
-        else if (activePkgs.Count > 0 && activePkgs.All(p => p.Status == DownloadStatus.Completed))
+        else if (stats.IncludedPackages > 0 && stats.AllCompleted)
         {
             OverallProgressPercentage = 100.0;
         }
-        else if (activePkgs.Count > 0)
+        else if (stats.IncludedPackages > 0)
         {
-            double sumPkgProgress = activePkgs.Sum(p => p.ProgressPercentage);
-            OverallProgressPercentage = Math.Clamp(sumPkgProgress / activePkgs.Count, 0, 99.99);
+            OverallProgressPercentage = Math.Clamp(stats.ProgressSum / stats.IncludedPackages, 0, 99.99);
         }
         else
         {
@@ -3111,19 +3067,19 @@ public partial class MainViewModel : ObservableObject
         }
 
         // Formatted overall stats
-        OverallSpeedText = FormatSpeed(speed);
-        OverallActiveDownloadsText = Loc.Format("StatusBar_OverallActiveDownloads", active, totalItems);
+        OverallSpeedText = FormatSpeed(stats.Speed);
+        OverallActiveDownloadsText = Loc.Format("StatusBar_OverallActiveDownloads", stats.ActiveDownloads, stats.TotalDownloads);
         OverallProgressText = Loc.Format("StatusBar_OverallProgress", (int)Math.Round(OverallProgressPercentage));
 
         UpdateDriveSpace();
         PostDownloadActionService.Instance.Evaluate(Packages);
 
         // Update Command CanExecute only on genuine state changes
-        if (_lastCommandStateActiveCount != active ||
+        if (_lastCommandStateActiveCount != stats.ActiveDownloads ||
             _lastCommandStateQueueRunning != IsQueueRunning ||
             _lastCommandStatePackageCount != packageSnapshot.Length)
         {
-            _lastCommandStateActiveCount = active;
+            _lastCommandStateActiveCount = stats.ActiveDownloads;
             _lastCommandStateQueueRunning = IsQueueRunning;
             _lastCommandStatePackageCount = packageSnapshot.Length;
             NotifyCommandStates();
