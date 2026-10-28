@@ -236,6 +236,101 @@ public class BandwidthThrottlerTests
         Assert.True(sw.ElapsedMilliseconds < 350, $"Expected < 350ms after refund, actual: {sw.ElapsedMilliseconds}ms");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AcquireReadQuota_WhenLimitIsRemoved_ReleasesConcurrentRequests(bool useCancellationToken)
+    {
+        var throttler = new BandwidthThrottler();
+        using var cancellation = new CancellationTokenSource();
+        var token = useCancellationToken ? cancellation.Token : CancellationToken.None;
+        try
+        {
+            for (int round = 0; round < 30; round++)
+            {
+                throttler.MaxBytesPerSecond = 1000;
+                await throttler.AcquireReadQuotaAsync(60000, token);
+                var waiting = throttler.AcquireReadQuotaAsync(1, token);
+                Assert.False(waiting.IsCompleted);
+                var start = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var requests = System.Linq.Enumerable.Range(0, 16).Select(async _ =>
+                {
+                    await start.Task;
+                    await throttler.AcquireReadQuotaAsync(1, token);
+                }).ToArray();
+                var update = Task.Run(async () =>
+                {
+                    await start.Task;
+                    throttler.MaxBytesPerSecond = 0;
+                });
+                start.SetResult(true);
+                await Task.WhenAll(requests.Append(waiting).Append(update)).WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            throttler.MaxBytesPerSecond = 0;
+        }
+    }
+
+    [Fact]
+    public async Task AcquireReadQuota_WhenCallerCancelsAndLimitChanges_PropagatesCancellation()
+    {
+        var throttler = new BandwidthThrottler { MaxBytesPerSecond = 1000 };
+        using var cancellation = new CancellationTokenSource();
+        await throttler.AcquireReadQuotaAsync(60000, cancellation.Token);
+        var waiting = throttler.AcquireReadQuotaAsync(1, cancellation.Token);
+        Assert.False(waiting.IsCompleted);
+        cancellation.Cancel();
+        throttler.MaxBytesPerSecond = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+    }
+
+    [Fact]
+    public async Task AcquireReadQuota_WhenLimitIncreases_ReschedulesWaitingRequests()
+    {
+        var throttler = new BandwidthThrottler { MaxBytesPerSecond = 1000 };
+        await throttler.AcquireReadQuotaAsync(60000, CancellationToken.None);
+        var requests = System.Linq.Enumerable.Range(0, 8)
+            .Select(_ => throttler.AcquireReadQuotaAsync(1000, CancellationToken.None)).ToArray();
+        Assert.All(requests, request => Assert.False(request.IsCompleted));
+        try
+        {
+            throttler.MaxBytesPerSecond = 100000;
+            await Task.WhenAll(requests).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(100000, throttler.MaxBytesPerSecond);
+        }
+        finally
+        {
+            throttler.MaxBytesPerSecond = 0;
+        }
+    }
+
+    [Fact]
+    public async Task AcquireReadQuota_WhenLimitDecreases_EnforcesTheNewRate()
+    {
+        var throttler = new BandwidthThrottler { MaxBytesPerSecond = 100000 };
+        await throttler.AcquireReadQuotaAsync(6000000, CancellationToken.None);
+        var first = throttler.AcquireReadQuotaAsync(60000, CancellationToken.None);
+        var second = throttler.AcquireReadQuotaAsync(60000, CancellationToken.None);
+        Assert.False(first.IsCompleted);
+        Assert.False(second.IsCompleted);
+        try
+        {
+            throttler.MaxBytesPerSecond = 1000;
+            var completed = await Task.WhenAny(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+            var waiting = completed == first ? second : first;
+            Assert.False(waiting.IsCompleted);
+            throttler.MaxBytesPerSecond = 0;
+            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            throttler.MaxBytesPerSecond = 0;
+        }
+    }
+
     [Fact]
     public async Task DownloadEngine_AbortedStreamRead_RefundsUnusedQuotaToThrottler()
     {

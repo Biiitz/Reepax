@@ -86,10 +86,10 @@ public class BandwidthThrottler
             if (limit <= 0 || bytes <= 0)
                 return;
 
-            long scheduledStart;
-            long durationTicks;
             long now = Stopwatch.GetTimestamp();
+            int waitMs;
             CancellationToken limitChangeToken;
+            CancellationTokenSource linkedCts;
 
             lock (_lock)
             {
@@ -98,7 +98,7 @@ public class BandwidthThrottler
                     return;
 
                 double durationSec = (double)bytes / limit;
-                durationTicks = (long)(durationSec * Stopwatch.Frequency);
+                long durationTicks = (long)(durationSec * Stopwatch.Frequency);
                 if (durationTicks < 1) durationTicks = 1;
 
                 if (_nextAvailableTimestamp < now)
@@ -106,24 +106,29 @@ public class BandwidthThrottler
                     _nextAvailableTimestamp = now;
                 }
 
-                scheduledStart = _nextAvailableTimestamp;
+                long scheduledStart = _nextAvailableTimestamp;
                 _nextAvailableTimestamp = scheduledStart + durationTicks;
+
+                long waitTicks = scheduledStart - now;
+                if (waitTicks <= 0)
+                    return;
+
+                waitMs = (int)Math.Ceiling((double)waitTicks / Stopwatch.Frequency * 1000.0);
+                if (waitMs <= 0)
+                    return;
+
+                // Register before the limit-change source can be canceled and disposed.
                 limitChangeToken = _limitChangeCts.Token;
+                linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, limitChangeToken);
             }
-
-            long waitTicks = scheduledStart - now;
-            if (waitTicks <= 0)
-                return;
-
-            int waitMs = (int)Math.Ceiling((double)waitTicks / Stopwatch.Frequency * 1000.0);
-            if (waitMs <= 0)
-                return;
 
             try
             {
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, limitChangeToken);
-                await Task.Delay(waitMs, linkedCts.Token).ConfigureAwait(false);
-                return;
+                using (linkedCts)
+                {
+                    await Task.Delay(waitMs, linkedCts.Token).ConfigureAwait(false);
+                    return;
+                }
             }
             catch (OperationCanceledException) when (limitChangeToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
