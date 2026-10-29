@@ -117,7 +117,7 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void RemoveItem_FromMultiItemPackage_DeletesOnlyTargetItemAndPreservesParentPackageWithRemainingItems()
+    public async Task RemoveItem_FromMultiItemPackage_DeletesOnlyTargetItemAndPreservesParentPackageWithRemainingItems()
     {
         // Arrange
         var vm = new MainViewModel();
@@ -169,7 +169,7 @@ https://rapidgator.net/file/182937105
         Assert.Equal(350_000_000, package.DownloadedBytes);
 
         // Act 1: Remove item 1
-        vm.RemoveItem(item1);
+        await vm.RemoveItem(item1);
 
         // Assert 1: Parent package MUST NOT be destroyed!
         Assert.Single(vm.Packages);
@@ -184,7 +184,7 @@ https://rapidgator.net/file/182937105
         Assert.Equal(300_000_000, vm.DownloadedBytes);
 
         // Act 2: Remove item 2
-        vm.RemoveItem(item2);
+        await vm.RemoveItem(item2);
 
         // Assert 2: Parent package STILL survives with 1 remaining item
         Assert.Single(vm.Packages);
@@ -194,7 +194,7 @@ https://rapidgator.net/file/182937105
         Assert.Equal(300_000_000, package.DownloadedBytes);
 
         // Act 3: Remove last item (item 3)
-        vm.RemoveItem(item3);
+        await vm.RemoveItem(item3);
 
         // Assert 3: Now that package has 0 items, empty parent package is cleanly removed
         Assert.Empty(vm.Packages);
@@ -203,7 +203,7 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void DeleteSelected_WhenItemIsSelectedInMultiItemPackage_DeletesOnlyThatItem()
+    public async Task DeleteSelected_WhenItemIsSelectedInMultiItemPackage_DeletesOnlyThatItem()
     {
         // Arrange
         var vm = new MainViewModel();
@@ -220,7 +220,7 @@ https://rapidgator.net/file/182937105
         // Act: Select item 1 only
         vm.SelectedItem = item1;
         vm.SelectedPackage = null;
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
 
         // Assert
         Assert.Single(vm.Packages);
@@ -230,7 +230,7 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void DeleteSelected_WhenPackageIsSelected_DeletesEntirePackage()
+    public async Task DeleteSelected_WhenPackageIsSelected_DeletesEntirePackage()
     {
         // Arrange
         var vm = new MainViewModel();
@@ -244,7 +244,7 @@ https://rapidgator.net/file/182937105
         // Act: Select package
         vm.SelectedPackage = package;
         vm.SelectedItem = null;
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
 
         // Assert
         Assert.Empty(vm.Packages);
@@ -1020,7 +1020,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_WithDeleteFilesFalse_KeepsDiskFiles()
+    public async Task RemovePackage_WithDeleteFilesFalse_KeepsDiskFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgKeep_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1037,7 +1037,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             pkg.Items.Add(item);
             vm.Packages.Add(pkg);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: false);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: false);
 
             Assert.Empty(vm.Packages);
             Assert.True(File.Exists(filePath), "File should still exist on disk when deleteFilesFromDisk is false");
@@ -1052,7 +1052,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_WithDeleteFilesTrue_DeletesDiskFiles()
+    public async Task RemovePackage_WithDeleteFilesTrue_DeletesDiskFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgDel_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1071,7 +1071,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             pkg.Items.Add(item);
             vm.Packages.Add(pkg);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
             Assert.Empty(vm.Packages);
             Assert.False(File.Exists(filePath), "Target file should be deleted from disk when deleteFilesFromDisk is true");
@@ -1087,7 +1087,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_WithExtractedFilesAndSubfolders_DeletesEntirePackageFolder()
+    public async Task RemovePackage_WithExtractedFilesAndSubfolders_DeletesEntirePackageFolder()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgExt_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1116,7 +1116,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             Assert.Contains(Path.GetFullPath(extractedExe), filesOnDisk);
             Assert.Contains(Path.GetFullPath(extractedBin), filesOnDisk);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
             Assert.Empty(vm.Packages);
             Assert.False(File.Exists(rarFile));
@@ -1135,7 +1135,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_WhenArchivesAlreadyDeletedPostExtraction_DeletesExtractedFilesAndFolder()
+    public async Task RemovePackage_WhenArchivesAlreadyDeletedPostExtraction_DeletesExtractedFilesAndFolder()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgNoArch_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1162,7 +1162,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
             Assert.Contains(Path.GetFullPath(extractedSetup), filesOnDisk);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
             Assert.Empty(vm.Packages);
             Assert.False(File.Exists(extractedSetup));
@@ -1178,7 +1178,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_AfterRename_DeletesRenamedFolder()
+    public async Task RemovePackage_AfterRename_DeletesRenamedFolder()
     {
         var parentDir = Path.Combine(Path.GetTempPath(), "ReepaxParent_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(parentDir);
@@ -1205,7 +1205,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
             Assert.NotEmpty(filesOnDisk);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
             Assert.Empty(vm.Packages);
             Assert.False(Directory.Exists(newDir));
@@ -1221,7 +1221,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_InProtectedDirectory_DoesNotDeleteProtectedDirectoryOnlyPackageFiles()
+    public async Task RemovePackage_InProtectedDirectory_DoesNotDeleteProtectedDirectoryOnlyPackageFiles()
     {
         var protectedDir = Path.Combine(Path.GetTempPath(), "ReepaxProtected_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(protectedDir);
@@ -1248,7 +1248,7 @@ https://rapidgator.net/file/202/archive.part2.rar
                 Assert.True(MainViewModel.IsProtectedDirectory(protectedDir));
                 Assert.False(MainViewModel.IsDedicatedPackageDirectory(pkg, protectedDir, vm.Packages));
 
-                vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+                await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
                 Assert.Empty(vm.Packages);
                 Assert.False(File.Exists(pkgFile), "Package file should be deleted");
@@ -1270,7 +1270,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_WithTempFiles_PurgesTempFilesDirectlyFromDisk()
+    public async Task RemovePackage_WithTempFiles_PurgesTempFilesDirectlyFromDisk()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgTempDel_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1298,7 +1298,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             pkg.Items.Add(item);
             vm.Packages.Add(pkg);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
             Assert.Empty(vm.Packages);
             Assert.False(File.Exists(userFile));
@@ -1319,7 +1319,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemovePackage_WithOnlyTempFiles_DeletesDirectoryDirectly()
+    public async Task RemovePackage_WithOnlyTempFiles_DeletesDirectoryDirectly()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgOnlyTemp_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1338,7 +1338,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             pkg.Items.Add(item);
             vm.Packages.Add(pkg);
 
-            vm.RemovePackage(pkg, deleteFilesFromDisk: true);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: true);
 
             Assert.Empty(vm.Packages);
             Assert.False(File.Exists(partFile));
@@ -1355,7 +1355,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void RemoveItem_WithDeleteFilesTrue_DeletesOnlyTargetItemFiles()
+    public async Task RemoveItem_WithDeleteFilesTrue_DeletesOnlyTargetItemFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxItemDel_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1376,7 +1376,7 @@ https://rapidgator.net/file/202/archive.part2.rar
             pkg.Items.Add(item2);
             vm.Packages.Add(pkg);
 
-            vm.RemoveItem(item1, deleteFilesFromDisk: true);
+            await vm.RemoveItem(item1, deleteFilesFromDisk: true);
 
             Assert.Single(pkg.Items);
             Assert.Contains(item2, pkg.Items);
@@ -1393,7 +1393,7 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void SettingsTab_DisablesDownloadCommandsAndIgnoresActions()
+    public async Task SettingsTab_DisablesDownloadCommandsAndIgnoresActions()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -1423,7 +1423,7 @@ https://rapidgator.net/file/202/archive.part2.rar
         Assert.False(vm.CanPauseAll);
 
         // Attempting to delete selected while in Settings tab should do nothing
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
         Assert.Single(vm.Packages);
         Assert.Equal(2, pkg.Items.Count);
 

@@ -33,6 +33,17 @@ public class ChecksumVerificationService
     public static ChecksumVerificationService Instance => _instance.Value;
 
     private static readonly uint[] _crc32Table = InitializeCrc32Table();
+    private readonly Func<string, Stream> _openHashStream;
+
+    public ChecksumVerificationService()
+        : this(static path => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+    {
+    }
+
+    internal ChecksumVerificationService(Func<string, Stream> openHashStream)
+    {
+        _openHashStream = openHashStream ?? throw new ArgumentNullException(nameof(openHashStream));
+    }
 
     private static uint[] InitializeCrc32Table()
     {
@@ -62,10 +73,11 @@ public class ChecksumVerificationService
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return ChecksumVerificationResult.Failure(Loc.Format("Validation_FileDoesNotExist", filePath ?? string.Empty));
 
-        return await Task.Run(() =>
+        return await Task.Run(async () =>
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var fileInfo = new FileInfo(filePath);
 
                 // 1. Check non-empty file
@@ -88,11 +100,17 @@ public class ChecksumVerificationService
                         Loc.Get("Validation_HtmlErrorPageDetected"));
                 }
 
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // 4. Validate expected checksum if present
                 if (!string.IsNullOrWhiteSpace(item.ExpectedChecksum))
                 {
                     var normalizedExpected = NormalizeChecksum(item.ExpectedChecksum);
-                    var (calculated, algorithm) = CalculateChecksumForExpected(filePath, normalizedExpected);
+                    var (calculated, algorithm) = cancellationToken.CanBeCanceled
+                        ? await CalculateChecksumForExpectedAsync(filePath, normalizedExpected, cancellationToken).ConfigureAwait(false)
+                        : CalculateChecksumForExpected(filePath, normalizedExpected);
+
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     if (!string.Equals(calculated, normalizedExpected, StringComparison.OrdinalIgnoreCase))
                     {
@@ -109,7 +127,7 @@ public class ChecksumVerificationService
                 {
                     if (ArchiveExtractionService.Instance.IsPrimaryArchivePart(filePath))
                     {
-                        if (!ValidateArchiveStructure(filePath, out var structureError))
+                        if (!ValidateArchiveStructure(filePath, out var structureError, cancellationToken))
                         {
                             return ChecksumVerificationResult.Failure(
                                 Loc.Format("Validation_ArchiveCheckFailed", structureError ?? string.Empty));
@@ -118,8 +136,16 @@ public class ChecksumVerificationService
                 }
 
                 // 6. File is valid! Compute SHA256 for audit logging
-                var sha256 = CalculateSha256(filePath);
+                cancellationToken.ThrowIfCancellationRequested();
+                var sha256 = cancellationToken.CanBeCanceled
+                    ? await CalculateHashAsync(filePath, SHA256.Create(), cancellationToken).ConfigureAwait(false)
+                    : CalculateSha256(filePath);
+                cancellationToken.ThrowIfCancellationRequested();
                 return ChecksumVerificationResult.Success(sha256, "SHA256");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -204,10 +230,14 @@ public class ChecksumVerificationService
     }
 
     public bool ValidateArchiveStructure(string filePath, out string? error)
+        => ValidateArchiveStructure(filePath, out error, CancellationToken.None);
+
+    private bool ValidateArchiveStructure(string filePath, out string? error, CancellationToken cancellationToken)
     {
         error = null;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var ext = Path.GetExtension(filePath).ToLowerInvariant();
 
             // ZIP archive structure test
@@ -216,6 +246,7 @@ public class ChecksumVerificationService
                 using var zip = ZipFile.OpenRead(filePath);
                 // Enumerate entry headers to ensure central directory is intact
                 var count = zip.Entries.Count;
+                cancellationToken.ThrowIfCancellationRequested();
                 if (count == 0 && new FileInfo(filePath).Length > 100)
                 {
                     error = Loc.Get("Validation_ZipNoValidEntries");
@@ -237,9 +268,14 @@ public class ChecksumVerificationService
             {
                 foreach (var entry in archive.Entries)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     _ = entry.Key;
                     _ = entry.Size;
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception entryEx)
             {
@@ -251,6 +287,10 @@ public class ChecksumVerificationService
             }
 
             return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -289,6 +329,45 @@ public class ChecksumVerificationService
 
         // Default to SHA256
         return (CalculateSha256(filePath), "SHA256");
+    }
+
+    private async Task<(string Hash, string Algorithm)> CalculateChecksumForExpectedAsync(string filePath, string expected, CancellationToken cancellationToken)
+    {
+        var cleanExpected = NormalizeChecksum(expected);
+        return cleanExpected.Length switch
+        {
+            40 => (await CalculateHashAsync(filePath, SHA1.Create(), cancellationToken).ConfigureAwait(false), "SHA1"),
+            32 => (await CalculateHashAsync(filePath, MD5.Create(), cancellationToken).ConfigureAwait(false), "MD5"),
+            8 => (await CalculateCrc32HexAsync(filePath, cancellationToken).ConfigureAwait(false), "CRC32"),
+            _ => (await CalculateHashAsync(filePath, SHA256.Create(), cancellationToken).ConfigureAwait(false), "SHA256")
+        };
+    }
+
+    private async Task<string> CalculateHashAsync(string filePath, HashAlgorithm algorithm, CancellationToken cancellationToken)
+    {
+        using (algorithm)
+        using (var stream = _openHashStream(filePath))
+        {
+            var hashBytes = await algorithm.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
+            return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        }
+    }
+
+    private async Task<string> CalculateCrc32HexAsync(string filePath, CancellationToken cancellationToken)
+    {
+        uint crc = 0xFFFFFFFF;
+        using var stream = _openHashStream(filePath);
+        var buffer = new byte[64 * 1024];
+        int bytesRead;
+        while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            for (int i = 0; i < bytesRead; i++)
+            {
+                byte index = (byte)((crc & 0xFF) ^ buffer[i]);
+                crc = (crc >> 8) ^ _crc32Table[index];
+            }
+        }
+        return (~crc).ToString("x8");
     }
 
     public string CalculateSha256(string filePath)

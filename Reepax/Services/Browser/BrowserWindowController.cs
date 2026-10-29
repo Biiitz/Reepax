@@ -16,7 +16,7 @@ namespace Reepax.Services.Browser;
 /// Controls the WebView2 instance of an external browser window (Scenario C):
 /// AdBlock, popup redirection, download interception, and direct link extraction.
 /// </summary>
-public class BrowserWindowController : IDisposable
+public partial class BrowserWindowController : IDisposable
 {
     private readonly int _windowId;
     private readonly WebView2 _webView;
@@ -569,7 +569,21 @@ public class BrowserWindowController : IDisposable
             // WebView2 downloads natively; we configure destination path & track progress.
             if (directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
             {
-                HandleBlobDownload(e, directUrl);
+                var deferral = e.GetDeferral();
+                e.Cancel = true;
+                e.Handled = true;
+                try
+                {
+                    using (await PackagePathOperationGate.Instance.EnterAsync())
+                    {
+                        if (!_isDisposed)
+                            HandleBlobDownload(e, directUrl);
+                    }
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
                 return;
             }
 
@@ -627,7 +641,7 @@ public class BrowserWindowController : IDisposable
     private void HandleBlobDownload(CoreWebView2DownloadStartingEventArgs e, string blobUrl)
     {
         var item = QueueManager.Instance.GetWindowItem(_windowId);
-        if (item == null)
+        if (item == null || item.IsUnavailableForProcessing)
         {
             e.Cancel = true;
             e.Handled = true;
@@ -648,7 +662,7 @@ public class BrowserWindowController : IDisposable
         }
 
         // Browser saves directly to target (no prompt)
-        e.Cancel = false;
+        e.Cancel = true;
         e.Handled = true;
         if (!string.IsNullOrWhiteSpace(targetPath))
         {
@@ -670,7 +684,7 @@ public class BrowserWindowController : IDisposable
             var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
             if (pkg != null && !pkg.IsCustomName)
             {
-                Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
+                Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
             }
         }
 
@@ -680,6 +694,8 @@ public class BrowserWindowController : IDisposable
         {
             try
             {
+                if (item.IsUnavailableForProcessing)
+                    return;
                 var now = DateTime.Now;
                 var dt = (now - lastTime).TotalSeconds;
                 if (dt >= 0.3)
@@ -694,21 +710,37 @@ public class BrowserWindowController : IDisposable
             catch { }
         };
 
-        op.StateChanged += (_, _) =>
+        var nativeSession = RegisterNativeTransfer(item, op.Cancel);
+        if (nativeSession == null)
+            return;
+        void HandleNativeState()
         {
             try
             {
-                if (op.State == CoreWebView2DownloadState.Completed)
+                var state = op.State;
+                if (state is not (CoreWebView2DownloadState.Completed or CoreWebView2DownloadState.Interrupted) ||
+                    !CompleteNativeTransfer(nativeSession))
+                    return;
+
+                if (state == CoreWebView2DownloadState.Completed)
                 {
                     QueueManager.Instance.OnBrowserNativeDownloadCompleted(_windowId, true, null, targetPath);
                 }
-                else if (op.State == CoreWebView2DownloadState.Interrupted)
+                else if (nativeSession.StopRequested)
+                {
+                    QueueManager.Instance.OnNativeTransferStopped(_windowId);
+                }
+                else
                 {
                     QueueManager.Instance.OnBrowserNativeDownloadCompleted(_windowId, false, op.InterruptReason.ToString(), targetPath);
                 }
             }
             catch { }
-        };
+        }
+
+        op.StateChanged += (_, _) => HandleNativeState();
+        HandleNativeState();
+        e.Cancel = false;
     }
 
     private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)

@@ -2,217 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using CommunityToolkit.Mvvm.Input;
-using Reepax.Converters;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
-using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 
 namespace Reepax.ViewModels;
 
 public partial class MainViewModel
 {
-    // =========================================================================
-    // Package & Item Removal Commands and Disk Cleanup Helpers
-    // =========================================================================
-
-    [RelayCommand]
-    public void RemovePackage(DownloadPackage? package)
-    {
-        RemovePackage(package, null);
-    }
-
-    public void RemovePackage(DownloadPackage? package, bool? deleteFilesFromDisk)
-    {
-        if (package == null)
-            return;
-
-        bool deleteFiles = false;
-
-        if (deleteFilesFromDisk.HasValue)
-        {
-            deleteFiles = deleteFilesFromDisk.Value;
-        }
-        else
-        {
-            var filesOnDisk = GetPackageFilesOnDisk(package, Packages);
-            string? optionText = null;
-
-            if (filesOnDisk.Count == 1)
-            {
-                long size = GetTotalFilesSizeOnDisk(filesOnDisk);
-                optionText = Loc.Format("Dialog_DeletePackageOptionSingleFile", BytesToHumanReadableConverter.FormatBytes(size));
-            }
-            else if (filesOnDisk.Count > 1)
-            {
-                long size = GetTotalFilesSizeOnDisk(filesOnDisk);
-                optionText = Loc.Format("Dialog_DeletePackageOptionFiles", filesOnDisk.Count, BytesToHumanReadableConverter.FormatBytes(size));
-            }
-            else if (Directory.Exists(package.SaveDirectory) && !IsProtectedDirectory(package.SaveDirectory))
-            {
-                optionText = Loc.Format("Dialog_DeletePackageOptionSingleFile", BytesToHumanReadableConverter.FormatBytes(0));
-            }
-
-            if (!Views.ConfirmDialog.ShowWithOption(
-                Loc.Get("Dialog_DeletePackageTitle"),
-                Loc.Format("Dialog_DeletePackageMessage", package.Name),
-                optionText,
-                out deleteFiles,
-                defaultOptionChecked: false,
-                Loc.Get("Common_Yes"),
-                Loc.Get("Common_No")))
-            {
-                return;
-            }
-        }
-
-        foreach (var item in package.Items)
-        {
-            if (item.Status == DownloadStatus.Queued)
-            {
-                item.Status = DownloadStatus.Paused;
-            }
-            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
-        }
-
-        _queueManager.CloseBrowserWindowsForItems(package.Items);
-
-        if (deleteFiles)
-        {
-            DeletePackageFilesFromDisk(package, Packages);
-        }
-
-        // Unclip any attached children so they are promoted to root and not lost
-        foreach (var child in package.ClippedPackages.ToList())
-        {
-            child.ParentPackageId = null;
-            child.ParentPackageName = null;
-            package.ClippedPackages.Remove(child);
-            if (!RootPackages.Contains(child))
-            {
-                RootPackages.Add(child);
-            }
-        }
-
-        if (package.ParentPackageId.HasValue)
-        {
-            var parent = Packages.FirstOrDefault(p => p.Id == package.ParentPackageId.Value);
-            parent?.ClippedPackages.Remove(package);
-        }
-
-        Packages.Remove(package);
-        RootPackages.Remove(package);
-
-        if (SelectedPackage == package)
-        {
-            SelectedPackage = null;
-        }
-        RecalculateGlobalStats();
-        DownloadPersistenceService.Instance.RequestSave();
-        if (_queueManager.IsRunning)
-        {
-            _queueManager.ProcessQueue();
-        }
-    }
-
-    [RelayCommand]
-    public void RemoveItem(DownloadItem? item)
-    {
-        RemoveItem(item, null);
-    }
-
-    public void RemoveItem(DownloadItem? item, bool? deleteFilesFromDisk)
-    {
-        if (item == null)
-            return;
-
-        DownloadPackage? parentPackage = null;
-        foreach (var p in Packages)
-        {
-            if (p.Items.Contains(item))
-            {
-                parentPackage = p;
-                break;
-            }
-        }
-
-        bool deleteFiles = false;
-
-        if (deleteFilesFromDisk.HasValue)
-        {
-            deleteFiles = deleteFilesFromDisk.Value;
-        }
-        else
-        {
-            var filesOnDisk = GetItemFilesOnDisk(item, parentPackage?.SaveDirectory);
-            string? optionText = null;
-
-            if (filesOnDisk.Count > 0)
-            {
-                long size = GetTotalFilesSizeOnDisk(filesOnDisk);
-                optionText = Loc.Format("Dialog_DeleteItemOptionFiles", BytesToHumanReadableConverter.FormatBytes(size));
-            }
-
-            if (!Views.ConfirmDialog.ShowWithOption(
-                Loc.Get("Dialog_DeleteItemTitle"),
-                Loc.Format("Dialog_DeleteItemMessage", item.FileName),
-                optionText,
-                out deleteFiles,
-                defaultOptionChecked: false,
-                Loc.Get("Common_Yes"),
-                Loc.Get("Common_No")))
-            {
-                return;
-            }
-        }
-
-        if (item.Status == DownloadStatus.Queued)
-        {
-            item.Status = DownloadStatus.Paused;
-        }
-        _queueManager.CloseBrowserWindowForItem(item);
-        _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: deleteFiles, timeoutMs: 500);
-
-        if (deleteFiles)
-        {
-            DeleteItemFilesFromDisk(item, parentPackage?.SaveDirectory);
-        }
-
-        foreach (var package in Packages.ToList())
-        {
-            if (package.Items.Contains(item))
-            {
-                package.Items.Remove(item);
-                if (package.Items.Count == 0)
-                {
-                    Packages.Remove(package);
-                    if (SelectedPackage == package)
-                    {
-                        SelectedPackage = null;
-                    }
-                }
-                else
-                {
-                    package.RecalculateAggregates();
-                }
-                break;
-            }
-        }
-
-        if (SelectedItem == item)
-        {
-            SelectedItem = null;
-        }
-
-        RecalculateGlobalStats();
-        if (_queueManager.IsRunning)
-        {
-            _queueManager.ProcessQueue();
-        }
-    }
-
     #region Disk Cleanup Helpers
 
     public static bool IsDedicatedPackageDirectory(DownloadPackage package, string? dirPath, IEnumerable<DownloadPackage>? allPackages = null)
@@ -315,14 +113,18 @@ public partial class MainViewModel
     }
 
     public static List<string> GetPackageFilesOnDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages)
+        => GetPackageFilesOnDisk(package, allPackages, true);
+
+    private static List<string> GetPackageFilesOnDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages, bool persistChanges, bool refresh = true)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // 1. Refresh & self-heal path in case of renaming or moved folders
-        package.RefreshAndCheckExistsOnDisk();
+        if (refresh)
+            package.RefreshAndCheckExistsOnDisk(persistChanges);
 
         // 2. Check if SaveDirectory is a dedicated package folder
-        if (IsDedicatedPackageDirectory(package, package.SaveDirectory, allPackages))
+        if (IsCleanupDirectory(package, package.SaveDirectory, allPackages, !persistChanges))
         {
             try
             {
@@ -379,7 +181,7 @@ public partial class MainViewModel
 
                 foreach (var subfolder in subfolderCandidates)
                 {
-                    if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsDedicatedPackageDirectory(package, subfolder, allPackages))
+                    if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsCleanupDirectory(package, subfolder, allPackages, !persistChanges))
                     {
                         try
                         {
@@ -407,7 +209,7 @@ public partial class MainViewModel
             // If ExtractionDirectory is not already inside or identical to SaveDirectory
             if (fullSave == null || (!fullExt.Equals(fullSave, StringComparison.OrdinalIgnoreCase) && !fullExt.StartsWith(fullSave + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
             {
-                if (IsDedicatedPackageDirectory(package, package.ExtractionDirectory, allPackages))
+                if (IsCleanupDirectory(package, package.ExtractionDirectory, allPackages, !persistChanges))
                 {
                     try
                     {
@@ -434,6 +236,8 @@ public partial class MainViewModel
             }
         }
 
+        if (!persistChanges)
+            result.ExceptWith(GetProtectedItemPaths(allPackages, package.Id, null));
         return result.ToList();
     }
 
@@ -560,6 +364,9 @@ public partial class MainViewModel
     }
 
     public static void DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages)
+        => DeletePackageFilesFromDisk(package, allPackages, true);
+
+    private static void DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages, bool persistChanges, bool refresh = true)
     {
         // 1. Cancel active extraction if currently running
         if (ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
@@ -569,11 +376,12 @@ public partial class MainViewModel
         }
 
         // 2. Self-heal in case of renaming or moved folders
-        package.RefreshAndCheckExistsOnDisk();
+        if (refresh)
+            package.RefreshAndCheckExistsOnDisk(persistChanges);
 
         // 3. Delete dedicated SaveDirectory directly from disk if applicable
         bool saveDirDeleted = false;
-        if (IsDedicatedPackageDirectory(package, package.SaveDirectory, allPackages))
+        if (IsCleanupDirectory(package, package.SaveDirectory, allPackages, !persistChanges))
         {
             try
             {
@@ -591,7 +399,7 @@ public partial class MainViewModel
         // 4. If SaveDirectory was NOT dedicated or its directory deletion didn't remove everything:
         if (!saveDirDeleted)
         {
-            var files = GetPackageFilesOnDisk(package, allPackages);
+            var files = GetPackageFilesOnDisk(package, allPackages, persistChanges, refresh);
             foreach (var file in files)
             {
                 try
@@ -616,7 +424,7 @@ public partial class MainViewModel
 
                 foreach (var subfolder in subfolderCandidates)
                 {
-                    if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsDedicatedPackageDirectory(package, subfolder, allPackages))
+                    if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsCleanupDirectory(package, subfolder, allPackages, !persistChanges))
                     {
                         try
                         {
@@ -651,7 +459,7 @@ public partial class MainViewModel
         if (!string.IsNullOrWhiteSpace(package.ExtractionDirectory) &&
             Directory.Exists(package.ExtractionDirectory) &&
             !IsProtectedDirectory(package.ExtractionDirectory) &&
-            IsDedicatedPackageDirectory(package, package.ExtractionDirectory, allPackages))
+            IsCleanupDirectory(package, package.ExtractionDirectory, allPackages, !persistChanges))
         {
             try
             {
@@ -776,96 +584,4 @@ public partial class MainViewModel
 
     #endregion
 
-    [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
-    public void DeleteSelected()
-    {
-        if (SelectedMainTab != AppMainTab.Downloads) return;
-
-        // Collect all selected packages
-        var selectedPackages = Packages.Where(p => p.IsSelected).Distinct().ToList();
-        if (selectedPackages.Count == 0 && SelectedPackage != null && SelectedItem == null)
-        {
-            selectedPackages.Add(SelectedPackage);
-        }
-
-        // Collect all selected items that are NOT in a selected package
-        var selectedItems = Packages
-            .Where(p => !selectedPackages.Contains(p))
-            .SelectMany(p => p.Items)
-            .Where(i => i.IsSelected)
-            .Distinct()
-            .ToList();
-
-        if (selectedPackages.Count == 0 && selectedItems.Count == 0 && SelectedItem != null)
-        {
-            selectedItems.Add(SelectedItem);
-        }
-
-        int totalCount = selectedPackages.Count + selectedItems.Count;
-        if (totalCount == 0)
-            return;
-
-        // Single item or single package: use existing single deletion methods
-        if (selectedPackages.Count == 1 && selectedItems.Count == 0)
-        {
-            RemovePackage(selectedPackages[0]);
-            return;
-        }
-
-        if (selectedPackages.Count == 0 && selectedItems.Count == 1)
-        {
-            RemoveItem(selectedItems[0]);
-            return;
-        }
-
-        // Multiple items/packages: show combined confirmation dialog
-        var allFilesOnDisk = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var pkg in selectedPackages)
-        {
-            foreach (var file in GetPackageFilesOnDisk(pkg, Packages))
-            {
-                allFilesOnDisk.Add(file);
-            }
-        }
-        foreach (var item in selectedItems)
-        {
-            var parentPkg = Packages.FirstOrDefault(p => p.Items.Contains(item));
-            foreach (var file in GetItemFilesOnDisk(item, parentPkg?.SaveDirectory))
-            {
-                allFilesOnDisk.Add(file);
-            }
-        }
-
-        string? optionText = null;
-        if (allFilesOnDisk.Count > 0)
-        {
-            long size = GetTotalFilesSizeOnDisk(allFilesOnDisk);
-            optionText = Loc.Format("Dialog_DeleteMultipleOptionFiles", BytesToHumanReadableConverter.FormatBytes(size));
-        }
-
-        bool deleteFiles = false;
-        if (!Views.ConfirmDialog.ShowWithOption(
-            Loc.Get("Dialog_DeleteMultipleTitle"),
-            Loc.Format("Dialog_DeleteMultipleMessage", totalCount),
-            optionText,
-            out deleteFiles,
-            defaultOptionChecked: false,
-            Loc.Get("Common_Yes"),
-            Loc.Get("Common_No")))
-        {
-            return;
-        }
-
-        // Delete items first
-        foreach (var item in selectedItems)
-        {
-            RemoveItem(item, deleteFiles);
-        }
-
-        // Delete packages
-        foreach (var pkg in selectedPackages)
-        {
-            RemovePackage(pkg, deleteFiles);
-        }
-    }
 }

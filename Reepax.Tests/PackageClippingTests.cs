@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using Reepax.Models;
@@ -124,7 +125,7 @@ public class PackageClippingTests
     }
 
     [Fact]
-    public void RemovePackage_UnclipsChildrenSafelyToRoot()
+    public async Task RemovePackage_UnclipsChildrenSafelyToRoot()
     {
         var vm = new MainViewModel();
         var gamePkg = new DownloadPackage { Name = "Main Suite" };
@@ -139,7 +140,7 @@ public class PackageClippingTests
         Assert.DoesNotContain(updatePkg, vm.RootPackages);
 
         // Deleting parent package should promote child package to root
-        vm.RemovePackage(gamePkg);
+        await vm.RemovePackage(gamePkg);
 
         Assert.DoesNotContain(gamePkg, vm.Packages);
         Assert.DoesNotContain(gamePkg, vm.RootPackages);

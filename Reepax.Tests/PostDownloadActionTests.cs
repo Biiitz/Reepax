@@ -192,6 +192,23 @@ public class PostDownloadActionTests : IDisposable
     }
 
     [Fact]
+    public void PostDownloadAction_WaitsUntilDiskCleanupFinishes()
+    {
+        var service = PostDownloadActionService.Instance;
+        service.CurrentAction = PostDownloadAction.ExitApp;
+        service.StartCountdown();
+        Assert.True(service.IsCountdownActive);
+        using (service.BeginCleanup())
+        {
+            Assert.False(service.IsCountdownActive);
+            Assert.Equal(PostDownloadAction.ExitApp, service.CurrentAction);
+            service.StartCountdown();
+            Assert.False(service.IsCountdownActive);
+            service.CurrentAction = PostDownloadAction.None;
+        }
+    }
+
+    [Fact]
     public void PostDownloadAction_CancelCountdown_Manual_ResetsActionToNone()
     {
         var service = PostDownloadActionService.Instance;

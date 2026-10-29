@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -1127,7 +1128,7 @@ public partial class MainViewModel
     }
 
     [RelayCommand]
-    public void BrowseDownloadDirectory()
+    public async Task BrowseDownloadDirectory()
     {
         var currentDir = _settingsService.Settings.DefaultDownloadDirectory;
         var dialog = new Microsoft.Win32.OpenFolderDialog
@@ -1138,6 +1139,7 @@ public partial class MainViewModel
 
         if (dialog.ShowDialog() == true)
         {
+            using var pathLease = await PackagePathOperationGate.Instance.EnterAsync();
             _settingsService.Settings.DefaultDownloadDirectory = dialog.FolderName;
             _settingsService.SaveSettings();
             CurrentDownloadDirectory = dialog.FolderName;

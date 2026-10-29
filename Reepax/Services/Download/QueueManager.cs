@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Reepax.Helpers;
@@ -18,7 +19,7 @@ using Reepax.Services.Verification;
 
 namespace Reepax.Services.Download;
 
-public class QueueManager
+public partial class QueueManager
 {
     private static readonly Lazy<QueueManager> _instance = new(() => new QueueManager());
     public static QueueManager Instance => _instance.Value;
@@ -124,7 +125,13 @@ public class QueueManager
     }
 
     internal QueueManager(bool subscribeToDownloadEvents)
+        : this(subscribeToDownloadEvents, static (item, token) => ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(item, token))
     {
+    }
+
+    internal QueueManager(bool subscribeToDownloadEvents, Func<DownloadItem, CancellationToken, Task<ChecksumVerificationResult>> verifyCompletion)
+    {
+        _verifyCompletion = verifyCompletion ?? throw new ArgumentNullException(nameof(verifyCompletion));
         if (subscribeToDownloadEvents)
         {
             DownloadEngine.Instance.DownloadCompleted += OnBackgroundDownloadCompleted;
@@ -168,7 +175,7 @@ public class QueueManager
                 var itemSnapshot = pkg.Items.ToArray();
                 foreach (var item in itemSnapshot)
                 {
-                    if (!item.IsEnabled)
+                    if (!item.IsEnabled || item.IsUnavailableForProcessing)
                         continue;
 
                     if (item.Status == DownloadStatus.Paused)
@@ -440,7 +447,8 @@ public class QueueManager
         var packageSnapshot = Packages.ToArray();
         foreach (var pkg in packageSnapshot)
         {
-            if (pkg.AutoExtractArchives &&
+            if (!pkg.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing) &&
+                pkg.AutoExtractArchives &&
                 !pkg.IsExtracted &&
                 pkg.Items.Count > 0 &&
                 pkg.AreDownloadsCompleted &&
@@ -648,10 +656,14 @@ public class QueueManager
 
             SafeInvoke(() =>
             {
+                if (nextDirectItem.IsUnavailableForProcessing)
+                    return;
                 nextDirectItem.Status = DownloadStatus.Downloading;
                 nextDirectItem.StatusMessage = Loc.Get("Status_Starting");
             });
 
+            if (nextDirectItem.IsUnavailableForProcessing)
+                continue;
             _ = DownloadEngine.Instance.ResumeDownloadAsync(nextDirectItem);
             startedOne = true;
 
@@ -681,7 +693,7 @@ public class QueueManager
             var itemsSnapshot = package.Items.ToArray();
             foreach (var item in itemsSnapshot)
             {
-                if (!item.IsEnabled)
+                if (!item.IsEnabled || item.IsUnavailableForProcessing)
                     continue;
 
                 if (item.Status == DownloadStatus.Queued && 
@@ -716,7 +728,7 @@ public class QueueManager
             var (nextItem, hidden) = next.Value;
 
             int openedWindowId = 0;
-            var opened = UiInvoke(() => host.TryOpenWindow(nextItem, hidden, out openedWindowId));
+            var opened = UiInvoke(() => !nextItem.IsUnavailableForProcessing && host.TryOpenWindow(nextItem, hidden, out openedWindowId));
             if (!opened)
             {
                 // Opening cooldown active — host will notify via WindowCapacityChanged
@@ -724,9 +736,18 @@ public class QueueManager
             }
             var windowId = openedWindowId;
 
+            bool removalPending;
             lock (_lock)
             {
-                _windowItems[windowId] = nextItem;
+                removalPending = nextItem.IsUnavailableForProcessing;
+                if (!removalPending)
+                    _windowItems[windowId] = nextItem;
+            }
+
+            if (removalPending)
+            {
+                CloseBrowserWindow(windowId);
+                continue;
             }
 
             // Set status synchronously so FindNextBrowserItem won't pick the item again
@@ -755,7 +776,7 @@ public class QueueManager
             var itemsSnapshot = package.Items.ToArray();
             foreach (var item in itemsSnapshot)
             {
-                if (!item.IsEnabled)
+                if (!item.IsEnabled || item.IsUnavailableForProcessing)
                     continue;
 
                 // Item needs browser loading if it is queued and has no direct download URL yet,
@@ -793,67 +814,81 @@ public class QueueManager
         string? suggestedFileName)
     {
         DownloadItem? item;
+        TaskCompletionSource<bool>? pathOperation;
 
         lock (_lock)
         {
             if (!_windowItems.TryGetValue(windowId, out item))
                 return;
             _windowItems.Remove(windowId);
+            pathOperation = item.IsUnavailableForProcessing ? null : RegisterPathOperation(item);
         }
 
-        // Guard against items removed from the queue while their browser window was open
-        if (!Packages.Any(p => p.Items.Contains(item)))
+        if (pathOperation == null)
         {
             CloseBrowserWindow(windowId);
-            ProcessQueue();
             return;
         }
 
-        bool isBlob = directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase);
-
-        // Update item details on UI thread
-        SafeInvoke(() =>
+        try
         {
-            // Ephemeral in-memory blob URLs cannot be requested via standard HTTP clients; keep direct URL unset if blob
-            item.DirectDownloadUrl = isBlob ? null : directUrl;
-            item.Cookies = cookies;
-            item.UserAgent = userAgent;
-            item.Referer = referer;
+            if (!Packages.Any(p => p.Items.Contains(item)))
+                return;
 
-            if (!item.IsCustomName && !string.IsNullOrWhiteSpace(suggestedFileName) && !suggestedFileName.Equals("download", StringComparison.OrdinalIgnoreCase))
+            bool isBlob = directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase);
+            using (await PackagePathOperationGate.Instance.EnterAsync())
             {
-                item.Rename(suggestedFileName, isUserAction: false);
-                var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                if (pkg != null && !pkg.IsCustomName)
+                SafeInvoke(() =>
                 {
-                    Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
-                }
+                    if (item.IsUnavailableForProcessing)
+                        return;
+                    item.DirectDownloadUrl = isBlob ? null : directUrl;
+                    item.Cookies = cookies;
+                    item.UserAgent = userAgent;
+                    item.Referer = referer;
+                    if (!item.IsCustomName && !string.IsNullOrWhiteSpace(suggestedFileName) && !suggestedFileName.Equals("download", StringComparison.OrdinalIgnoreCase))
+                    {
+                        item.Rename(suggestedFileName, isUserAction: false);
+                        var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
+                        if (pkg != null && !pkg.IsCustomName)
+                            Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
+                    }
+                });
             }
-        });
 
-        // Check concurrent downloads limit (blob: downloads cannot be fetched via HttpClient and must not be passed to DownloadEngine)
-        if (!isBlob && GetActiveDownloadsCount() < MaxConcurrentDownloads)
-        {
-            _ = DownloadEngine.Instance.StartDownloadAsync(item, directUrl, cookies, userAgent, referer, suggestedFileName);
+            if (item.IsUnavailableForProcessing)
+                return;
+            if (!isBlob && GetActiveDownloadsCount() < MaxConcurrentDownloads)
+            {
+                _ = DownloadEngine.Instance.StartDownloadAsync(item, directUrl, cookies, userAgent, referer, suggestedFileName);
+            }
+            else
+            {
+                SafeInvoke(() =>
+                {
+                    if (item.IsUnavailableForProcessing)
+                        return;
+                    item.Status = DownloadStatus.Queued;
+                    item.StatusMessage = Loc.Get("Status_Waiting");
+                    item.CurrentSlot = null;
+                });
+            }
         }
-        else
+        finally
         {
+            CloseBrowserWindow(windowId);
             SafeInvoke(() =>
             {
-                item.Status = DownloadStatus.Queued;
-                item.StatusMessage = Loc.Get("Status_Waiting");
-                item.CurrentSlot = null;
+                if (item.IsUnavailableForProcessing && item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha)
+                {
+                    item.Status = DownloadStatus.Paused;
+                    item.StatusMessage = Loc.Get("Status_BrowserWindowClosed");
+                    item.CurrentSlot = null;
+                }
             });
+            CompletePathOperation(item, pathOperation);
+            ProcessQueue();
         }
-
-        // Close window only AFTER starting the download so slot accounting
-        // (downloads + browser windows) never exceeds the global limit.
-        CloseBrowserWindow(windowId);
-
-        await Task.CompletedTask;
-
-        // Process next links
-        ProcessQueue();
     }
 
     /// <summary>
@@ -925,7 +960,7 @@ public class QueueManager
 
         SafeInvoke(() =>
         {
-            if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha)
+            if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.Downloading)
             {
                 item.Status = DownloadStatus.Paused;
                 item.RecordSessionDuration();
@@ -1116,7 +1151,7 @@ public class QueueManager
 
     private bool ResumeItemCore(DownloadItem? item, bool triggerProcessQueue)
     {
-        if (item == null || !item.IsEnabled || item.Status == DownloadStatus.Completed)
+        if (item == null || item.IsUnavailableForProcessing || !item.IsEnabled || item.Status == DownloadStatus.Completed)
             return false;
 
         item.IsTrickling = false;
@@ -1180,7 +1215,7 @@ public class QueueManager
 
     public void RetryItem(DownloadItem? item)
     {
-        if (item == null || item.Status == DownloadStatus.Completed)
+        if (item == null || item.IsUnavailableForProcessing || item.Status == DownloadStatus.Completed)
             return;
 
         // Ensure item and parent package are enabled
@@ -1379,54 +1414,78 @@ public class QueueManager
     /// </summary>
     public void OnBrowserNativeDownloadCompleted(int windowId, bool success, string? error, string? filePath)
     {
+        _ = OnBrowserNativeDownloadCompletedAsync(windowId, success, error, filePath);
+    }
+
+    internal async Task OnBrowserNativeDownloadCompletedAsync(int windowId, bool success, string? error, string? filePath)
+    {
         DownloadItem? item;
+        TaskCompletionSource<bool>? pathOperation;
         lock (_lock)
         {
             if (!_windowItems.TryGetValue(windowId, out item))
                 return;
             _windowItems.Remove(windowId);
+            pathOperation = success && !item.IsUnavailableForProcessing ? RegisterPathOperation(item) : null;
         }
 
         CloseBrowserWindow(windowId);
 
-        if (success)
+        if (item.IsUnavailableForProcessing)
         {
-            item.IsVerifyingIntegrity = true;
-            item.Status = DownloadStatus.Completed;
-            SafeInvoke(() =>
-            {
-                if (!string.IsNullOrWhiteSpace(filePath))
-                {
-                    if (!item.IsCustomName)
-                    {
-                        item.Rename(Path.GetFileName(filePath), isUserAction: false);
-                    }
-                    var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                    if (pkg != null && !pkg.IsCustomName)
-                    {
-                        Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
-                    }
-                }
-                item.ProgressPercentage = 100;
-                if (item.TotalBytes <= 0)
-                    item.TotalBytes = item.DownloadedBytes;
-                item.SpeedBytesPerSecond = 0;
-                item.RemainingSeconds = 0;
-                item.RecordSessionDuration();
-                item.CompletedAt = DateTime.Now;
-                if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
-                {
-                    item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
-                }
-            });
+            if (pathOperation != null)
+                CompletePathOperation(item, pathOperation);
+            return;
+        }
 
-            // Same completion pipeline as engine downloads (checksum verification, auto-extraction, ...)
-            _ = HandleDownloadCompleted(item);
+        if (success && pathOperation != null)
+        {
+            try
+            {
+                item.IsVerifyingIntegrity = true;
+                item.Status = DownloadStatus.Completed;
+                using (await PackagePathOperationGate.Instance.EnterAsync())
+                {
+                    SafeInvoke(() =>
+                    {
+                        if (item.IsUnavailableForProcessing)
+                            return;
+                        if (!string.IsNullOrWhiteSpace(filePath))
+                        {
+                            if (!item.IsCustomName)
+                                item.Rename(Path.GetFileName(filePath), isUserAction: false);
+                            var pkg = Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
+                            if (pkg != null && !pkg.IsCustomName)
+                                Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
+                        }
+                        item.ProgressPercentage = 100;
+                        if (item.TotalBytes <= 0)
+                            item.TotalBytes = item.DownloadedBytes;
+                        item.SpeedBytesPerSecond = 0;
+                        item.RemainingSeconds = 0;
+                        item.RecordSessionDuration();
+                        item.CompletedAt = DateTime.Now;
+                        if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && item.CompletedAt.Value >= item.StartedAt.Value)
+                        {
+                            item.ElapsedDurationMs = (long)(item.CompletedAt.Value - item.StartedAt.Value).TotalMilliseconds;
+                        }
+                    });
+                }
+
+                if (!item.IsUnavailableForProcessing)
+                    _ = HandleDownloadCompleted(item);
+            }
+            finally
+            {
+                CompletePathOperation(item, pathOperation);
+            }
         }
         else
         {
             SafeInvoke(() =>
             {
+                if (item.IsUnavailableForProcessing)
+                    return;
                 item.Status = DownloadStatus.Failed;
                 item.StatusMessage = Loc.Format("Status_BrowserDownloadFailed", error ?? string.Empty);
                 item.SpeedBytesPerSecond = 0;
@@ -1444,22 +1503,39 @@ public class QueueManager
 
     internal Task HandleDownloadCompleted(DownloadItem item)
     {
-        item.IsVerifyingIntegrity = true;
+        var run = RegisterCompletion(item);
+        if (run == null)
+            return Task.CompletedTask;
+
+        try
+        {
+            item.IsVerifyingIntegrity = true;
+        }
+        catch
+        {
+            _ = CompleteCompletionAsync(item, run);
+            throw;
+        }
+
         return Task.Run(async () =>
         {
+            var cancellationToken = run.Cancellation.Token;
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ChecksumVerificationResult? verification = null;
                 // Background Checksum and File Integrity Verification
                 if (SettingsService.Instance.Settings.EnableChecksumVerification)
                 {
                     await ApplyCompletionUpdateAsync(() =>
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         item.StatusMessage = Loc.Get("Status_VerifyingChecksum");
                     });
 
                     ProcessQueue();
-                    verification = await ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(item);
+                    verification = await _verifyCompletion(item, cancellationToken);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (!verification.IsValid)
                     {
                         var maxRetries = SettingsService.Instance.Settings.MaxAutoRetryOnCorruption;
@@ -1485,6 +1561,7 @@ public class QueueManager
 
                             await ApplyCompletionUpdateAsync(() =>
                             {
+                                cancellationToken.ThrowIfCancellationRequested();
                                 item.LastVerificationError = verification.ErrorMessage;
                                 item.RetryCount++;
                                 item.DownloadedBytes = 0;
@@ -1507,6 +1584,7 @@ public class QueueManager
                             AppLogger.Error($"[QueueManager] Prüfsummenfehler bei '{item.FileName}' nach {maxRetries} Versuchen: {verification.ErrorMessage}");
                             await ApplyCompletionUpdateAsync(() =>
                             {
+                                cancellationToken.ThrowIfCancellationRequested();
                                 item.LastVerificationError = verification.ErrorMessage;
                                 item.Status = DownloadStatus.Failed;
                                 item.StatusMessage = Loc.Format("Status_ChecksumError", verification.ErrorMessage ?? string.Empty);
@@ -1525,6 +1603,7 @@ public class QueueManager
                 // Mark Item as Completed
                 await ApplyCompletionUpdateAsync(() =>
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (!string.IsNullOrWhiteSpace(verification?.CalculatedChecksum))
                     {
                         item.CalculatedChecksum = verification.CalculatedChecksum;
@@ -1538,6 +1617,7 @@ public class QueueManager
                 });
 
                 // Trigger Auto-Extract if enabled in settings and package contains extractable archives
+                cancellationToken.ThrowIfCancellationRequested();
                 var packagesSnapshot = Packages.ToArray();
                 var package = packagesSnapshot.FirstOrDefault(p => p.Id == item.PackageId || p.Items.ToArray().Contains(item));
                 if (package != null)
@@ -1553,13 +1633,20 @@ public class QueueManager
                     }
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
             catch (Exception ex)
             {
+                if (cancellationToken.IsCancellationRequested)
+                    return;
                 AppLogger.Error($"[QueueManager] Fehler bei Download-Abschlussprüfung für '{item.FileName}'", ex);
                 if (item.IsVerifyingIntegrity)
                 {
                     await ApplyCompletionUpdateAsync(() =>
                     {
+                        if (cancellationToken.IsCancellationRequested)
+                            return;
                         item.LastVerificationError = ex.Message;
                         item.Status = DownloadStatus.Failed;
                         item.StatusMessage = Loc.Format("Status_ChecksumError", ex.Message);
@@ -1570,7 +1657,8 @@ public class QueueManager
             }
             finally
             {
-                ProcessQueue();
+                try { ProcessQueue(); }
+                finally { await CompleteCompletionAsync(item, run).ConfigureAwait(false); }
             }
         });
     }
@@ -1593,6 +1681,8 @@ public class QueueManager
 
     private void OnBackgroundDownloadFailed(DownloadItem item, Exception ex)
     {
+        if (item.IsUnavailableForProcessing)
+            return;
         // Expired/dead direct link (404/410/403)? -> Re-resolve original page
         // (e.g. direct host links whose /dl/ token expires after several hours)
         if (IsExpiredLinkError(ex) && CanReResolve(item))
@@ -1604,6 +1694,8 @@ public class QueueManager
 
                 SafeInvoke(() =>
                 {
+                    if (item.IsUnavailableForProcessing)
+                        return;
                     item.RetryCount++;
                     item.DirectDownloadUrl = null;
                     item.FastHostResolveFailed = false;
@@ -1621,6 +1713,8 @@ public class QueueManager
 
         SafeInvoke(() =>
         {
+            if (item.IsUnavailableForProcessing)
+                return;
             item.Status = DownloadStatus.Failed;
             item.StatusMessage = Loc.Format("Status_ErrorPrefix", ex.Message);
             item.SpeedBytesPerSecond = 0;

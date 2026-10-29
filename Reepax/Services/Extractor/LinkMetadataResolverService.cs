@@ -16,7 +16,7 @@ using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services.Extractor;
 
-public class LinkMetadataResolverService
+public partial class LinkMetadataResolverService
 {
     private static readonly Lazy<LinkMetadataResolverService> _instance = new(() => new LinkMetadataResolverService());
     public static LinkMetadataResolverService Instance => _instance.Value;
@@ -145,7 +145,7 @@ public class LinkMetadataResolverService
                 var mediaType = headResponse.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
                 bool isHtml = mediaType != null && (mediaType.Contains("html") || mediaType.Contains("text"));
 
-                if (!isHtml && ApplyResponseHeaders(item, headResponse))
+                if (!isHtml && await ApplyResponseHeadersAsync(item, headResponse, cancellationToken))
                 {
                     MarkAsDirectDownloadIfFileResponse(item, targetUrl, headResponse);
                     return true;
@@ -168,7 +168,7 @@ public class LinkMetadataResolverService
                     {
                         item.TotalBytes = contentRange.Length.Value;
                     });
-                    ApplyContentDispositionFileName(item, rangeResponse);
+                    await ApplyContentDispositionFileNameAsync(item, rangeResponse, cancellationToken);
                     MarkAsDirectDownloadIfFileResponse(item, targetUrl, rangeResponse);
                     return true;
                 }
@@ -178,7 +178,7 @@ public class LinkMetadataResolverService
                 var mediaType = rangeResponse.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
                 bool isHtml = mediaType != null && (mediaType.Contains("html") || mediaType.Contains("text"));
 
-                if (!isHtml && ApplyResponseHeaders(item, rangeResponse))
+                if (!isHtml && await ApplyResponseHeadersAsync(item, rangeResponse, cancellationToken))
                 {
                     MarkAsDirectDownloadIfFileResponse(item, targetUrl, rangeResponse);
                     return true;
@@ -284,7 +284,7 @@ public class LinkMetadataResolverService
         }
     }
 
-    private bool ApplyResponseHeaders(DownloadItem item, HttpResponseMessage response)
+    private async Task<bool> ApplyResponseHeadersAsync(DownloadItem item, HttpResponseMessage response, CancellationToken cancellationToken)
     {
         var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
         if (mediaType != null && (mediaType.Contains("html") || mediaType.Contains("text")))
@@ -303,7 +303,7 @@ public class LinkMetadataResolverService
         }
 
         // Content-Disposition (clean file name)
-        ApplyContentDispositionFileName(item, response);
+        await ApplyContentDispositionFileNameAsync(item, response, cancellationToken);
 
         // Checksum from ETag or Content-MD5
         if (string.IsNullOrWhiteSpace(item.ExpectedChecksum))
@@ -327,7 +327,7 @@ public class LinkMetadataResolverService
         return updated;
     }
 
-    private static void ApplyContentDispositionFileName(DownloadItem item, HttpResponseMessage response)
+    private static async Task ApplyContentDispositionFileNameAsync(DownloadItem item, HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (item.IsCustomName) return;
 
@@ -343,9 +343,7 @@ public class LinkMetadataResolverService
         }
 
         if (!string.IsNullOrWhiteSpace(name))
-        {
-            SafeInvoke(() => item.Rename(name, isUserAction: false));
-        }
+            await ApplyResolvedFileNameAsync(item, name, cancellationToken);
     }
 
     private static bool IsHosterWebPage(string url)
@@ -405,13 +403,13 @@ public class LinkMetadataResolverService
                         {
                             var rangeLen = contentRange.Length.Value;
                             SafeInvoke(() => item.TotalBytes = rangeLen);
-                            ApplyContentDispositionFileName(item, directRes);
+                            await ApplyContentDispositionFileNameAsync(item, directRes, cancellationToken);
                             return true;
                         }
                     }
                     else if (directRes.IsSuccessStatusCode)
                     {
-                        if (ApplyResponseHeaders(item, directRes))
+                        if (await ApplyResponseHeadersAsync(item, directRes, cancellationToken))
                         {
                             return true;
                         }
@@ -429,7 +427,7 @@ public class LinkMetadataResolverService
                  item.FileName.Contains(".part") ||
                  item.FileName.Contains("Package (")))
             {
-                SafeInvoke(() => item.Rename(probedFileName, isUserAction: false));
+                await ApplyResolvedFileNameAsync(item, probedFileName, cancellationToken);
             }
 
             // 1. Check data-size / json-size in HTML
@@ -623,9 +621,9 @@ public class LinkMetadataResolverService
         return null;
     }
 
-    public static void TryUpdatePackageName(DownloadPackage package)
+    internal static void TryUpdatePackageNameUnderLease(DownloadPackage package)
     {
-        if (package == null || package.IsCustomName)
+        if (package == null || package.IsCustomName || package.Items.Any(item => item.IsUnavailableForProcessing))
             return;
 
         var itemsSnapshot = package.Items.ToArray();

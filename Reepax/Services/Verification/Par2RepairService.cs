@@ -47,7 +47,7 @@ public class Par2RepairResult
     public string? RawOutput { get; set; }
 }
 
-public class Par2RepairService
+public partial class Par2RepairService
 {
     private static readonly Lazy<Par2RepairService> _instance = new(() => new Par2RepairService());
     public static Par2RepairService Instance => _instance.Value;
@@ -559,21 +559,13 @@ public class Par2RepairService
     /// Processes PAR2 verification and necessary repair for a package before extraction.
     /// Returns true if files are intact (or successfully repaired), false if unrepairable.
     /// </summary>
-    public async Task<bool> ProcessPackagePar2Async(
+    private async Task<bool> ProcessPackagePar2CoreAsync(
         DownloadPackage package,
+        string primaryPar2,
         Action<string>? statusCallback = null,
         Action<double>? progressCallback = null,
         CancellationToken ct = default)
     {
-        if (package == null)
-            return true;
-
-        if (!HasPar2Files(package, out var primaryPar2) || string.IsNullOrEmpty(primaryPar2))
-        {
-            // No PAR2 files available; nothing to verify/repair
-            return true;
-        }
-
         statusCallback?.Invoke(Loc.Get("Status_Par2Verifying"));
 
         // 1. Run Verification

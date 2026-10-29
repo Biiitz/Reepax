@@ -287,6 +287,7 @@ public static class PackageExportImportService
             var pkg = await Task.Run(() => ImportFromFile(filePath));
             if (pkg == null) return null;
 
+            using var pathLease = await PackagePathOperationGate.Instance.EnterAsync();
             void AddToUi()
             {
                 viewModel.Packages.Add(pkg);

@@ -1605,6 +1605,8 @@
                     <DockPanel LastChildFill="False">
                         <!-- Left: Download Queue Action Buttons & Busy Progress Indicator -->
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Stretch">
+                            <TextBlock Text="{loc:Loc Busy_RemovingDownloads}" Margin="12,0" VerticalAlignment="Center"
+                                       Visibility="{Binding IsRemovalInProgress, Converter={StaticResource BoolToVisConverter}}" />
                             <!-- Download Queue Action Buttons -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Stretch" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}">
                                 <!-- Start All Downloads Button -->
@@ -2320,6 +2322,7 @@
                 <!-- Packages & Download Items List (TreeListView) -->
                 <ScrollViewer Grid.Row="1" 
                               x:Name="TreeListScrollViewer"
+                              IsEnabled="{Binding IsRemovalInProgress, Converter={StaticResource InverseBoolConverter}}"
                               CanContentScroll="False"
                               Background="{DynamicResource BgDarkBrush}"
                               VerticalScrollBarVisibility="Visible" 

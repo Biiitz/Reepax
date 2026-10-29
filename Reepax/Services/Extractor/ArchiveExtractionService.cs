@@ -244,7 +244,7 @@ public class ArchiveExtractionService
     /// </summary>
     public bool CanExtractPackage(DownloadPackage? package, bool allowReextract = true)
     {
-        if (package == null)
+        if (package == null || package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
             return false;
 
         if (!allowReextract && package.IsExtracted)
@@ -343,25 +343,35 @@ public class ArchiveExtractionService
         if (package == null)
             return false;
 
-        // 1. Strict Check: If already extracted, do NOTHING!
-        if (package.IsExtracted && !forceReextract)
+        IDisposable pathLease;
+        try
         {
-            AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wurde bereits entpackt. Überspringe.");
-            return true;
+            pathLease = await PackagePathOperationGate.Instance.EnterAsync(cancellationToken);
         }
-
-        // 1b. Strict Check: If auto-extract is turned off and not explicitly forced, do NOTHING!
-        if (!force && !package.AutoExtractArchives)
+        catch (OperationCanceledException)
         {
-            AppLogger.Info($"[ArchiveExtractor] Auto-extract ist für Paket '{package.Name}' deaktiviert. Überspringe.");
             return false;
         }
 
-        // 2. Concurrency guard: Prevent multiple threads from extracting the same package simultaneously
-        if (package.IsExtracting || !_extractingPackages.TryAdd(package.Id, true))
+        using (pathLease)
         {
-            AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wird bereits entpackt.");
-            return false;
+            if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
+                return false;
+            if (package.IsExtracted && !forceReextract)
+            {
+                AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wurde bereits entpackt. Überspringe.");
+                return true;
+            }
+            if (!force && !package.AutoExtractArchives)
+            {
+                AppLogger.Info($"[ArchiveExtractor] Auto-extract ist für Paket '{package.Name}' deaktiviert. Überspringe.");
+                return false;
+            }
+            if (package.IsExtracting || !_extractingPackages.TryAdd(package.Id, true))
+            {
+                AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wird bereits entpackt.");
+                return false;
+            }
         }
 
         var pauseEvent = new System.Threading.ManualResetEventSlim(true);
@@ -379,6 +389,9 @@ public class ArchiveExtractionService
             : new CancellationTokenSource();
 
         _packageCts[package.Id] = linkedCts;
+
+        if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
+            linkedCts.Cancel();
 
         var token = linkedCts.Token;
         SystemIntegration.PowerManagementService.Instance.AcquireKeepAwake($"Extracting package '{package.Name}'");
@@ -514,34 +527,37 @@ public class ArchiveExtractionService
                 var archivePath = primaryArchives[archiveIndex];
                 try
                 {
-                    var targetDir = package.SaveDirectory;
-                    if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
+                    string targetDir;
+                    using (await PackagePathOperationGate.Instance.EnterAsync(token))
                     {
-                        targetDir = Path.GetDirectoryName(archivePath) ?? targetDir;
-                    }
-
-                    // Smart Game Update Extraction: "Extract to [Subfolder]"
-                    // When update files are detected, extract each archive into its own subfolder,
-                    // so files of different versions (e.g. setup.exe) do not overwrite or interfere with each other.
-                    bool isUpdate = UpdateDetector.IsUpdatePackage(package) || UpdateDetector.IsUpdate(Path.GetFileName(archivePath));
-                    if (isUpdate)
-                    {
-                        var subfolder = UpdateDetector.GetExtractionSubfolder(archivePath);
-                        if (!string.IsNullOrWhiteSpace(subfolder))
+                        token.ThrowIfCancellationRequested();
+                        targetDir = package.SaveDirectory;
+                        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
                         {
-                            var currentDirName = Path.GetFileName(targetDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                            if (!string.Equals(currentDirName, subfolder, StringComparison.OrdinalIgnoreCase))
+                            targetDir = Path.GetDirectoryName(archivePath) ?? targetDir;
+                        }
+
+                        // Extract each update archive into its own subfolder.
+                        bool isUpdate = UpdateDetector.IsUpdatePackage(package) || UpdateDetector.IsUpdate(Path.GetFileName(archivePath));
+                        if (isUpdate)
+                        {
+                            var subfolder = UpdateDetector.GetExtractionSubfolder(archivePath);
+                            if (!string.IsNullOrWhiteSpace(subfolder))
                             {
-                                targetDir = Path.Combine(targetDir, subfolder);
+                                var currentDirName = Path.GetFileName(targetDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                                if (!string.Equals(currentDirName, subfolder, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    targetDir = Path.Combine(targetDir, subfolder);
+                                }
                             }
                         }
-                    }
 
-                    if (!Directory.Exists(targetDir))
-                    {
-                        Directory.CreateDirectory(targetDir);
+                        if (!Directory.Exists(targetDir))
+                        {
+                            Directory.CreateDirectory(targetDir);
+                        }
+                        package.ExtractionDirectory = targetDir;
                     }
-                    package.ExtractionDirectory = targetDir;
 
                     int currentIdx = archiveIndex;
                     var success = await ExtractArchiveAsync(

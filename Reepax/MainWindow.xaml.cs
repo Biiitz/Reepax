@@ -884,6 +884,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (ViewModel?.IsRemovalInProgress == true)
+        {
+            e.Cancel = true;
+            CloseAfterRemoval();
+            return;
+        }
+
         // Active downloads confirmation check
         if (!_bypassCloseConfirmation && Services.Download.QueueManager.Instance.HasActiveDownloads())
         {
@@ -1275,6 +1282,11 @@ public partial class MainWindow : Window
 
     private void ShowAddLinksDialog(string? prefill = null, DownloadPackage? targetPackage = null)
     {
+        if (ViewModel.IsRemovalInProgress)
+        {
+            ShowAddLinksAfterRemoval(prefill, targetPackage);
+            return;
+        }
         if (ViewModel.IsBusy)
             return;
 
@@ -2771,7 +2783,7 @@ public partial class MainWindow : Window
                     return;
                 }
             }
-            ViewModel.RemovePackage(package);
+            _ = ViewModel.RemovePackage(package);
         }
     }
 
@@ -2968,11 +2980,11 @@ public partial class MainWindow : Window
                     return;
                 }
             }
-            ViewModel.RemoveItem(item);
+            _ = ViewModel.RemoveItem(item);
         }
     }
 
-    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    private async void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
         var currentDir = SettingsService.Instance.Settings.DefaultDownloadDirectory;
         var dialog = new Microsoft.Win32.OpenFolderDialog
@@ -2983,8 +2995,11 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog(this) == true)
         {
-            SettingsService.Instance.Settings.DefaultDownloadDirectory = dialog.FolderName;
-            SettingsService.Instance.SaveSettings();
+            using (await PackagePathOperationGate.Instance.EnterAsync())
+            {
+                SettingsService.Instance.Settings.DefaultDownloadDirectory = dialog.FolderName;
+                SettingsService.Instance.SaveSettings();
+            }
             ViewModel.StatusSummary = Services.Localization.Loc.Format("Status_DownloadDirChanged", dialog.FolderName);
             MessageBox.Show(
                 Services.Localization.Loc.Format("Dialog_DownloadDirChangedMessage", dialog.FolderName), 
@@ -3314,7 +3329,7 @@ public partial class MainWindow : Window
 
     private void HandleRenameSelected()
     {
-        if (ViewModel.SelectedMainTab != AppMainTab.Downloads)
+        if (ViewModel.SelectedMainTab != AppMainTab.Downloads || ViewModel.IsRemovalInProgress)
             return;
 
         // 1. Check if an item is selected
@@ -3453,7 +3468,7 @@ public partial class MainWindow : Window
                 var tb = sender as TextBox;
                 if (tb != null && !string.IsNullOrWhiteSpace(tb.Text))
                 {
-                    pkg.Rename(tb.Text, isUserAction: true);
+                    ViewModel.RenamePackageWhenAvailable(pkg, tb.Text);
                 }
                 pkg.IsEditing = false;
                 e.Handled = true;
@@ -3478,7 +3493,7 @@ public partial class MainWindow : Window
             var tb = sender as TextBox;
             if (tb != null && !string.IsNullOrWhiteSpace(tb.Text) && tb.Text.Trim() != pkg.Name)
             {
-                pkg.Rename(tb.Text, isUserAction: true);
+                ViewModel.RenamePackageWhenAvailable(pkg, tb.Text);
             }
             pkg.IsEditing = false;
         }
@@ -3493,7 +3508,7 @@ public partial class MainWindow : Window
                 var tb = sender as TextBox;
                 if (tb != null && !string.IsNullOrWhiteSpace(tb.Text))
                 {
-                    item.Rename(tb.Text, isUserAction: true);
+                    ViewModel.RenameItemWhenAvailable(item, tb.Text);
                 }
                 item.IsEditing = false;
                 e.Handled = true;
@@ -3518,7 +3533,7 @@ public partial class MainWindow : Window
             var tb = sender as TextBox;
             if (tb != null && !string.IsNullOrWhiteSpace(tb.Text) && tb.Text.Trim() != item.FileName)
             {
-                item.Rename(tb.Text, isUserAction: true);
+                ViewModel.RenameItemWhenAvailable(item, tb.Text);
             }
             item.IsEditing = false;
         }

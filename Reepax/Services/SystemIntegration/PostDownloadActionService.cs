@@ -27,6 +27,7 @@ public sealed class PostDownloadActionService
     private CancellationTokenSource? _countdownCts;
     private bool _isCountdownActive;
     private int _remainingSeconds;
+    private int _activeCleanupCount;
 
     public bool IsCountdownActive
     {
@@ -93,6 +94,8 @@ public sealed class PostDownloadActionService
 
         lock (_lock)
         {
+            if (_activeCleanupCount > 0)
+                return;
             if (hasActiveWork)
             {
                 _hadActiveWork = true;
@@ -131,6 +134,34 @@ public sealed class PostDownloadActionService
             {
                 CancelCountdown(manual: false);
             }
+        }
+    }
+
+    internal IDisposable BeginCleanup()
+    {
+        lock (_lock)
+        {
+            _activeCleanupCount++;
+            if (IsCountdownActive)
+                CancelCountdown(manual: false);
+        }
+        return new CleanupLease(this);
+    }
+
+    private sealed class CleanupLease : IDisposable
+    {
+        private PostDownloadActionService? _owner;
+
+        internal CleanupLease(PostDownloadActionService owner) => _owner = owner;
+
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner == null)
+                return;
+            lock (owner._lock)
+                owner._activeCleanupCount--;
+            owner.Evaluate(QueueManager.Instance.Packages);
         }
     }
 
@@ -178,7 +209,7 @@ public sealed class PostDownloadActionService
     {
         lock (_lock)
         {
-            if (IsCountdownActive || CurrentAction == PostDownloadAction.None) return;
+            if (_activeCleanupCount > 0 || IsCountdownActive || CurrentAction == PostDownloadAction.None) return;
 
             _countdownCts?.Cancel();
             _countdownCts?.Dispose();
@@ -217,6 +248,8 @@ public sealed class PostDownloadActionService
 
                     SafeInvoke(() =>
                     {
+                        if (token.IsCancellationRequested)
+                            return;
                         IsCountdownActive = false;
                         CountdownFinished?.Invoke();
                         ExecuteArmedAction();

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using System.Windows.Input;
@@ -698,7 +699,7 @@ public class MainViewModelUiAndSettingsTests
     }
 
     [Fact]
-    public void RemovePackage_UnclipsChildPackagesAndPromotesToRoot()
+    public async Task RemovePackage_UnclipsChildPackagesAndPromotesToRoot()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -713,7 +714,7 @@ public class MainViewModelUiAndSettingsTests
         vm.RootPackages.Add(parent);
 
         // Removing the parent package with deleteFilesFromDisk: false
-        vm.RemovePackage(parent, deleteFilesFromDisk: false);
+        await vm.RemovePackage(parent, deleteFilesFromDisk: false);
 
         // Parent should be removed, child should be promoted to RootPackages and unlinked
         Assert.DoesNotContain(parent, vm.Packages);
@@ -725,7 +726,7 @@ public class MainViewModelUiAndSettingsTests
     }
 
     [Fact]
-    public void RemoveItemAndRemovePackage_WhenItemsInBrowserWindow_ClosesBrowserWindowsAndFreesSlots()
+    public async Task RemoveItemAndRemovePackage_WhenItemsInBrowserWindow_ClosesBrowserWindowsAndFreesSlots()
     {
         var qm = QueueManager.Instance;
         var prevHost = qm.BrowserHost;
@@ -769,13 +770,13 @@ public class MainViewModelUiAndSettingsTests
             Assert.Equal(1, host.ActiveWindowCount);
 
             // Removing item1 closes window 1 and promotes item2 to window 2
-            vm.RemoveItem(item1, deleteFilesFromDisk: false);
+            await vm.RemoveItem(item1, deleteFilesFromDisk: false);
             Assert.Null(qm.GetWindowItem(1));
             Assert.Equal(DownloadStatus.InBrowser, item2.Status);
             Assert.Same(item2, qm.GetWindowItem(2));
 
             // Removing pkg closes window 2
-            vm.RemovePackage(pkg, deleteFilesFromDisk: false);
+            await vm.RemovePackage(pkg, deleteFilesFromDisk: false);
             Assert.Null(qm.GetWindowItem(2));
             Assert.Equal(0, host.ActiveWindowCount);
         }

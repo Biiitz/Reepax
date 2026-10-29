@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using Reepax.Models;
@@ -167,7 +168,7 @@ public class DiskCleanupViewModelTests
     }
 
     [Fact]
-    public void DeleteSelectedCommand_DeletesSelectedPackageOrItemProperly()
+    public async Task DeleteSelectedCommand_DeletesSelectedPackageOrItemProperly()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -196,7 +197,7 @@ public class DiskCleanupViewModelTests
         Assert.True(vm.CanDeleteSelected);
 
         // Execute DeleteSelected -> removes item1, pkg still has item2
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
         Assert.DoesNotContain(item1, pkg.Items);
         Assert.Contains(item2, pkg.Items);
         Assert.Contains(pkg, vm.Packages);
@@ -207,13 +208,13 @@ public class DiskCleanupViewModelTests
         Assert.True(vm.CanDeleteSelected);
 
         // Execute DeleteSelected -> removes entire pkg
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
         Assert.DoesNotContain(pkg, vm.Packages);
         Assert.False(vm.CanDeleteSelected);
     }
 
     [Fact]
-    public void DeleteSelected_WhenMultipleItemsSelected_DeletesAllSelectedItems()
+    public async Task DeleteSelected_WhenMultipleItemsSelected_DeletesAllSelectedItems()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -229,7 +230,7 @@ public class DiskCleanupViewModelTests
         vm.SelectedMainTab = AppMainTab.Downloads;
 
         Assert.True(vm.CanDeleteSelected);
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
 
         Assert.DoesNotContain(item1, pkg.Items);
         Assert.DoesNotContain(item3, pkg.Items);
@@ -238,7 +239,7 @@ public class DiskCleanupViewModelTests
     }
 
     [Fact]
-    public void DeleteSelected_WhenMultiplePackagesSelected_DeletesAllSelectedPackages()
+    public async Task DeleteSelected_WhenMultiplePackagesSelected_DeletesAllSelectedPackages()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -252,7 +253,7 @@ public class DiskCleanupViewModelTests
         vm.SelectedMainTab = AppMainTab.Downloads;
 
         Assert.True(vm.CanDeleteSelected);
-        vm.DeleteSelected();
+        await vm.DeleteSelected();
 
         Assert.DoesNotContain(pkg1, vm.Packages);
         Assert.DoesNotContain(pkg3, vm.Packages);

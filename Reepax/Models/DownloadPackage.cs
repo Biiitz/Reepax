@@ -576,9 +576,14 @@ public partial class DownloadPackage : ObservableObject
     public ObservableCollection<DownloadItem> Items { get; } = new();
     private readonly HashSet<DownloadItem> _hookedItems = new();
 
-    public DownloadPackage()
+    public DownloadPackage() : this(true)
     {
-        Items.CollectionChanged += Items_CollectionChanged;
+    }
+
+    private DownloadPackage(bool observeItems)
+    {
+        if (observeItems)
+            Items.CollectionChanged += Items_CollectionChanged;
     }
 
     private void Items_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -1369,7 +1374,9 @@ public partial class DownloadPackage : ObservableObject
     /// and self-heals SaveDirectory.
     /// Returns false if the package does not exist on disk.
     /// </summary>
-    public bool RefreshAndCheckExistsOnDisk()
+    public bool RefreshAndCheckExistsOnDisk() => RefreshAndCheckExistsOnDisk(true);
+
+    internal bool RefreshAndCheckExistsOnDisk(bool persistChanges)
     {
         // 1. Direct check: current SaveDirectory exists and contains files/subdirectories
         if (!string.IsNullOrWhiteSpace(SaveDirectory) && Directory.Exists(SaveDirectory))
@@ -1410,7 +1417,7 @@ public partial class DownloadPackage : ObservableObject
                     {
                         SaveDirectory = itemDir;
                         UpdateItemSaveFilePaths();
-                        Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                        if (persistChanges) Services.Storage.DownloadPersistenceService.Instance.RequestSave();
                         return true;
                     }
                 }
@@ -1451,7 +1458,7 @@ public partial class DownloadPackage : ObservableObject
                         {
                             SaveDirectory = cand;
                             UpdateItemSaveFilePaths();
-                            Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                            if (persistChanges) Services.Storage.DownloadPersistenceService.Instance.RequestSave();
                             return true;
                         }
                     }
@@ -1473,7 +1480,7 @@ public partial class DownloadPackage : ObservableObject
                         {
                             SaveDirectory = sibling;
                             UpdateItemSaveFilePaths();
-                            Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                            if (persistChanges) Services.Storage.DownloadPersistenceService.Instance.RequestSave();
                             return true;
                         }
                     }

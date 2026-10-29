@@ -14,6 +14,7 @@ using System.Windows;
 using Microsoft.Win32.SafeHandles;
 using Reepax.Models;
 using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services.Download;
@@ -130,7 +131,7 @@ public class DownloadEngine
         string? referer,
         string? suggestedFileName)
     {
-        if (string.IsNullOrWhiteSpace(directUrl))
+        if (item.IsUnavailableForProcessing || string.IsNullOrWhiteSpace(directUrl))
             return;
 
         var cts = new CancellationTokenSource();
@@ -139,6 +140,12 @@ public class DownloadEngine
         if (!_activeDownloads.TryAdd(item.Id, (cts, tcs)))
         {
             cts.Dispose();
+            return;
+        }
+
+        if (item.IsUnavailableForProcessing)
+        {
+            CompleteAndRemoveActiveDownload(item.Id);
             return;
         }
 
@@ -151,6 +158,8 @@ public class DownloadEngine
 
         SafeInvokeAsync(() =>
         {
+            if (item.IsUnavailableForProcessing)
+                return;
             item.StartDownloadSession();
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_Connecting");
@@ -190,7 +199,7 @@ public class DownloadEngine
 
     public async Task ResumeDownloadAsync(DownloadItem item)
     {
-        if (string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
+        if (item.IsUnavailableForProcessing || string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
             return;
 
         var cts = new CancellationTokenSource();
@@ -202,8 +211,16 @@ public class DownloadEngine
             return;
         }
 
+        if (item.IsUnavailableForProcessing)
+        {
+            CompleteAndRemoveActiveDownload(item.Id);
+            return;
+        }
+
         SafeInvokeAsync(() =>
         {
+            if (item.IsUnavailableForProcessing)
+                return;
             item.StartDownloadSession();
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_ResumingDownload");
@@ -258,14 +275,17 @@ public class DownloadEngine
             }
 
             // Ensure package name is updated if item already has a meaningful name
-            SafeInvoke(() =>
+            using (await PackagePathOperationGate.Instance.EnterAsync(cancellationToken))
             {
-                var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                if (pkg != null && !pkg.IsCustomName && (Extractor.PackageGrouper.IsGenericOrCrypticName(pkg.Name) || Extractor.UpdateDetector.IsUpdate(item.FileName)))
+                SafeInvoke(() =>
                 {
-                    Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
-                }
-            });
+                    var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
+                    if (pkg != null && !pkg.IsCustomName && (Extractor.PackageGrouper.IsGenericOrCrypticName(pkg.Name) || Extractor.UpdateDetector.IsUpdate(item.FileName)))
+                    {
+                        Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
+                    }
+                });
+            }
 
             // Ensure destination folder exists physically
             var destinationPath = item.SaveFilePath;
@@ -338,6 +358,8 @@ public class DownloadEngine
                             !string.IsNullOrWhiteSpace(probe.FileName) &&
                             !string.Equals(item.FileName, probe.FileName, StringComparison.OrdinalIgnoreCase))
                         {
+                            using var pathLease = await PackagePathOperationGate.Instance.EnterAsync(cancellationToken);
+                            cancellationToken.ThrowIfCancellationRequested();
                             var oldTemp = tempFilePath;
                             SafeInvoke(() =>
                             {
@@ -345,7 +367,7 @@ public class DownloadEngine
                                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
                                 if (pkg != null && !pkg.IsCustomName)
                                 {
-                                    Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
+                                    Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
                                 }
                             });
 
@@ -1102,6 +1124,8 @@ public class DownloadEngine
 
         if (!item.IsCustomName && !string.IsNullOrWhiteSpace(extractedFileName) && !string.Equals(item.FileName, extractedFileName, StringComparison.OrdinalIgnoreCase))
         {
+            using var pathLease = await PackagePathOperationGate.Instance.EnterAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             var oldTempPath = tempFilePath;
             SafeInvoke(() => item.Rename(extractedFileName, isUserAction: false));
             var newTempPath = item.SaveFilePath + ".part";
@@ -1129,7 +1153,7 @@ public class DownloadEngine
                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
                 if (pkg != null && !pkg.IsCustomName)
                 {
-                    Extractor.LinkMetadataResolverService.TryUpdatePackageName(pkg);
+                    Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
                 }
             }
             catch { }

@@ -759,7 +759,7 @@ public partial class MainViewModel : ObservableObject
     {
         get
         {
-            if (SelectedMainTab != AppMainTab.Downloads) return false;
+            if (SelectedMainTab != AppMainTab.Downloads || IsRemovalInProgress) return false;
             foreach (var p in Packages)
             {
                 foreach (var i in p.Items)
@@ -779,7 +779,7 @@ public partial class MainViewModel : ObservableObject
     {
         get
         {
-            if (SelectedMainTab != AppMainTab.Downloads) return false;
+            if (SelectedMainTab != AppMainTab.Downloads || IsRemovalInProgress) return false;
             if (SelectedPackage != null || SelectedItem != null) return true;
             foreach (var p in Packages)
             {
@@ -1000,7 +1000,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void StartRenamePackage(DownloadPackage? package)
     {
-        if (package != null)
+        if (package != null && !IsRemovalInProgress)
         {
             package.IsEditing = true;
         }
@@ -1009,7 +1009,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void StartRenameItem(DownloadItem? item)
     {
-        if (item != null)
+        if (item != null && !IsRemovalInProgress)
         {
             item.IsEditing = true;
         }
@@ -1017,6 +1017,11 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     public void OpenPackageFolder(DownloadPackage? package)
+    {
+        RunWhenCleanupPathsAvailable(() => OpenPackageFolderCore(package));
+    }
+
+    private void OpenPackageFolderCore(DownloadPackage? package)
     {
         if (package == null)
             return;
@@ -1322,7 +1327,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanClearCompleted))]
     public void ClearCompleted()
     {
-        if (SelectedMainTab != AppMainTab.Downloads) return;
+        if (SelectedMainTab != AppMainTab.Downloads || IsRemovalInProgress) return;
         if (!DownloadPersistenceService.IsTestEnvironment)
         {
             if (!Views.ConfirmDialog.Show(
@@ -2538,6 +2543,20 @@ public partial class MainViewModel : ObservableObject
         bool moveArchiveToRecycleBin = false,
         bool autoResolveHostLinks = false)
     {
+        RunWhenCleanupPathsAvailable(() => AddLinksFromTextCore(rawText, customPackageName, autoExtractArchives,
+            lowResourceExtraction, customDownloadDir, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks));
+    }
+
+    private void AddLinksFromTextCore(
+        string rawText,
+        string? customPackageName,
+        bool autoExtractArchives,
+        bool? lowResourceExtraction,
+        string? customDownloadDir,
+        bool deleteArchiveAfterExtraction,
+        bool moveArchiveToRecycleBin,
+        bool autoResolveHostLinks)
+    {
         if (string.IsNullOrWhiteSpace(rawText))
             return;
 
@@ -2597,7 +2616,12 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public void AddLinksToPackage(DownloadPackage? package, string rawText, bool autoResolveHostLinks = false)
     {
-        if (package == null || string.IsNullOrWhiteSpace(rawText))
+        RunWhenCleanupPathsAvailable(() => AddLinksToPackageCore(package, rawText, autoResolveHostLinks));
+    }
+
+    private void AddLinksToPackageCore(DownloadPackage? package, string rawText, bool autoResolveHostLinks)
+    {
+        if (package == null || !Packages.Contains(package) || string.IsNullOrWhiteSpace(rawText))
             return;
 
         var extracted = LinkExtractor.ExtractLinks(rawText, fileHostersOnly: true);
@@ -2619,7 +2643,7 @@ public partial class MainViewModel : ObservableObject
 
         if (isUpdate)
         {
-            LinkMetadataResolverService.TryUpdatePackageName(package);
+            LinkMetadataResolverService.TryUpdatePackageNameUnderLease(package);
         }
 
         bool autoQueue = _queueManager.IsRunning && package.IsEnabled;
@@ -2715,7 +2739,15 @@ public partial class MainViewModel : ObservableObject
         bool moveArchiveToRecycleBin,
         bool autoResolveHostLinks = false)
     {
-        if (package == null || string.IsNullOrWhiteSpace(newRawText))
+        RunWhenCleanupPathsAvailable(() => EditPackageCore(package, newRawText, newPackageName, newDownloadDirectory,
+            autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks));
+    }
+
+    private void EditPackageCore(DownloadPackage? package, string newRawText, string? newPackageName,
+        string? newDownloadDirectory, bool autoExtractArchives, bool lowResourceExtraction,
+        bool deleteArchiveAfterExtraction, bool moveArchiveToRecycleBin, bool autoResolveHostLinks)
+    {
+        if (package == null || !Packages.Contains(package) || string.IsNullOrWhiteSpace(newRawText))
             return;
 
         var newExtractedLinks = LinkExtractor.ExtractLinks(newRawText, fileHostersOnly: true);
@@ -2917,6 +2949,7 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            using var pathLease = await PackagePathOperationGate.Instance.EnterAsync();
             var baseDownloadDir = !string.IsNullOrWhiteSpace(customDownloadDir) && Directory.Exists(customDownloadDir)
                 ? customDownloadDir
                 : _settingsService.Settings.DefaultDownloadDirectory;
