@@ -274,4 +274,44 @@ public class DialogUiTests
             ConfirmDialog.ShowDialogOverrideForTesting = null;
         }
     }
+
+    [Fact]
+    public void ConfirmDialog_FileRemovalDefaultsToRecyclingAndRequiresFileOptIn()
+    {
+        RunInSta(() =>
+        {
+            var theme = new ResourceDictionary
+            {
+                Source = new Uri("pack://application:,,,/Reepax;component/Themes/DarkTheme.xaml")
+            };
+            Application.Current.Resources.MergedDictionaries.Add(theme);
+            var shutdownMode = Application.Current.ShutdownMode;
+            Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try
+            {
+                var dialog = new ConfirmDialog("Remove", "Remove the selected package?");
+                Assert.Equal(Visibility.Collapsed, dialog.FileDeletionOptionsPanel.Visibility);
+                dialog.ConfigureFileDeletionOptions("Also remove associated files");
+                Assert.Equal(Visibility.Visible, dialog.OptionCheckBox.Visibility);
+                Assert.Equal(Visibility.Visible, dialog.FileDeletionOptionsPanel.Visibility);
+                Assert.False(dialog.IsOptionChecked);
+                Assert.True(dialog.RecycleFilesRadioButton.IsChecked);
+                Assert.False(dialog.PermanentlyDeleteFilesRadioButton.IsChecked == true);
+                dialog.FileDeletionOptionsPanel.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+                Assert.False(dialog.FileDeletionOptionsPanel.IsEnabled);
+                dialog.OptionCheckBox.IsChecked = true;
+                dialog.FileDeletionOptionsPanel.GetBindingExpression(UIElement.IsEnabledProperty)?.UpdateTarget();
+                Assert.True(dialog.FileDeletionOptionsPanel.IsEnabled);
+                dialog.PermanentlyDeleteFilesRadioButton.IsChecked = true;
+                Assert.False(dialog.RecycleFilesRadioButton.IsChecked == true);
+                Assert.True(dialog.PermanentlyDeleteFilesRadioButton.IsChecked);
+                dialog.Close();
+            }
+            finally
+            {
+                Application.Current.Resources.MergedDictionaries.Remove(theme);
+                Application.Current.ShutdownMode = shutdownMode;
+            }
+        });
+    }
 }

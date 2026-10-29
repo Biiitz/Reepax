@@ -522,7 +522,7 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void DeleteSelected_WhenMultipleItems_DeletesOnlySelectedItemAndPreservesPackage()
+    public async Task DeleteSelected_WhenMultipleItems_DeletesOnlySelectedItemAndPreservesPackage()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -536,7 +536,7 @@ https://rapidgator.net/file/182937105
 
         // Select item1
         vm.SelectedItem = item1;
-        vm.DeleteSelectedCommand.Execute(null);
+        await vm.DeleteSelectedCommand.ExecuteAsync(null);
 
         // Assert: package is preserved, only item1 was removed
         Assert.Single(vm.Packages);
@@ -547,7 +547,7 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void DeleteSelected_WhenPackageSelected_DeletesPackage()
+    public async Task DeleteSelected_WhenPackageSelected_DeletesPackage()
     {
         var vm = new MainViewModel();
         vm.Packages.Clear();
@@ -559,7 +559,7 @@ https://rapidgator.net/file/182937105
 
         // Select package
         vm.SelectedPackage = package;
-        vm.DeleteSelectedCommand.Execute(null);
+        await vm.DeleteSelectedCommand.ExecuteAsync(null);
 
         Assert.Empty(vm.Packages);
         Assert.Null(vm.SelectedPackage);

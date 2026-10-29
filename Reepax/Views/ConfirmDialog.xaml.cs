@@ -32,6 +32,13 @@ public partial class ConfirmDialog : Window
 
     public bool IsOptionChecked => OptionCheckBox.IsChecked == true;
 
+    internal void ConfigureFileDeletionOptions(string optionText)
+    {
+        OptionCheckBox.Content = optionText;
+        OptionCheckBox.Visibility = Visibility.Visible;
+        FileDeletionOptionsPanel.Visibility = Visibility.Visible;
+    }
+
     private void ConfirmButton_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = true;
@@ -64,8 +71,20 @@ public partial class ConfirmDialog : Window
         string? cancelText = null, 
         Window? owner = null,
         bool isDanger = true)
+        => ShowWithOptionCore(title, message, optionText, out isOptionChecked, out _, defaultOptionChecked,
+            confirmText, cancelText, owner, isDanger, false);
+
+    public static bool ShowWithFileDeletionOptions(string title, string message, string? optionText,
+        out bool deleteFiles, out bool recycleFiles)
+        => ShowWithOptionCore(title, message, optionText, out deleteFiles, out recycleFiles,
+            false, null, null, null, true, true);
+
+    private static bool ShowWithOptionCore(string title, string message, string? optionText,
+        out bool isOptionChecked, out bool recycleFiles, bool defaultOptionChecked,
+        string? confirmText, string? cancelText, Window? owner, bool isDanger, bool showFileDeletionOptions)
     {
         isOptionChecked = false;
+        recycleFiles = showFileDeletionOptions;
 
         if (ShowDialogOverrideForTesting != null)
         {
@@ -82,9 +101,12 @@ public partial class ConfirmDialog : Window
         if (Application.Current != null && Application.Current.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
         {
             bool optVal = defaultOptionChecked;
+            bool recycleVal = showFileDeletionOptions;
             bool result = Application.Current.Dispatcher.Invoke(() =>
-                ShowWithOption(title, message, optionText, out optVal, defaultOptionChecked, confirmText, cancelText, owner, isDanger));
+                ShowWithOptionCore(title, message, optionText, out optVal, out recycleVal,
+                    defaultOptionChecked, confirmText, cancelText, owner, isDanger, showFileDeletionOptions));
             isOptionChecked = optVal;
+            recycleFiles = recycleVal;
             return result;
         }
 
@@ -107,6 +129,8 @@ public partial class ConfirmDialog : Window
             dialog.OptionCheckBox.Content = optionText;
             dialog.OptionCheckBox.IsChecked = defaultOptionChecked;
             dialog.OptionCheckBox.Visibility = Visibility.Visible;
+            if (showFileDeletionOptions)
+                dialog.ConfigureFileDeletionOptions(optionText);
         }
 
         dialog.Loaded += (s, e) =>
@@ -121,6 +145,7 @@ public partial class ConfirmDialog : Window
 
         var dialogResult = dialog.ShowDialog() == true;
         isOptionChecked = dialogResult && dialog.IsOptionChecked;
+        recycleFiles = dialog.RecycleFilesRadioButton.IsChecked == true;
         return dialogResult;
     }
 }

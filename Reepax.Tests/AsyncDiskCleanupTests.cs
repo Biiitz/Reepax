@@ -193,7 +193,7 @@ public class AsyncDiskCleanupTests
         {
             package.SaveDirectory = second;
             item.SaveFilePath = secondFile;
-            return (true, true);
+            return (true, true, false);
         };
         try
         {
@@ -225,7 +225,7 @@ public class AsyncDiskCleanupTests
         package.Items.Add(new DownloadItem { FileName = "data.bin", SaveFilePath = file });
         vm.Packages.Add(package);
         string? option = null;
-        vm.CleanupConfirmationOverride = value => { option = value; return (false, false); };
+        vm.CleanupConfirmationOverride = value => { option = value; return (false, false, false); };
         try
         {
             await vm.RemovePackage(package);
@@ -327,7 +327,7 @@ public class AsyncDiskCleanupTests
         second.Items.Add(otherItem);
         vm.Packages.Add(first);
         vm.Packages.Add(second);
-        vm.CleanupConfirmationOverride = _ => (true, true);
+        vm.CleanupConfirmationOverride = _ => (true, true, false);
         try
         {
             await vm.DeleteSelected();

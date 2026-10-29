@@ -26,7 +26,7 @@ public partial class MainViewModel
     internal Task WaitForRemovalAsync() => _removalFinished?.Task ?? Task.CompletedTask;
 
     internal Func<Action, Task> DiskCleanupRunner { get; set; } = action => Task.Run(action);
-    internal Func<string?, (bool Confirmed, bool DeleteFiles)>? CleanupConfirmationOverride { get; set; }
+    internal Func<string?, (bool Confirmed, bool DeleteFiles, bool RecycleFiles)>? CleanupConfirmationOverride { get; set; }
 
     partial void OnIsRemovalInProgressChanged(bool value)
     {
@@ -79,6 +79,7 @@ public partial class MainViewModel
         var affectedPackages = selectedPackages.Concat(Packages.Where(package => selectedItems.Any(package.Items.Contains))).Distinct().ToArray();
         bool reserved = false;
         bool removed = false;
+        bool moveToRecycleBin = false;
         try
         {
             CleanupSnapshot? preview = null;
@@ -91,7 +92,7 @@ public partial class MainViewModel
                     await DiskCleanupRunner(() => preview.Scan());
                     ApplyHealedPaths(preview, selectedPackages);
                 }
-                if (!ConfirmCleanup(preview, selectedPackages, selectedItems, out deleteFiles))
+                if (!ConfirmCleanup(preview, selectedPackages, selectedItems, out deleteFiles, out moveToRecycleBin))
                     return;
             }
 
@@ -149,7 +150,13 @@ public partial class MainViewModel
                         repairsToWait = conflicts.Select(id => repairs[id].Finished).ToArray();
                         if (repairsToWait.Length == 0)
                         {
-                            await DiskCleanupRunner(current.Delete);
+                            await DiskCleanupRunner(() =>
+                            {
+                                if (moveToRecycleBin)
+                                    current.Recycle(RecyclePaths);
+                                else
+                                    current.Delete();
+                            });
                             ApplyHealedPaths(current, selectedPackages);
                             RemoveSelectionFromUi(selectedPackages, selectedItems);
                             removed = true;
@@ -167,8 +174,11 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Could not remove the selected downloads: {ex.Message}");
-            StatusSummary = Loc.Get("Status_CleanupFailed");
+            if (moveToRecycleBin)
+                AppLogger.Warn("[MainViewModel] Could not recycle the selected downloads.");
+            else
+                AppLogger.Warn($"[MainViewModel] Could not remove the selected downloads: {ex.Message}");
+            StatusSummary = Loc.Get(moveToRecycleBin ? "Status_RecycleFailed" : "Status_CleanupFailed");
         }
         finally
         {
@@ -225,7 +235,7 @@ public partial class MainViewModel
             DownloadPersistenceService.Instance.RequestSave();
     }
 
-    private bool ConfirmCleanup(CleanupSnapshot preview, IReadOnlyCollection<DownloadPackage> packages, IReadOnlyCollection<DownloadItem> items, out bool deleteFiles)
+    private bool ConfirmCleanup(CleanupSnapshot preview, IReadOnlyCollection<DownloadPackage> packages, IReadOnlyCollection<DownloadItem> items, out bool deleteFiles, out bool recycleFiles)
     {
         string? option = null;
         string title;
@@ -258,9 +268,10 @@ public partial class MainViewModel
         {
             var response = CleanupConfirmationOverride(option);
             deleteFiles = response.DeleteFiles;
+            recycleFiles = response.RecycleFiles;
             return response.Confirmed;
         }
-        return Views.ConfirmDialog.ShowWithOption(title, message, option, out deleteFiles, false, Loc.Get("Common_Yes"), Loc.Get("Common_No"));
+        return Views.ConfirmDialog.ShowWithFileDeletionOptions(title, message, option, out deleteFiles, out recycleFiles);
     }
 
     private void RemoveSelectionFromUi(IReadOnlyCollection<DownloadPackage> packages, IReadOnlyCollection<DownloadItem> items)
@@ -303,7 +314,7 @@ public partial class MainViewModel
         DownloadPersistenceService.Instance.RequestSave();
     }
 
-    private sealed class CleanupSnapshot
+    private sealed partial class CleanupSnapshot
     {
         internal List<DownloadPackage> Packages { get; }
         private readonly HashSet<Guid> _packageIds;
