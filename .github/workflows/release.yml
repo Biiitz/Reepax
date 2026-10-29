@@ -1,244 +1,164 @@
-name: "Build & Release Reepax"
+name: Build and Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ['v*']
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: pwsh
 
 jobs:
   build:
-    name: "Build & Release"
     runs-on: windows-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 30
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             8.0.x
             9.0.x
-
-      - name: Determine Application Version
-        id: version_step
-        shell: powershell
+      - name: Validate version
+        env:
+          BUILD_REF: ${{ github.ref }}
+          BUILD_TAG: ${{ github.ref_name }}
         run: |
-          $tag = "${{ github.event.release.tag_name }}"
-          if (-not $tag) { $tag = "${{ github.ref_name }}" }
-          $version = $tag.TrimStart('v', 'V')
-          if (-not $version -or $version -match '^main$|^master$') {
-              [xml]$xml = Get-Content Reepax\Reepax.csproj
-              $version = ($xml.Project.PropertyGroup.Version | Where-Object { $_ -match '\S' } | Select-Object -First 1)
-              if (-not $version) { $version = "26.10.4" }
-              $version = $version.Trim()
+          $ErrorActionPreference = 'Stop'
+          [xml]$project = Get-Content Reepax/Reepax.csproj
+          $version = [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+          if ($env:BUILD_REF.StartsWith('refs/tags/')) {
+            if ($env:BUILD_TAG -notmatch '^v(\d{2}\.(?:[1-9]|1[0-2])\.\d{1,4}(?:\.\d{1,4})?)$') { throw 'Invalid release tag.' }
+            if ($Matches[1] -ne $version) { throw 'Release tag and project version differ.' }
           }
-          $releaseTag = if ($tag -and $tag -notmatch '^main$|^master$') { $tag } else { "v$version" }
-          if (-not $releaseTag.StartsWith('v', [System.StringComparison]::OrdinalIgnoreCase)) {
-              $releaseTag = "v$releaseTag"
-          }
-
-          $parts = $version.Split('.')
-          $assemblyVer = if ($parts.Count -eq 3) { "$version.0" } elseif ($parts.Count -eq 2) { "$version.0.0" } elseif ($parts.Count -eq 1) { "$version.0.0.0" } else { $version }
-
-          Write-Host "Resolved Version: $version"
-          Write-Host "Resolved AssemblyVersion: $assemblyVer"
-          Write-Host "Resolved ReleaseTag: $releaseTag"
-
-          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "ASSEMBLY_VERSION=$assemblyVer" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-          "app_version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "assembly_version=$assemblyVer" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      - name: Build Solution (Release Configuration)
-        shell: powershell
+          if ($version -notmatch '^\d{2}\.(?:[1-9]|1[0-2])\.\d{1,4}(?:\.\d{1,4})?$') { throw 'Invalid application version.' }
+          $assemblyVersion = if ($version.Split('.').Count -eq 3) { "$version.0" } else { $version }
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          "ASSEMBLY_VERSION=$assemblyVersion" >> $env:GITHUB_ENV
+      - name: Check native test dependencies
         run: |
-          Write-Host "Building solution in Release configuration..."
-          dotnet build Reepax.slnx -c Release --verbosity normal
-
-      - name: Publish Self-Contained Application
-        shell: powershell
+          $ErrorActionPreference = 'Stop'
+          foreach ($file in @('Reepax/reepax_adblock.dll', 'Reepax/runtimes/win-x64/native/reepax_adblock.dll', 'Reepax/runtimes/win-x64/native/par2.exe')) {
+            if (-not (Test-Path -LiteralPath $file)) { throw 'A native dependency is missing.' }
+          }
+          $runtimeRoot = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft/EdgeWebView/Application'
+          if (-not (Get-ChildItem "$runtimeRoot/*/msedgewebview2.exe" -ErrorAction SilentlyContinue)) {
+            $bootstrapper = Join-Path $env:RUNNER_TEMP 'browser-runtime.exe'
+            Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrapper
+            if ((Get-AuthenticodeSignature $bootstrapper).Status -ne 'Valid') { throw 'Browser runtime signature is invalid.' }
+            $process = Start-Process $bootstrapper -ArgumentList '/silent /install' -PassThru -Wait -WindowStyle Hidden
+            if ($process.ExitCode -ne 0 -or -not (Get-ChildItem "$runtimeRoot/*/msedgewebview2.exe" -ErrorAction SilentlyContinue)) { throw 'Browser runtime is unavailable.' }
+          }
+      - name: Run all tests
         run: |
-          Write-Host "Publishing Reepax with Version: $env:APP_VERSION"
-          if (Test-Path dist\Reepax) {
-              Remove-Item -Recurse -Force dist\Reepax -ErrorAction SilentlyContinue
-          }
-          New-Item -ItemType Directory -Force -Path dist\Reepax | Out-Null
-          dotnet publish Reepax\Reepax.csproj -c Release -r win-x64 --self-contained true -p:Version=$env:APP_VERSION -p:AssemblyVersion=$env:ASSEMBLY_VERSION -p:FileVersion=$env:ASSEMBLY_VERSION -o dist\Reepax
-
-      - name: "Verify Published Binary & Dependencies"
-        shell: powershell
-        run: |
-          $exePath = "dist\Reepax\Reepax.exe"
-          if (-not (Test-Path $exePath)) {
-              Write-Error "CRITICAL: dist\Reepax\Reepax.exe does not exist!"
-              exit 1
-          }
-
-          $exeSize = (Get-Item $exePath).Length
-          Write-Host "Reepax.exe Size: $exeSize bytes"
-          if ($exeSize -lt 100000) {
-              Write-Error "CRITICAL: dist\Reepax\Reepax.exe is unexpectedly small ($exeSize bytes)!"
-              exit 1
-          }
-
-          # Check essential runtime and configuration files
-          $criticalFiles = @(
-              "dist\Reepax\Reepax.dll",
-              "dist\Reepax\Reepax.deps.json",
-              "dist\Reepax\Reepax.runtimeconfig.json"
-          )
-          foreach ($file in $criticalFiles) {
-              if (-not (Test-Path $file)) {
-                  Write-Error "CRITICAL: Required runtime file '$file' is missing from published payload!"
-                  exit 1
-              }
-          }
-
-          # Validate executable version metadata
-          $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exePath))
-          Write-Host "Reepax.exe FileVersion: $($vi.FileVersion), ProductVersion: $($vi.ProductVersion)"
-          if (-not $vi.ProductVersion) {
-              Write-Error "CRITICAL: Reepax.exe ProductVersion is missing or empty!"
-              exit 1
-          }
-
-          Write-Host "Published binary and runtime integrity verified successfully."
-
-      - name: Create Portable Archive (portable.zip)
-        shell: powershell
-        run: |
-          New-Item -ItemType File -Force -Path "dist\Reepax\portable.txt" -Value "Reepax Portable Mode" | Out-Null
-          New-Item -ItemType Directory -Force -Path "dist\Reepax\Data" | Out-Null
-
-          Compress-Archive -Path "dist\Reepax\*" -DestinationPath "dist\portable.zip" -CompressionLevel Optimal -Force
-          $zipItem = Get-Item "dist\portable.zip"
-          Write-Host "portable.zip created ($($zipItem.Length) bytes)"
-
-          # Test extracting the archive to verify it is not corrupted
-          $testExtractDir = "dist\test_verify_archive"
-          New-Item -ItemType Directory -Force -Path $testExtractDir | Out-Null
-          Expand-Archive -Path "dist\portable.zip" -DestinationPath $testExtractDir -Force
-          if (-not (Test-Path "$testExtractDir\Reepax.exe")) {
-              Write-Error "CRITICAL: portable.zip verification failed - Reepax.exe not found in extracted archive!"
-              exit 1
-          }
-          if (-not (Test-Path "$testExtractDir\portable.txt")) {
-              Write-Error "CRITICAL: portable.zip verification failed - portable.txt not found in extracted archive!"
-              exit 1
-          }
-          Remove-Item -Recurse -Force $testExtractDir
-          Write-Host "portable.zip archive extraction verified successfully."
-
-          # Clean up portable markers so Inno Setup installer will not package them
-          Remove-Item -Force "dist\Reepax\portable.txt" -ErrorAction SilentlyContinue
-          if (Test-Path "dist\Reepax\Data") {
-              Remove-Item -Recurse -Force "dist\Reepax\Data" -ErrorAction SilentlyContinue
-          }
-
-      - name: Install Inno Setup
-        shell: powershell
-        run: |
-          choco install innosetup -y --no-progress
-
-      - name: Build Setup Installer (setup.exe)
-        shell: powershell
-        run: |
-          $isccCandidates = @(
-              "iscc.exe",
-              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-              "C:\Program Files\Inno Setup 6\ISCC.exe",
-              "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
-              "C:\ProgramData\chocolatey\bin\iscc.exe"
-          )
-          $iscc = $null
-          foreach ($cand in $isccCandidates) {
-              if (Get-Command $cand -ErrorAction SilentlyContinue) {
-                  $iscc = $cand
-                  break
-              } elseif (Test-Path $cand) {
-                  $iscc = $cand
-                  break
-              }
-          }
-
-          if ($iscc) {
-              Write-Host "Compiling setup.exe with $iscc for Version: $env:APP_VERSION..."
-              & $iscc "/DMyAppVersion=$env:APP_VERSION" installer\Reepax.iss
-              if (Test-Path dist\Reepax-Setup.exe) {
-                  Copy-Item dist\Reepax-Setup.exe dist\setup.exe -Force
-              }
-              if (Test-Path dist\setup.exe) {
-                  Get-Item "dist\setup.exe" | Select-Object Name, Length
-              } else {
-                  Write-Error "dist\setup.exe was not created!"
-                  exit 1
-              }
-          } else {
-              Write-Error "Inno Setup Compiler (ISCC.exe) not found!"
-              exit 1
-          }
-
-      - name: Verify Setup Installer Integrity
-        shell: powershell
-        run: |
-          $setupPath = "dist\setup.exe"
-          if (-not (Test-Path $setupPath)) {
-              Write-Error "CRITICAL: dist\setup.exe was not created!"
-              exit 1
-          }
-          $setupSize = (Get-Item $setupPath).Length
-          Write-Host "setup.exe Size: $setupSize bytes"
-          if ($setupSize -lt 1000000) {
-              Write-Error "CRITICAL: dist\setup.exe is unexpectedly small ($setupSize bytes)!"
-              exit 1
-          }
-          Write-Host "setup.exe installer integrity verified successfully."
-
-      - name: Generate SHA-256 Checksums (SHA256SUMS.txt)
-        shell: powershell
-        run: |
-          $checksumFile = "dist\SHA256SUMS.txt"
-          $files = @("dist\portable.zip", "dist\setup.exe")
-          $lines = @()
-          foreach ($f in $files) {
-              if (Test-Path $f) {
-                  $hash = (Get-FileHash -Path $f -Algorithm SHA256).Hash.ToLowerInvariant()
-                  $name = Split-Path -Leaf $f
-                  $lines += "$hash  $name"
-                  Write-Host "SHA256 ($name) = $hash"
-              }
-          }
-          $lines | Out-File -FilePath $checksumFile -Encoding utf8
-          Write-Host "Generated $checksumFile successfully."
-
-      - name: Upload Artifacts to Workflow Run
+          dotnet test Reepax.slnx -c Release --logger 'trx;LogFileName=tests.trx' --results-directory TestResults --verbosity minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$report = Get-Content TestResults/tests.trx
+          $counts = $report.TestRun.ResultSummary.Counters
+          if ([int]$counts.total -eq 0 -or [int]$counts.executed -ne [int]$counts.total -or [int]$counts.passed -ne [int]$counts.total) { throw 'Every test must execute and pass.' }
+      - name: Save test reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Reepax-Release-Files
-          path: |
-            dist/portable.zip
-            dist/setup.exe
-            dist/SHA256SUMS.txt
-
-      - name: Attach Assets to GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: github.event_name == 'release'
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+      - name: Publish application
+        run: |
+          dotnet publish Reepax/Reepax.csproj -c Release -r win-x64 --self-contained true -p:Version=$env:APP_VERSION -p:AssemblyVersion=$env:ASSEMBLY_VERSION -p:FileVersion=$env:ASSEMBLY_VERSION -o dist/Reepax
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($file in @('Reepax.exe', 'Reepax.dll', 'Reepax.deps.json', 'Reepax.runtimeconfig.json', 'runtimes/win-x64/native/WebView2Loader.dll', 'runtimes/win-x64/native/reepax_adblock.dll', 'runtimes/win-x64/native/par2.exe')) {
+            if (-not (Test-Path -LiteralPath "dist/Reepax/$file")) { throw 'Published payload is incomplete.' }
+          }
+          $version = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path 'dist/Reepax/Reepax.exe')).ProductVersion.Split('+')[0]
+          if ($version -ne $env:APP_VERSION) { throw 'Published binary has an unexpected version.' }
+      - name: Package portable application
+        run: |
+          Set-Content dist/Reepax/portable.txt 'Portable Mode'
+          Compress-Archive -Path dist/Reepax/* -DestinationPath dist/portable.zip -CompressionLevel Optimal
+          Expand-Archive dist/portable.zip dist/verify
+          foreach ($file in Get-ChildItem dist/Reepax -File -Recurse) {
+            $relative = [IO.Path]::GetRelativePath((Resolve-Path dist/Reepax), $file.FullName)
+            if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path dist/verify $relative)).Hash) { throw 'Portable archive verification failed.' }
+          }
+          Remove-Item -LiteralPath dist/Reepax/portable.txt
+      - name: Install packaging compiler
+        run: |
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build installer
+        run: |
+          $compiler = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          & $compiler "/DMyAppVersion=$env:APP_VERSION" installer/Reepax.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Item dist/setup.exe).Length -lt 1000000) { throw 'Installer is incomplete.' }
+      - name: Verify installation and startup
+        run: |
+          $compiler = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          ./.github/scripts/Test-Installer.ps1 -Compiler $compiler -Version $env:APP_VERSION -TemporaryRoot $env:RUNNER_TEMP
+      - name: Generate checksums
+        run: |
+          $lines = foreach ($name in @('setup.exe', 'portable.zip')) {
+            $hash = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $name"
+          }
+          $lines | Set-Content dist/SHA256SUMS.txt -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.event.release.tag_name }}
-          files: |
-            dist/portable.zip
+          name: release-files
+          path: |
             dist/setup.exe
+            dist/portable.zip
             dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: dist
+      - name: Upload and verify draft before publishing
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $json = gh release view $env:RELEASE_TAG --json isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($json | ConvertFrom-Json).isDraft) { throw 'An already published release will not be modified.' }
+          } else {
+            gh release create $env:RELEASE_TAG --draft --verify-tag --generate-notes --title $env:RELEASE_TAG
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          gh release upload $env:RELEASE_TAG dist/setup.exe dist/portable.zip dist/SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $json = gh api "repos/$env:GH_REPO/releases/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $release = $json | ConvertFrom-Json
+          if (-not $release.draft -or $release.prerelease) { throw 'Unexpected release state.' }
+          foreach ($name in @('setup.exe', 'portable.zip', 'SHA256SUMS.txt')) {
+            $assets = @($release.assets | Where-Object name -CEQ $name)
+            if ($assets.Count -ne 1 -or $assets[0].state -ne 'uploaded' -or $assets[0].size -ne (Get-Item "dist/$name").Length) { throw 'Uploaded release is incomplete.' }
+            $hash = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($assets[0].digest -ne "sha256:$hash") { throw 'Uploaded asset digest differs.' }
+          }
+          gh release edit $env:RELEASE_TAG --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

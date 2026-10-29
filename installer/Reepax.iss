@@ -1,13 +1,19 @@
 #define MyAppName "Reepax"
 #ifndef MyAppVersion
-#define MyAppVersion "26.10.4"
+#define MyAppVersion "26.10.5"
 #endif
 #define MyAppPublisher "Biiitz"
 #define MyAppURL "https://github.com/Biiitz/Reepax"
 #define MyAppExeName "Reepax.exe"
 
 [Setup]
+#ifdef UpdateSmokeTest
+AppId={{B48F27AE-C302-45B9-9865-D9DA33D59410}}
+Uninstallable=no
+CreateUninstallRegKey=no
+#else
 AppId={{B729352A-3D28-444F-A1BC-535A0F507F62}}
+#endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
@@ -50,6 +56,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "..\dist\Reepax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,portable.txt,Data"
+#ifndef UpdateSmokeTest
 Source: "..\dist\Reepax\runtimes\win-x64\native\par2.exe"; DestDir: "{localappdata}\{#MyAppName}"; DestName: "par2.exe"; Flags: ignoreversion
 
 [Icons]
@@ -62,10 +69,11 @@ Root: HKA; Subkey: "Software\Classes\Reepax.Package"; ValueType: string; ValueDa
 Root: HKA; Subkey: "Software\Classes\Reepax.Package\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppExeName},0"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Reepax.Package\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
+#endif
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--restart"; Flags: nowait; Check: WizardSilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--restart"; Flags: nowait; Check: ShouldRestartAfterSetup
 
 [CustomMessages]
 german.DeleteAppDataPrompt=Möchten Sie auch alle Einstellungen, Logs und Benutzerdaten in AppData löschen?
@@ -74,6 +82,11 @@ english.DeleteAppDataPrompt=Do you also want to delete all settings, logs, and u
 [Code]
 var
   ShouldDeleteAppData: Boolean;
+
+function ShouldRestartAfterSetup: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:UPDATEHELPER|0}') <> '1');
+end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var

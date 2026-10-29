@@ -83,7 +83,8 @@ public class AppUpdateServiceTests
 
         Assert.Contains("/VERYSILENT", script);
         Assert.Contains("/SUPPRESSMSGBOXES", script);
-        Assert.Contains("/FORCECLOSEAPPLICATIONS", script);
+        Assert.Contains("/NORESTART", script);
+        Assert.Contains("/UPDATEHELPER=1", script);
         Assert.Contains("--restart", script);
         Assert.Contains("$procId = 1234", script);
         Assert.Contains("Wait-Process -Id $procId", script);
@@ -214,10 +215,12 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
         var updateInfo = new UpdateInfo
         {
-            SetupAssetUrl = "https://example.com/setup.exe",
-            SetupAssetSize = 9999 // Intentionally expected size is much larger
+            NewVersion = "26.10.5",
+            SetupAssetUrl = UpdateReliabilityTests.AssetUrl("setup.exe"),
+            SetupAssetSize = 9999 // Intentionally mismatched size
         };
 
+        updateInfo.SetExpectedSha256("setup.exe", new string('0', 64));
         SettingsService.IsPortableMode = false;
 
         await Assert.ThrowsAsync<InvalidDataException>(async () =>
@@ -244,7 +247,8 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
         var updateInfo = new UpdateInfo
         {
-            SetupAssetUrl = "https://example.com/setup.exe",
+            NewVersion = "26.10.5",
+            SetupAssetUrl = UpdateReliabilityTests.AssetUrl("setup.exe"),
             SetupAssetSize = testData.Length
         };
         updateInfo.SetExpectedSha256("setup.exe", "0000000000000000000000000000000000000000000000000000000000000000"); // Wrong hash
@@ -280,7 +284,8 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
         var updateInfo = new UpdateInfo
         {
-            SetupAssetUrl = "https://example.com/setup.exe",
+            NewVersion = "26.10.5",
+            SetupAssetUrl = UpdateReliabilityTests.AssetUrl("setup.exe"),
             SetupAssetSize = testData.Length
         };
         updateInfo.SetExpectedSha256("setup.exe", expectedHash);
@@ -289,9 +294,13 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
         var path = await service.DownloadUpdateAsync(updateInfo);
 
-        Assert.True(File.Exists(path));
-        Assert.Equal(expectedHash, updateInfo.VerifiedSha256);
-        Assert.Equal(testData, File.ReadAllBytes(path));
+        try
+        {
+            Assert.True(File.Exists(path));
+            Assert.Equal(expectedHash, updateInfo.VerifiedSha256);
+            Assert.Equal(testData, File.ReadAllBytes(path));
+        }
+        finally { AppUpdateService.DeleteUpdateWorkspace(Path.GetDirectoryName(path)!); }
     }
 
     [Fact]

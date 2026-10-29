@@ -19,6 +19,7 @@ public partial class UpdateDialog : Window
     private readonly UpdateInfo _updateInfo;
     private CancellationTokenSource? _downloadCts;
     private bool _isDownloading;
+    private bool _isApplying;
 
     public UpdateDialog(UpdateInfo updateInfo)
     {
@@ -39,7 +40,8 @@ public partial class UpdateDialog : Window
 
         ChangelogViewer.Document = MarkdownDocumentRenderer.CreateFlowDocument(updateInfo.Changelog);
 
-        if (_updateInfo.HasDirectAsset)
+        if (_updateInfo.HasDirectAsset && _updateInfo.TargetDownloadSize > 0 &&
+            _updateInfo.Sha256ChecksumAssetUrl != null)
         {
             InstallUpdateButton.Visibility = Visibility.Visible;
             ViewOnGitHubButton.Visibility = Visibility.Visible;
@@ -50,6 +52,9 @@ public partial class UpdateDialog : Window
             InstallUpdateButton.Visibility = Visibility.Collapsed;
             ViewOnGitHubButton.Visibility = Visibility.Collapsed;
             GetUpdateButton.Visibility = Visibility.Visible;
+            UpdateProgressPanel.Visibility = Visibility.Visible;
+            UpdateProgressBar.Visibility = Visibility.Collapsed;
+            UpdateStatusTextBlock.Text = Loc.Get("Toolbar_UpdateIncomplete_ToolTip");
         }
 
         RestoreWindowBounds();
@@ -177,6 +182,7 @@ public partial class UpdateDialog : Window
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        if (_isApplying) { e.Cancel = true; return; }
         if (_isDownloading && _downloadCts != null)
         {
             try { _downloadCts.Cancel(); } catch { }
@@ -187,8 +193,9 @@ public partial class UpdateDialog : Window
 
     private async void InstallUpdateButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isDownloading) return;
+        if (_isDownloading || !await AppUpdateService.OperationGate.WaitAsync(0)) return;
         _isDownloading = true;
+        string? workspace = null;
 
         _downloadCts = new CancellationTokenSource();
         InstallUpdateButton.IsEnabled = false;
@@ -224,6 +231,7 @@ public partial class UpdateDialog : Window
 
             var downloadedFile = await AppUpdateService.Instance.DownloadUpdateAsync(_updateInfo, progress, _downloadCts.Token);
 
+            workspace = System.IO.Path.GetDirectoryName(downloadedFile);
             string targetUpdatePath = downloadedFile;
             if (SettingsService.IsPortableMode)
             {
@@ -239,7 +247,13 @@ public partial class UpdateDialog : Window
             await Task.Delay(600, _downloadCts.Token);
 
             string? verifiedHash = _updateInfo.VerifiedSha256 ?? _updateInfo.GetExpectedSha256(_updateInfo.TargetFileName);
-            AppUpdateService.ApplyUpdate(targetUpdatePath, SettingsService.IsPortableMode, verifiedHash);
+            if (Application.Current?.MainWindow?.DataContext is Reepax.ViewModels.MainViewModel viewModel)
+                await viewModel.WaitForRemovalAsync().WaitAsync(_downloadCts.Token);
+            _downloadCts.Token.ThrowIfCancellationRequested();
+            _isApplying = true;
+            LaterButton.IsEnabled = false;
+            bool applied = await Task.Run(() => AppUpdateService.ApplyUpdate(targetUpdatePath, SettingsService.IsPortableMode, verifiedHash, _updateInfo.NewVersion));
+            if (!applied) throw new InvalidOperationException(Loc.Get("UpdateDialog_Status_StartFailed"));
         }
         catch (OperationCanceledException)
         {
@@ -253,6 +267,13 @@ public partial class UpdateDialog : Window
             ResetUiAfterDownload();
             ViewOnGitHubButton.Visibility = Visibility.Visible;
             ViewOnGitHubButton.IsEnabled = true;
+        }
+        finally
+        {
+            _isApplying = false;
+            LaterButton.IsEnabled = true;
+            if (workspace != null && !_isDownloading) AppUpdateService.DeleteUpdateWorkspace(workspace);
+            AppUpdateService.OperationGate.Release();
         }
     }
 
@@ -296,6 +317,7 @@ public partial class UpdateDialog : Window
 
     private void LaterButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isApplying) return;
         if (_isDownloading && _downloadCts != null)
         {
             _downloadCts.Cancel();

@@ -73,6 +73,21 @@ public partial class App : Application
             return;
         }
 
+        try
+        {
+            if (Services.Update.AppUpdateService.HandleInterruptedUpdate(AppContext.BaseDirectory, e.Args))
+            {
+                Shutdown();
+                return;
+            }
+        }
+        catch (Exception)
+        {
+            MessageBox.Show(Services.Localization.Loc.Get("UpdateDialog_Status_PreviousFailed"), Services.Localization.Loc.Get("UpdateDialog_Title"), MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
+
         // Primary instance: start named pipe server to receive launch parameters from subsequent instances
         SingleInstanceService.Instance.StartIpcServer(receivedArgs =>
         {
@@ -122,6 +137,17 @@ public partial class App : Application
             Services.Localization.LocalizationService.Instance.CurrentLanguage = SettingsService.Instance.Settings.Language;
         }
         catch { }
+
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            if (MainWindow?.IsLoaded != true) return;
+            try
+            {
+                Services.Update.AppUpdateService.ConfirmUpdateStartup(AppContext.BaseDirectory, e.Args);
+                Services.Update.AppUpdateService.ShowPreviousUpdateResult();
+            }
+            catch (Exception ex) { AppLogger.Warn("[Update] Startup confirmation failed: " + ex.GetType().Name); }
+        }));
 
         // ProcessExit hook for emergency shutdown
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>

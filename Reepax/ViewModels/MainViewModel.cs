@@ -276,7 +276,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsGermanSelected));
         UpdateStatusSummary();
         UpdateDriveSpace(force: true);
-        UpdateTooltip = IsUpdateAvailable ? Loc.Get("Toolbar_UpdateAvailable_ToolTip") : Loc.Get("Toolbar_UpdateUpToDate_ToolTip");
+        RefreshUpdateTooltip();
     }
 
     [RelayCommand]
@@ -3259,7 +3259,7 @@ public partial class MainViewModel : ObservableObject
     private string _updateButtonLabel = "Update";
 
     [ObservableProperty]
-    private string _updateTooltip = Loc.Get("Toolbar_UpdateUpToDate_ToolTip");
+    private string _updateTooltip = Loc.Get("Toolbar_UpdateChecking_ToolTip");
 
     public bool CanOpenUpdateDialog => IsUpdateAvailable && AvailableUpdate != null;
 
@@ -3291,18 +3291,28 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private void RefreshUpdateTooltip()
+    {
+        UpdateTooltip = Loc.Get(AppUpdateService.Instance.LastCheckStatus switch
+        {
+            UpdateCheckStatus.Checking => "Toolbar_UpdateChecking_ToolTip",
+            UpdateCheckStatus.Available => "Toolbar_UpdateAvailable_ToolTip",
+            UpdateCheckStatus.Incomplete => "Toolbar_UpdateIncomplete_ToolTip",
+            UpdateCheckStatus.UpToDate => "Toolbar_UpdateUpToDate_ToolTip",
+            _ => "Toolbar_UpdateCheckFailed_ToolTip"
+        });
+    }
+
     private async Task CheckForUpdatesInBackgroundAsync()
     {
         try
         {
             var update = await AppUpdateService.Instance.CheckForUpdatesAsync(AppUpdateService.AppCurrentVersion);
-            if (update != null)
+            SafeInvoke(() =>
             {
-                SafeInvoke(() =>
-                {
-                    AvailableUpdate = update;
-                });
-            }
+                AvailableUpdate = update;
+                RefreshUpdateTooltip();
+            });
         }
         catch (Exception ex)
         {
