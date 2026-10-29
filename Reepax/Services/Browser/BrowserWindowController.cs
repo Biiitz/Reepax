@@ -104,6 +104,7 @@ public partial class BrowserWindowController : IDisposable
                 _webView.CoreWebView2.DownloadStarting -= OnDownloadStarting;
                 _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+                _webView.CoreWebView2.RemoveHostObjectFromScript(PopupGuardHostName);
                 _webView.CoreWebView2.Stop();
             }
             catch { }
@@ -183,12 +184,15 @@ public partial class BrowserWindowController : IDisposable
             _webView.CoreWebView2.PermissionRequested += OnPermissionRequested;
 
             // 6. Inject Stealth Anti-Popup & Anti-Clickjack Shield Script
+            _webView.CoreWebView2.AddHostObjectToScript(PopupGuardHostName,
+                new PopupGuardBridge(TryBlockPopup, ShouldApplyCosmeticFiltering));
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BrowserSecurityGuard.GetAntiPopupScript());
 
             // 7. Inject Cosmetic Filter CSS
             var cosmeticScript = $@"
             (function() {{
                 try {{
+                    if (!window.chrome.webview.hostObjects.sync.{PopupGuardHostName}.ShouldApplyCosmeticFiltering()) return;
                     const style = document.createElement('style');
                     style.textContent = `{BrowserSecurityGuard.GetCosmeticFilterCss().Replace("`", "\\`")}`;
                     document.head ? document.head.appendChild(style) : document.documentElement.appendChild(style);
@@ -466,21 +470,8 @@ public partial class BrowserWindowController : IDisposable
         if (string.IsNullOrWhiteSpace(url) || url.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase))
             return;
 
-        // If blocked as an ad or popup network by Rust engine, drop immediately
-        if (IsAdBlockerEnabled && AdBlockRustEngine.Instance.ShouldBlock(url))
-        {
-            AppLogger.Info($"[Browser Window {_windowId}] Blocked popup window to ad URL: {url}");
-            IncrementBlockedCount(url, "NewWindowRequested");
+        if (TryBlockPopup(url, e.IsUserInitiated))
             return;
-        }
-
-        // Deceptive redirect query target? Drop immediately
-        if (IsAdBlockerEnabled && BrowserSecurityGuard.HasDeceptiveRedirectTarget(url))
-        {
-            AppLogger.Info($"[Browser Window {_windowId}] Blocked popup window with deceptive redirect target: {url}");
-            IncrementBlockedCount(url, "DeceptiveRedirectTarget");
-            return;
-        }
 
         // 1. Direct download links: Intercept directly into Reepax Queue without navigating main window away!
         if (BrowserSecurityGuard.IsDirectDownloadUrl(url))
@@ -513,37 +504,6 @@ public partial class BrowserWindowController : IDisposable
             {
                 AppLogger.Warn($"[Browser Window {_windowId}] Error intercepting direct download from popup: {ex.Message}");
             }
-            return;
-        }
-
-        var currentUrl = _webView.Source?.ToString() ?? _currentTopLevelUrl;
-        var currentHost = GetHostFromUrl(currentUrl);
-        var currentDomain = !string.IsNullOrEmpty(currentHost) ? BrowserSecurityGuard.GetRegistrableDomain(currentHost) : null;
-        var targetHost = GetHostFromUrl(url);
-        var targetDomain = !string.IsNullOrEmpty(targetHost) ? BrowserSecurityGuard.GetRegistrableDomain(targetHost) : null;
-
-        // 2. Determine if popup is legitimate navigation:
-        // - Same domain or subdomain (e.g. hoster internal links)
-        // - Known safe hoster, crypter, or storage CDN
-        // - Whitelisted CAPTCHA/challenge platform
-        // - Origin is a portal/search engine and user clicked
-        bool isSameDomain = !string.IsNullOrEmpty(currentDomain) &&
-                            !string.IsNullOrEmpty(targetDomain) &&
-                            string.Equals(currentDomain, targetDomain, StringComparison.OrdinalIgnoreCase);
-
-        bool isSafeHoster = BrowserSecurityGuard.IsKnownSafeOrHosterDomain(targetDomain) ||
-                            BrowserSecurityGuard.IsKnownSafeOrHosterDomain(targetHost);
-
-        bool isWhitelisted = BrowserSecurityGuard.IsWhitelisted(url);
-
-        bool isPortalClick = e.IsUserInitiated && BrowserSecurityGuard.IsSearchEngineOrPortal(currentDomain);
-
-        bool isLegitimatePopup = isSameDomain || isSafeHoster || isWhitelisted || isPortalClick;
-
-        if (IsAdBlockerEnabled && !isLegitimatePopup)
-        {
-            AppLogger.Info($"[Browser Window {_windowId}] Discarded untrusted third-party popup: {url}");
-            IncrementBlockedCount(url, "ThirdPartyPopup");
             return;
         }
 

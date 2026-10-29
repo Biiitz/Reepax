@@ -13,7 +13,7 @@ namespace Reepax.Services.Browser;
 /// Protects users against malicious cross-domain redirects, popups, and clickjacking traps,
 /// while strictly whitelisting security challenges (Cloudflare Turnstile, reCAPTCHA, hCaptcha).
 /// </summary>
-public static class BrowserSecurityGuard
+public static partial class BrowserSecurityGuard
 {
     private static readonly ConcurrentDictionary<string, byte> _whitelistedDomains = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<Regex> _whitelistedUrlPatterns = new();
@@ -430,28 +430,31 @@ public static class BrowserSecurityGuard
         return false;
     }
 
-    public static string GetAntiPopupScript() => @"
-(function() {
-    'use strict';
-    try {
-        const noop = function() { return null; };
-        const originalOpen = window.open;
-        window.open = function(url, target, features) {
-            if (event && event.isTrusted) {
-                return originalOpen.call(window, url, target, features);
-            }
-            return null;
-        };
-        window.alert = noop;
-        window.confirm = function() { return true; };
-        window.prompt = noop;
-    } catch(e) {}
-})();";
+    public static bool ShouldBlockPopup(string? currentUrl, string? targetUrl, bool isUserInitiated)
+    {
+        if (string.IsNullOrWhiteSpace(targetUrl) ||
+            targetUrl.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (AdBlockRustEngine.Instance.ShouldBlock(targetUrl) || HasDeceptiveRedirectTarget(targetUrl))
+            return true;
+        if (IsDirectDownloadUrl(targetUrl) || IsWhitelisted(targetUrl))
+            return false;
+        if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var target))
+            return true;
+
+        var targetDomain = GetRegistrableDomain(target.Host);
+        if (IsKnownSafeOrHosterDomain(target.Host) || IsKnownSafeOrHosterDomain(targetDomain))
+            return false;
+        if (!Uri.TryCreate(currentUrl, UriKind.Absolute, out var source))
+            return true;
+        var sourceDomain = GetRegistrableDomain(source.Host);
+        return !(sourceDomain.Length > 0 && string.Equals(sourceDomain, targetDomain, StringComparison.OrdinalIgnoreCase)) &&
+            !(isUserInitiated && IsSearchEngineOrPortal(sourceDomain));
+    }
 
     public static string GetCosmeticFilterCss() => @"
-[class*=""ad-""], [id*=""ad-""], [class*=""-ad""], [id*=""-ad""],
-[class*=""banner""], [id*=""banner""], [class*=""popup""], [id*=""popup""],
-[class*=""sponsor""], [id*=""sponsor""], .ad, .ads, .advertisement {
+.ad, .ads, .advertisement, .ad-banner, .ad-container, .ad-slot,
+[data-ad-client], [data-ad-slot], [id^=""google_ads_iframe_""] {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;
