@@ -1415,9 +1415,7 @@ public partial class DownloadPackage : ObservableObject
                     var itemDir = Path.GetDirectoryName(item.SaveFilePath);
                     if (!string.IsNullOrWhiteSpace(itemDir) && Directory.Exists(itemDir))
                     {
-                        SaveDirectory = itemDir;
-                        UpdateItemSaveFilePaths();
-                        if (persistChanges) Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                        ApplyRecoveredSaveDirectory(itemDir, persistChanges);
                         return true;
                     }
                 }
@@ -1456,9 +1454,7 @@ public partial class DownloadPackage : ObservableObject
                         if (Directory.EnumerateFileSystemEntries(cand).Any() ||
                             Items.Any(i => !string.IsNullOrEmpty(i.FileName) && File.Exists(Path.Combine(cand, i.FileName))))
                         {
-                            SaveDirectory = cand;
-                            UpdateItemSaveFilePaths();
-                            if (persistChanges) Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                            ApplyRecoveredSaveDirectory(cand, persistChanges);
                             return true;
                         }
                     }
@@ -1478,9 +1474,7 @@ public partial class DownloadPackage : ObservableObject
                         int matches = distinctiveItems.Count(i => File.Exists(Path.Combine(sibling, i.FileName)));
                         if (matches > 0)
                         {
-                            SaveDirectory = sibling;
-                            UpdateItemSaveFilePaths();
-                            if (persistChanges) Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                            ApplyRecoveredSaveDirectory(sibling, persistChanges);
                             return true;
                         }
                     }

@@ -60,6 +60,7 @@ public class DownloadPackageDto
     public string Name { get; set; } = string.Empty;
     public bool IsCustomName { get; set; }
     public string SaveDirectory { get; set; } = string.Empty;
+    public bool RequiresRecoveredPathConfirmation { get; set; }
     public bool IsEnabled { get; set; } = true;
     public bool AutoExtractArchives { get; set; } = false;
     public bool LowResourceExtraction { get; set; } = false;
@@ -597,6 +598,7 @@ public class DownloadPersistenceService : IDisposable
         if (e.PropertyName is nameof(DownloadPackage.IsEnabled) or 
             nameof(DownloadPackage.Name) or 
             nameof(DownloadPackage.SaveDirectory) or 
+            nameof(DownloadPackage.RequiresRecoveredPathConfirmation) or
             nameof(DownloadPackage.IsExpanded) or
             nameof(DownloadPackage.Status) or
             nameof(DownloadPackage.StatusMessage) or
@@ -924,6 +926,7 @@ public class DownloadPersistenceService : IDisposable
                     Name = pkg.Name,
                     IsCustomName = pkg.IsCustomName,
                     SaveDirectory = pkg.SaveDirectory,
+                    RequiresRecoveredPathConfirmation = pkg.RequiresRecoveredPathConfirmation,
                     IsEnabled = pkg.IsEnabled,
                     AutoExtractArchives = pkg.AutoExtractArchives,
                     LowResourceExtraction = pkg.LowResourceExtraction,
@@ -1462,6 +1465,7 @@ public class DownloadPersistenceService : IDisposable
                     Name = pkgDto.Name,
                     IsCustomName = pkgDto.IsCustomName,
                     SaveDirectory = cleanSaveDir,
+                    RequiresRecoveredPathConfirmation = pkgDto.RequiresRecoveredPathConfirmation,
                     IsEnabled = pkgDto.IsEnabled,
                     AutoExtractArchives = pkgDto.AutoExtractArchives,
                     LowResourceExtraction = pkgDto.LowResourceExtraction,
@@ -1744,6 +1748,7 @@ public class DownloadPersistenceService : IDisposable
                     Name = pkgDto.Name,
                     IsCustomName = pkgDto.IsCustomName,
                     SaveDirectory = cleanSaveDir,
+                    RequiresRecoveredPathConfirmation = pkgDto.RequiresRecoveredPathConfirmation,
                     IsEnabled = pkgDto.IsEnabled,
                     AutoExtractArchives = pkgDto.AutoExtractArchives,
                     LowResourceExtraction = pkgDto.LowResourceExtraction,

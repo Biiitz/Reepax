@@ -11,6 +11,7 @@ public partial class DownloadPackage
             Id = Id,
             Name = Name,
             SaveDirectory = SaveDirectory,
+            RequiresRecoveredPathConfirmation = RequiresRecoveredPathConfirmation,
             ExtractionDirectory = ExtractionDirectory,
             ParentPackageId = ParentPackageId,
             IsExtracting = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(Id)

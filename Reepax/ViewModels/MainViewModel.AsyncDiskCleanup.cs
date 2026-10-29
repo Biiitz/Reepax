@@ -80,6 +80,7 @@ public partial class MainViewModel
         bool reserved = false;
         bool removed = false;
         bool moveToRecycleBin = false;
+        bool recoveredPathsConfirmed = false;
         try
         {
             CleanupSnapshot? preview = null;
@@ -90,10 +91,19 @@ public partial class MainViewModel
                 {
                     preview = CaptureCleanupSnapshot(selectedPackages, selectedItems);
                     await DiskCleanupRunner(() => preview.Scan());
-                    ApplyHealedPaths(preview, selectedPackages);
+                    ApplyHealedPaths(preview, affectedPackages);
                 }
                 if (!ConfirmCleanup(preview, selectedPackages, selectedItems, out deleteFiles, out moveToRecycleBin))
                     return;
+                if (deleteFiles && preview.HasUnconfirmedPaths)
+                {
+                    recoveredPathsConfirmed = ConfirmRecoveredCleanupPaths(preview);
+                    if (!recoveredPathsConfirmed)
+                    {
+                        StatusSummary = Loc.Get("Status_CleanupUnconfirmedPath");
+                        return;
+                    }
+                }
             }
 
             var completionStop = _queueManager.StopCompletionsForRemovalAsync(targets);
@@ -139,6 +149,11 @@ public partial class MainViewModel
                             StatusSummary = Loc.Get("Status_CleanupChanged");
                             return;
                         }
+                        if (current.HasUnconfirmedPaths && !recoveredPathsConfirmed)
+                        {
+                            StatusSummary = Loc.Get("Status_CleanupUnconfirmedPath");
+                            return;
+                        }
                         var extractingIds = current.Packages.Where(package => package.IsExtracting).Select(package => package.Id);
                         if (current.GetConflictingOperationIds(extractingIds).Count > 0)
                         {
@@ -150,6 +165,8 @@ public partial class MainViewModel
                         repairsToWait = conflicts.Select(id => repairs[id].Finished).ToArray();
                         if (repairsToWait.Length == 0)
                         {
+                            if (recoveredPathsConfirmed)
+                                current.ConfirmRecoveredPaths();
                             await DiskCleanupRunner(() =>
                             {
                                 if (moveToRecycleBin)
@@ -157,7 +174,7 @@ public partial class MainViewModel
                                 else
                                     current.Delete();
                             });
-                            ApplyHealedPaths(current, selectedPackages);
+                            ApplyHealedPaths(current, affectedPackages);
                             RemoveSelectionFromUi(selectedPackages, selectedItems);
                             removed = true;
                             break;
@@ -220,7 +237,14 @@ public partial class MainViewModel
         foreach (var package in selectedPackages)
         {
             var copy = snapshot.Packages.FirstOrDefault(candidate => candidate.Id == package.Id);
-            if (copy == null || string.Equals(copy.SaveDirectory, package.SaveDirectory, StringComparison.Ordinal))
+            if (copy == null)
+                continue;
+            if (copy.RequiresRecoveredPathConfirmation != package.RequiresRecoveredPathConfirmation)
+            {
+                package.RequiresRecoveredPathConfirmation = copy.RequiresRecoveredPathConfirmation;
+                changed = true;
+            }
+            if (string.Equals(copy.SaveDirectory, package.SaveDirectory, StringComparison.Ordinal))
                 continue;
             package.SaveDirectory = copy.SaveDirectory;
             foreach (var item in package.Items)
@@ -357,6 +381,7 @@ public partial class MainViewModel
                 if (_packageIds.Contains(package.Id))
                 {
                     if (otherPackage == null || !SamePath(package.Name, otherPackage.Name) ||
+                        package.RequiresRecoveredPathConfirmation != otherPackage.RequiresRecoveredPathConfirmation ||
                         !SamePath(package.SaveDirectory, otherPackage.SaveDirectory) ||
                         !SamePath(package.ExtractionDirectory, otherPackage.ExtractionDirectory) ||
                         package.Items.Count != otherPackage.Items.Count)
@@ -374,6 +399,7 @@ public partial class MainViewModel
                     {
                         var otherItem = otherPackage?.Items.FirstOrDefault(candidate => candidate.Id == item.Id);
                         if (otherItem == null || !SamePath(package.SaveDirectory, otherPackage!.SaveDirectory) ||
+                            package.RequiresRecoveredPathConfirmation != otherPackage.RequiresRecoveredPathConfirmation ||
                             !SamePath(item.FileName, otherItem.FileName) || !SamePath(item.SaveFilePath, otherItem.SaveFilePath))
                             return false;
                     }
@@ -435,6 +461,7 @@ public partial class MainViewModel
 
         internal void Delete()
         {
+            EnsureRecoveredPathsConfirmed();
             foreach (var package in Packages.ToList())
             {
                 var selected = package.Items.Where(item => _itemIds.Contains(item.Id)).ToArray();

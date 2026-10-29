@@ -380,6 +380,8 @@ public partial class MainViewModel
             package.RefreshAndCheckExistsOnDisk(persistChanges);
 
         // 3. Delete dedicated SaveDirectory directly from disk if applicable
+        if (package.RequiresRecoveredPathConfirmation)
+            throw new InvalidOperationException("Recovered package paths require explicit confirmation before cleanup.");
         bool saveDirDeleted = false;
         if (IsCleanupDirectory(package, package.SaveDirectory, allPackages, !persistChanges))
         {
@@ -399,7 +401,7 @@ public partial class MainViewModel
         // 4. If SaveDirectory was NOT dedicated or its directory deletion didn't remove everything:
         if (!saveDirDeleted)
         {
-            var files = GetPackageFilesOnDisk(package, allPackages, persistChanges, refresh);
+            var files = GetPackageFilesOnDisk(package, allPackages, persistChanges, false);
             foreach (var file in files)
             {
                 try

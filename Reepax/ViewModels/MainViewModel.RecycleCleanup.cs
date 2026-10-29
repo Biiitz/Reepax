@@ -15,6 +15,7 @@ public partial class MainViewModel
     {
         internal void Recycle(Action<IReadOnlyCollection<string>> recycle)
         {
+            EnsureRecoveredPathsConfirmed();
             var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var package in Packages.Where(package => _packageIds.Contains(package.Id)))
             {
