@@ -81,6 +81,8 @@ public partial class AppUpdateService
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden
         };
+        // Avoid inheriting modules for a different shell version.
+        info.Environment["PSModulePath"] = Path.Combine(Path.GetDirectoryName(info.FileName)!, "Modules");
         foreach (string arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", path }.Concat(arguments))
             info.ArgumentList.Add(arg);
         return Process.Start(info);

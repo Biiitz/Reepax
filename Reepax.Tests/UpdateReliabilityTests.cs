@@ -284,6 +284,37 @@ public sealed class UpdateReliabilityTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateHelper_UsesNativeModulesInsteadOfInheritedOverrides()
+    {
+        string moduleRoot = Path.Combine(_root, "modules");
+        string module = Path.Combine(moduleRoot, "Microsoft.PowerShell.Utility");
+        Directory.CreateDirectory(module);
+        File.WriteAllText(Path.Combine(module, "Microsoft.PowerShell.Utility.psd1"),
+            "@{ RootModule = 'override.psm1'; ModuleVersion = '99.0.0'; FunctionsToExport = @('Get-FileHash') }");
+        File.WriteAllText(Path.Combine(module, "override.psm1"),
+            "function Get-FileHash { throw 'An inherited module was loaded.' }; Export-ModuleMember -Function Get-FileHash");
+        string payload = Path.Combine(_root, "payload.bin");
+        File.WriteAllBytes(payload, [1, 2, 3]);
+        string result = Path.Combine(_root, "hash.txt");
+        string? previous = Environment.GetEnvironmentVariable("PSModulePath");
+        try
+        {
+            Environment.SetEnvironmentVariable("PSModulePath", moduleRoot);
+            string script = "$ErrorActionPreference = 'Stop'\n" +
+                "$hash = (Get-FileHash -LiteralPath '" + payload.Replace("'", "''") + "' -Algorithm SHA256).Hash\n" +
+                "[IO.File]::WriteAllText('" + result.Replace("'", "''") + "', $hash)\n";
+
+            Assert.Equal(0, await RunScript(script));
+            Assert.Equal(Hash([1, 2, 3]), File.ReadAllText(result).ToLowerInvariant());
+            Assert.Equal(moduleRoot, Environment.GetEnvironmentVariable("PSModulePath"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PSModulePath", previous);
+        }
+    }
+
+    [Fact]
     public async Task PortableScript_ActuallyCopiesVerifiesAndConfirmsStartup()
     {
         var (source, target) = CreatePayload();

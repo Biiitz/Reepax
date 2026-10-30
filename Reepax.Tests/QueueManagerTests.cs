@@ -1026,12 +1026,16 @@ public class QueueManagerTests
                 IsEnabled = true
             };
             pkg1.Items.Add(item1);
+            int activeDownloads = 1;
             pkg1.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(DownloadPackage.IsExtracting) && pkg1.IsExtracting)
+                {
                     ArchiveExtractionService.Instance.PausePackageExtraction(pkg1.Id);
+                    Interlocked.Exchange(ref activeDownloads, 0);
+                }
             };
-            queueManager.ActiveDownloadsCountOverride = () => item1.Status == DownloadStatus.Downloading ? 1 : 0;
+            queueManager.ActiveDownloadsCountOverride = () => Volatile.Read(ref activeDownloads);
 
             var pkg2 = new DownloadPackage
             {
