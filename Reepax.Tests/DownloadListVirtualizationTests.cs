@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
@@ -391,6 +392,135 @@ public class DownloadListVirtualizationTests
                 Assert.False(view.PrepareSelectionPaint(AtRow(1), control: true, interactive: false));
                 Assert.False(view.TryBeginSelectionPaint(AtRow(4), control: true, leftPressed: true));
                 Assert.All(package.Items.Take(6), item => Assert.True(item.IsSelected));
+            }
+            finally { view.Packages = null; source.RootVisual = null; }
+        });
+    }
+
+    [Fact]
+    public void ControlSweep_WhenThePressedFileIsRemoved_ConsumesTheStaleGestureAndCanRestart()
+    {
+        RunInSta(() =>
+        {
+            var package = new DownloadPackage { AutoPar2Repair = false };
+            package.AddItems(Enumerable.Range(0, 40).Select(_ => new DownloadItem { Status = DownloadStatus.Paused }));
+            var original = package.Items.ToArray();
+            var (viewer, list) = CreateList(new ObservableCollection<DownloadPackage> { package });
+            var view = (DownloadListView)list;
+            using var source = new HwndSource(new HwndSourceParameters("RemovedAnchorProbe")
+            {
+                Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                WindowStyle = unchecked((int)0x80000000)
+            });
+            try
+            {
+                source.RootVisual = list;
+                Layout(list);
+                Point AtRow(int index)
+                {
+                    var element = Assert.IsAssignableFrom<FrameworkElement>(list.ItemContainerGenerator.ContainerFromIndex(index));
+                    return element.TransformToAncestor(viewer).Transform(new Point(100, element.ActualHeight / 2));
+                }
+                int finished = 0;
+                view.SelectionPaintRequested += row => ((DownloadItem)row.Model).IsSelected = true;
+                view.SelectionPaintFinished += () => finished++;
+                Assert.True(view.PrepareSelectionPaint(AtRow(2), control: true, interactive: false));
+                package.Items.Remove(original[1]);
+                Layout(list);
+                Assert.True(view.TryBeginSelectionPaint(AtRow(4), control: true, leftPressed: true));
+                Assert.False(view.IsSelectionPainting);
+                Assert.False(view.IsAutoScrolling);
+                Assert.Equal(1, finished);
+                Assert.False(view.UpdateSelectionPaint(AtRow(4), control: true, leftPressed: true));
+                Assert.All(original, item => Assert.False(item.IsSelected));
+                Assert.Equal(original.Where(item => !ReferenceEquals(item, original[1])), package.Items);
+                Assert.True(view.PrepareSelectionPaint(AtRow(2), control: true, interactive: false));
+                Assert.True(view.TryBeginSelectionPaint(AtRow(4), control: true, leftPressed: true));
+                Assert.True(view.UpdateSelectionPaint(AtRow(4), control: true, leftPressed: true));
+                Assert.Equal(original.Skip(2).Take(3), package.Items.Where(item => item.IsSelected));
+                view.CancelPointerInteraction();
+                Assert.Equal(2, finished);
+            }
+            finally { view.Packages = null; source.RootVisual = null; }
+        });
+    }
+
+    [Theory]
+    [InlineData("Escape")]
+    [InlineData("ReplaceSource")]
+    [InlineData("Unload")]
+    public void ControlSweep_WhenCancelled_PreservesSelectionStopsScrollingAndAllowsAnotherGesture(string cancellation)
+    {
+        RunInSta(() =>
+        {
+            var package = new DownloadPackage { AutoPar2Repair = false };
+            package.AddItems(Enumerable.Range(0, 40).Select(i => new DownloadItem
+            {
+                Status = DownloadStatus.Paused, IsSelected = i == 0
+            }));
+            var original = package.Items.ToArray();
+            var replacement = new DownloadPackage { AutoPar2Repair = false };
+            replacement.AddItems(Enumerable.Range(0, 40).Select(_ => new DownloadItem { Status = DownloadStatus.Paused }));
+            var (viewer, list) = CreateList(new ObservableCollection<DownloadPackage> { package });
+            var view = (DownloadListView)list;
+            using var source = new HwndSource(new HwndSourceParameters("GestureCancellationProbe")
+            {
+                Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                WindowStyle = unchecked((int)0x80000000)
+            });
+            try
+            {
+                source.RootVisual = list;
+                Layout(list);
+                Point AtRow(int index)
+                {
+                    var element = Assert.IsAssignableFrom<FrameworkElement>(list.ItemContainerGenerator.ContainerFromIndex(index));
+                    return element.TransformToAncestor(viewer).Transform(new Point(100, element.ActualHeight / 2));
+                }
+                int finished = 0;
+                view.SelectionPaintRequested += row => ((DownloadItem)row.Model).IsSelected = true;
+                view.SelectionPaintFinished += () => finished++;
+                Assert.True(view.PrepareSelectionPaint(AtRow(2), control: true, interactive: false));
+                Assert.True(view.TryBeginSelectionPaint(AtRow(4), control: true, leftPressed: true));
+                Assert.True(view.UpdateSelectionPaint(new Point(100, viewer.ActualHeight - 1), control: true, leftPressed: true));
+                Assert.True(view.IsSelectionPainting);
+                Assert.True(view.IsAutoScrolling);
+                var selected = original.Where(item => item.IsSelected).ToArray();
+                Assert.True(selected.Length > 1);
+                if (cancellation == "Escape")
+                {
+                    var escape = new KeyEventArgs(Keyboard.PrimaryDevice, source, Environment.TickCount, Key.Escape)
+                    {
+                        RoutedEvent = Keyboard.PreviewKeyDownEvent
+                    };
+                    view.RaiseEvent(escape);
+                    Assert.True(escape.Handled);
+                }
+                else if (cancellation == "ReplaceSource")
+                    view.Packages = new ObservableCollection<DownloadPackage> { replacement };
+                else
+                    source.RootVisual = null;
+                Layout(list);
+                Assert.False(view.IsSelectionPainting);
+                Assert.False(view.IsAutoScrolling);
+                Assert.Equal(1, finished);
+                Assert.Equal(original, package.Items);
+                Assert.Equal(selected, package.Items.Where(item => item.IsSelected));
+                Assert.All(replacement.Items, item => Assert.False(item.IsSelected));
+                if (cancellation == "Unload") source.RootVisual = list;
+                Layout(list);
+                viewer.ScrollToBottom();
+                Layout(list);
+                Assert.True(view.PrepareSelectionPaint(AtRow(list.Items.Count - 3), control: true, interactive: false));
+                Assert.True(view.TryBeginSelectionPaint(AtRow(list.Items.Count - 1), control: true, leftPressed: true));
+                Assert.True(view.UpdateSelectionPaint(AtRow(list.Items.Count - 1), control: true, leftPressed: true));
+                var current = cancellation == "ReplaceSource" ? replacement : package;
+                Assert.All(current.Items.TakeLast(3), item => Assert.True(item.IsSelected));
+                view.CancelPointerInteraction();
+                view.CancelPointerInteraction();
+                Assert.False(view.IsSelectionPainting);
+                Assert.False(view.IsAutoScrolling);
+                Assert.Equal(2, finished);
             }
             finally { view.Packages = null; source.RootVisual = null; }
         });

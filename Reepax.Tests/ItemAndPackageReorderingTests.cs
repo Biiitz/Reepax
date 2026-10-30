@@ -160,6 +160,59 @@ public class ItemAndPackageReorderingTests
     }
 
     [Fact]
+    public void MoveMixedSelection_OnlyReordersFilesOwnedByTheTargetPackage()
+    {
+        var vm = new MainViewModel();
+        var previousPackages = vm.Packages.ToArray();
+        var previousItem = vm.SelectedItem;
+        var previousPackage = vm.SelectedPackage;
+        try
+        {
+            vm.Packages.Clear();
+            var first = new DownloadPackage { AutoPar2Repair = false };
+            var second = new DownloadPackage { AutoPar2Repair = false };
+            first.AddItems(Enumerable.Range(0, 4).Select(i => new DownloadItem
+            {
+                FileName = $"file-{i}.bin", Status = DownloadStatus.Paused, IsSelected = i is 1 or 3
+            }));
+            second.AddItems(Enumerable.Range(0, 2).Select(i => new DownloadItem
+            {
+                FileName = $"other-{i}.bin", Status = DownloadStatus.Paused, IsSelected = i == 0
+            }));
+            vm.Packages.Add(first);
+            vm.Packages.Add(second);
+            var original = first.Items.ToArray();
+            var foreign = second.Items.ToArray();
+            var foreignOrder = foreign.Select(item => item.OriginalOrderIndex).ToArray();
+            var removed = new DownloadItem { PackageId = first.Id, Status = DownloadStatus.Paused, IsSelected = true };
+            var mixed = new[] { original[3], foreign[0], removed, original[1] };
+            vm.SelectedItem = original[3];
+            vm.MoveItemsBefore(mixed, original[0]);
+            Assert.Equal(new[] { original[1], original[3], original[0], original[2] }, first.Items);
+            vm.MoveItemsAfter(mixed, original[2]);
+            Assert.Equal(new[] { original[0], original[2], original[1], original[3] }, first.Items);
+            Assert.Equal(new[] { first, second }, vm.Packages);
+            Assert.Equal(foreign, second.Items);
+            Assert.Equal(foreignOrder, second.Items.Select(item => item.OriginalOrderIndex));
+            Assert.All(original, item => Assert.Equal(first.Id, item.PackageId));
+            Assert.All(foreign, item => Assert.Equal(second.Id, item.PackageId));
+            Assert.Equal(Enumerable.Range(1, 4), first.Items.Select(item => item.OriginalOrderIndex));
+            Assert.Equal(new[] { original[1], original[3] }, first.Items.Where(item => item.IsSelected));
+            Assert.Equal(new[] { foreign[0] }, second.Items.Where(item => item.IsSelected));
+            Assert.DoesNotContain(removed, first.Items);
+            Assert.DoesNotContain(removed, second.Items);
+            Assert.Same(original[3], vm.SelectedItem);
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previousPackages) vm.Packages.Add(package);
+            vm.SelectedItem = previousItem;
+            vm.SelectedPackage = previousPackage;
+        }
+    }
+
+    [Fact]
     public void MoveSelectedItems_AllGroupsAndTargets_PreserveOrderAndSelection()
     {
         var vm = new MainViewModel();
