@@ -345,7 +345,7 @@
                                 <Style TargetType="StackPanel">
                                     <Setter Property="Margin" Value="0" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True">
+                                        <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentPresenter}}" Value="True">
                                             <Setter Property="Margin" Value="28,0,0,0" />
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -582,38 +582,13 @@
                           Grid.Column="0" Grid.ColumnSpan="20"
                           Margin="0,-3"
                           SnapsToDevicePixels="True"
-                          IsHitTestVisible="False"
-                          Opacity="0">
+                          IsHitTestVisible="False">
                         <Grid.Style>
                             <Style TargetType="Grid">
+                                <Setter Property="Opacity" Value="0" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                        <DataTrigger.EnterActions>
-                                            <BeginStoryboard>
-                                                <Storyboard>
-                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                     To="1.0"
-                                                                     Duration="0:0:0.18">
-                                                        <DoubleAnimation.EasingFunction>
-                                                            <QuadraticEase EasingMode="EaseOut" />
-                                                        </DoubleAnimation.EasingFunction>
-                                                    </DoubleAnimation>
-                                                </Storyboard>
-                                            </BeginStoryboard>
-                                        </DataTrigger.EnterActions>
-                                        <DataTrigger.ExitActions>
-                                            <BeginStoryboard>
-                                                <Storyboard>
-                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                     To="0.0"
-                                                                     Duration="0:0:0.14">
-                                                        <DoubleAnimation.EasingFunction>
-                                                            <QuadraticEase EasingMode="EaseIn" />
-                                                        </DoubleAnimation.EasingFunction>
-                                                    </DoubleAnimation>
-                                                </Storyboard>
-                                            </BeginStoryboard>
-                                        </DataTrigger.ExitActions>
+                                        <Setter Property="Opacity" Value="1" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -751,7 +726,7 @@
             </DataTemplate.Resources>
 
             <Grid Margin="0" SnapsToDevicePixels="True">
-                <!-- ================= PACKAGE CONTAINER (ROW, CHILD ITEMS & CLIPPED SUB-PACKAGES) ================= -->
+                <!-- Package header; child rows share the virtualized list. -->
                 <StackPanel x:Name="PackageContentContainer">
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="PackageDockTransform" X="0" Y="0" />
@@ -1203,38 +1178,13 @@
                               Grid.Column="0" Grid.ColumnSpan="20"
                               Margin="0,-2"
                               SnapsToDevicePixels="True"
-                              IsHitTestVisible="False"
-                              Opacity="0">
+                              IsHitTestVisible="False">
                             <Grid.Style>
                                 <Style TargetType="Grid">
+                                    <Setter Property="Opacity" Value="0" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                            <DataTrigger.EnterActions>
-                                                <BeginStoryboard>
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                         To="1.0"
-                                                                         Duration="0:0:0.18">
-                                                            <DoubleAnimation.EasingFunction>
-                                                                <QuadraticEase EasingMode="EaseOut" />
-                                                            </DoubleAnimation.EasingFunction>
-                                                        </DoubleAnimation>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </DataTrigger.EnterActions>
-                                            <DataTrigger.ExitActions>
-                                                <BeginStoryboard>
-                                                    <Storyboard>
-                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                         To="0.0"
-                                                                         Duration="0:0:0.14">
-                                                            <DoubleAnimation.EasingFunction>
-                                                                <QuadraticEase EasingMode="EaseIn" />
-                                                            </DoubleAnimation.EasingFunction>
-                                                        </DoubleAnimation>
-                                                    </Storyboard>
-                                                </BeginStoryboard>
-                                            </DataTrigger.ExitActions>
+                                            <Setter Property="Opacity" Value="1" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -1264,32 +1214,6 @@
                     </Grid>
                 </Border>
 
-                <!-- ================= CHILD ITEMS LIST (FILES / LINKS) ================= -->
-                <helpers:AnimatedExpansionDecorator IsExpanded="{Binding IsExpanded}">
-                    <ItemsControl ItemsSource="{Binding Items}"
-                                  ItemTemplate="{StaticResource DownloadItemTemplate}"
-                                  Tag="{Binding IsClipped}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <helpers:StagedStackPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-                </helpers:AnimatedExpansionDecorator>
-
-                    <!-- ================= CLIPPED SUB-PACKAGES (DOCKED DIRECTLY UNDERNEATH) ================= -->
-                    <ItemsControl ItemsSource="{Binding ClippedPackages}"
-                                  ItemTemplate="{DynamicResource PackageTemplate}">
-                        <ItemsControl.Style>
-                            <Style TargetType="ItemsControl">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsClipped}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ItemsControl.Style>
-                    </ItemsControl>
                 </StackPanel>
 
                 <!-- Top Drop Indicator (Insert Before / Above Package) -->
@@ -1304,17 +1228,6 @@
                     <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
                 </Grid>
 
-                <!-- Bottom Drop Indicator (Insert After / Below Package - shown after entire package including child items) -->
-                <Grid x:Name="PackageBottomDropIndicator"
-                      Height="4"
-                      VerticalAlignment="Bottom"
-                      Margin="0,0,0,-2"
-                      IsHitTestVisible="False"
-                      Panel.ZIndex="100"
-                      Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
-                    <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
-                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
-                </Grid>
             </Grid>
 
             <DataTemplate.Triggers>
@@ -1361,6 +1274,9 @@
 
             </DataTemplate.Triggers>
         </DataTemplate>
+        <helpers:DownloadRowTemplateSelector x:Key="DownloadRowTemplateSelector"
+                                             PackageTemplate="{StaticResource PackageTemplate}"
+                                             ItemTemplate="{StaticResource DownloadItemTemplate}" />
     </Window.Resources>
 
 
@@ -2320,279 +2236,305 @@
                 </Border>
 
                 <!-- Packages & Download Items List (TreeListView) -->
-                <ScrollViewer Grid.Row="1" 
-                              x:Name="TreeListScrollViewer"
-                              IsEnabled="{Binding IsRemovalInProgress, Converter={StaticResource InverseBoolConverter}}"
-                              CanContentScroll="False"
-                              Background="{DynamicResource BgDarkBrush}"
-                              VerticalScrollBarVisibility="Visible" 
-                              HorizontalScrollBarVisibility="Disabled"
-                              PreviewMouseDown="TreeListScrollViewer_PreviewMouseDown"
-                              PreviewMouseWheel="TreeList_PreviewMouseWheel"
-                              AllowDrop="True"
-                              DragOver="PackagesScrollViewer_DragOver"
-                              DragLeave="PackagesScrollViewer_DragLeave"
-                              Drop="PackagesScrollViewer_Drop">
-                    <ScrollViewer.Resources>
-                        <Style x:Key="ScrollBarArrowButton" TargetType="{x:Type Button}">
-                            <Setter Property="Width" Value="18" />
-                            <Setter Property="Height" Value="18" />
-                            <Setter Property="Focusable" Value="False" />
-                            <Setter Property="IsTabStop" Value="False" />
-                            <Setter Property="Cursor" Value="Hand" />
-                            <Setter Property="Background" Value="Transparent" />
-                            <Setter Property="BorderBrush" Value="Transparent" />
-                            <Setter Property="BorderThickness" Value="0" />
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="{x:Type Button}">
-                                        <Border x:Name="ButtonBorder"
-                                                Background="{TemplateBinding Background}"
-                                                BorderBrush="{TemplateBinding BorderBrush}"
-                                                BorderThickness="{TemplateBinding BorderThickness}">
-                                            <Path x:Name="ArrowIcon"
-                                                  Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
-                                                  Fill="{DynamicResource TextSecondaryBrush}"
-                                                  Width="8"
-                                                  Height="8"
-                                                  Stretch="Uniform"
-                                                  HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center" />
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                                <Setter TargetName="ArrowIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
-                                            </Trigger>
-                                            <Trigger Property="IsPressed" Value="True">
-                                                <Setter TargetName="ButtonBorder" Property="Background" Value="#111827" />
-                                            </Trigger>
-                                            <Trigger Property="IsEnabled" Value="False">
-                                                <Setter Property="Opacity" Value="0.3" />
-                                                <Setter Property="Cursor" Value="Arrow" />
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </ScrollViewer.Resources>
-                    <ScrollViewer.Template>
-                        <ControlTemplate TargetType="{x:Type ScrollViewer}">
-                            <Grid Background="{TemplateBinding Background}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Grid.Column="0" 
-                                                       Margin="{TemplateBinding Padding}" 
-                                                       CanContentScroll="{TemplateBinding CanContentScroll}" />
-
-                                <ScrollBar x:Name="PART_VerticalScrollBar" 
-                                           Grid.Column="1" 
-                                           Orientation="Vertical" 
-                                           ViewportSize="{TemplateBinding ViewportHeight}" 
-                                           Maximum="{TemplateBinding ScrollableHeight}" 
-                                           Minimum="0" 
-                                           Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" 
-                                           Visibility="Visible" 
-                                           Width="18"
-                                           Background="Transparent">
-                                    <ScrollBar.Template>
-                                        <ControlTemplate TargetType="{x:Type ScrollBar}">
-                                            <Border x:Name="ScrollBarBorder" 
-                                                    Background="Transparent" 
-                                                    BorderBrush="{DynamicResource BorderDarkBrush}" 
-                                                    BorderThickness="1,0,0,0" 
-                                                    Width="18">
-                                                <Grid x:Name="ScrollBarContainer" Opacity="0.75">
-                                                    <Grid.RowDefinitions>
-                                                        <RowDefinition Height="18" />
-                                                        <RowDefinition Height="*" />
-                                                        <RowDefinition Height="18" />
-                                                    </Grid.RowDefinitions>
-
-                                                    <!-- Top Arrow Button -->
-                                                    <Button Grid.Row="0"
-                                                            Style="{StaticResource ScrollBarArrowButton}"
-                                                            Content="{StaticResource IconChevronUp}"
-                                                            ToolTip="Scroll to Top"
-                                                            Click="ScrollToTop_Click"
-                                                            Command="{x:Static ScrollBar.ScrollToTopCommand}" />
-
-                                                    <!-- Center Track Area -->
-                                                    <Grid Grid.Row="1">
-                                                        <!-- Filled bar shown when list cannot be scrolled -->
-                                                        <Border x:Name="DisabledFillBar" 
-                                                                Background="{DynamicResource ScrollBarThumbBrush}" 
-                                                                BorderBrush="{DynamicResource ScrollBarThumbBorderBrush}" 
-                                                                BorderThickness="1" 
-                                                                CornerRadius="4" 
-                                                                Margin="1,2" 
-                                                                Visibility="Collapsed" />
-
-                                                        <!-- Track for active scrolling -->
-                                                        <Track x:Name="PART_Track" IsDirectionReversed="True" HorizontalAlignment="Stretch" Width="18">
-                                                            <Track.DecreaseRepeatButton>
-                                                                <RepeatButton Style="{StaticResource ScrollBarTrackButton}" Command="{x:Static ScrollBar.PageUpCommand}" />
-                                                            </Track.DecreaseRepeatButton>
-                                                            <Track.Thumb>
-                                                                <Thumb Focusable="False" IsTabStop="False" MinHeight="24" HorizontalAlignment="Stretch">
-                                                                    <Thumb.Template>
-                                                                        <ControlTemplate TargetType="{x:Type Thumb}">
-                                                                            <Grid Margin="1,2">
-                                                                                <!-- Base Thumb -->
-                                                                                <Border x:Name="ThumbBorder" 
-                                                                                        Background="{DynamicResource ScrollBarThumbBrush}" 
-                                                                                        BorderBrush="{DynamicResource ScrollBarThumbBorderBrush}" 
-                                                                                        BorderThickness="1" 
-                                                                                        CornerRadius="4" 
-                                                                                        HorizontalAlignment="Stretch" />
-                                                                                <!-- Smooth Hover Overlay -->
-                                                                                <Border x:Name="HoverOverlay" 
-                                                                                        Background="{DynamicResource ScrollBarThumbHoverBrush}" 
-                                                                                        BorderBrush="{DynamicResource ScrollBarThumbHoverBorderBrush}" 
-                                                                                        BorderThickness="1" 
-                                                                                        CornerRadius="4" 
-                                                                                        HorizontalAlignment="Stretch"
-                                                                                        Opacity="0" />
-                                                                                <!-- Smooth Dragging Overlay -->
-                                                                                <Border x:Name="DraggingOverlay" 
-                                                                                        Background="{DynamicResource ScrollBarThumbDraggingBrush}" 
-                                                                                        BorderBrush="{DynamicResource ScrollBarThumbDraggingBorderBrush}" 
-                                                                                        BorderThickness="1" 
-                                                                                        CornerRadius="4" 
-                                                                                        HorizontalAlignment="Stretch"
-                                                                                        Opacity="0" />
-                                                                            </Grid>
-                                                                            <ControlTemplate.Triggers>
-                                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                                    <Trigger.EnterActions>
-                                                                                        <BeginStoryboard>
-                                                                                            <Storyboard>
-                                                                                                <DoubleAnimation Storyboard.TargetName="HoverOverlay"
-                                                                                                                 Storyboard.TargetProperty="Opacity"
-                                                                                                                 To="1.0" Duration="0:0:0.12">
-                                                                                                    <DoubleAnimation.EasingFunction>
-                                                                                                        <CubicEase EasingMode="EaseOut" />
-                                                                                                    </DoubleAnimation.EasingFunction>
-                                                                                                </DoubleAnimation>
-                                                                                            </Storyboard>
-                                                                                        </BeginStoryboard>
-                                                                                    </Trigger.EnterActions>
-                                                                                    <Trigger.ExitActions>
-                                                                                        <BeginStoryboard>
-                                                                                            <Storyboard>
-                                                                                                <DoubleAnimation Storyboard.TargetName="HoverOverlay"
-                                                                                                                 Storyboard.TargetProperty="Opacity"
-                                                                                                                 To="0.0" Duration="0:0:0.16">
-                                                                                                    <DoubleAnimation.EasingFunction>
-                                                                                                        <CubicEase EasingMode="EaseOut" />
-                                                                                                    </DoubleAnimation.EasingFunction>
-                                                                                                </DoubleAnimation>
-                                                                                            </Storyboard>
-                                                                                        </BeginStoryboard>
-                                                                                    </Trigger.ExitActions>
-                                                                                </Trigger>
-                                                                                <Trigger Property="IsDragging" Value="True">
-                                                                                    <Trigger.EnterActions>
-                                                                                        <BeginStoryboard>
-                                                                                            <Storyboard>
-                                                                                                <DoubleAnimation Storyboard.TargetName="DraggingOverlay"
-                                                                                                                 Storyboard.TargetProperty="Opacity"
-                                                                                                                 To="1.0" Duration="0:0:0.08">
-                                                                                                    <DoubleAnimation.EasingFunction>
-                                                                                                        <CubicEase EasingMode="EaseOut" />
-                                                                                                    </DoubleAnimation.EasingFunction>
-                                                                                                </DoubleAnimation>
-                                                                                            </Storyboard>
-                                                                                        </BeginStoryboard>
-                                                                                    </Trigger.EnterActions>
-                                                                                    <Trigger.ExitActions>
-                                                                                        <BeginStoryboard>
-                                                                                            <Storyboard>
-                                                                                                <DoubleAnimation Storyboard.TargetName="DraggingOverlay"
-                                                                                                                 Storyboard.TargetProperty="Opacity"
-                                                                                                                 To="0.0" Duration="0:0:0.14">
-                                                                                                    <DoubleAnimation.EasingFunction>
-                                                                                                        <CubicEase EasingMode="EaseOut" />
-                                                                                                    </DoubleAnimation.EasingFunction>
-                                                                                                </DoubleAnimation>
-                                                                                            </Storyboard>
-                                                                                        </BeginStoryboard>
-                                                                                    </Trigger.ExitActions>
-                                                                                </Trigger>
-                                                                            </ControlTemplate.Triggers>
-                                                                        </ControlTemplate>
-                                                                    </Thumb.Template>
-                                                                </Thumb>
-                                                            </Track.Thumb>
-                                                            <Track.IncreaseRepeatButton>
-                                                                <RepeatButton Style="{StaticResource ScrollBarTrackButton}" Command="{x:Static ScrollBar.PageDownCommand}" />
-                                                            </Track.IncreaseRepeatButton>
-                                                        </Track>
-                                                    </Grid>
-
-                                                    <!-- Bottom Arrow Button -->
-                                                    <Button Grid.Row="2"
-                                                            Style="{StaticResource ScrollBarArrowButton}"
-                                                            Content="{StaticResource IconChevronDown}"
-                                                            ToolTip="Scroll to Bottom"
-                                                            Click="ScrollToBottom_Click"
-                                                            Command="{x:Static ScrollBar.ScrollToBottomCommand}" />
-                                                </Grid>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Trigger.EnterActions>
-                                                        <BeginStoryboard>
-                                                            <Storyboard>
-                                                                <DoubleAnimation Storyboard.TargetName="ScrollBarContainer"
-                                                                                 Storyboard.TargetProperty="Opacity"
-                                                                                 To="1.0" Duration="0:0:0.14">
-                                                                    <DoubleAnimation.EasingFunction>
-                                                                        <CubicEase EasingMode="EaseOut" />
-                                                                    </DoubleAnimation.EasingFunction>
-                                                                </DoubleAnimation>
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </Trigger.EnterActions>
-                                                    <Trigger.ExitActions>
-                                                        <BeginStoryboard>
-                                                            <Storyboard>
-                                                                <DoubleAnimation Storyboard.TargetName="ScrollBarContainer"
-                                                                                 Storyboard.TargetProperty="Opacity"
-                                                                                 To="0.75" Duration="0:0:0.20">
-                                                                    <DoubleAnimation.EasingFunction>
-                                                                        <CubicEase EasingMode="EaseOut" />
-                                                                    </DoubleAnimation.EasingFunction>
-                                                                </DoubleAnimation>
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </Trigger.ExitActions>
-                                                </Trigger>
-                                                <Trigger Property="IsEnabled" Value="False">
-                                                    <Setter TargetName="DisabledFillBar" Property="Visibility" Value="Visible" />
-                                                    <Setter TargetName="PART_Track" Property="Visibility" Value="Collapsed" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </ScrollBar.Template>
-                                </ScrollBar>
+                <helpers:DownloadListView x:Name="DownloadRowsList" Grid.Row="1"
+                                          Packages="{Binding RootPackages}"
+                                          VirtualizingPanel.IsVirtualizing="True"
+                                          VirtualizingPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          VirtualizingPanel.CacheLength="0.5"
+                                          VirtualizingPanel.CacheLengthUnit="Page">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <ContentPresenter Content="{Binding Model}"
+                                                  Tag="{Binding DataContext.IsClippedFile, RelativeSource={RelativeSource AncestorType=Grid}}"
+                                                  ContentTemplateSelector="{StaticResource DownloadRowTemplateSelector}" />
+                                <Grid x:Name="PackageBottomDropIndicator"
+                                      Height="4" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                      IsHitTestVisible="False" Panel.ZIndex="100"
+                                      Visibility="{Binding HasPackageDropAfter, Converter={StaticResource BoolToVisConverter}}">
+                                    <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                                </Grid>
                             </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                    <ItemsControl.Template>
+                        <ControlTemplate TargetType="helpers:DownloadListView">
+                            <ScrollViewer
+                                          x:Name="PART_ScrollViewer"
+                                          IsEnabled="{Binding IsRemovalInProgress, Converter={StaticResource InverseBoolConverter}}"
+                                          CanContentScroll="True"
+                                          Background="{DynamicResource BgDarkBrush}"
+                                          VerticalScrollBarVisibility="Visible"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          PreviewMouseDown="TreeListScrollViewer_PreviewMouseDown"
+                                          PreviewMouseWheel="TreeList_PreviewMouseWheel"
+                                          AllowDrop="True"
+                                          DragOver="PackagesScrollViewer_DragOver"
+                                          DragLeave="PackagesScrollViewer_DragLeave"
+                                          Drop="PackagesScrollViewer_Drop">
+                                <ScrollViewer.Resources>
+                                    <Style x:Key="ScrollBarArrowButton" TargetType="{x:Type Button}">
+                                        <Setter Property="Width" Value="18" />
+                                        <Setter Property="Height" Value="18" />
+                                        <Setter Property="Focusable" Value="False" />
+                                        <Setter Property="IsTabStop" Value="False" />
+                                        <Setter Property="Cursor" Value="Hand" />
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="BorderBrush" Value="Transparent" />
+                                        <Setter Property="BorderThickness" Value="0" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="{x:Type Button}">
+                                                    <Border x:Name="ButtonBorder"
+                                                            Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}">
+                                                        <Path x:Name="ArrowIcon"
+                                                              Data="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                                              Fill="{DynamicResource TextSecondaryBrush}"
+                                                              Width="8"
+                                                              Height="8"
+                                                              Stretch="Uniform"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                                            <Setter TargetName="ArrowIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="ButtonBorder" Property="Background" Value="#111827" />
+                                                        </Trigger>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter Property="Opacity" Value="0.3" />
+                                                            <Setter Property="Cursor" Value="Arrow" />
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ScrollViewer.Resources>
+                                <ScrollViewer.Template>
+                                    <ControlTemplate TargetType="{x:Type ScrollViewer}">
+                                        <Grid Background="{TemplateBinding Background}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Grid.Column="0"
+                                                                   Margin="{TemplateBinding Padding}"
+                                                                   CanContentScroll="{TemplateBinding CanContentScroll}" />
+
+                                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                                       Grid.Column="1"
+                                                       Orientation="Vertical"
+                                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                                       Minimum="0"
+                                                       Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                                       Visibility="Visible"
+                                                       Width="18"
+                                                       Background="Transparent">
+                                                <ScrollBar.Template>
+                                                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                                        <Border x:Name="ScrollBarBorder"
+                                                                Background="Transparent"
+                                                                BorderBrush="{DynamicResource BorderDarkBrush}"
+                                                                BorderThickness="1,0,0,0"
+                                                                Width="18">
+                                                            <Grid x:Name="ScrollBarContainer" Opacity="0.75">
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="18" />
+                                                                    <RowDefinition Height="*" />
+                                                                    <RowDefinition Height="18" />
+                                                                </Grid.RowDefinitions>
+
+                                                                <!-- Top Arrow Button -->
+                                                                <Button Grid.Row="0"
+                                                                        Style="{StaticResource ScrollBarArrowButton}"
+                                                                        Content="{StaticResource IconChevronUp}"
+                                                                        ToolTip="Scroll to Top"
+                                                                        Click="ScrollToTop_Click"
+                                                                        Command="{x:Static ScrollBar.ScrollToTopCommand}" />
+
+                                                                <!-- Center Track Area -->
+                                                                <Grid Grid.Row="1">
+                                                                    <!-- Filled bar shown when list cannot be scrolled -->
+                                                                    <Border x:Name="DisabledFillBar"
+                                                                            Background="{DynamicResource ScrollBarThumbBrush}"
+                                                                            BorderBrush="{DynamicResource ScrollBarThumbBorderBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="4"
+                                                                            Margin="1,2"
+                                                                            Visibility="Collapsed" />
+
+                                                                    <!-- Track for active scrolling -->
+                                                                    <Track x:Name="PART_Track" IsDirectionReversed="True" HorizontalAlignment="Stretch" Width="18">
+                                                                        <Track.DecreaseRepeatButton>
+                                                                            <RepeatButton Style="{StaticResource ScrollBarTrackButton}" Command="{x:Static ScrollBar.PageUpCommand}" />
+                                                                        </Track.DecreaseRepeatButton>
+                                                                        <Track.Thumb>
+                                                                            <Thumb Focusable="False" IsTabStop="False" MinHeight="24" HorizontalAlignment="Stretch">
+                                                                                <Thumb.Template>
+                                                                                    <ControlTemplate TargetType="{x:Type Thumb}">
+                                                                                        <Grid Margin="1,2">
+                                                                                            <!-- Base Thumb -->
+                                                                                            <Border x:Name="ThumbBorder"
+                                                                                                    Background="{DynamicResource ScrollBarThumbBrush}"
+                                                                                                    BorderBrush="{DynamicResource ScrollBarThumbBorderBrush}"
+                                                                                                    BorderThickness="1"
+                                                                                                    CornerRadius="4"
+                                                                                                    HorizontalAlignment="Stretch" />
+                                                                                            <!-- Smooth Hover Overlay -->
+                                                                                            <Border x:Name="HoverOverlay"
+                                                                                                    Background="{DynamicResource ScrollBarThumbHoverBrush}"
+                                                                                                    BorderBrush="{DynamicResource ScrollBarThumbHoverBorderBrush}"
+                                                                                                    BorderThickness="1"
+                                                                                                    CornerRadius="4"
+                                                                                                    HorizontalAlignment="Stretch"
+                                                                                                    Opacity="0" />
+                                                                                            <!-- Smooth Dragging Overlay -->
+                                                                                            <Border x:Name="DraggingOverlay"
+                                                                                                    Background="{DynamicResource ScrollBarThumbDraggingBrush}"
+                                                                                                    BorderBrush="{DynamicResource ScrollBarThumbDraggingBorderBrush}"
+                                                                                                    BorderThickness="1"
+                                                                                                    CornerRadius="4"
+                                                                                                    HorizontalAlignment="Stretch"
+                                                                                                    Opacity="0" />
+                                                                                        </Grid>
+                                                                                        <ControlTemplate.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                                <Trigger.EnterActions>
+                                                                                                    <BeginStoryboard>
+                                                                                                        <Storyboard>
+                                                                                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                                                                                             Storyboard.TargetProperty="Opacity"
+                                                                                                                             To="1.0" Duration="0:0:0.12">
+                                                                                                                <DoubleAnimation.EasingFunction>
+                                                                                                                    <CubicEase EasingMode="EaseOut" />
+                                                                                                                </DoubleAnimation.EasingFunction>
+                                                                                                            </DoubleAnimation>
+                                                                                                        </Storyboard>
+                                                                                                    </BeginStoryboard>
+                                                                                                </Trigger.EnterActions>
+                                                                                                <Trigger.ExitActions>
+                                                                                                    <BeginStoryboard>
+                                                                                                        <Storyboard>
+                                                                                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay"
+                                                                                                                             Storyboard.TargetProperty="Opacity"
+                                                                                                                             To="0.0" Duration="0:0:0.16">
+                                                                                                                <DoubleAnimation.EasingFunction>
+                                                                                                                    <CubicEase EasingMode="EaseOut" />
+                                                                                                                </DoubleAnimation.EasingFunction>
+                                                                                                            </DoubleAnimation>
+                                                                                                        </Storyboard>
+                                                                                                    </BeginStoryboard>
+                                                                                                </Trigger.ExitActions>
+                                                                                            </Trigger>
+                                                                                            <Trigger Property="IsDragging" Value="True">
+                                                                                                <Trigger.EnterActions>
+                                                                                                    <BeginStoryboard>
+                                                                                                        <Storyboard>
+                                                                                                            <DoubleAnimation Storyboard.TargetName="DraggingOverlay"
+                                                                                                                             Storyboard.TargetProperty="Opacity"
+                                                                                                                             To="1.0" Duration="0:0:0.08">
+                                                                                                                <DoubleAnimation.EasingFunction>
+                                                                                                                    <CubicEase EasingMode="EaseOut" />
+                                                                                                                </DoubleAnimation.EasingFunction>
+                                                                                                            </DoubleAnimation>
+                                                                                                        </Storyboard>
+                                                                                                    </BeginStoryboard>
+                                                                                                </Trigger.EnterActions>
+                                                                                                <Trigger.ExitActions>
+                                                                                                    <BeginStoryboard>
+                                                                                                        <Storyboard>
+                                                                                                            <DoubleAnimation Storyboard.TargetName="DraggingOverlay"
+                                                                                                                             Storyboard.TargetProperty="Opacity"
+                                                                                                                             To="0.0" Duration="0:0:0.14">
+                                                                                                                <DoubleAnimation.EasingFunction>
+                                                                                                                    <CubicEase EasingMode="EaseOut" />
+                                                                                                                </DoubleAnimation.EasingFunction>
+                                                                                                            </DoubleAnimation>
+                                                                                                        </Storyboard>
+                                                                                                    </BeginStoryboard>
+                                                                                                </Trigger.ExitActions>
+                                                                                            </Trigger>
+                                                                                        </ControlTemplate.Triggers>
+                                                                                    </ControlTemplate>
+                                                                                </Thumb.Template>
+                                                                            </Thumb>
+                                                                        </Track.Thumb>
+                                                                        <Track.IncreaseRepeatButton>
+                                                                            <RepeatButton Style="{StaticResource ScrollBarTrackButton}" Command="{x:Static ScrollBar.PageDownCommand}" />
+                                                                        </Track.IncreaseRepeatButton>
+                                                                    </Track>
+                                                                </Grid>
+
+                                                                <!-- Bottom Arrow Button -->
+                                                                <Button Grid.Row="2"
+                                                                        Style="{StaticResource ScrollBarArrowButton}"
+                                                                        Content="{StaticResource IconChevronDown}"
+                                                                        ToolTip="Scroll to Bottom"
+                                                                        Click="ScrollToBottom_Click"
+                                                                        Command="{x:Static ScrollBar.ScrollToBottomCommand}" />
+                                                            </Grid>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Trigger.EnterActions>
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetName="ScrollBarContainer"
+                                                                                             Storyboard.TargetProperty="Opacity"
+                                                                                             To="1.0" Duration="0:0:0.14">
+                                                                                <DoubleAnimation.EasingFunction>
+                                                                                    <CubicEase EasingMode="EaseOut" />
+                                                                                </DoubleAnimation.EasingFunction>
+                                                                            </DoubleAnimation>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </Trigger.EnterActions>
+                                                                <Trigger.ExitActions>
+                                                                    <BeginStoryboard>
+                                                                        <Storyboard>
+                                                                            <DoubleAnimation Storyboard.TargetName="ScrollBarContainer"
+                                                                                             Storyboard.TargetProperty="Opacity"
+                                                                                             To="0.75" Duration="0:0:0.20">
+                                                                                <DoubleAnimation.EasingFunction>
+                                                                                    <CubicEase EasingMode="EaseOut" />
+                                                                                </DoubleAnimation.EasingFunction>
+                                                                            </DoubleAnimation>
+                                                                        </Storyboard>
+                                                                    </BeginStoryboard>
+                                                                </Trigger.ExitActions>
+                                                            </Trigger>
+                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                <Setter TargetName="DisabledFillBar" Property="Visibility" Value="Visible" />
+                                                                <Setter TargetName="PART_Track" Property="Visibility" Value="Collapsed" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </ScrollBar.Template>
+                                            </ScrollBar>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </ScrollViewer.Template>
+                                <ItemsPresenter />
+                            </ScrollViewer>
                         </ControlTemplate>
-                    </ScrollViewer.Template>
-                    <ItemsControl ItemsSource="{Binding RootPackages}"
-                                  ItemTemplate="{StaticResource PackageTemplate}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
-                </ScrollViewer>
+                    </ItemsControl.Template>
+                </helpers:DownloadListView>
 
                 <!-- Empty State Watermark Logo (perfectly centered, always centered) -->
                 <Grid Grid.Row="1" 

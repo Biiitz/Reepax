@@ -24,6 +24,7 @@ namespace Reepax;
 
 public partial class MainWindow : Window
 {
+    private ScrollViewer? TreeListScrollViewer => DownloadRowsList?.ScrollViewer;
     private bool _hasInitializedDownloadsTab;
     private bool _isTabIndicatorInitialized;
     private const int WM_ENTERSIZEMOVE = 0x0231;
@@ -35,6 +36,23 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        DownloadRowsList.SelectionPaintRequested += row =>
+        {
+            if (row.Model is DownloadItem item)
+                ViewModel.SelectItemFromPointer(item, controlPressed: true, wasSelected: item.IsSelected);
+            else if (row.Model is DownloadPackage package)
+                ViewModel.SelectPackageFromPointer(package, controlPressed: true, wasSelected: package.IsSelected);
+        };
+        DownloadRowsList.SelectionPaintFinished += () =>
+        {
+            _pressedItem = null;
+            _pressedPackage = null;
+            _draggedItem = null;
+            _draggedPackage = null;
+            _hasItemDragged = false;
+            _hasPackageDragged = false;
+            ClearAllDropTargets();
+        };
         Title = ViewModel.WindowTitle;
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
 
@@ -302,27 +320,8 @@ public partial class MainWindow : Window
             // Preheat item & package templates (eliminates first-expansion lag)
             WarmupTemplates();
 
-            // Pre-realize actual package containers while concealed behind the startup overlay!
-            // This forces WPF's ItemsControl to generate all item rows and cache them in memory,
-            // completely eliminating the freeze when opening packages for the first time.
-            if (ViewModel.Packages.Count > 0)
-            {
-                var savedExpansionStates = ViewModel.Packages.Select(p => (Package: p, WasExpanded: p.IsExpanded)).ToList();
-
-                foreach (var p in ViewModel.Packages)
-                {
-                    p.IsExpanded = true;
-                }
-
-                UpdateLayout();
-
-                foreach (var (pkg, wasExpanded) in savedExpansionStates)
-                {
-                    pkg.IsExpanded = wasExpanded;
-                }
-
-                UpdateLayout();
-            }
+            // Warm up only the current viewport without changing expansion states.
+            UpdateLayout();
 
             AutoFitNameColumn();
 
@@ -484,7 +483,7 @@ public partial class MainWindow : Window
             {
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    if (TreeListScrollViewer.IsVisible && (StartupLoadingOverlay == null || !StartupLoadingOverlay.IsVisible))
+                    if (TreeListScrollViewer?.IsVisible == true && (StartupLoadingOverlay == null || !StartupLoadingOverlay.IsVisible))
                     {
                         TreeListScrollViewer.Focus();
                     }
@@ -1442,19 +1441,23 @@ public partial class MainWindow : Window
 
     private Point _dragStartPoint;
     private DownloadPackage? _draggedPackage;
+    private DownloadPackage? _pressedPackage;
     private List<DownloadPackage>? _draggedPackages;
     private DownloadPackage? _currentDropTargetPackage;
     private bool _isDraggingPackage;
     private bool _hasPackageDragged;
     private bool _packageMouseDownWasSelected;
+    private bool _packageMouseDownWasCtrl;
 
     private Point _itemDragStartPoint;
     private DownloadItem? _draggedItem;
+    private DownloadItem? _pressedItem;
     private List<DownloadItem>? _draggedItems;
     private DownloadItem? _currentDropTargetItem;
     private bool _isDraggingItem;
     private bool _hasItemDragged;
     private bool _itemMouseDownWasSelected;
+    private bool _itemMouseDownWasCtrl;
 
     private ContextMenu? _activeContextMenu;
     private DateTime _lastContextMenuClosedTime = DateTime.MinValue;
@@ -1532,6 +1535,14 @@ public partial class MainWindow : Window
 
     private void PackageRow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _pressedPackage = (sender as FrameworkElement)?.DataContext as DownloadPackage;
+        _packageMouseDownWasSelected = _pressedPackage?.IsSelected == true;
+        _packageMouseDownWasCtrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        _hasPackageDragged = false;
+        if (e.OriginalSource is DependencyObject source &&
+            (FindVisualParent<ButtonBase>(source) != null || FindVisualParent<TextBox>(source) != null))
+            _pressedPackage = null;
+
         // If a context menu is still open or was just closed (within 250ms),
         // this click must never initiate a drag operation.
         if ((_activeContextMenu != null && _activeContextMenu.IsOpen) || 
@@ -1559,10 +1570,7 @@ public partial class MainWindow : Window
         }
 
         _dragStartPoint = e.GetPosition(this);
-        var pkg = (sender as FrameworkElement)?.DataContext as DownloadPackage;
-        _draggedPackage = pkg;
-        _packageMouseDownWasSelected = pkg?.IsSelected == true;
-        _hasPackageDragged = false;
+        _draggedPackage = _pressedPackage;
     }
 
     private void PackageRow_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -1578,10 +1586,7 @@ public partial class MainWindow : Window
         }
 
         Point currentPosition = e.GetPosition(this);
-        Vector diff = _dragStartPoint - currentPosition;
-
-        // Snappy threshold (8px) ensures immediate responsiveness while preventing accidental clicks
-        if (Math.Abs(diff.X) > 8 || Math.Abs(diff.Y) > 8)
+        if (DownloadListView.HasDragDistance(_dragStartPoint, currentPosition))
         {
             var pkgToDrag = _draggedPackage;
             _isDraggingPackage = true;
@@ -1612,6 +1617,7 @@ public partial class MainWindow : Window
             }
             finally
             {
+                DownloadRowsList.StopAutoScroll();
                 _isDraggingPackage = false;
                 _draggedPackage = null;
                 _draggedPackages = null;
@@ -1622,36 +1628,11 @@ public partial class MainWindow : Window
 
     private void PackageRow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_hasPackageDragged && _draggedPackage != null)
-        {
-            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
-            if (!isCtrlPressed && _packageMouseDownWasSelected)
-            {
-                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
+        if (_pressedPackage != null)
+            ViewModel.CompletePackagePointerSelection(_pressedPackage, _packageMouseDownWasCtrl,
+                _packageMouseDownWasSelected, _hasPackageDragged);
 
-                if (totalSelected > 1)
-                {
-                    foreach (var p in ViewModel.Packages)
-                    {
-                        p.IsSelected = (p == _draggedPackage);
-                        foreach (var item in p.Items)
-                        {
-                            item.IsSelected = false;
-                        }
-                    }
-                    ViewModel.SelectedPackage = _draggedPackage;
-                    ViewModel.SelectedItem = null;
-                }
-                else
-                {
-                    _draggedPackage.IsSelected = false;
-                    ViewModel.SelectedPackage = null;
-                    ViewModel.SelectedItem = null;
-                }
-                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
-            }
-        }
-
+        _pressedPackage = null;
         _draggedPackage = null;
         _draggedPackages = null;
         _isDraggingPackage = false;
@@ -2013,6 +1994,7 @@ public partial class MainWindow : Window
 
     private void PackagesScrollViewer_DragLeave(object sender, DragEventArgs e)
     {
+        if (TreeListScrollViewer == null) return;
         Point pt = e.GetPosition(TreeListScrollViewer);
         if (pt.X < 0 || pt.Y < 0 || pt.X > TreeListScrollViewer.ActualWidth || pt.Y > TreeListScrollViewer.ActualHeight)
         {
@@ -2054,6 +2036,14 @@ public partial class MainWindow : Window
 
     private void ItemRow_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _pressedItem = (sender as FrameworkElement)?.DataContext as DownloadItem;
+        _itemMouseDownWasSelected = _pressedItem?.IsSelected == true;
+        _itemMouseDownWasCtrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        _hasItemDragged = false;
+        if (e.OriginalSource is DependencyObject source &&
+            (FindVisualParent<ButtonBase>(source) != null || FindVisualParent<TextBox>(source) != null))
+            _pressedItem = null;
+
         if ((_activeContextMenu != null && _activeContextMenu.IsOpen) || 
             (DateTime.UtcNow - _lastContextMenuClosedTime).TotalMilliseconds < 250)
         {
@@ -2078,10 +2068,7 @@ public partial class MainWindow : Window
         }
 
         _itemDragStartPoint = e.GetPosition(this);
-        var item = (sender as FrameworkElement)?.DataContext as DownloadItem;
-        _draggedItem = item;
-        _itemMouseDownWasSelected = item?.IsSelected == true;
-        _hasItemDragged = false;
+        _draggedItem = _pressedItem;
     }
 
     private void ItemRow_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -2097,9 +2084,7 @@ public partial class MainWindow : Window
         }
 
         Point currentPosition = e.GetPosition(this);
-        Vector diff = _itemDragStartPoint - currentPosition;
-
-        if (Math.Abs(diff.X) > 8 || Math.Abs(diff.Y) > 8)
+        if (DownloadListView.HasDragDistance(_itemDragStartPoint, currentPosition))
         {
             var itemToDrag = _draggedItem;
             _isDraggingItem = true;
@@ -2131,6 +2116,7 @@ public partial class MainWindow : Window
             }
             finally
             {
+                DownloadRowsList.StopAutoScroll();
                 _isDraggingItem = false;
                 _draggedItem = null;
                 _draggedItems = null;
@@ -2141,36 +2127,11 @@ public partial class MainWindow : Window
 
     private void ItemRow_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_hasItemDragged && _draggedItem != null)
-        {
-            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
-            if (!isCtrlPressed && _itemMouseDownWasSelected)
-            {
-                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
+        if (_pressedItem != null)
+            ViewModel.CompleteItemPointerSelection(_pressedItem, _itemMouseDownWasCtrl,
+                _itemMouseDownWasSelected, _hasItemDragged);
 
-                if (totalSelected > 1)
-                {
-                    foreach (var p in ViewModel.Packages)
-                    {
-                        p.IsSelected = false;
-                        foreach (var i in p.Items)
-                        {
-                            i.IsSelected = (i == _draggedItem);
-                        }
-                    }
-                    ViewModel.SelectedItem = _draggedItem;
-                    ViewModel.SelectedPackage = null;
-                }
-                else
-                {
-                    _draggedItem.IsSelected = false;
-                    ViewModel.SelectedItem = null;
-                    ViewModel.SelectedPackage = null;
-                }
-                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
-            }
-        }
-
+        _pressedItem = null;
         _draggedItem = null;
         _draggedItems = null;
         _isDraggingItem = false;
@@ -3018,45 +2979,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((sender as FrameworkElement)?.DataContext is DownloadPackage pkg)
+        if (_pressedPackage is { } pkg)
         {
-            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
-
-            if (isCtrlPressed)
-            {
-                pkg.IsSelected = !pkg.IsSelected;
-                if (pkg.IsSelected)
-                {
-                    ViewModel.SelectedPackage = pkg;
-                }
-                else
-                {
-                    if (ViewModel.SelectedPackage == pkg)
-                    {
-                        ViewModel.SelectedPackage = ViewModel.Packages.FirstOrDefault(p => p.IsSelected);
-                    }
-                }
-                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
-                (sender as UIElement)?.Focus();
-                return;
-            }
-
-            if (!_packageMouseDownWasSelected)
-            {
-                foreach (var p in ViewModel.Packages)
-                {
-                    p.IsSelected = false;
-                    foreach (var item in p.Items)
-                    {
-                        item.IsSelected = false;
-                    }
-                }
-
-                pkg.IsSelected = true;
-                ViewModel.SelectedPackage = pkg;
-                ViewModel.SelectedItem = null;
-                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
-            }
+            ViewModel.SelectPackageFromPointer(pkg, _packageMouseDownWasCtrl, _packageMouseDownWasSelected);
 
             (sender as UIElement)?.Focus();
         }
@@ -3397,45 +3322,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if ((sender as FrameworkElement)?.DataContext is DownloadItem item)
+        if (_pressedItem is { } item)
         {
-            bool isCtrlPressed = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
-
-            if (isCtrlPressed)
-            {
-                item.IsSelected = !item.IsSelected;
-                if (item.IsSelected)
-                {
-                    ViewModel.SelectedItem = item;
-                }
-                else
-                {
-                    if (ViewModel.SelectedItem == item)
-                    {
-                        ViewModel.SelectedItem = ViewModel.Packages.SelectMany(p => p.Items).FirstOrDefault(i => i.IsSelected);
-                    }
-                }
-                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
-                (sender as UIElement)?.Focus();
-                return;
-            }
-
-            if (!_itemMouseDownWasSelected)
-            {
-                foreach (var p in ViewModel.Packages)
-                {
-                    p.IsSelected = false;
-                    foreach (var i in p.Items)
-                    {
-                        i.IsSelected = false;
-                    }
-                }
-
-                item.IsSelected = true;
-                ViewModel.SelectedItem = item;
-                ViewModel.SelectedPackage = null;
-                ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
-            }
+            ViewModel.SelectItemFromPointer(item, _itemMouseDownWasCtrl, _itemMouseDownWasSelected);
 
             (sender as UIElement)?.Focus();
         }

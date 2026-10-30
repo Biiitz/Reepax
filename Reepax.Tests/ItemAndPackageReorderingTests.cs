@@ -10,6 +10,207 @@ namespace Reepax.Tests;
 
 public class ItemAndPackageReorderingTests
 {
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(false, false, false, true)]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, true, true, false)]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, true, true, true)]
+    public void PointerClick_PreservesSingleAndControlSelectionBehavior(bool packages, bool control, bool wasSelected, bool otherSelected)
+    {
+        var vm = new MainViewModel();
+        var previousPackages = vm.Packages.ToArray();
+        try
+        {
+            vm.Packages.Clear();
+            var first = new DownloadPackage { AutoPar2Repair = false, IsSelected = packages && wasSelected };
+            var second = new DownloadPackage { AutoPar2Repair = false, IsSelected = packages && otherSelected };
+            var a = new DownloadItem { Status = DownloadStatus.Paused, IsSelected = !packages && wasSelected };
+            var b = new DownloadItem { Status = DownloadStatus.Paused, IsSelected = !packages && otherSelected };
+            first.AddItems(new[] { a, b });
+            vm.Packages.Add(first);
+            vm.Packages.Add(second);
+            if (packages)
+            {
+                vm.SelectedPackage = wasSelected ? first : otherSelected ? second : null;
+                vm.SelectPackageFromPointer(first, control, wasSelected);
+                Assert.True(first.IsSelected);
+                Assert.Equal(wasSelected || control ? otherSelected : false, second.IsSelected);
+                vm.CompletePackagePointerSelection(first, control, wasSelected, wasDragged: false);
+                Assert.Equal(wasSelected ? !control && otherSelected : true, first.IsSelected);
+                Assert.Equal(control && otherSelected, second.IsSelected);
+                if (vm.SelectedPackage != null) Assert.True(vm.SelectedPackage.IsSelected);
+            }
+            else
+            {
+                vm.SelectedItem = wasSelected ? a : otherSelected ? b : null;
+                vm.SelectItemFromPointer(a, control, wasSelected);
+                Assert.True(a.IsSelected);
+                Assert.Equal(wasSelected || control ? otherSelected : false, b.IsSelected);
+                vm.CompleteItemPointerSelection(a, control, wasSelected, wasDragged: false);
+                Assert.Equal(wasSelected ? !control && otherSelected : true, a.IsSelected);
+                Assert.Equal(control && otherSelected, b.IsSelected);
+                if (vm.SelectedItem != null) Assert.True(vm.SelectedItem.IsSelected);
+            }
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previousPackages) vm.Packages.Add(package);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PointerRelease_WhenPressedEntryWasRemoved_PreservesTheRemainingSelection(bool packages)
+    {
+        var vm = new MainViewModel();
+        var previousPackages = vm.Packages.ToArray();
+        try
+        {
+            vm.Packages.Clear();
+            var first = new DownloadPackage { AutoPar2Repair = false, IsSelected = packages };
+            var second = new DownloadPackage { AutoPar2Repair = false, IsSelected = packages };
+            first.AddItems(new[]
+            {
+                new DownloadItem { Status = DownloadStatus.Paused, IsSelected = !packages },
+                new DownloadItem { Status = DownloadStatus.Paused, IsSelected = !packages }
+            });
+            vm.Packages.Add(first);
+            vm.Packages.Add(second);
+            if (packages)
+            {
+                vm.SelectPackageFromPointer(first, false, wasSelected: true);
+                vm.Packages.Remove(first);
+                vm.CompletePackagePointerSelection(first, false, true, wasDragged: false);
+                Assert.True(second.IsSelected);
+            }
+            else
+            {
+                var pressed = first.Items[0];
+                vm.SelectItemFromPointer(pressed, false, wasSelected: true);
+                first.Items.Remove(pressed);
+                vm.CompleteItemPointerSelection(pressed, false, true, wasDragged: false);
+                Assert.True(first.Items[0].IsSelected);
+            }
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previousPackages) vm.Packages.Add(package);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ControlDrag_PreservesTheSelectedGroup(bool packages)
+    {
+        var vm = new MainViewModel();
+        var previousPackages = vm.Packages.ToArray();
+        try
+        {
+            vm.Packages.Clear();
+            var first = new DownloadPackage { AutoPar2Repair = false, IsSelected = packages };
+            var second = new DownloadPackage { AutoPar2Repair = false, IsSelected = packages };
+            first.AddItems(new[]
+            {
+                new DownloadItem { Status = DownloadStatus.Paused, IsSelected = !packages },
+                new DownloadItem { Status = DownloadStatus.Paused, IsSelected = !packages },
+                new DownloadItem { Status = DownloadStatus.Paused }
+            });
+            vm.Packages.Add(first);
+            vm.Packages.Add(second);
+            if (packages)
+            {
+                vm.SelectPackageFromPointer(first, controlPressed: true, wasSelected: true);
+                var dragged = vm.Packages.Where(package => package.IsSelected).ToArray();
+                Assert.Equal(new[] { first, second }, dragged);
+                vm.CompletePackagePointerSelection(first, true, true, wasDragged: true);
+                Assert.True(first.IsSelected);
+                Assert.True(second.IsSelected);
+            }
+            else
+            {
+                vm.SelectItemFromPointer(first.Items[0], controlPressed: true, wasSelected: true);
+                var dragged = first.Items.Where(item => item.IsSelected).ToArray();
+                Assert.Equal(new[] { first.Items[0], first.Items[1] }, dragged);
+                vm.CompleteItemPointerSelection(first.Items[0], true, true, wasDragged: true);
+                Assert.True(first.Items[0].IsSelected);
+                Assert.True(first.Items[1].IsSelected);
+            }
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previousPackages) vm.Packages.Add(package);
+        }
+    }
+
+    [Fact]
+    public void MoveSelectedItems_AllGroupsAndTargets_PreserveOrderAndSelection()
+    {
+        var vm = new MainViewModel();
+        var previousPackages = vm.Packages.ToArray();
+        var previousItem = vm.SelectedItem;
+        var previousPackage = vm.SelectedPackage;
+        try
+        {
+            vm.Packages.Clear();
+            var package = new DownloadPackage { Name = "Archive", AutoPar2Repair = false, IsCustomName = true };
+            vm.Packages.Add(package);
+            for (int mask = 1; mask < 64; mask++)
+            {
+                for (int targetIndex = 0; targetIndex < 6; targetIndex++)
+                {
+                    foreach (bool after in new[] { false, true })
+                    {
+                        package.Items.Clear();
+                        var items = Enumerable.Range(0, 6).Select(i => new DownloadItem
+                        {
+                            FileName = $"file-{i}.bin", Status = DownloadStatus.Paused,
+                            IsSelected = (mask & (1 << i)) != 0
+                        }).ToArray();
+                        package.AddItems(items);
+                        var selected = items.Where(item => item.IsSelected).ToArray();
+                        var target = items[targetIndex];
+                        var expected = items.ToList();
+                        if (!selected.Contains(target))
+                        {
+                            expected.RemoveAll(selected.Contains);
+                            expected.InsertRange(expected.IndexOf(target) + (after ? 1 : 0), selected);
+                        }
+                        vm.SelectedItem = selected[^1];
+                        if (after) vm.MoveItemsAfter(selected, target);
+                        else vm.MoveItemsBefore(selected, target);
+                        Assert.Equal(expected, package.Items);
+                        Assert.Equal(selected, package.Items.Where(item => item.IsSelected).OrderBy(item => System.Array.IndexOf(items, item)));
+                        Assert.Same(selected[^1], vm.SelectedItem);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previousPackages) vm.Packages.Add(package);
+            vm.SelectedItem = previousItem;
+            vm.SelectedPackage = previousPackage;
+        }
+    }
+
     [Fact]
     public void MovePackage_MultiplePositions_DownAndUp_PreservesOrder()
     {
