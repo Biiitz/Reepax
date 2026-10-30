@@ -220,6 +220,7 @@ public static class Strings_de
         ["Status_ErrorOccurred"] = "Fehler aufgetreten",
         ["Status_CleanupChanged"] = "Die ausgewählten Pfade haben sich geändert. Bitte erneut entfernen.",
         ["Status_CleanupFailed"] = "Die ausgewählten Downloads konnten nicht sicher entfernt werden.",
+        ["Status_PackageRenameFailed"] = "Das Paket konnte nicht umbenannt werden. Bitte prüfe, ob der Zielname bereits belegt ist, der Ordner verwendet wird oder Zugriffsrechte fehlen.",
         ["Status_CleanupIncomplete"] = "{0} Dateien oder Ordner konnten nicht entfernt werden. Die Einträge bleiben erhalten. Bitte erneut versuchen oder ohne Dateilöschung aus der Liste entfernen.",
         ["Status_CleanupUnconfirmedPath"] = "Die Dateientfernung wurde abgebrochen, weil ein automatisch wiedergefundener Ordner nicht bestätigt wurde.",
         ["Dialog_ConfirmRecoveredPaths_Title"] = "Wiedergefundene Ordner bestätigen",

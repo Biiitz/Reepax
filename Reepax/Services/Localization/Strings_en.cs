@@ -220,6 +220,7 @@ public static class Strings_en
         ["Status_ErrorOccurred"] = "Error occurred",
         ["Status_CleanupChanged"] = "The selected paths changed. Please try removing them again.",
         ["Status_CleanupFailed"] = "The selected downloads could not be removed safely.",
+        ["Status_PackageRenameFailed"] = "The package could not be renamed. Check whether the target name is already in use, the folder is busy, or access permissions are missing.",
         ["Status_CleanupIncomplete"] = "{0} files or folders could not be removed. Entries were kept. Try again or remove them from the list without deleting files.",
         ["Status_CleanupUnconfirmedPath"] = "File removal was cancelled because an automatically recovered folder was not confirmed.",
         ["Dialog_ConfirmRecoveredPaths_Title"] = "Confirm recovered folders",

@@ -1026,6 +1026,11 @@ public class QueueManagerTests
                 IsEnabled = true
             };
             pkg1.Items.Add(item1);
+            pkg1.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(DownloadPackage.IsExtracting) && pkg1.IsExtracting)
+                    ArchiveExtractionService.Instance.PausePackageExtraction(pkg1.Id);
+            };
             queueManager.ActiveDownloadsCountOverride = () => item1.Status == DownloadStatus.Downloading ? 1 : 0;
 
             var pkg2 = new DownloadPackage
@@ -1068,6 +1073,7 @@ public class QueueManagerTests
             var completedTask = await Task.WhenAny(item2AssignedWhileExtractingTcs.Task, Task.Delay(3000));
             Assert.Same(item2AssignedWhileExtractingTcs.Task, completedTask);
             Assert.True(await item2AssignedWhileExtractingTcs.Task, "Next queued item should be scheduled immediately while archive extraction is still running in the background.");
+            Assert.True(ArchiveExtractionService.Instance.IsPackageExtractionPaused(pkg1.Id));
             Assert.Equal(DownloadStatus.InBrowser, item2.Status);
         }
         finally

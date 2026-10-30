@@ -15,8 +15,17 @@ public partial class DownloadPackage : ObservableObject
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    [ObservableProperty]
     private string _name = string.Empty;
+
+    public string Name
+    {
+        get => _name;
+        set
+        {
+            if (!string.Equals(_name, value, StringComparison.Ordinal) && TryUpdateDirectoryForName(value))
+                SetProperty(ref _name, value);
+        }
+    }
 
     private bool _isCustomName;
 
@@ -1185,33 +1194,33 @@ public partial class DownloadPackage : ObservableObject
         }
     }
 
-    public void Rename(string newName, bool isUserAction = true)
+    internal Action<string, string> RenameDirectory { get; set; } = Directory.Move;
+
+    public bool Rename(string newName, bool isUserAction = true)
     {
         if (string.IsNullOrWhiteSpace(newName))
-            return;
+            return false;
+
+        var trimmed = newName.Trim();
+        if (!TryUpdateDirectoryForName(trimmed))
+            return false;
 
         if (isUserAction)
         {
             IsCustomName = true;
         }
 
-        var trimmed = newName.Trim();
-        if (!string.Equals(Name, trimmed, StringComparison.Ordinal))
-        {
-            Name = trimmed;
-        }
-        else
-        {
-            UpdateDirectoryForName(trimmed);
-        }
-
+        Name = trimmed;
         Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+        return true;
     }
 
-    private void UpdateDirectoryForName(string value)
+    private bool TryUpdateDirectoryForName(string value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return;
-        if (!string.IsNullOrWhiteSpace(SaveDirectory))
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(SaveDirectory))
+            return true;
+
+        try
         {
             var normalizedDir = SaveDirectory.TrimEnd('\\', '/');
             var parentDir = System.IO.Path.GetDirectoryName(normalizedDir);
@@ -1225,54 +1234,55 @@ public partial class DownloadPackage : ObservableObject
 
                 if (!string.Equals(oldDir, newDir, StringComparison.Ordinal))
                 {
+                    bool caseOnly = string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase);
+                    if (!caseOnly && Path.Exists(newDir))
+                    {
+                        AppLogger.Warn("[DownloadPackage] Package rename target already exists.");
+                        return false;
+                    }
                     if (Directory.Exists(oldDir))
                     {
-                        if (!Directory.Exists(newDir))
+                        if (caseOnly)
                         {
+                            var tempDir = oldDir + "_case_rename_" + Guid.NewGuid().ToString("N");
+                            RenameDirectory(oldDir, tempDir);
                             try
                             {
-                                Directory.Move(oldDir, newDir);
-                                SaveDirectory = newDir;
+                                RenameDirectory(tempDir, newDir);
                             }
-                            catch (Exception ex)
+                            catch
                             {
-                                AppLogger.Warn($"[DownloadPackage] Could not rename directory '{oldDir}' to '{newDir}': {ex.Message}");
-                            }
-                        }
-                        else if (string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase) && !string.Equals(oldDir, newDir, StringComparison.Ordinal))
-                        {
-                            try
-                            {
-                                var tempDir = oldDir + "_case_rename_" + Guid.NewGuid().ToString("N")[..8];
-                                Directory.Move(oldDir, tempDir);
-                                Directory.Move(tempDir, newDir);
-                                SaveDirectory = newDir;
-                            }
-                            catch (Exception ex)
-                            {
-                                AppLogger.Warn($"[DownloadPackage] Could not case-rename directory '{oldDir}' to '{newDir}': {ex.Message}");
-                                SaveDirectory = newDir;
+                                try
+                                {
+                                    RenameDirectory(tempDir, oldDir);
+                                }
+                                catch
+                                {
+                                    // Preserve the actual location if rollback cannot restore the original name.
+                                    SaveDirectory = tempDir;
+                                    UpdateItemSaveFilePaths();
+                                    Services.Storage.DownloadPersistenceService.Instance.RequestSave();
+                                }
+                                throw;
                             }
                         }
                         else
                         {
-                            SaveDirectory = newDir;
+                            RenameDirectory(oldDir, newDir);
                         }
                     }
-                    else
-                    {
-                        SaveDirectory = newDir;
-                    }
 
+                    SaveDirectory = newDir;
                     UpdateItemSaveFilePaths();
                 }
             }
         }
-    }
-
-    partial void OnNameChanged(string value)
-    {
-        UpdateDirectoryForName(value);
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"[DownloadPackage] Could not rename package directory: {ex.Message}");
+            return false;
+        }
+        return true;
     }
 
     partial void OnIsEnabledChanged(bool value)

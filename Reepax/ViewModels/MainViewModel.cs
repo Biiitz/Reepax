@@ -2761,6 +2761,14 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        // Reject rename failures before applying other package changes.
+        if (!string.IsNullOrWhiteSpace(newPackageName))
+        {
+            var trimmedName = newPackageName.Trim();
+            if (!string.Equals(package.Name, trimmedName, StringComparison.Ordinal) && !TryRenamePackage(package, trimmedName))
+                return;
+        }
+
         // 1. Apply options
         bool autoExtractChangedToTrue = !package.AutoExtractArchives && autoExtractArchives;
         package.AutoResolveHostLinks = false;
@@ -2770,16 +2778,7 @@ public partial class MainViewModel : ObservableObject
         package.MoveArchiveToRecycleBin = moveArchiveToRecycleBin;
         package.EnsureNextTaskSteps();
 
-        // 2. Name & destination directory
-        if (!string.IsNullOrWhiteSpace(newPackageName))
-        {
-            var trimmedName = newPackageName.Trim();
-            if (!string.Equals(package.Name, trimmedName, StringComparison.Ordinal))
-            {
-                package.Rename(trimmedName, isUserAction: true);
-            }
-        }
-
+        // 2. Destination directory
         if (!string.IsNullOrWhiteSpace(newDownloadDirectory))
         {
             var trimmedDir = newDownloadDirectory.Trim();

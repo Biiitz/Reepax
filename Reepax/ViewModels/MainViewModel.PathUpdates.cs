@@ -9,13 +9,29 @@ namespace Reepax.ViewModels;
 
 public partial class MainViewModel
 {
+    internal Action<string> RenameFailureNotification { get; set; } = message =>
+    {
+        if (!DownloadPersistenceService.IsTestEnvironment)
+            SafeInvoke(() => MessageBox.Show(message, Services.Localization.Loc.Get("Dialog_ErrorTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning));
+    };
+
     internal void RenamePackageWhenAvailable(DownloadPackage package, string name)
     {
         RunWhenCleanupPathsAvailable(() =>
         {
             if (Packages.Contains(package))
-                package.Rename(name, isUserAction: true);
+                TryRenamePackage(package, name);
         });
+    }
+
+    private bool TryRenamePackage(DownloadPackage package, string name)
+    {
+        if (package.Rename(name, isUserAction: true))
+            return true;
+        StatusSummary = Services.Localization.Loc.Get("Status_PackageRenameFailed");
+        RenameFailureNotification(StatusSummary);
+        return false;
     }
 
     internal void RenameItemWhenAvailable(DownloadItem item, string name)
