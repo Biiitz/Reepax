@@ -173,8 +173,11 @@ You need 4 more recovery blocks to be able to repair.
         Assert.Equal(1, result.AvailableRecoveryBlocks);
     }
 
-    [Fact]
-    public async Task EndToEnd_CreatePar2_Corrupt_And_RepairAsync()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task EndToEnd_CreatePar2_Corrupt_And_RepairAsync(bool purgeBackups, bool useVolume)
     {
         var exePath = Par2RepairService.Instance.ResolvePar2ExecutablePath();
         Assert.NotNull(exePath);
@@ -221,16 +224,31 @@ You need 4 more recovery blocks to be able to repair.
 
             var patchFile = Path.Combine(tempDir, "patch.1");
             File.WriteAllText(patchFile, "legitimate patch content");
+            var unrelatedFile = Path.Combine(tempDir, "document.txt");
+            var unrelatedBackup = unrelatedFile + ".1";
+            File.WriteAllText(unrelatedFile, "current document");
+            File.WriteAllText(unrelatedBackup, "previous document");
 
             // 4. Verify after corruption: should detect damaged file and repair possible
             var corruptVerify = await Par2RepairService.Instance.VerifyAsync(par2File);
             Assert.Equal(Par2VerificationStatus.RepairPossible, corruptVerify.Status);
 
+            File.WriteAllText(file1 + ".1", "independent backup");
+            var repairInput = useVolume
+                ? Directory.GetFiles(tempDir, "*.vol*.par2").First()
+                : par2File;
+
             // 5. Repair
-            var repairResult = await Par2RepairService.Instance.RepairAsync(par2File, purgeBackups: true);
+            var repairResult = await Par2RepairService.Instance.RepairAsync(repairInput, purgeBackups);
             Assert.True(repairResult.Success, $"Repair should succeed. Error: {repairResult.ErrorMessage}");
 
             Assert.True(File.Exists(patchFile), "patch.1 must be preserved after PAR2 repair cleanup");
+            Assert.Equal("current document", File.ReadAllText(unrelatedFile));
+            Assert.Equal("previous document", File.ReadAllText(unrelatedBackup));
+            Assert.Equal("independent backup", File.ReadAllText(file1 + ".1"));
+            Assert.Equal(!purgeBackups, File.Exists(file1 + ".2"));
+            if (!purgeBackups)
+                Assert.Equal("CORRUPTED CONTENT REPLACED ALL ORIGINAL DATA", File.ReadAllText(file1 + ".2", Encoding.UTF8));
 
             // 6. Verify restored file content
             var restoredContent1 = File.ReadAllText(file1, Encoding.UTF8);
@@ -243,6 +261,36 @@ You need 4 more recovery blocks to be able to repair.
         finally
         {
             try { Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RepairAsync_InvalidParity_PreservesUnrelatedFileAndBackup(bool cancel)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var parityFile = Path.Combine(tempDir, "data.par2");
+            var document = Path.Combine(tempDir, "document.txt");
+            File.WriteAllText(parityFile, "invalid parity data");
+            File.WriteAllText(document, "current document");
+            File.WriteAllText(document + ".1", "previous document");
+
+            using var cancellation = new System.Threading.CancellationTokenSource();
+            if (cancel)
+                cancellation.Cancel();
+            var result = await Par2RepairService.Instance.RepairAsync(parityFile, ct: cancellation.Token);
+
+            Assert.False(result.Success);
+            Assert.Equal("current document", File.ReadAllText(document));
+            Assert.Equal("previous document", File.ReadAllText(document + ".1"));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
         }
     }
 
@@ -289,147 +337,167 @@ You need 4 more recovery blocks to be able to repair.
         Assert.True(settings.DeletePar2AfterExtraction);
     }
 
-    [Fact]
-    public void CleanBackupFiles_WhenSampleRarAndBackupExist_CleansUpBackupFile()
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    public async Task BackupScope_HandlesOnlyNewBackupsOfRepairTargets(bool restore, bool missingOriginal)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanBackupTest_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
-
         try
         {
-            var baseFile = Path.Combine(tempDir, "sample.rar");
-            var backupFile = Path.Combine(tempDir, "sample.rar.1");
-            File.WriteAllText(baseFile, "sample archive content");
-            File.WriteAllText(backupFile, "damaged backup content");
+            var original = Path.Combine(tempDir, "payload");
+            var document = Path.Combine(tempDir, "document.txt");
+            File.WriteAllText(original, "original payload");
+            File.WriteAllText(original + ".1", "independent target backup");
+            File.WriteAllText(document, "current document");
+            File.WriteAllText(document + ".1", "previous document");
+            var parityFile = await CreateParityAsync(tempDir, original);
+            using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            File.Move(original, original + ".2");
+            if (!missingOriginal)
+                File.WriteAllText(original, "replacement payload");
+            var concurrentDocument = Path.Combine(tempDir, "other.txt");
+            File.WriteAllText(concurrentDocument, "other current");
+            File.WriteAllText(concurrentDocument + ".1", "other previous");
 
-            Par2RepairService.CleanBackupFiles(tempDir);
+            if (restore)
+                scope.Restore();
+            else
+                scope.Clean();
 
-            Assert.True(File.Exists(baseFile), "Base file sample.rar must exist.");
-            Assert.False(File.Exists(backupFile), "Backup file sample.rar.1 must be cleaned up.");
+            Assert.Equal("current document", File.ReadAllText(document));
+            Assert.Equal("previous document", File.ReadAllText(document + ".1"));
+            Assert.Equal("other current", File.ReadAllText(concurrentDocument));
+            Assert.Equal("other previous", File.ReadAllText(concurrentDocument + ".1"));
+            Assert.Equal("independent target backup", File.ReadAllText(original + ".1"));
+            if (restore)
+            {
+                Assert.Equal("original payload", File.ReadAllText(original));
+                Assert.False(File.Exists(original + ".2"));
+            }
+            else
+            {
+                Assert.Equal(missingOriginal, File.Exists(original + ".2"));
+                if (!missingOriginal)
+                    Assert.Equal("replacement payload", File.ReadAllText(original));
+            }
         }
         finally
         {
-            try { Directory.Delete(tempDir, true); } catch { }
+            Directory.Delete(tempDir, true);
         }
     }
 
     [Fact]
-    public void CleanBackupFiles_WhenPatch1ExistsWithoutPatch_PreservesPatch1()
+    public async Task BackupScope_NewUnrelatedFileAtExpectedBackupPath_IsPreserved()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanBackupTest_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
-
         try
         {
-            var patchFile = Path.Combine(tempDir, "patch.1");
-            File.WriteAllText(patchFile, "legitimate patch file data");
+            var original = Path.Combine(tempDir, "payload.bin");
+            File.WriteAllText(original, "current payload");
+            var parityFile = await CreateParityAsync(tempDir, original);
+            using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            File.WriteAllText(original + ".1", "independent backup");
 
-            Par2RepairService.CleanBackupFiles(tempDir);
+            scope.Clean();
+            scope.Restore();
 
-            Assert.True(File.Exists(patchFile), "patch.1 must be preserved and not deleted when no base file exists.");
+            Assert.Equal("current payload", File.ReadAllText(original));
+            Assert.Equal("independent backup", File.ReadAllText(original + ".1"));
         }
         finally
         {
-            try { Directory.Delete(tempDir, true); } catch { }
+            Directory.Delete(tempDir, true);
         }
     }
 
     [Fact]
-    public void CleanBackupFiles_MixedFiles_OnlyDeletesMatchingBackups()
+    public async Task BackupScope_LockedReplacement_PreservesBothFilesOnRestoreFailure()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_CleanBackupTest_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
-
         try
         {
-            var sampleRar = Path.Combine(tempDir, "sample.rar");
-            var sampleRarBackup = Path.Combine(tempDir, "sample.rar.1");
-            var patchFile = Path.Combine(tempDir, "patch.1");
-            var updateFile = Path.Combine(tempDir, "data_update.1");
-            var part1Rar = Path.Combine(tempDir, "archive.part1.rar");
-            var part1RarBackup = Path.Combine(tempDir, "archive.part1.rar.1");
+            var original = Path.Combine(tempDir, "payload.bin");
+            File.WriteAllText(original, "original payload");
+            var parityFile = await CreateParityAsync(tempDir, original);
+            using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            File.Move(original, original + ".1");
+            File.WriteAllText(original, "replacement payload");
+            using (File.Open(original, FileMode.Open, FileAccess.Read, FileShare.Read))
+                scope.Restore();
 
-            File.WriteAllText(sampleRar, "sample content");
-            File.WriteAllText(sampleRarBackup, "sample backup");
-            File.WriteAllText(part1Rar, "part1 content");
-            File.WriteAllText(part1RarBackup, "part1 backup");
-            File.WriteAllText(patchFile, "patch content");
-            File.WriteAllText(updateFile, "data update content");
-
-            Par2RepairService.CleanBackupFiles(tempDir);
-
-            Assert.True(File.Exists(sampleRar), "sample.rar must be preserved");
-            Assert.False(File.Exists(sampleRarBackup), "sample.rar.1 must be cleaned up");
-            Assert.True(File.Exists(part1Rar), "archive.part1.rar must be preserved");
-            Assert.False(File.Exists(part1RarBackup), "archive.part1.rar.1 must be cleaned up");
-            Assert.True(File.Exists(patchFile), "patch.1 must be preserved");
-            Assert.True(File.Exists(updateFile), "data_update.1 must be preserved");
+            Assert.Equal("replacement payload", File.ReadAllText(original));
+            Assert.Equal("original payload", File.ReadAllText(original + ".1"));
         }
         finally
         {
-            try { Directory.Delete(tempDir, true); } catch { }
+            Directory.Delete(tempDir, true);
         }
     }
 
     [Fact]
-    public void RestoreBackupFiles_RestoresOriginalFilesOnFailure()
+    public async Task BackupScope_WithoutValidMetadata_PreservesNewBackups()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_RestoreBackupTest_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
-
         try
         {
-            var sampleRar = Path.Combine(tempDir, "sample.rar");
-            var sampleRarBackup = Path.Combine(tempDir, "sample.rar.1");
-            var patchFile = Path.Combine(tempDir, "patch.1");
+            var original = Path.Combine(tempDir, "payload.bin");
+            File.WriteAllText(original, "original payload");
+            var parityFile = await CreateParityAsync(tempDir, original);
+            var bytes = File.ReadAllBytes(parityFile);
+            for (var offset = 0; offset + 64 <= bytes.Length;)
+            {
+                bytes[offset + 16] ^= 0xff;
+                offset += checked((int)System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(offset + 8, 8)));
+            }
+            File.WriteAllBytes(parityFile, bytes);
+            using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            File.Move(original, original + ".1");
+            File.WriteAllText(original, "current payload");
 
-            // Corrupted file created during repair
-            File.WriteAllText(sampleRar, "corrupted new content");
-            // Original backup file
-            File.WriteAllText(sampleRarBackup, "original intact content");
-            // Legitimate .1 file with no base file
-            File.WriteAllText(patchFile, "legitimate patch file");
+            scope.Clean();
+            scope.Restore();
 
-            Par2RepairService.RestoreBackupFiles(tempDir);
-
-            Assert.True(File.Exists(sampleRar), "sample.rar must be restored");
-            Assert.Equal("original intact content", File.ReadAllText(sampleRar));
-            Assert.False(File.Exists(sampleRarBackup), "sample.rar.1 must have been moved back to sample.rar");
-            Assert.True(File.Exists(patchFile), "patch.1 with no base file must be kept intact");
+            Assert.Equal("current payload", File.ReadAllText(original));
+            Assert.Equal("original payload", File.ReadAllText(original + ".1"));
         }
         finally
         {
-            try { Directory.Delete(tempDir, true); } catch { }
+            Directory.Delete(tempDir, true);
         }
     }
 
-    [Fact]
-    public void RestoreBackupFiles_WhenBaseArchiveMissingAfterAbort_RestoresBackupFile()
+    private static async Task<string> CreateParityAsync(string directory, params string[] files)
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "Reepax_RestoreMissingBaseTest_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-
-        try
+        var parityFile = Path.Combine(directory, "data.par2");
+        var startInfo = new ProcessStartInfo
         {
-            var partRar = Path.Combine(tempDir, "archive.part01.rar");
-            var partRarBackup = Path.Combine(tempDir, "archive.part01.rar.1");
-            var patchFile = Path.Combine(tempDir, "patch.1");
-
-            // Simulate par2 having renamed archive.part01.rar -> archive.part01.rar.1 before aborting (baseFile not yet created)
-            File.WriteAllText(partRarBackup, "original archive part content");
-            File.WriteAllText(patchFile, "legitimate patch file");
-
-            Par2RepairService.RestoreBackupFiles(tempDir);
-
-            Assert.True(File.Exists(partRar), "archive.part01.rar must be restored even when base file was not yet created");
-            Assert.Equal("original archive part content", File.ReadAllText(partRar));
-            Assert.False(File.Exists(partRarBackup), "archive.part01.rar.1 must have been moved back to archive.part01.rar");
-            Assert.True(File.Exists(patchFile), "patch.1 with no base file must be kept intact");
-        }
-        finally
-        {
-            try { Directory.Delete(tempDir, true); } catch { }
-        }
+            FileName = Par2RepairService.Instance.ResolvePar2ExecutablePath(),
+            WorkingDirectory = directory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add("c");
+        startInfo.ArgumentList.Add("-s20");
+        startInfo.ArgumentList.Add("-c6");
+        startInfo.ArgumentList.Add(parityFile);
+        foreach (var file in files)
+            startInfo.ArgumentList.Add(file);
+        using var process = Process.Start(startInfo);
+        Assert.NotNull(process);
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.True(process.ExitCode == 0, await output + await error);
+        return parityFile;
     }
 }
-

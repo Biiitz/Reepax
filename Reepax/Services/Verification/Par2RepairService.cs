@@ -381,9 +381,14 @@ public partial class Par2RepairService
         };
 
         var outputBuilder = new StringBuilder();
+        RepairBackupScope? backups = null;
+        IDisposable? repairLease = null;
+        bool repairStopped = true;
 
         try
         {
+            repairLease = await EnterRepairDirectoryAsync(workingDir, ct);
+            backups = RepairBackupScope.Capture(par2FilePath);
             using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
             process.OutputDataReceived += (_, e) =>
@@ -407,34 +412,48 @@ public partial class Par2RepairService
             };
 
             process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            repairStopped = false;
 
-            using (ct.Register(() =>
+            try
             {
-                try { if (!process.HasExited) process.Kill(true); } catch { }
-            }))
-            {
-                await process.WaitForExitAsync(ct);
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                using (ct.Register(() =>
+                {
+                    try { if (!process.HasExited) process.Kill(true); } catch { }
+                }))
+                {
+                    await process.WaitForExitAsync(ct);
+                }
+                process.WaitForExit();
+                repairStopped = true;
             }
-
-            try { process.WaitForExit(); } catch { }
+            catch
+            {
+                // Wait for process termination before restoring any renamed files.
+                if (!process.HasExited)
+                    process.Kill(true);
+                await process.WaitForExitAsync(CancellationToken.None);
+                process.WaitForExit();
+                repairStopped = true;
+                throw;
+            }
 
             var output = outputBuilder.ToString();
             bool success = process.ExitCode == 0 || output.Contains("Repair complete", StringComparison.OrdinalIgnoreCase) ||
                            output.Contains("All files are correct, repair is not required", StringComparison.OrdinalIgnoreCase);
 
-            // Clean up temporary .1 backup files created by par2 if requested, or restore backups on failure
+            // Handle only backups identified before this repair started.
             if (success)
             {
                 if (purgeBackups)
                 {
-                    CleanBackupFiles(workingDir);
+                    backups.Clean();
                 }
             }
             else
             {
-                RestoreBackupFiles(workingDir);
+                backups?.Restore();
             }
 
             int repairedCount = 0;
@@ -454,7 +473,8 @@ public partial class Par2RepairService
         }
         catch (OperationCanceledException)
         {
-            RestoreBackupFiles(workingDir);
+            if (repairStopped)
+                backups?.Restore();
             return new Par2RepairResult
             {
                 Success = false,
@@ -463,7 +483,8 @@ public partial class Par2RepairService
         }
         catch (Exception ex)
         {
-            RestoreBackupFiles(workingDir);
+            if (repairStopped)
+                backups?.Restore();
             AppLogger.Error($"[Par2RepairService] Fehler bei PAR2-Reparatur von '{par2FilePath}'", ex);
             return new Par2RepairResult
             {
@@ -472,86 +493,10 @@ public partial class Par2RepairService
                 RawOutput = outputBuilder.ToString()
             };
         }
-    }
-
-    /// <summary>
-    /// Restores any .1 backup files created by par2 back to their original names when repair fails or is cancelled.
-    /// Deletes any partial/corrupt target file created during the failed attempt.
-    /// </summary>
-    public static void RestoreBackupFiles(string workingDir)
-    {
-        if (string.IsNullOrWhiteSpace(workingDir) || !Directory.Exists(workingDir))
-            return;
-
-        try
+        finally
         {
-            foreach (var backupFile in Directory.GetFiles(workingDir, "*.1", SearchOption.TopDirectoryOnly))
-            {
-                try
-                {
-                    if (!backupFile.EndsWith(".1", StringComparison.OrdinalIgnoreCase) || backupFile.Length <= 2)
-                        continue;
-
-                    var baseFile = backupFile.Substring(0, backupFile.Length - 2);
-                    if (string.IsNullOrWhiteSpace(Path.GetFileName(baseFile)))
-                        continue;
-
-                    bool baseExists = File.Exists(baseFile);
-                    if (!baseExists && !Path.HasExtension(baseFile))
-                        continue;
-
-                    // If baseFile was partially written during failed repair, delete it and restore original backup
-                    if (baseExists)
-                    {
-                        try { File.Delete(baseFile); } catch { }
-                    }
-
-                    File.Move(backupFile, baseFile, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[Par2RepairService] Fehler beim Wiederherstellen der Backup-Datei '{backupFile}': {ex.Message}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[Par2RepairService] Fehler bei der Suche nach Backup-Dateien zur Wiederherstellung in '{workingDir}': {ex.Message}");
-        }
-    }
-
-    public static void CleanBackupFiles(string workingDir)
-    {
-        if (string.IsNullOrWhiteSpace(workingDir) || !Directory.Exists(workingDir))
-            return;
-
-        try
-        {
-            foreach (var backupFile in Directory.GetFiles(workingDir, "*.1", SearchOption.TopDirectoryOnly))
-            {
-                try
-                {
-                    if (!backupFile.EndsWith(".1", StringComparison.OrdinalIgnoreCase) || backupFile.Length <= 2)
-                        continue;
-
-                    var baseFile = backupFile.Substring(0, backupFile.Length - 2);
-                    if (string.IsNullOrWhiteSpace(Path.GetFileName(baseFile)))
-                        continue;
-
-                    if (File.Exists(baseFile))
-                    {
-                        Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(backupFile);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[Par2RepairService] Fehler beim Bereinigen der Backup-Datei '{backupFile}': {ex.Message}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[Par2RepairService] Fehler bei der Suche nach Backup-Dateien in '{workingDir}': {ex.Message}");
+            backups?.Dispose();
+            repairLease?.Dispose();
         }
     }
 
