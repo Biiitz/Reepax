@@ -126,13 +126,13 @@ public static class HttpUserAgentService
     /// Creates a new HttpClient with an optimized SocketsHttpHandler, automatic decompression,
     /// and full standard browser headers.
     /// </summary>
-    public static HttpClient CreateHttpClient(TimeSpan? timeout = null, HttpContentType contentType = HttpContentType.Html)
+    public static HttpClient CreateHttpClient(TimeSpan? timeout = null, HttpContentType contentType = HttpContentType.Html, bool automaticDecompression = true)
     {
         var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = true,
             MaxAutomaticRedirections = 10,
-            AutomaticDecompression = DecompressionMethods.All,
+            AutomaticDecompression = automaticDecompression ? DecompressionMethods.All : DecompressionMethods.None,
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
             ConnectTimeout = TimeSpan.FromSeconds(25),

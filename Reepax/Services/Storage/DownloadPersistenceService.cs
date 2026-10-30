@@ -228,7 +228,7 @@ public class DownloadPersistenceService : IDisposable
                 return null;
 
             string json;
-            using (var stream = new FileStream(segMetaPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var stream = new FileStream(segMetaPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             using (var reader = new StreamReader(stream))
             {
                 json = reader.ReadToEnd();

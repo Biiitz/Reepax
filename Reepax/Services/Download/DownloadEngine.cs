@@ -19,7 +19,7 @@ using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services.Download;
 
-public class DownloadEngine
+public partial class DownloadEngine
 {
     private static readonly Lazy<DownloadEngine> _instance = new(() => new DownloadEngine());
     public static DownloadEngine Instance => _instance.Value;
@@ -120,7 +120,7 @@ public class DownloadEngine
 
     public DownloadEngine(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny);
+        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny, automaticDecompression: false);
     }
 
     public async Task StartDownloadAsync(
@@ -317,12 +317,22 @@ public class DownloadEngine
             var segState = LoadSegmentState(segMetaPath);
             if (segState != null && File.Exists(tempFilePath))
             {
+                if (segState.IsSequential)
+                {
+                    await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, null, segState);
+                    return;
+                }
                 try
                 {
                     await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
                     return;
                 }
                 catch (Exception ex) when (IsRangeNotSupported(ex))
+                {
+                    await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
+                    return;
+                }
+                catch (RepresentationChangedException)
                 {
                     await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
                     return;
@@ -352,6 +362,8 @@ public class DownloadEngine
                             2, 20);
 
                         segState = CreateSegments(probe.TotalBytes, segmentCount);
+                        segState.EntityTag = probe.EntityTag;
+                        if (segState.EntityTag != null) segState.SourceKey = GetSourceKey(item);
 
                         // Adopt filename from Content-Disposition of probe response
                         if (!item.IsCustomName &&
@@ -396,6 +408,11 @@ public class DownloadEngine
                             return;
                         }
                         catch (Exception ex) when (IsRangeNotSupported(ex))
+                        {
+                            await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
+                            return;
+                        }
+                        catch (RepresentationChangedException)
                         {
                             await FallbackToSingleConnectionDownloadAsync(item, tempFilePath, segMetaPath, cancellationToken);
                             return;
@@ -456,6 +473,11 @@ public class DownloadEngine
         string tempFilePath, 
         CancellationToken cancellationToken, 
         byte[]? buffer = null)
+        => await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, null);
+
+    private async Task ExecuteSingleConnectionCoreAsync(
+        DownloadItem item, string tempFilePath, CancellationToken cancellationToken,
+        byte[]? buffer, SegmentFileState? checkpoint, bool restart = false)
     {
         var destinationPath = item.SaveFilePath;
         if (string.IsNullOrWhiteSpace(destinationPath))
@@ -469,10 +491,23 @@ public class DownloadEngine
             existingBytes = new FileInfo(tempFilePath).Length;
         }
 
-        // Finalize directly if .part file already holds the complete payload (e.g. previous File.Move failed on transient lock).
-        if (existingBytes > 0 && item.TotalBytes > 0 && existingBytes == item.TotalBytes)
+        if (restart) existingBytes = 0;
+        if (checkpoint != null)
         {
-            FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, item.TotalBytes);
+            long committed = checkpoint.Segments[0].Done;
+            if (!MatchesSource(item, checkpoint) || existingBytes < committed || existingBytes > checkpoint.TotalBytes)
+            {
+                checkpoint = null;
+                existingBytes = 0;
+            }
+            else existingBytes = committed;
+        }
+
+        long expectedTotal = checkpoint?.TotalBytes ?? item.TotalBytes;
+        // Finalize a fully committed transfer after a transient final move failure.
+        if (existingBytes > 0 && expectedTotal > 0 && existingBytes == expectedTotal)
+        {
+            FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, expectedTotal);
             return;
         }
 
@@ -483,16 +518,27 @@ public class DownloadEngine
         if (existingBytes > 0)
         {
             request.Headers.Range = new RangeHeaderValue(existingBytes, null);
+            ApplyRangeValidator(request, checkpoint);
         }
 
         using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (existingBytes > 0 &&
+            (HasEncodedContent(response) || (checkpoint != null &&
+                (response.StatusCode == HttpStatusCode.PreconditionFailed ||
+                 (response.StatusCode == HttpStatusCode.PartialContent && !MatchesRepresentation(response, checkpoint))))))
+        {
+            response.Dispose();
+            await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, null, restart: true);
+            return;
+        }
 
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
             long? remoteTotal = response.Content.Headers.ContentRange?.Length;
             if (existingBytes > 0 &&
                 ((remoteTotal.HasValue && remoteTotal.Value > 0 && existingBytes == remoteTotal.Value) ||
-                 (item.TotalBytes > 0 && existingBytes == item.TotalBytes)))
+                 (expectedTotal > 0 && existingBytes == expectedTotal)))
             {
                 FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, existingBytes);
                 return;
@@ -521,7 +567,8 @@ public class DownloadEngine
         bool isPartial = response.StatusCode == HttpStatusCode.PartialContent;
         long effectiveInitialBytes = isPartial ? existingBytes : 0;
 
-        await ProcessResponseStreamAsync(item, response, tempFilePath, destinationPath, cancellationToken, effectiveInitialBytes, buffer);
+        await ProcessResponseStreamAsync(item, response, tempFilePath, destinationPath, cancellationToken, effectiveInitialBytes, buffer,
+            isPartial ? checkpoint : null);
     }
 
     private async Task FallbackToSingleConnectionDownloadAsync(
@@ -531,7 +578,7 @@ public class DownloadEngine
         CancellationToken cancellationToken,
         byte[]? buffer = null)
     {
-        Services.Storage.AppLogger.Warn($"[DownloadEngine] Range requests refused by remote server for '{item.FileName}'. Falling back to clean single-connection stream.");
+        Services.Storage.AppLogger.Warn("[DownloadEngine] Restarting the transfer using a clean single-connection stream.");
 
         try
         {
@@ -635,6 +682,9 @@ public class DownloadEngine
     private sealed class SegmentFileState
     {
         public long TotalBytes { get; set; }
+        public bool IsSequential { get; set; }
+        public string? EntityTag { get; set; }
+        public string? SourceKey { get; set; }
         public List<SegmentState> Segments { get; set; } = new();
     }
 
@@ -658,15 +708,20 @@ public class DownloadEngine
             if (!File.Exists(segMetaPath))
                 return null;
 
-            var state = JsonSerializer.Deserialize<SegmentFileState>(File.ReadAllText(segMetaPath));
+            using var input = new FileStream(segMetaPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            var state = JsonSerializer.Deserialize<SegmentFileState>(input);
             if (state == null || state.TotalBytes <= 0 || state.Segments.Count == 0)
                 return null;
+            if (state.IsSequential && state.Segments.Count != 1) return null;
+            if (state.EntityTag != null &&
+                (!EntityTagHeaderValue.TryParse(state.EntityTag, out var tag) || tag.IsWeak || state.SourceKey == null)) return null;
+            if (state.IsSequential && state.EntityTag == null) return null;
 
             // Validation: segments must cover the range 0..TotalBytes-1 without gaps
             long expectedStart = 0;
             foreach (var seg in state.Segments)
             {
-                if (seg.Start != expectedStart || seg.End < seg.Start ||
+                if (seg.Start != expectedStart || seg.End < seg.Start || seg.End >= state.TotalBytes ||
                     seg.Done < 0 || seg.Done > seg.End - seg.Start + 1)
                     return null;
                 expectedStart = seg.End + 1;
@@ -680,15 +735,6 @@ public class DownloadEngine
         {
             return null;
         }
-    }
-
-    private static void SaveSegmentState(string segMetaPath, SegmentFileState state, bool required = false)
-    {
-        try
-        {
-            File.WriteAllText(segMetaPath, JsonSerializer.Serialize(state));
-        }
-        catch when (!required) { }
     }
 
     private static ContentRangeHeaderValue ValidateContentRange(HttpResponseMessage response, long expectedStart, long? expectedTotal = null)
@@ -705,6 +751,8 @@ public class DownloadEngine
 
     private static void ApplyRequestHeaders(HttpRequestMessage request, DownloadItem item)
     {
+        request.Headers.AcceptEncoding.Clear();
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("identity"));
         if (!string.IsNullOrWhiteSpace(item.Cookies))
             request.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
 
@@ -728,26 +776,27 @@ public class DownloadEngine
     /// Probes via HTTP range (bytes=0-0) if the server supports partial content,
     /// retrieving total size and filename.
     /// </summary>
-    private async Task<(bool IsSupported, long TotalBytes, string? FileName)> ProbeRangeSupportAsync(DownloadItem item, CancellationToken cancellationToken)
+    private async Task<(bool IsSupported, long TotalBytes, string? FileName, string? EntityTag)> ProbeRangeSupportAsync(DownloadItem item, CancellationToken cancellationToken)
     {
         try
         {
             // Only HTTP(S) is probeable (not blob: etc.)
             if (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) ||
                 !item.DirectDownloadUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                return (false, 0, null);
+                return (false, 0, null, null);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
             request.Headers.Range = new RangeHeaderValue(0, 0);
             ApplyRequestHeaders(request, item);
 
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (response.StatusCode == HttpStatusCode.PartialContent)
+            if (response.StatusCode == HttpStatusCode.PartialContent && !HasEncodedContent(response))
             {
                 var range = ValidateContentRange(response, 0);
+                ApplyResponseDigest(response, item);
                 if (range.Length is > 0)
                     return (true, range.Length.Value,
-                        ExtractContentDispositionFileName(response));
+                        ExtractContentDispositionFileName(response), GetStrongEntityTag(response));
             }
         }
         catch (Exception ex)
@@ -755,7 +804,7 @@ public class DownloadEngine
             Services.Storage.AppLogger.Warn($"[DownloadEngine] Range probe for '{item.FileName}' failed: {ex.Message}");
         }
 
-        return (false, 0, null);
+        return (false, 0, null, null);
     }
 
     /// <summary>
@@ -771,19 +820,17 @@ public class DownloadEngine
     {
         var totalBytes = state.TotalBytes;
         var segments = state.Segments;
-        // Preallocate target file to full size (instant on NTFS without writing zeroes)
+        if (!MatchesSource(item, state)) throw new RepresentationChangedException();
+        using var fs = new FileStream(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous);
+        if (fs.Length != totalBytes)
         {
-            using var prealloc = new FileStream(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            if (prealloc.Length != totalBytes)
+            if (segments.Any(segment => segment.Done > 0))
             {
-                if (segments.Any(segment => segment.Done > 0))
-                {
-                    foreach (var segment in segments) segment.Done = 0;
-                    // Persist the reset before extending the file to prevent trusting stale progress after a restart.
-                    SaveSegmentState(segMetaPath, state, required: true);
-                }
-                prealloc.SetLength(totalBytes);
+                foreach (var segment in segments) segment.Done = 0;
+                // Publish the reset before preallocating the file.
+                SaveSegmentState(segMetaPath, state, required: true);
             }
+            fs.SetLength(totalBytes);
         }
 
         foreach (var segment in segments) segment.InitializeReceivedBytes();
@@ -820,7 +867,7 @@ public class DownloadEngine
                 var now = Stopwatch.GetTimestamp();
                 if ((double)(now - lastSaveTs) / Stopwatch.Frequency >= 2.0)
                 {
-                    SaveSegmentState(segMetaPath, state);
+                    SaveSegmentState(segMetaPath, state, dataFile: fs);
                     lastSaveTs = now;
                 }
             }
@@ -828,9 +875,6 @@ public class DownloadEngine
 
         try
         {
-            using var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous);
-            if (fs.Length != totalBytes)
-                throw new IOException("Partial file size changed before the transfer started.");
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             int maxConcurrentSegments = Math.Clamp(MaxConnectionsPerDownload, 1, segments.Count);
             using var segmentSemaphore = new SemaphoreSlim(maxConcurrentSegments, maxConcurrentSegments);
@@ -842,7 +886,7 @@ public class DownloadEngine
                 await segmentSemaphore.WaitAsync(linkedCts.Token);
                 try
                 {
-                    await DownloadSegmentAsync(item, seg, totalBytes, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, maxConcurrentSegments);
+                    await DownloadSegmentAsync(item, seg, state, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, maxConcurrentSegments);
                 }
                 catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
                 {
@@ -890,7 +934,7 @@ public class DownloadEngine
         {
             Volatile.Write(ref segmentsFinished, true);
             try { await watcher; } catch { }
-            SaveSegmentState(segMetaPath, state);
+            SaveSegmentState(segMetaPath, state, dataFile: fs);
             long doneBytes = segments.Sum(s => s.Done);
             SafeInvokeAsync(() =>
             {
@@ -919,6 +963,8 @@ public class DownloadEngine
             Directory.CreateDirectory(targetDir);
         }
 
+        fs.Flush(flushToDisk: true);
+        fs.Close();
         File.Move(tempFilePath, actualFinalPath, overwrite: true);
         Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segMetaPath);
 
@@ -950,7 +996,7 @@ public class DownloadEngine
     private async Task DownloadSegmentAsync(
         DownloadItem item,
         SegmentState segment,
-        long totalBytes,
+        SegmentFileState state,
         SafeFileHandle fileHandle,
         BandwidthThrottler trickleThrottler,
         CancellationToken cancellationToken,
@@ -976,8 +1022,12 @@ public class DownloadEngine
                     using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
                     request.Headers.Range = new RangeHeaderValue(rangeStart, segment.End);
                     ApplyRequestHeaders(request, item);
+                    ApplyRangeValidator(request, state);
 
                     using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+                    if (response.StatusCode == HttpStatusCode.PreconditionFailed && state.EntityTag != null)
+                        throw new RepresentationChangedException();
 
                     if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
                     {
@@ -996,7 +1046,11 @@ public class DownloadEngine
                         throw new RangeNotSupportedException("Server did not accept the range request (no 206 Partial Content).");
                     }
 
-                    long responseEnd = ValidateContentRange(response, rangeStart, totalBytes).To!.Value;
+                    if (HasEncodedContent(response))
+                        throw new RangeNotSupportedException("Encoded responses cannot be assembled as byte ranges.");
+                    if (!MatchesRepresentation(response, state)) throw new RepresentationChangedException();
+                    long responseEnd = ValidateContentRange(response, rangeStart, state.TotalBytes).To!.Value;
+                    ApplyResponseDigest(response, item);
                     using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                     long offset = rangeStart;
                     int bufferedBytes = 0;
@@ -1091,6 +1145,10 @@ public class DownloadEngine
                 {
                     throw;
                 }
+                catch (RepresentationChangedException)
+                {
+                    throw;
+                }
                 catch (Exception ex) when (IsRangeNotSupported(ex))
                 {
                     throw;
@@ -1115,11 +1173,13 @@ public class DownloadEngine
         string finalFilePath, 
         CancellationToken cancellationToken,
         long initialDownloadedBytes = 0,
-        byte[]? buffer = null)
+        byte[]? buffer = null,
+        SegmentFileState? checkpoint = null)
     {
+        bool encoded = HasEncodedContent(response);
         if (response.StatusCode == HttpStatusCode.PartialContent)
             ValidateContentRange(response, initialDownloadedBytes,
-                initialDownloadedBytes > 0 && item.TotalBytes > 0 ? item.TotalBytes : null);
+                initialDownloadedBytes > 0 ? checkpoint?.TotalBytes ?? (item.TotalBytes > 0 ? item.TotalBytes : null) : null);
         long? contentLength = response.Content.Headers.ContentLength;
         long totalBytes;
 
@@ -1147,6 +1207,8 @@ public class DownloadEngine
         {
             totalBytes = item.TotalBytes;
         }
+        if (encoded) totalBytes = 0;
+        ApplyResponseDigest(response, item);
 
         // Try extracting Content-Disposition filename with sanitization & fallback
         string? extractedFileName = ExtractContentDispositionFileName(response);
@@ -1203,25 +1265,40 @@ public class DownloadEngine
 
         try
         {
-            using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var contentStream = await DecodeContentAsync(await response.Content.ReadAsStreamAsync(cancellationToken), response, cancellationToken);
+            string checkpointPath = tempFilePath + ".segments";
+            if (initialDownloadedBytes == 0)
+            {
+                checkpoint = null;
+                string? entityTag = encoded ? null : GetStrongEntityTag(response);
+                if (entityTag != null && totalBytes > 0)
+                {
+                    checkpoint = CreateSegments(totalBytes, 1);
+                    checkpoint.IsSequential = true;
+                    checkpoint.EntityTag = entityTag;
+                    checkpoint.SourceKey = GetSourceKey(item);
+                    SaveSegmentState(checkpointPath, checkpoint, required: true);
+                }
+            }
             var fileStreamOptions = new FileStreamOptions
             {
-                Mode = initialDownloadedBytes > 0 ? FileMode.Append : FileMode.Create,
+                Mode = initialDownloadedBytes > 0 ? FileMode.Open : FileMode.Create,
                 Access = FileAccess.Write,
                 Share = FileShare.ReadWrite,
                 BufferSize = bufferSize,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             };
             using var fileStream = new FileStream(tempFilePath, fileStreamOptions);
-
-            // NOTE: Do NOT pre-allocate file length (SetLength) for sequential single-connection downloads.
-            // Single-connection downloads do not have a .segments sidecar; progress and Range resume rely
-            // strictly on the physical file length on disk. Pre-allocating would cause subsequent resume
-            // attempts to request out-of-range offsets resulting in HTTP 416 and 100% data loss.
+            if (fileStream.Length < initialDownloadedBytes)
+                throw new IOException("Partial file was shortened before resuming.");
+            fileStream.SetLength(initialDownloadedBytes);
+            fileStream.Position = initialDownloadedBytes;
+            if (checkpoint == null && File.Exists(checkpointPath)) File.Delete(checkpointPath);
 
             long currentDownloaded = initialDownloadedBytes;
             var speedTracker = new RollingSpeedTracker(initialDownloadedBytes);
             var lastUiUpdateTime = Stopwatch.GetTimestamp();
+            var lastCheckpoint = lastUiUpdateTime;
 
             // Dedicated throttler for "Paused" trickle mode (500 KB/s per download)
             var trickleThrottler = new BandwidthThrottler { MaxBytesPerSecond = 500 * 1024 };
@@ -1264,11 +1341,19 @@ public class DownloadEngine
                     {
                         break;
                     }
+                    if (totalBytes > 0 && bytesRead > totalBytes - currentDownloaded)
+                        throw new InvalidDataException("Server sent more bytes than the declared file size.");
 
                     await fileStream.WriteAsync(rentedBuffer.AsMemory(0, bytesRead), cancellationToken);
                     currentDownloaded += bytesRead;
 
                     var now = Stopwatch.GetTimestamp();
+                    if (checkpoint != null && Stopwatch.GetElapsedTime(lastCheckpoint).TotalSeconds >= 2)
+                    {
+                        checkpoint.Segments[0].Done = currentDownloaded;
+                        SaveSegmentState(checkpointPath, checkpoint, dataFile: fileStream);
+                        lastCheckpoint = now;
+                    }
                     if (((double)(now - lastUiUpdateTime) / Stopwatch.Frequency) >= 0.3) // ~300ms smooth UI updates
                     {
                         var currentSpeed = speedTracker.CalculateSpeed(currentDownloaded);
@@ -1282,9 +1367,15 @@ public class DownloadEngine
                 }
 
                 await fileStream.FlushAsync(cancellationToken);
+                fileStream.Flush(flushToDisk: true);
             }
             finally
             {
+                if (checkpoint != null)
+                {
+                    checkpoint.Segments[0].Done = currentDownloaded;
+                    SaveSegmentState(checkpointPath, checkpoint, dataFile: fileStream);
+                }
                 try { await fileStream.FlushAsync(); } catch { }
                 try { fileStream.Close(); } catch { }
                 item.DownloadedBytes = currentDownloaded;
@@ -1305,7 +1396,7 @@ public class DownloadEngine
             fileStream.Close();
 
             // Validate stream completeness: do not mark complete if stream was truncated
-            if (totalBytes > 0 && currentDownloaded < totalBytes)
+            if (totalBytes > 0 && currentDownloaded != totalBytes)
             {
                 SafeInvokeAsync(() =>
                 {
@@ -1342,6 +1433,8 @@ public class DownloadEngine
         }
 
         File.Move(tempFilePath, actualFinalPath, overwrite: true);
+        string checkpointPath = tempFilePath + ".segments";
+        if (File.Exists(checkpointPath)) Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(checkpointPath);
 
         item.IsVerifyingIntegrity = true;
         item.RecordSessionDuration();
