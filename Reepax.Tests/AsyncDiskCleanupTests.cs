@@ -16,6 +16,130 @@ namespace Reepax.Tests;
 
 public class AsyncDiskCleanupTests
 {
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public async Task Removal_LockedFileKeepsEntryUntilRetryOrListOnlyRemoval(bool removePackage, bool sharedDirectory, bool listOnly)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CleanupFailure_" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(root, sharedDirectory ? "SharedFolder" : "TargetFolder");
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "data.bin");
+        File.WriteAllText(file, "content");
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var package = new DownloadPackage { Name = "TargetFolder", SaveDirectory = directory, AutoPar2Repair = false };
+        var item = new DownloadItem { FileName = "data.bin", SaveFilePath = file };
+        package.Items.Add(item);
+        vm.Packages.Add(package);
+        string? notification = null;
+        vm.CleanupFailureNotification = message => notification = message;
+        try
+        {
+            using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                if (removePackage)
+                    await vm.RemovePackage(package, true);
+                else
+                    await vm.RemoveItem(item, true);
+
+                Assert.Contains(package, vm.Packages);
+                Assert.Contains(item, package.Items);
+                Assert.True(File.Exists(file));
+                Assert.False(item.IsRemovalPending);
+                Assert.False(vm.IsRemovalInProgress);
+                Assert.Equal(Loc.Format("Status_CleanupIncomplete", removePackage && !sharedDirectory ? 2 : 1), vm.StatusSummary);
+                Assert.Equal(vm.StatusSummary, notification);
+                if (listOnly)
+                {
+                    if (removePackage)
+                        await vm.RemovePackage(package, false);
+                    else
+                        await vm.RemoveItem(item, false);
+                    Assert.DoesNotContain(package, vm.Packages);
+                    Assert.True(File.Exists(file));
+                }
+            }
+            Assert.Equal("content", File.ReadAllText(file));
+            if (!listOnly)
+            {
+                if (removePackage)
+                    await vm.RemovePackage(package, true);
+                else
+                    await vm.RemoveItem(item, true);
+                Assert.DoesNotContain(package, vm.Packages);
+                Assert.False(File.Exists(file));
+            }
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task Removal_PartialFailureKeepsMixedSelectionAndAllowsRetry()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CleanupFailure_" + Guid.NewGuid().ToString("N"));
+        var firstDirectory = Path.Combine(root, "FirstFolder");
+        var secondDirectory = Path.Combine(root, "SecondFolder");
+        Directory.CreateDirectory(firstDirectory);
+        Directory.CreateDirectory(secondDirectory);
+        var firstFile = Path.Combine(firstDirectory, "first.bin");
+        var lockedFile = Path.Combine(secondDirectory, "locked.bin");
+        var otherFile = Path.Combine(secondDirectory, "other.bin");
+        File.WriteAllText(firstFile, "first");
+        File.WriteAllText(lockedFile, "locked");
+        File.WriteAllText(otherFile, "other");
+        var vm = new MainViewModel();
+        vm.Packages.Clear();
+        var first = new DownloadPackage { Name = "FirstFolder", SaveDirectory = firstDirectory, IsSelected = true, AutoPar2Repair = false };
+        var firstItem = new DownloadItem { FileName = "first.bin", SaveFilePath = firstFile };
+        first.Items.Add(firstItem);
+        var second = new DownloadPackage { Name = "SecondFolder", SaveDirectory = secondDirectory, AutoPar2Repair = false };
+        var selected = new DownloadItem { FileName = "locked.bin", SaveFilePath = lockedFile, IsSelected = true };
+        var other = new DownloadItem { FileName = "other.bin", SaveFilePath = otherFile };
+        second.Items.Add(selected);
+        second.Items.Add(other);
+        vm.Packages.Add(first);
+        vm.Packages.Add(second);
+        vm.CleanupConfirmationOverride = _ => (true, true, false);
+        try
+        {
+            using (File.Open(lockedFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                await vm.DeleteSelected();
+
+                Assert.Contains(first, vm.Packages);
+                Assert.Contains(firstItem, first.Items);
+                Assert.Contains(selected, second.Items);
+                Assert.False(firstItem.IsRemovalPending);
+                Assert.False(selected.IsRemovalPending);
+                Assert.False(File.Exists(firstFile));
+                Assert.True(File.Exists(lockedFile));
+                Assert.Equal(Loc.Format("Status_CleanupIncomplete", 1), vm.StatusSummary);
+            }
+
+            await vm.DeleteSelected();
+
+            Assert.DoesNotContain(first, vm.Packages);
+            Assert.DoesNotContain(selected, second.Items);
+            Assert.Contains(other, second.Items);
+            Assert.False(File.Exists(lockedFile));
+            Assert.Equal("other", File.ReadAllText(otherFile));
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            Directory.Delete(root, true);
+        }
+    }
+
     [Fact]
     public async Task Removal_KeepsTheDispatcherResponsiveDuringDiskWork()
     {

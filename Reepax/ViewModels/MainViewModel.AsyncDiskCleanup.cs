@@ -27,6 +27,12 @@ public partial class MainViewModel
 
     internal Func<Action, Task> DiskCleanupRunner { get; set; } = action => Task.Run(action);
     internal Func<string?, (bool Confirmed, bool DeleteFiles, bool RecycleFiles)>? CleanupConfirmationOverride { get; set; }
+    internal Action<string> CleanupFailureNotification { get; set; } = message =>
+    {
+        if (!DownloadPersistenceService.IsTestEnvironment)
+            SafeInvoke(() => System.Windows.MessageBox.Show(message, Loc.Get("Dialog_ErrorTitle"),
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning));
+    };
 
     partial void OnIsRemovalInProgressChanged(bool value)
     {
@@ -195,7 +201,11 @@ public partial class MainViewModel
                 AppLogger.Warn("[MainViewModel] Could not recycle the selected downloads.");
             else
                 AppLogger.Warn($"[MainViewModel] Could not remove the selected downloads: {ex.Message}");
-            StatusSummary = Loc.Get(moveToRecycleBin ? "Status_RecycleFailed" : "Status_CleanupFailed");
+            StatusSummary = !moveToRecycleBin && ex is FileCleanupException cleanupFailure
+                ? Loc.Format("Status_CleanupIncomplete", cleanupFailure.RemainingPaths.Count)
+                : Loc.Get(moveToRecycleBin ? "Status_RecycleFailed" : "Status_CleanupFailed");
+            if (!moveToRecycleBin && ex is FileCleanupException)
+                CleanupFailureNotification(StatusSummary);
         }
         finally
         {
@@ -462,6 +472,7 @@ public partial class MainViewModel
         internal void Delete()
         {
             EnsureRecoveredPathsConfirmed();
+            var failedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var package in Packages.ToList())
             {
                 var selected = package.Items.Where(item => _itemIds.Contains(item.Id)).ToArray();
@@ -469,7 +480,10 @@ public partial class MainViewModel
                 {
                     var protectedPaths = GetProtectedItemPaths(Packages, null, item.Id);
                     foreach (var path in GetItemFilesOnDisk(item, package.SaveDirectory).Where(path => !protectedPaths.Contains(path)))
-                        ArchiveExtractionService.DeleteOrMoveToTemp(path);
+                    {
+                        if (!ArchiveExtractionService.DeleteOrMoveToTemp(path))
+                            failedPaths.Add(path);
+                    }
                     package.Items.Remove(item);
                 }
                 if (selected.Length > 0 && package.Items.Count == 0 && !_packageIds.Contains(package.Id))
@@ -477,9 +491,11 @@ public partial class MainViewModel
             }
             foreach (var package in Packages.Where(package => _packageIds.Contains(package.Id)).ToArray())
             {
-                DeletePackageFilesFromDisk(package, Packages, false, false);
+                failedPaths.UnionWith(DeletePackageFilesFromDisk(package, Packages, false, false));
                 Packages.Remove(package);
             }
+            if (failedPaths.Count > 0)
+                throw new FileCleanupException(failedPaths);
         }
     }
 }

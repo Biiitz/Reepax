@@ -220,6 +220,7 @@ public static class Strings_de
         ["Status_ErrorOccurred"] = "Fehler aufgetreten",
         ["Status_CleanupChanged"] = "Die ausgewählten Pfade haben sich geändert. Bitte erneut entfernen.",
         ["Status_CleanupFailed"] = "Die ausgewählten Downloads konnten nicht sicher entfernt werden.",
+        ["Status_CleanupIncomplete"] = "{0} Dateien oder Ordner konnten nicht entfernt werden. Die Einträge bleiben erhalten. Bitte erneut versuchen oder ohne Dateilöschung aus der Liste entfernen.",
         ["Status_CleanupUnconfirmedPath"] = "Die Dateientfernung wurde abgebrochen, weil ein automatisch wiedergefundener Ordner nicht bestätigt wurde.",
         ["Dialog_ConfirmRecoveredPaths_Title"] = "Wiedergefundene Ordner bestätigen",
         ["Dialog_ConfirmRecoveredPaths_Message"] = "Diese Ordner wurden automatisch gefunden. Die Namen belegen nicht, dass die Dateien zu den ausgewählten Downloads gehören:\n\n{0}\n\nFahre nur fort, wenn du diese Speicherorte geprüft hast und die ausgewählten Dateien oder zugehörigen Paketordner entfernen möchtest. Fortfahren?",

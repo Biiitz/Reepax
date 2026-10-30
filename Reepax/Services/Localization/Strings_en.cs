@@ -220,6 +220,7 @@ public static class Strings_en
         ["Status_ErrorOccurred"] = "Error occurred",
         ["Status_CleanupChanged"] = "The selected paths changed. Please try removing them again.",
         ["Status_CleanupFailed"] = "The selected downloads could not be removed safely.",
+        ["Status_CleanupIncomplete"] = "{0} files or folders could not be removed. Entries were kept. Try again or remove them from the list without deleting files.",
         ["Status_CleanupUnconfirmedPath"] = "File removal was cancelled because an automatically recovered folder was not confirmed.",
         ["Dialog_ConfirmRecoveredPaths_Title"] = "Confirm recovered folders",
         ["Dialog_ConfirmRecoveredPaths_Message"] = "These folders were found automatically. Their names do not prove that the files belong to the selected downloads:\n\n{0}\n\nOnly continue if you have checked these locations and want the selected files or dedicated folders removed. Continue?",

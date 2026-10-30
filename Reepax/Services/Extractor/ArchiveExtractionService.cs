@@ -1482,14 +1482,20 @@ public class ArchiveExtractionService
     /// If direct deletion fails (e.g. temporary file lock or sharing violation), moves the file
     /// to the standard Windows Temp directory (%TEMP%) and nowhere else.
     /// </summary>
-    public static void DeleteOrMoveToTemp(string filePath)
+    /// <returns>Whether the original path was removed or was already absent.</returns>
+    public static bool DeleteOrMoveToTemp(string filePath)
     {
-        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
-            return;
+        if (string.IsNullOrWhiteSpace(filePath))
+            return true;
 
         try
         {
             File.Delete(filePath);
+            return !File.Exists(filePath);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return true;
         }
         catch
         {
@@ -1503,9 +1509,11 @@ public class ArchiveExtractionService
                     var destName = "Reepax_del_" + Guid.NewGuid().ToString("N") + "_" + Path.GetFileName(filePath);
                     var destPath = Path.Combine(winTemp, destName);
                     File.Move(filePath, destPath, overwrite: true);
+                    return !File.Exists(filePath);
                 }
+                return !File.Exists(filePath);
             }
-            catch { }
+            catch { return false; }
         }
     }
 

@@ -364,9 +364,13 @@ public partial class MainViewModel
     }
 
     public static void DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages)
-        => DeletePackageFilesFromDisk(package, allPackages, true);
+    {
+        var remainingPaths = DeletePackageFilesFromDisk(package, allPackages, true);
+        if (remainingPaths.Count > 0)
+            throw new FileCleanupException(remainingPaths);
+    }
 
-    private static void DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages, bool persistChanges, bool refresh = true)
+    private static IReadOnlyCollection<string> DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages, bool persistChanges, bool refresh = true)
     {
         // 1. Cancel active extraction if currently running
         if (ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
@@ -382,9 +386,13 @@ public partial class MainViewModel
         // 3. Delete dedicated SaveDirectory directly from disk if applicable
         if (package.RequiresRecoveredPathConfirmation)
             throw new InvalidOperationException("Recovered package paths require explicit confirmation before cleanup.");
+        var trackedFiles = GetPackageFilesOnDisk(package, allPackages, persistChanges, false);
+        var trackedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var failedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         bool saveDirDeleted = false;
         if (IsCleanupDirectory(package, package.SaveDirectory, allPackages, !persistChanges))
         {
+            trackedDirectories.Add(package.SaveDirectory);
             try
             {
                 ArchiveExtractionService.PurgeTemporaryFilesInDirectory(package.SaveDirectory);
@@ -406,10 +414,12 @@ public partial class MainViewModel
             {
                 try
                 {
-                    ArchiveExtractionService.DeleteOrMoveToTemp(file);
+                    if (!ArchiveExtractionService.DeleteOrMoveToTemp(file))
+                        failedPaths.Add(file);
                 }
                 catch (Exception ex)
                 {
+                    failedPaths.Add(file);
                     AppLogger.Warn($"[MainViewModel] Could not delete package file {file}: {ex.Message}");
                 }
             }
@@ -428,6 +438,7 @@ public partial class MainViewModel
                 {
                     if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsCleanupDirectory(package, subfolder, allPackages, !persistChanges))
                     {
+                        trackedDirectories.Add(subfolder);
                         try
                         {
                             ArchiveExtractionService.PurgeTemporaryFilesInDirectory(subfolder);
@@ -463,6 +474,7 @@ public partial class MainViewModel
             !IsProtectedDirectory(package.ExtractionDirectory) &&
             IsCleanupDirectory(package, package.ExtractionDirectory, allPackages, !persistChanges))
         {
+            trackedDirectories.Add(package.ExtractionDirectory);
             try
             {
                 ArchiveExtractionService.PurgeTemporaryFilesInDirectory(package.ExtractionDirectory);
@@ -474,22 +486,36 @@ public partial class MainViewModel
                 AppLogger.Warn($"[MainViewModel] Could not delete extraction directory '{package.ExtractionDirectory}': {ex.Message}");
             }
         }
+        failedPaths.UnionWith(trackedFiles.Where(File.Exists));
+        failedPaths.UnionWith(trackedDirectories.Where(Directory.Exists));
+        return failedPaths;
     }
 
     public static void DeleteItemFilesFromDisk(DownloadItem item, string? fallbackDir = null)
     {
         var files = GetItemFilesOnDisk(item, fallbackDir);
+        var failedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in files)
         {
             try
             {
-                ArchiveExtractionService.DeleteOrMoveToTemp(file);
+                if (!ArchiveExtractionService.DeleteOrMoveToTemp(file))
+                    failedPaths.Add(file);
             }
             catch (Exception ex)
             {
+                failedPaths.Add(file);
                 AppLogger.Warn($"[MainViewModel] Could not delete item file {file}: {ex.Message}");
             }
         }
+        if (failedPaths.Count > 0)
+            throw new FileCleanupException(failedPaths);
+    }
+
+    internal sealed class FileCleanupException(IReadOnlyCollection<string> remainingPaths)
+        : IOException("Some selected files or directories could not be removed.")
+    {
+        internal IReadOnlyCollection<string> RemainingPaths { get; } = remainingPaths;
     }
 
     private static readonly Environment.SpecialFolder[] ProtectedSpecialFolders =

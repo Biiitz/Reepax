@@ -1463,12 +1463,88 @@ public class ArchiveExtractionTests
             File.WriteAllText(file, "temporary content");
             Assert.True(File.Exists(file));
 
-            ArchiveExtractionService.DeleteOrMoveToTemp(file);
+            Assert.True(ArchiveExtractionService.DeleteOrMoveToTemp(file));
             Assert.False(File.Exists(file));
         }
         finally
         {
             try { Directory.Delete(testDir, true); } catch { }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeleteOrMoveToTemp_MissingPathIsSuccessful(bool missingDirectory)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CleanupFailure_" + Guid.NewGuid().ToString("N"));
+        if (!missingDirectory)
+            Directory.CreateDirectory(root);
+        try
+        {
+            Assert.True(ArchiveExtractionService.DeleteOrMoveToTemp(Path.Combine(root, "missing.bin")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void DeleteOrMoveToTemp_LockedFileReturnsFailure()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CleanupFailure_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var file = Path.Combine(root, "data.bin");
+        File.WriteAllText(file, "content");
+        try
+        {
+            using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                Assert.False(ArchiveExtractionService.DeleteOrMoveToTemp(file));
+            Assert.Equal("content", File.ReadAllText(file));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void DeleteOrMoveToTemp_ReadOnlyFileReportsRelocationOutcome()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "DeletionFallback_" + Guid.NewGuid().ToString("N"));
+        var fileName = "payload_" + Guid.NewGuid().ToString("N") + ".bin";
+        var file = Path.Combine(root, fileName);
+        var temp = Path.GetTempPath();
+        var pattern = "Reepax_del_*_" + fileName;
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(file, "content");
+            File.SetAttributes(file, FileAttributes.ReadOnly);
+            bool insideTemp = Path.GetFullPath(file).StartsWith(temp, StringComparison.OrdinalIgnoreCase);
+
+            var removed = ArchiveExtractionService.DeleteOrMoveToTemp(file);
+
+            Assert.Equal(!insideTemp, removed);
+            Assert.Equal(insideTemp, File.Exists(file));
+            if (!insideTemp)
+            {
+                var relocated = Assert.Single(Directory.GetFiles(temp, pattern));
+                Assert.Equal("content", File.ReadAllText(relocated));
+            }
+        }
+        finally
+        {
+            foreach (var relocated in Directory.GetFiles(temp, pattern))
+            {
+                File.SetAttributes(relocated, FileAttributes.Normal);
+                File.Delete(relocated);
+            }
+            if (File.Exists(file))
+                File.SetAttributes(file, FileAttributes.Normal);
+            Directory.Delete(root, true);
         }
     }
 

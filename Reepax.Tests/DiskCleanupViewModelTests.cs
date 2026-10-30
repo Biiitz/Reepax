@@ -123,6 +123,40 @@ public class DiskCleanupViewModelTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DiskCleanup_LockedFileReportsRemainingPaths(bool removePackage)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "CleanupFailure_" + Guid.NewGuid().ToString("N"));
+        var directory = Path.Combine(root, "TargetFolder");
+        Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "data.bin");
+        File.WriteAllText(file, "content");
+        var package = new DownloadPackage { Name = "TargetFolder", SaveDirectory = directory, AutoPar2Repair = false };
+        var item = new DownloadItem { FileName = "data.bin", SaveFilePath = file };
+        package.Items.Add(item);
+        try
+        {
+            using (File.Open(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                var failure = Assert.Throws<MainViewModel.FileCleanupException>(() =>
+                {
+                    if (removePackage)
+                        MainViewModel.DeletePackageFilesFromDisk(package, new[] { package });
+                    else
+                        MainViewModel.DeleteItemFilesFromDisk(item, directory);
+                });
+                Assert.Contains(file, failure.RemainingPaths);
+            }
+            Assert.Equal("content", File.ReadAllText(file));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
     [Fact]
     public void DeletePackageFilesFromDisk_DeletesDedicatedFolderCompletely()
     {
