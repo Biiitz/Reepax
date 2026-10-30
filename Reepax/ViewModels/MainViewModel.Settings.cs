@@ -38,10 +38,10 @@ public partial class MainViewModel
     private string _maxConcurrentDownloadsText = "2";
 
     [ObservableProperty]
-    private int _connectionsPerDownload = 5;
+    private int _connectionsPerDownload = 1;
 
     [ObservableProperty]
-    private string _connectionsPerDownloadText = "5";
+    private string _connectionsPerDownloadText = "1";
 
     partial void OnConnectionsPerDownloadChanged(int value)
     {

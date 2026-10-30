@@ -64,6 +64,219 @@ public class InterruptibleMemoryStream : MemoryStream
 
 public class DownloadEngineTests
 {
+    [Theory]
+    [InlineData("start", 1)]
+    [InlineData("start", 4)]
+    [InlineData("missing", 4)]
+    [InlineData("total", 4)]
+    [InlineData("unit", 4)]
+    [InlineData("length", 4)]
+    public async Task PartialResponse_WithInconsistentRange_FailsBeforeWritingUnverifiedBytes(string fault, int connections)
+    {
+        var directory = Directory.CreateTempSubdirectory("TransferIntegrity_");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "payload.bin");
+            var data = Enumerable.Range(0, 128 * 1024).Select(i => (byte)(i % 251 + 1)).ToArray();
+            var originalPart = connections == 1 ? data.Take(17).ToArray() : new byte[data.Length];
+            data.AsSpan(0, 17).CopyTo(originalPart);
+            File.WriteAllBytes(path + ".part", originalPart);
+            if (connections > 1) WriteIntegrityCheckpoint(path, data.Length, i => i == 0 ? 17 : 0);
+            using var handler = new TestMockHttpMessageHandler((request, _) =>
+            {
+                var range = Assert.Single(request.Headers.Range!.Ranges);
+                long from = range.From!.Value;
+                long to = range.To ?? data.Length - 1;
+                long responseStart = fault == "start" ? 0 : from;
+                int length = (int)(to - from + 1);
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                {
+                    Content = new ByteArrayContent(data.AsSpan((int)responseStart, length).ToArray())
+                };
+                if (fault != "missing")
+                    response.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(
+                        responseStart, responseStart + length - 1, data.Length + (fault == "total" ? 1 : 0));
+                if (fault == "unit") response.Content.Headers.ContentRange!.Unit = "items";
+                if (fault == "length") response.Content.Headers.ContentLength = length + 1;
+                return Task.FromResult(response);
+            });
+            using var client = new HttpClient(handler);
+            var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = connections };
+            var item = new DownloadItem
+            {
+                FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
+                Status = DownloadStatus.Paused, TotalBytes = data.Length, IsCustomName = true
+            };
+            int completed = 0;
+            engine.DownloadCompleted += _ => completed++;
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.Equal(0, completed);
+            Assert.Equal(0, engine.ActiveDownloadsCount);
+            Assert.False(File.Exists(path));
+            Assert.Equal(originalPart, File.ReadAllBytes(path + ".part"));
+        }
+        finally { DeleteIntegrityDirectory(directory); }
+    }
+
+    [Theory]
+    [InlineData("truncated", 4, false)]
+    [InlineData("empty", 1, true)]
+    [InlineData("oversized", 4, false)]
+    [InlineData("valid", 1, false)]
+    public async Task SegmentedResume_OnlyTrustsProgressWhenThePartLengthMatches(string partSize, int connections, bool allComplete)
+    {
+        var directory = Directory.CreateTempSubdirectory("TransferIntegrity_");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "payload.bin");
+            var data = Enumerable.Range(0, 128 * 1024).Select(i => (byte)(i % 251 + 1)).ToArray();
+            int length = partSize switch
+            {
+                "truncated" => data.Length / 8,
+                "empty" => 0,
+                "oversized" => data.Length + 17,
+                _ => data.Length
+            };
+            using (var part = new FileStream(path + ".part", FileMode.Create, FileAccess.Write))
+            {
+                part.SetLength(length);
+                part.Write(data, 0, Math.Min(length, data.Length / 2));
+            }
+            WriteIntegrityCheckpoint(path, data.Length, i => allComplete || i < 2 ? data.Length / 4 : 0);
+            var requested = new System.Collections.Concurrent.ConcurrentBag<long>();
+            using var handler = new TestMockHttpMessageHandler((request, _) =>
+            {
+                var range = Assert.Single(request.Headers.Range!.Ranges);
+                long from = range.From!.Value;
+                long to = range.To!.Value;
+                requested.Add(from);
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                {
+                    Content = new ByteArrayContent(data.AsSpan((int)from, (int)(to - from + 1)).ToArray())
+                };
+                response.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(from, to, data.Length);
+                return Task.FromResult(response);
+            });
+            using var client = new HttpClient(handler);
+            var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = connections };
+            var item = new DownloadItem
+            {
+                FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
+                Status = DownloadStatus.Paused, TotalBytes = data.Length, IsCustomName = true
+            };
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(data, File.ReadAllBytes(path));
+            var expectedStarts = partSize == "valid" ? new long[] { data.Length / 2, data.Length * 3 / 4 }
+                : new long[] { 0, data.Length / 4, data.Length / 2, data.Length * 3 / 4 };
+            Assert.Equal(expectedStarts, requested.OrderBy(start => start));
+            Assert.False(File.Exists(path + ".part"));
+            Assert.False(File.Exists(path + ".part.segments"));
+            Assert.Equal(0, engine.ActiveDownloadsCount);
+        }
+        finally { DeleteIntegrityDirectory(directory); }
+    }
+
+    [Fact]
+    public async Task SegmentedResume_WhenResetCannotBePersisted_DoesNotExtendThePartFileOrStartTransfers()
+    {
+        var directory = Directory.CreateTempSubdirectory("TransferIntegrity_");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "payload.bin");
+            var prefix = Enumerable.Repeat((byte)73, 17).ToArray();
+            File.WriteAllBytes(path + ".part", prefix);
+            WriteIntegrityCheckpoint(path, 128 * 1024, _ => 32 * 1024);
+            using var checkpointLock = new FileStream(path + ".part.segments", FileMode.Open, FileAccess.Read, FileShare.Read);
+            int requests = 0;
+            using var handler = new TestMockHttpMessageHandler((_, _) =>
+            {
+                Interlocked.Increment(ref requests);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest));
+            });
+            using var client = new HttpClient(handler);
+            var engine = new DownloadEngine(client);
+            var item = new DownloadItem
+            {
+                FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
+                Status = DownloadStatus.Paused, TotalBytes = 128 * 1024, IsCustomName = true
+            };
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.Equal(0, requests);
+            Assert.False(File.Exists(path));
+            Assert.Equal(prefix, File.ReadAllBytes(path + ".part"));
+        }
+        finally { DeleteIntegrityDirectory(directory); }
+    }
+
+    private static void WriteIntegrityCheckpoint(string path, int totalBytes, Func<int, int> done)
+    {
+        int segmentSize = totalBytes / 4;
+        var segments = Enumerable.Range(0, 4).Select(i => new
+        {
+            Start = i * (long)segmentSize, End = (i + 1L) * segmentSize - 1, Done = done(i)
+        });
+        File.WriteAllText(path + ".part.segments", System.Text.Json.JsonSerializer.Serialize(new { TotalBytes = totalBytes, Segments = segments }));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PartialResponse_WithShorterRangesOrUnknownTotal_PreservesValidResumeBehavior(bool segmented)
+    {
+        var directory = Directory.CreateTempSubdirectory("TransferIntegrity_");
+        try
+        {
+            var path = Path.Combine(directory.FullName, "payload.bin");
+            var data = Enumerable.Range(0, 128 * 1024).Select(i => (byte)(i % 251 + 1)).ToArray();
+            var part = segmented ? new byte[data.Length] : data.Take(17).ToArray();
+            File.WriteAllBytes(path + ".part", part);
+            if (segmented) WriteIntegrityCheckpoint(path, data.Length, _ => 0);
+            var requested = new System.Collections.Concurrent.ConcurrentBag<long>();
+            using var handler = new TestMockHttpMessageHandler((request, _) =>
+            {
+                var range = Assert.Single(request.Headers.Range!.Ranges);
+                long from = range.From!.Value;
+                long to = range.To ?? data.Length - 1;
+                if (segmented && from % (data.Length / 4) == 0) to -= data.Length / 8;
+                requested.Add(from);
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+                {
+                    Content = new ByteArrayContent(data.AsSpan((int)from, (int)(to - from + 1)).ToArray())
+                };
+                response.Content.Headers.ContentRange = segmented
+                    ? new System.Net.Http.Headers.ContentRangeHeaderValue(from, to, data.Length)
+                    : new System.Net.Http.Headers.ContentRangeHeaderValue(from, to);
+                return Task.FromResult(response);
+            });
+            using var client = new HttpClient(handler);
+            var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = segmented ? 4 : 1 };
+            var item = new DownloadItem
+            {
+                FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
+                Status = DownloadStatus.Paused, IsCustomName = true
+            };
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(data, File.ReadAllBytes(path));
+            var expectedStarts = segmented ? Enumerable.Range(0, 8).Select(i => (long)i * data.Length / 8) : new long[] { 17 };
+            Assert.Equal(expectedStarts, requested.OrderBy(start => start));
+            Assert.False(File.Exists(path + ".part"));
+            Assert.False(File.Exists(path + ".part.segments"));
+        }
+        finally { DeleteIntegrityDirectory(directory); }
+    }
+
+    private static void DeleteIntegrityDirectory(DirectoryInfo directory)
+    {
+        var expectedParent = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
+        if (!string.Equals(directory.Parent?.FullName, expectedParent, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Unexpected temporary directory.");
+        directory.Delete(recursive: true);
+    }
+
     [Fact]
     public async Task DownloadEngine_DownloadsAndRenamesFileProperly()
     {

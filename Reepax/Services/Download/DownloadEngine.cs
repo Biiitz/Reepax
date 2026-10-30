@@ -53,11 +53,11 @@ public class DownloadEngine
     }
 
     /// <summary>
-    /// Number of parallel connections (chunks) per download (1-20, default 5).
+    /// Number of parallel connections (chunks) per download (1-20, default 1).
     /// Synchronized from settings. Servers without range support
     /// automatically fall back to a single stream.
     /// </summary>
-    public int MaxConnectionsPerDownload { get; set; } = 5;
+    public int MaxConnectionsPerDownload { get; set; } = 1;
 
     /// <summary>
     /// Adaptive buffer sizing based on file or segment length:
@@ -389,7 +389,7 @@ public class DownloadEngine
                             }
                         }
 
-                        SaveSegmentState(segMetaPath, segState);
+                        SaveSegmentState(segMetaPath, segState, required: true);
                         try
                         {
                             await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
@@ -682,13 +682,25 @@ public class DownloadEngine
         }
     }
 
-    private static void SaveSegmentState(string segMetaPath, SegmentFileState state)
+    private static void SaveSegmentState(string segMetaPath, SegmentFileState state, bool required = false)
     {
         try
         {
             File.WriteAllText(segMetaPath, JsonSerializer.Serialize(state));
         }
-        catch { }
+        catch when (!required) { }
+    }
+
+    private static ContentRangeHeaderValue ValidateContentRange(HttpResponseMessage response, long expectedStart, long? expectedTotal = null)
+    {
+        var range = response.Content.Headers.ContentRange;
+        if (range == null || !string.Equals(range.Unit, "bytes", StringComparison.OrdinalIgnoreCase) ||
+            range.From is not long from || range.To is not long to ||
+            from != expectedStart || to < from || (range.Length is long total && total <= to) ||
+            (expectedTotal.HasValue && range.Length != expectedTotal.Value) ||
+            (response.Content.Headers.ContentLength is long length && length != to - from + 1))
+            throw new InvalidDataException("Server returned an inconsistent Content-Range header.");
+        return range;
     }
 
     private static void ApplyRequestHeaders(HttpRequestMessage request, DownloadItem item)
@@ -730,10 +742,11 @@ public class DownloadEngine
             ApplyRequestHeaders(request, item);
 
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (response.StatusCode == HttpStatusCode.PartialContent &&
-                response.Content.Headers.ContentRange?.Length is > 0)
+            if (response.StatusCode == HttpStatusCode.PartialContent)
             {
-                return (true, response.Content.Headers.ContentRange.Length.Value,
+                var range = ValidateContentRange(response, 0);
+                if (range.Length is > 0)
+                    return (true, range.Length.Value,
                         ExtractContentDispositionFileName(response));
             }
         }
@@ -758,18 +771,23 @@ public class DownloadEngine
     {
         var totalBytes = state.TotalBytes;
         var segments = state.Segments;
-        foreach (var s in segments)
-        {
-            s.InitializeReceivedBytes();
-        }
-        long initialDownloaded = segments.Sum(s => s.ReceivedBytes);
-
         // Preallocate target file to full size (instant on NTFS without writing zeroes)
         {
             using var prealloc = new FileStream(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             if (prealloc.Length != totalBytes)
+            {
+                if (segments.Any(segment => segment.Done > 0))
+                {
+                    foreach (var segment in segments) segment.Done = 0;
+                    // Persist the reset before extending the file to prevent trusting stale progress after a restart.
+                    SaveSegmentState(segMetaPath, state, required: true);
+                }
                 prealloc.SetLength(totalBytes);
+            }
         }
+
+        foreach (var segment in segments) segment.InitializeReceivedBytes();
+        long initialDownloaded = segments.Sum(segment => segment.ReceivedBytes);
 
         var speedTracker = new RollingSpeedTracker(initialDownloaded);
         // Shared trickle throttler across ALL segments -> 500 KB/s in paused mode
@@ -811,6 +829,8 @@ public class DownloadEngine
         try
         {
             using var fs = new FileStream(tempFilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous);
+            if (fs.Length != totalBytes)
+                throw new IOException("Partial file size changed before the transfer started.");
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             int maxConcurrentSegments = Math.Clamp(MaxConnectionsPerDownload, 1, segments.Count);
             using var segmentSemaphore = new SemaphoreSlim(maxConcurrentSegments, maxConcurrentSegments);
@@ -822,7 +842,7 @@ public class DownloadEngine
                 await segmentSemaphore.WaitAsync(linkedCts.Token);
                 try
                 {
-                    await DownloadSegmentAsync(item, seg, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, maxConcurrentSegments);
+                    await DownloadSegmentAsync(item, seg, totalBytes, fs.SafeFileHandle, trickleThrottler, linkedCts.Token, maxConcurrentSegments);
                 }
                 catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
                 {
@@ -930,6 +950,7 @@ public class DownloadEngine
     private async Task DownloadSegmentAsync(
         DownloadItem item,
         SegmentState segment,
+        long totalBytes,
         SafeFileHandle fileHandle,
         BandwidthThrottler trickleThrottler,
         CancellationToken cancellationToken,
@@ -975,13 +996,14 @@ public class DownloadEngine
                         throw new RangeNotSupportedException("Server did not accept the range request (no 206 Partial Content).");
                     }
 
+                    long responseEnd = ValidateContentRange(response, rangeStart, totalBytes).To!.Value;
                     using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                     long offset = rangeStart;
                     int bufferedBytes = 0;
                     long lastFlushTimestamp = Stopwatch.GetTimestamp();
                     long flushIntervalTicks = Stopwatch.Frequency / 4; // ~250ms watchdog for smooth UI progress updates
 
-                    while (segment.Done + bufferedBytes < segmentLength)
+                    while (segment.Done + bufferedBytes < segmentLength && offset + bufferedBytes <= responseEnd)
                     {
                         if (bufferedBytes >= bufferSize)
                         {
@@ -993,7 +1015,7 @@ public class DownloadEngine
                         }
 
                         int spaceInBuffer = bufferSize - bufferedBytes;
-                        long remainingInSegment = segmentLength - (segment.Done + bufferedBytes);
+                        long remainingInSegment = Math.Min(segmentLength - (segment.Done + bufferedBytes), responseEnd - offset - bufferedBytes + 1);
                         int toRead = (int)Math.Min(spaceInBuffer, remainingInSegment);
                         bool applyTrickle = item.IsTrickling;
                         toRead = _throttler.GetOptimalReadChunkSize(toRead, applyTrickle ? 500 * 1024 : 0, activeSegmentsCount);
@@ -1065,6 +1087,10 @@ public class DownloadEngine
                 {
                     throw;
                 }
+                catch (InvalidDataException)
+                {
+                    throw;
+                }
                 catch (Exception ex) when (IsRangeNotSupported(ex))
                 {
                     throw;
@@ -1091,6 +1117,9 @@ public class DownloadEngine
         long initialDownloadedBytes = 0,
         byte[]? buffer = null)
     {
+        if (response.StatusCode == HttpStatusCode.PartialContent)
+            ValidateContentRange(response, initialDownloadedBytes,
+                initialDownloadedBytes > 0 && item.TotalBytes > 0 ? item.TotalBytes : null);
         long? contentLength = response.Content.Headers.ContentLength;
         long totalBytes;
 

@@ -11,7 +11,7 @@ public class AppSettings
             : string.Empty;
 
     public int MaxConcurrentBackgroundDownloads { get; set; } = 2;
-    public int ConnectionsPerDownload { get; set; } = 5; // 1-20 parallel connections (chunks) per file
+    public int ConnectionsPerDownload { get; set; } = 1; // 1-20 parallel connections (chunks) per file
     public int MaxConcurrentDownloads 
     { 
         get => MaxConcurrentBackgroundDownloads; 

@@ -450,7 +450,7 @@ public partial class MainViewModel : ObservableObject
         MaxConcurrentDownloads = Math.Clamp(settings.MaxConcurrentBackgroundDownloads > 0 ? settings.MaxConcurrentBackgroundDownloads : 2, 1, 10);
         MaxConcurrentDownloadsText = MaxConcurrentDownloads.ToString();
         _queueManager.MaxConcurrentDownloads = MaxConcurrentDownloads;
-        ConnectionsPerDownload = Math.Clamp(settings.ConnectionsPerDownload > 0 ? settings.ConnectionsPerDownload : 5, 1, 20);
+        ConnectionsPerDownload = Math.Clamp(settings.ConnectionsPerDownload > 0 ? settings.ConnectionsPerDownload : 1, 1, 20);
         ConnectionsPerDownloadText = ConnectionsPerDownload.ToString();
         DownloadEngine.Instance.MaxConnectionsPerDownload = ConnectionsPerDownload;
         CurrentDownloadDirectory = settings.DefaultDownloadDirectory;
