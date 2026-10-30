@@ -265,6 +265,7 @@ public static class PackageGrouper
             Status = DownloadStatus.Queued
         };
 
+        var items = new List<DownloadItem>(links.Count);
         for (int i = 0; i < links.Count; i++)
         {
             var link = links[i];
@@ -300,10 +301,10 @@ public static class PackageGrouper
                 IsNormalized = true
             };
 
-            package.Items.Add(item);
+            items.Add(item);
         }
 
-        package.RecalculateAggregates();
+        package.AddItems(items);
         return package;
     }
 

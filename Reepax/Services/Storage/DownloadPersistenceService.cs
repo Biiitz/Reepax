@@ -1482,6 +1482,7 @@ public class DownloadPersistenceService : IDisposable
                     ElapsedDurationMs = pkgDto.ElapsedDurationMs
                 };
 
+                var items = new List<DownloadItem>(pkgDto.Items?.Count ?? 0);
                 if (pkgDto.Items != null)
                 {
                     foreach (var itemDto in pkgDto.Items)
@@ -1553,14 +1554,14 @@ public class DownloadPersistenceService : IDisposable
                             IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
                         };
 
-                        package.Items.Add(item);
+                        items.Add(item);
                     }
                 }
 
                 // Historical packages are already completed; prevent re-triggering completion notification
                 package.HasCompletedNotified = true;
 
-                package.RecalculateAggregates();
+                package.AddItems(items);
 
                 // Restore NextTaskStep states
                 if (pkgDto.NextTaskSteps != null && pkgDto.NextTaskSteps.Count > 0)
@@ -1765,6 +1766,7 @@ public class DownloadPersistenceService : IDisposable
                     ElapsedDurationMs = pkgDto.ElapsedDurationMs
                 };
 
+                var items = new List<DownloadItem>(pkgDto.Items?.Count ?? 0);
                 if (pkgDto.Items != null)
                 {
                     foreach (var itemDto in pkgDto.Items)
@@ -1892,7 +1894,7 @@ public class DownloadPersistenceService : IDisposable
                         item.SpeedBytesPerSecond = 0;
                         item.RemainingSeconds = 0;
 
-                        package.Items.Add(item);
+                        items.Add(item);
                     }
                 }
 
@@ -1911,7 +1913,7 @@ public class DownloadPersistenceService : IDisposable
                     }
                 }
 
-                package.RecalculateAggregates();
+                package.AddItems(items);
 
                 // Restore NextTaskStep states
                 if (pkgDto.NextTaskSteps != null && pkgDto.NextTaskSteps.Count > 0)

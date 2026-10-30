@@ -1,16 +1,261 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Reepax.Models;
+using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Reepax.Tests;
 
 public class PackageAggregateRefreshTests
 {
+    private readonly ITestOutputHelper _output;
+
+    public PackageAggregateRefreshTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1000)]
+    [InlineData(4000)]
+    public void BulkAddition_PublishesOneSnapshotAndAggregateRefresh(int count)
+    {
+        var package = new DownloadPackage { IsCustomName = true, AutoPar2Repair = false };
+        var originalSnapshot = package.ItemsSnapshot;
+        var items = Enumerable.Range(0, count).Select(_ => new DownloadItem
+        {
+            Status = DownloadStatus.Paused,
+            TotalBytes = 128,
+            DownloadedBytes = 32
+        }).ToArray();
+        int countNotifications = 0;
+        int collectionNotifications = 0;
+        package.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(DownloadPackage.TotalItemsCount))
+                countNotifications++;
+        };
+        package.Items.CollectionChanged += (_, e) =>
+        {
+            collectionNotifications++;
+            Assert.Same(originalSnapshot, package.ItemsSnapshot);
+            Assert.Equal(package.Id, Assert.IsType<DownloadItem>(Assert.Single(e.NewItems!)).PackageId);
+            package.RecalculateAggregates(force: true);
+            Assert.Equal(0, package.TotalItemsCount);
+        };
+
+        package.AddItems(items);
+
+        Assert.Equal(count, collectionNotifications);
+        Assert.Equal(count == 0 ? 0 : 1, countNotifications);
+        Assert.Equal(items, package.ItemsSnapshot);
+        Assert.Equal(count, package.TotalItemsCount);
+        Assert.Equal(count * 128L, package.TotalBytes);
+        Assert.Equal(count * 32L, package.DownloadedBytes);
+        Assert.Equal(count, package.EnabledItemsCount);
+        Assert.False(package.IsDirty);
+    }
+
+    [Fact]
+    public void BulkAddition_PreservesAggregatesAndNextTasksForMixedItems()
+    {
+        static DownloadItem[] CreateItems() => new[]
+        {
+            new DownloadItem { FileName = "archive.par2", HosterName = "Source A", TotalBytes = 100, DownloadedBytes = 100, Status = DownloadStatus.Completed },
+            new DownloadItem { HosterName = "Source B", TotalBytes = 200, DownloadedBytes = 50, ProgressPercentage = 25, Status = DownloadStatus.Paused },
+            new DownloadItem { HosterName = "Source A", ProgressPercentage = 20, Status = DownloadStatus.Paused },
+            new DownloadItem { TotalBytes = 900, IsEnabled = false, Status = DownloadStatus.Failed }
+        };
+        var sequential = new DownloadPackage { IsCustomName = true, AutoExtractArchives = true, HasCompletedNotified = true };
+        var batched = new DownloadPackage { IsCustomName = true, AutoExtractArchives = true, HasCompletedNotified = true };
+        foreach (var item in CreateItems())
+            sequential.Items.Add(item);
+        sequential.RecalculateAggregates(force: true);
+
+        batched.AddItems(CreateItems());
+
+        Assert.Equal(sequential.TotalBytes, batched.TotalBytes);
+        Assert.Equal(sequential.DownloadedBytes, batched.DownloadedBytes);
+        Assert.Equal(sequential.ProgressPercentage, batched.ProgressPercentage);
+        Assert.Equal(sequential.CompletedItemsCount, batched.CompletedItemsCount);
+        Assert.Equal(sequential.EnabledItemsCount, batched.EnabledItemsCount);
+        Assert.Equal(sequential.DeselectedItemsCount, batched.DeselectedItemsCount);
+        Assert.Equal(sequential.Status, batched.Status);
+        Assert.Equal(sequential.StatusMessage, batched.StatusMessage);
+        Assert.Equal(sequential.UsedHosters, batched.UsedHosters);
+        Assert.Equal(sequential.NextTaskSteps.Select(step => step.Key), batched.NextTaskSteps.Select(step => step.Key));
+        Assert.True(batched.HasPar2Files());
+        Assert.Contains(batched.NextTaskSteps, step => step.Key == "Par2");
+    }
+
+    [Fact]
+    public void BulkAddition_PreservesSubscriptionsAndSubsequentSingleItemUpdates()
+    {
+        var package = new DownloadPackage { IsCustomName = true, AutoPar2Repair = false, HasCompletedNotified = true };
+        var first = new DownloadItem { HosterName = "Source A", TotalBytes = 100, DownloadedBytes = 20, Status = DownloadStatus.Paused };
+        var second = new DownloadItem { TotalBytes = 200, DownloadedBytes = 100, Status = DownloadStatus.Paused };
+        package.AddItems(new[] { first, second });
+
+        first.IsEnabled = false;
+        Assert.Equal(1, package.EnabledItemsCount);
+        Assert.Equal(1, package.DeselectedItemsCount);
+        Assert.Equal(200, package.TotalBytes);
+        Assert.Equal(100, package.DownloadedBytes);
+        first.HosterName = "Source C";
+        Assert.Equal("Source C", package.PrimaryHosterName);
+        second.DownloadedBytes = 200;
+        second.Status = DownloadStatus.Completed;
+        Assert.Equal(DownloadStatus.Completed, package.Status);
+        Assert.Equal(1, package.CompletedItemsCount);
+
+        package.Items.Remove(first);
+        first.HosterName = "Source D";
+        Assert.False(package.IsDirty);
+        var replacement = new DownloadItem { Status = DownloadStatus.Paused, TotalBytes = 50 };
+        package.Items[0] = replacement;
+        Assert.Equal(50, package.TotalBytes);
+        Assert.Equal(package.Id, replacement.PackageId);
+        second.HosterName = "Source E";
+        Assert.False(package.IsDirty);
+        package.Items.Clear();
+        replacement.HosterName = "Source F";
+        Assert.False(package.IsDirty);
+        Assert.Empty(package.ItemsSnapshot);
+        Assert.Equal(0, package.TotalItemsCount);
+        package.Items.Add(first);
+        Assert.Single(package.ItemsSnapshot);
+        Assert.Equal(1, package.TotalItemsCount);
+    }
+
+    [Fact]
+    public void BulkAddition_WhenEnumerationFails_PublishesAddedItemsAndRestoresUpdates()
+    {
+        var package = new DownloadPackage { IsCustomName = true, AutoPar2Repair = false };
+        var item = new DownloadItem { Status = DownloadStatus.Paused, TotalBytes = 100 };
+        IEnumerable<DownloadItem> FailingItems()
+        {
+            yield return item;
+            throw new InvalidOperationException("Item enumeration failed.");
+        }
+
+        Assert.Throws<InvalidOperationException>(() => package.AddItems(FailingItems()));
+
+        Assert.Same(item, Assert.Single(package.ItemsSnapshot));
+        Assert.Equal(1, package.TotalItemsCount);
+        Assert.Equal(100, package.TotalBytes);
+        item.IsEnabled = false;
+        Assert.Equal(0, package.EnabledItemsCount);
+        package.Items.Add(new DownloadItem { Status = DownloadStatus.Paused, TotalBytes = 200 });
+        Assert.Equal(2, package.TotalItemsCount);
+        Assert.Equal(200, package.TotalBytes);
+    }
+
+    [Theory]
+    [InlineData("links")]
+    [InlineData("downloads")]
+    [InlineData("history")]
+    [InlineData("package")]
+    public void PackageConstruction_AllocationsGrowLinearly(string source)
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), "PackageBuild_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testDirectory);
+        try
+        {
+            Func<DownloadPackage> Prepare(int count)
+            {
+                if (source == "links")
+                {
+                    var links = Enumerable.Range(0, count).Select(i => new ExtractedLink
+                    {
+                        Url = $"https://example.invalid/{i}",
+                        RawFileName = $"archive.part{i:D4}.rar",
+                        Hoster = new HosterInfo { DisplayName = "Source A" }
+                    }).ToList();
+                    return () => PackageGrouper.CreatePackage("Archive", links, testDirectory, autoPar2Repair: false);
+                }
+
+                if (source == "package")
+                {
+                    var json = JsonSerializer.Serialize(new ReepaxPackageDto
+                    {
+                        Name = "Archive",
+                        AutoPar2Repair = false,
+                        Items = Enumerable.Range(0, count).Select(i => new ReepaxPackageItemDto
+                        {
+                            FileName = $"archive.part{i:D4}.rar",
+                            OriginalUrl = $"https://example.invalid/{i}",
+                            HosterName = "Source A",
+                            TotalBytes = 128
+                        }).ToList()
+                    });
+                    return () => PackageExportImportService.ImportFromJson(json);
+                }
+
+                var directory = Path.Combine(testDirectory, count.ToString());
+                Directory.CreateDirectory(directory);
+                var downloadsFile = Path.Combine(directory, "downloads.json");
+                var dto = new DownloadPackageDto
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Archive",
+                    IsCustomName = true,
+                    AutoPar2Repair = false,
+                    SaveDirectory = Path.Combine(directory, "Archive"),
+                    Items = Enumerable.Range(0, count).Select(i => new DownloadItemDto
+                    {
+                        Id = Guid.NewGuid(),
+                        FileName = $"archive.part{i:D4}.rar",
+                        OriginalUrl = $"https://example.invalid/{i}",
+                        HosterName = "Source A",
+                        TotalBytes = 128,
+                        DownloadedBytes = 64,
+                        Status = DownloadStatus.Paused
+                    }).ToList()
+                };
+                File.WriteAllText(source == "history" ? Path.Combine(directory, "history.json") : downloadsFile,
+                    JsonSerializer.Serialize(new[] { dto }));
+                return () =>
+                {
+                    using var service = new DownloadPersistenceService(downloadsFile);
+                    return Assert.Single(source == "history" ? service.LoadHistory() : service.LoadDownloads());
+                };
+            }
+
+            static long Measure(Func<DownloadPackage> create, int expectedCount)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                var package = create();
+                long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+                Assert.Equal(expectedCount, package.Items.Count);
+                Assert.Equal(expectedCount, package.TotalItemsCount);
+                return allocated;
+            }
+
+            var createSmall = Prepare(1000);
+            var createLarge = Prepare(4000);
+            createSmall();
+            createLarge();
+            long small = Measure(createSmall, 1000);
+            long large = Measure(createLarge, 4000);
+            _output.WriteLine($"Allocated bytes: 1000 items = {small}; 4000 items = {large}.");
+            Assert.True(large <= small * 6,
+                $"Construction allocated {large} bytes for 4000 items and {small} bytes for 1000 items.");
+        }
+        finally
+        {
+            Directory.Delete(testDirectory, true);
+        }
+    }
+
     [Fact]
     public void ProgressUpdates_DoNotNotifyUnchangedStructuralProperties()
     {

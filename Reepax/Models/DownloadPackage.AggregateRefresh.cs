@@ -10,6 +10,7 @@ namespace Reepax.Models;
 public partial class DownloadPackage
 {
     private DownloadItem[] _itemsSnapshot = Array.Empty<DownloadItem>();
+    private bool _deferItemUpdates;
     private int _hosterNotificationsDirty = 1;
     private string _publishedPrimaryHoster = "Archive";
     private string[] _publishedHosters = Array.Empty<string>();
@@ -31,6 +32,28 @@ public partial class DownloadPackage
     private string? _publishedTimeCulture;
 
     internal IReadOnlyList<DownloadItem> ItemsSnapshot => Volatile.Read(ref _itemsSnapshot);
+
+    // Add prepared items without rebuilding the package after every insertion.
+    internal void AddItems(IEnumerable<DownloadItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        bool wasDeferring = _deferItemUpdates;
+        _deferItemUpdates = true;
+        try
+        {
+            foreach (var item in items)
+                Items.Add(item);
+        }
+        finally
+        {
+            _deferItemUpdates = wasDeferring;
+            if (!wasDeferring)
+            {
+                Volatile.Write(ref _itemsSnapshot, Items.ToArray());
+                RecalculateAggregates(force: true);
+            }
+        }
+    }
 
     private static int CountEnabledItems(DownloadItem[] items)
     {
@@ -73,6 +96,9 @@ public partial class DownloadPackage
 
     private void PublishHosterChanges(DownloadItem[] items)
     {
+        if (_deferItemUpdates)
+            return;
+
         if (Interlocked.Exchange(ref _hosterNotificationsDirty, 0) == 0)
             return;
 

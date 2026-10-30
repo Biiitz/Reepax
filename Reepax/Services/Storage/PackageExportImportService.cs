@@ -233,6 +233,7 @@ public static class PackageExportImportService
 
         pkg.SaveDirectory = Path.Combine(baseDownloadDir, subDir);
 
+        var items = new List<DownloadItem>(dto.Items?.Count ?? 0);
         if (dto.Items != null)
         {
             foreach (var itemDto in dto.Items)
@@ -264,12 +265,11 @@ public static class PackageExportImportService
                     SaveFilePath = Path.Combine(pkg.SaveDirectory, safeFileName)
                 };
 
-                pkg.Items.Add(item);
+                items.Add(item);
             }
         }
 
-        pkg.EnsureNextTaskSteps();
-        pkg.RecalculateAggregates();
+        pkg.AddItems(items);
         return pkg;
     }
 
