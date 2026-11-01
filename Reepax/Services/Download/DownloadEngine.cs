@@ -319,7 +319,7 @@ public partial class DownloadEngine
             {
                 if (segState.IsSequential)
                 {
-                    await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, null, segState);
+                    await ExecuteSingleConnectionWithRetriesAsync(item, tempFilePath, cancellationToken, null, segState);
                     return;
                 }
                 try
@@ -473,7 +473,7 @@ public partial class DownloadEngine
         string tempFilePath, 
         CancellationToken cancellationToken, 
         byte[]? buffer = null)
-        => await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, null);
+        => await ExecuteSingleConnectionWithRetriesAsync(item, tempFilePath, cancellationToken, buffer, null);
 
     private async Task ExecuteSingleConnectionCoreAsync(
         DownloadItem item, string tempFilePath, CancellationToken cancellationToken,
@@ -1042,7 +1042,7 @@ public partial class DownloadEngine
                     if (!MatchesRepresentation(response, state)) throw new RepresentationChangedException();
                     long responseEnd = ValidateContentRange(response, rangeStart, state.TotalBytes).To!.Value;
                     ApplyResponseDigest(response, item);
-                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    using var stream = new NetworkReadTimeoutStream(await response.Content.ReadAsStreamAsync(cancellationToken), NetworkReadTimeout, cancellationToken);
                     long offset = rangeStart;
                     int bufferedBytes = 0;
                     long lastFlushTimestamp = Stopwatch.GetTimestamp();
@@ -1259,7 +1259,8 @@ public partial class DownloadEngine
 
         try
         {
-            using var contentStream = await DecodeContentAsync(await response.Content.ReadAsStreamAsync(cancellationToken), response, cancellationToken);
+            using var networkStream = new NetworkReadTimeoutStream(await response.Content.ReadAsStreamAsync(cancellationToken), NetworkReadTimeout, cancellationToken);
+            using var contentStream = await DecodeContentAsync(networkStream, response, cancellationToken);
             string checkpointPath = tempFilePath + ".segments";
             if (initialDownloadedBytes == 0)
             {

@@ -224,7 +224,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,16,0">
                                     <TextBlock Text="{loc:Loc Settings_Language_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                                     <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Language_Subtitle}">
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
@@ -490,17 +490,21 @@
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingsSectionHeadingStyle}" Text="{loc:Loc Settings_Section_Behavior}" />
                             <Grid Margin="0,0,0,8">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="{loc:Loc Settings_PostDownload_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                    <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_PostDownload_Subtitle}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*" />
+                                    <ColumnDefinition Width="5*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,3,20,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Settings_PostDownload_Title}" TextWrapping="Wrap" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <Border Grid.Column="1" Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_PostDownload_Subtitle}">
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
-                                </StackPanel>
-                                <WrapPanel Grid.Row="1" Margin="0,12,0,0">
+                                </Grid>
+                                <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{loc:Loc PostDownload_Action_None}"
                                         IsChecked="{Binding IsNoneActionSelected, Mode=TwoWay}"
                                         GroupName="PostDownloadActionGroup"
@@ -602,39 +606,54 @@
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
 
                             <!-- ==================== 1. COMPLETION SOUND ==================== -->
-                            <StackPanel Margin="0,0,0,8">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="{loc:Loc Settings_Sound_Completion_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                        <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Sound_Completion_Subtitle}">
-                                            <Path Style="{StaticResource SettingInfoPathStyle}" />
-                                        </Border>
-                                    </StackPanel>
-                                    <CheckBox Grid.Column="1"
-                                        HorizontalAlignment="Right"
-                                        IsChecked="{Binding EnableCompletionSound, Mode=TwoWay}"
-                                        VerticalAlignment="Center"
-                                        Cursor="Hand" />
-                                </Grid>
+                            <Grid Margin="0,0,0,8" MinHeight="32">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+                                    <TextBlock Text="{loc:Loc Settings_Sound_Completion_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Sound_Completion_Subtitle}">
+                                        <Path Style="{StaticResource SettingInfoPathStyle}" />
+                                    </Border>
+                                </StackPanel>
+                                <CheckBox Grid.Column="2"
+                                    HorizontalAlignment="Right" Margin="16,0,0,0"
+                                    IsChecked="{Binding EnableCompletionSound, Mode=TwoWay}"
+                                    VerticalAlignment="Center"
+                                    Cursor="Hand" />
 
-                                <!-- Animated Completion Sound Sub-Row (Dropdown Left, Volume Right, and Trigger Selector) -->
-                                <Border x:Name="CompletionSoundVolumeContainer"
+                                <Border x:Name="CompletionSoundVolumeContainer" Grid.Column="1"
                                     ClipToBounds="True"
                                     Focusable="False">
-                                    <StackPanel Margin="0,10,0,2" x:Name="CompletionSoundVolumeContent" RenderTransformOrigin="0.5,0.5">
-                                        <StackPanel.RenderTransform>
+                                    <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0" x:Name="CompletionSoundVolumeContent" RenderTransformOrigin="0.5,0.5">
+                                        <WrapPanel.RenderTransform>
                                             <TranslateTransform x:Name="CompletionSoundVolumeTranslate" Y="0" />
-                                        </StackPanel.RenderTransform>
+                                        </WrapPanel.RenderTransform>
+
+                                        <!-- Completion scope -->
+                                        <StackPanel Margin="0,0,20,0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="CompletionSoundTriggerGroup"
+                                                Content="{loc:Loc Settings_Sound_Trigger_EntirePackage}"
+                                                IsChecked="{Binding IsCompletionSoundEntirePackage, Mode=TwoWay}"
+                                                FontWeight="SemiBold"
+                                                FontSize="11.5"
+                                                Margin="0,0,14,0"
+                                                Cursor="Hand" />
+                                            <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="CompletionSoundTriggerGroup"
+                                                Content="{loc:Loc Settings_Sound_Trigger_IndividualFiles}"
+                                                IsChecked="{Binding IsCompletionSoundIndividualFiles, Mode=TwoWay}"
+                                                FontWeight="SemiBold"
+                                                FontSize="11.5"
+                                                Cursor="Hand" />
+                                        </StackPanel>
 
                                         <!-- Top Sub-Row: Sound Selector & Volume Slider -->
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="20" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
 
@@ -907,61 +926,42 @@
                                             </StackPanel>
                                         </Grid>
 
-                                        <!-- Bottom Sub-Row: Trigger Selector (Entire Package vs Individual Files) -->
-                                        <StackPanel Margin="0,12,0,2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <RadioButton GroupName="CompletionSoundTriggerGroup"
-                                                Content="{loc:Loc Settings_Sound_Trigger_EntirePackage}"
-                                                IsChecked="{Binding IsCompletionSoundEntirePackage, Mode=TwoWay}"
-                                                Foreground="{DynamicResource TextPrimaryBrush}"
-                                                FontWeight="SemiBold"
-                                                FontSize="11.5"
-                                                Margin="0,0,14,0"
-                                                Cursor="Hand" />
-                                            <RadioButton GroupName="CompletionSoundTriggerGroup"
-                                                Content="{loc:Loc Settings_Sound_Trigger_IndividualFiles}"
-                                                IsChecked="{Binding IsCompletionSoundIndividualFiles, Mode=TwoWay}"
-                                                Foreground="{DynamicResource TextPrimaryBrush}"
-                                                FontWeight="SemiBold"
-                                                FontSize="11.5"
-                                                Cursor="Hand" />
-                                        </StackPanel>
-                                    </StackPanel>
+
+                                    </WrapPanel>
                                 </Border>
-                            </StackPanel>
+                            </Grid>
 
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
 
                             <!-- ==================== 2. FEHLGESCHLAGEN-SOUND ==================== -->
-                            <StackPanel Margin="0,0,0,8">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="{loc:Loc Settings_Sound_Error_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                        <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Sound_Error_Subtitle}">
-                                            <Path Style="{StaticResource SettingInfoPathStyle}" />
-                                        </Border>
-                                    </StackPanel>
-                                    <CheckBox Grid.Column="1"
-                                        HorizontalAlignment="Right"
-                                        IsChecked="{Binding EnableErrorSound, Mode=TwoWay}"
-                                        VerticalAlignment="Center"
-                                        Cursor="Hand" />
-                                </Grid>
+                            <Grid Margin="0,0,0,8" MinHeight="32">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+                                    <TextBlock Text="{loc:Loc Settings_Sound_Error_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Sound_Error_Subtitle}">
+                                        <Path Style="{StaticResource SettingInfoPathStyle}" />
+                                    </Border>
+                                </StackPanel>
+                                <CheckBox Grid.Column="2"
+                                    HorizontalAlignment="Right" Margin="16,0,0,0"
+                                    IsChecked="{Binding EnableErrorSound, Mode=TwoWay}"
+                                    VerticalAlignment="Center"
+                                    Cursor="Hand" />
 
-                                <!-- Animated Error Sound Sub-Row (Dropdown Left, Volume Right) -->
-                                <Border x:Name="ErrorSoundVolumeContainer"
+                                <Border x:Name="ErrorSoundVolumeContainer" Grid.Column="1"
                                     ClipToBounds="True"
                                     Focusable="False">
-                                    <Grid Margin="0,10,0,2" x:Name="ErrorSoundVolumeContent" RenderTransformOrigin="0.5,0.5">
+                                    <Grid Margin="0" x:Name="ErrorSoundVolumeContent" RenderTransformOrigin="0.5,0.5">
                                         <Grid.RenderTransform>
                                             <TranslateTransform x:Name="ErrorSoundVolumeTranslate" Y="0" />
                                         </Grid.RenderTransform>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="20" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
 
@@ -1135,7 +1135,7 @@
                                         </StackPanel>
                                     </Grid>
                                 </Border>
-                            </StackPanel>
+                            </Grid>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource SettingsCardStyle}">

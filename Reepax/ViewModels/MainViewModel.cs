@@ -1421,13 +1421,19 @@ public partial class MainViewModel : ObservableObject
     public void RefreshRootPackages()
     {
         var roots = Packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
+        var targetPackages = new HashSet<DownloadPackage>(roots, ReferenceEqualityComparer.Instance);
+        var retainedPackages = new HashSet<DownloadPackage>(ReferenceEqualityComparer.Instance);
 
-        // 1. Remove packages from RootPackages that no longer match the active filter (back-to-front)
+        // Preserve live instances and avoid searching the target list for each visible package.
         for (int i = RootPackages.Count - 1; i >= 0; i--)
         {
-            if (!roots.Contains(RootPackages[i]))
+            if (!targetPackages.Contains(RootPackages[i]))
             {
                 RootPackages.RemoveAt(i);
+            }
+            else
+            {
+                retainedPackages.Add(RootPackages[i]);
             }
         }
 
@@ -1436,18 +1442,19 @@ public partial class MainViewModel : ObservableObject
             ? SortPackages(roots, SortColumn, SortDirection.Value)
             : roots;
 
-        // 3. Single-pass insertion and repositioning for minimal collection mutations
+        // Search only when an existing package actually needs to move.
         for (int targetIndex = 0; targetIndex < targetOrder.Count; targetIndex++)
         {
             var targetPkg = targetOrder[targetIndex];
-            int currentIndex = RootPackages.IndexOf(targetPkg);
-            if (currentIndex < 0)
+            if (targetIndex < RootPackages.Count && ReferenceEquals(RootPackages[targetIndex], targetPkg))
+                continue;
+            if (retainedPackages.Add(targetPkg))
             {
                 RootPackages.Insert(targetIndex, targetPkg);
             }
-            else if (currentIndex != targetIndex)
+            else
             {
-                RootPackages.Move(currentIndex, targetIndex);
+                RootPackages.Move(RootPackages.IndexOf(targetPkg), targetIndex);
             }
         }
 

@@ -14,6 +14,8 @@ public static class ControlMotion
         "PressFeedback", typeof(bool), typeof(ControlMotion), new PropertyMetadata(false, OnPressFeedbackChanged));
     public static readonly DependencyProperty IsExpandedProperty = DependencyProperty.RegisterAttached(
         "IsExpanded", typeof(bool?), typeof(ControlMotion), new PropertyMetadata(null, OnExpandedChanged));
+    public static readonly DependencyProperty SortDirectionProperty = DependencyProperty.RegisterAttached(
+        "SortDirection", typeof(ListSortDirection?), typeof(ControlMotion), new PropertyMetadata(null, OnSortDirectionChanged));
     private static readonly DependencyProperty StateProperty = DependencyProperty.RegisterAttached("State", typeof(PressState), typeof(ControlMotion));
     private static readonly DependencyProperty RotationProperty = DependencyProperty.RegisterAttached("Rotation", typeof(RotationState), typeof(ControlMotion));
 
@@ -21,6 +23,15 @@ public static class ControlMotion
     public static void SetPressFeedback(DependencyObject element, bool value) => element.SetValue(PressFeedbackProperty, value);
     public static bool? GetIsExpanded(DependencyObject element) => (bool?)element.GetValue(IsExpandedProperty);
     public static void SetIsExpanded(DependencyObject element, bool? value) => element.SetValue(IsExpandedProperty, value);
+    public static ListSortDirection? GetSortDirection(DependencyObject element) => (ListSortDirection?)element.GetValue(SortDirectionProperty);
+    public static void SetSortDirection(DependencyObject element, ListSortDirection? value) => element.SetValue(SortDirectionProperty, value);
+
+    private static void OnSortDirectionChanged(DependencyObject element, DependencyPropertyChangedEventArgs args)
+    {
+        FadeAnimation.SetIsShown(element, args.NewValue != null);
+        if (args.NewValue is ListSortDirection direction)
+            SetIsExpanded(element, direction == ListSortDirection.Descending);
+    }
 
     private static void OnPressFeedbackChanged(DependencyObject element, DependencyPropertyChangedEventArgs args)
     {

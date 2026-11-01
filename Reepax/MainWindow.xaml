@@ -1829,19 +1829,14 @@
                                           Visibility="{Binding ShowColName, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_Name}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Name">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Name">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Name">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Name" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -1857,19 +1852,14 @@
                                           Visibility="{Binding ShowColHoster, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,4,2,4">
                                             <TextBlock Text="{loc:Loc Col_Hoster}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Hoster">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Hoster">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Hoster">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Hoster" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -1885,19 +1875,14 @@
                                           Visibility="{Binding ShowColSavePath, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_SavePath}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="SavePath">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="SavePath">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="SavePath">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="SavePath" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -1913,19 +1898,14 @@
                                           Visibility="{Binding ShowColSize, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_Size}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Size">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Size">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Size">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Size" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -1941,19 +1921,14 @@
                                           Visibility="{Binding ShowColProgress, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_Progress}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Progress">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Progress">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Progress">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Progress" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -1969,19 +1944,14 @@
                                           Visibility="{Binding ShowColSpeed, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_Speed}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Speed">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Speed">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Speed">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Speed" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -1997,19 +1967,14 @@
                                           Visibility="{Binding ShowColEta, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,4,4,4">
                                             <TextBlock Text="{loc:Loc Col_Eta}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Eta">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Eta">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Eta">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Eta" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -2025,19 +1990,14 @@
                                           Visibility="{Binding ShowColStatus, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_Status}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Status">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Status">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Status">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Status" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -2053,19 +2013,14 @@
                                           Visibility="{Binding ShowColDuration, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,4,4,4">
                                             <TextBlock Text="{loc:Loc Col_Duration}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Duration">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Duration">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Duration">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Duration" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -2081,19 +2036,14 @@
                                           Visibility="{Binding ShowColAddedDate, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,4,4,4">
                                             <TextBlock Text="{loc:Loc Col_AddedDate}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="AddedDate">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="AddedDate">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="AddedDate">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="AddedDate" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -2109,19 +2059,14 @@
                                           Visibility="{Binding ShowColCompletedDate, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4,4,4,4">
                                             <TextBlock Text="{loc:Loc Col_CompletedDate}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="CompletedDate">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="CompletedDate">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="CompletedDate">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="CompletedDate" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -2137,19 +2082,14 @@
                                           Visibility="{Binding ShowColChecksum, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,4,8,4">
                                             <TextBlock Text="{loc:Loc Col_Checksum}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Checksum">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Checksum">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Checksum">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Checksum" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 
@@ -2165,19 +2105,14 @@
                                           Visibility="{Binding ShowColActions, Converter={StaticResource BoolToVisConverter}}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,4,4,4">
                                             <TextBlock Text="{loc:Loc Col_Actions}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                            <Path Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center">
-                                                <Path.Data>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowGeometryConverter}" ConverterParameter="Actions">
+                                            <Path Data="M 0 5 L 4 0 L 8 5 Z" helpers:FadeAnimation.IsShown="False"
+                                                  Width="7" Height="5" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" Margin="5,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                                <helpers:ControlMotion.SortDirection>
+                                                    <MultiBinding Converter="{StaticResource ColumnSortDirectionConverter}" ConverterParameter="Actions">
                                                         <Binding Path="SortColumn" />
                                                         <Binding Path="SortDirection" />
                                                     </MultiBinding>
-                                                </Path.Data>
-                                                <Path.Visibility>
-                                                    <MultiBinding Converter="{StaticResource ColumnSortArrowVisibilityConverter}" ConverterParameter="Actions">
-                                                        <Binding Path="SortColumn" />
-                                                        <Binding Path="SortDirection" />
-                                                    </MultiBinding>
-                                                </Path.Visibility>
+                                                </helpers:ControlMotion.SortDirection>
                                             </Path>
                                         </StackPanel>
                                         <Border Tag="Actions" HorizontalAlignment="Right" Width="8" Margin="0,0,-4,0" Cursor="SizeWE" Background="Transparent" 

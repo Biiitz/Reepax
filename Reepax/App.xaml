@@ -40,6 +40,7 @@
             <converters:BoolToRightBorderThicknessConverter x:Key="BoolToRightBorderThicknessConverter" />
             <converters:ColumnSortArrowGeometryConverter x:Key="ColumnSortArrowGeometryConverter" />
             <converters:ColumnSortArrowVisibilityConverter x:Key="ColumnSortArrowVisibilityConverter" />
+            <converters:ColumnSortDirectionConverter x:Key="ColumnSortDirectionConverter" />
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
 
             <!-- Dedicated compact button style for TreeListView row actions -->

@@ -318,17 +318,17 @@ public partial class DialogUiTests
         });
     }
 
-    private static void RenderSettings(FrameworkElement view, string name)
+    private static void RenderSettings(FrameworkElement view, string name, int width = 900)
     {
         PumpSettingsAnimations();
-        view.Measure(new Size(900, 680));
-        view.Arrange(new Rect(0, 0, 900, 680));
+        view.Measure(new Size(width, 680));
+        view.Arrange(new Rect(0, 0, width, 680));
         view.UpdateLayout();
         PumpSettingsAnimations();
         string? directory = Environment.GetEnvironmentVariable("REEPAX_UI_PREVIEW_DIRECTORY");
         if (string.IsNullOrWhiteSpace(directory)) return;
         Directory.CreateDirectory(directory);
-        var image = new RenderTargetBitmap(900, 680, 96, 96, PixelFormats.Pbgra32);
+        var image = new RenderTargetBitmap(width, 680, 96, 96, PixelFormats.Pbgra32);
         image.Render(view);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(image));

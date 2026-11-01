@@ -217,6 +217,7 @@ public static class Strings_en
         ["Status_DownloadingPackage"] = "Downloading",
         ["Status_Starting"] = "Starting",
         ["Status_Connecting"] = "Connecting",
+        ["Error_DownloadReadTimeout"] = "The server stopped sending download data. Please try again later.",
         ["Status_ResumingDownload"] = "Resuming download",
         ["Status_Paused"] = "Paused",
         ["Status_Completed"] = "Completed",
