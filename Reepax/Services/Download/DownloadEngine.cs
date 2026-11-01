@@ -1468,7 +1468,15 @@ public partial class DownloadEngine
             Directory.CreateDirectory(targetDir);
         }
 
-        File.Move(tempFilePath, actualFinalPath, overwrite: true);
+        try
+        {
+            // Publication must never replace a file created by another download or application.
+            File.Move(tempFilePath, actualFinalPath, overwrite: false);
+        }
+        catch (IOException) when (Path.Exists(actualFinalPath))
+        {
+            throw new IOException(Loc.Get("Error_DownloadDestinationExists"));
+        }
         string checkpointPath = tempFilePath + ".segments";
         if (File.Exists(checkpointPath)) Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(checkpointPath);
 

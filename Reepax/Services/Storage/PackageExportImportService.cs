@@ -269,6 +269,7 @@ public static class PackageExportImportService
             }
         }
 
+        PackageImportTargets.GetValidatedPaths(items);
         pkg.AddItems(items);
         return pkg;
     }
@@ -288,8 +289,11 @@ public static class PackageExportImportService
             if (pkg == null) return null;
 
             using var pathLease = await PackagePathOperationGate.Instance.EnterAsync();
+            var paths = PackageImportTargets.GetValidatedPaths(pkg.ItemsSnapshot);
+            await Task.Run(() => PackageImportTargets.EnsureDiskAvailable(paths));
             void AddToUi()
             {
+                PackageImportTargets.EnsurePackagesAvailable(paths, viewModel.Packages);
                 viewModel.Packages.Add(pkg);
                 viewModel.RecalculateGlobalStats();
                 viewModel.StatusSummary = Loc.Format("Status_PackageImported", pkg.Name);

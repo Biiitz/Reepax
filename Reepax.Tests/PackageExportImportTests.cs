@@ -12,16 +12,19 @@ namespace Reepax.Tests;
 public class PackageExportImportTests : IDisposable
 {
     private readonly string _tempTestDir;
+    private readonly string _previousDownloadDirectory = SettingsService.Instance.Settings.DefaultDownloadDirectory;
 
     public PackageExportImportTests()
     {
         DownloadPersistenceService.IsTestEnvironment = true;
         _tempTestDir = Path.Combine(Path.GetTempPath(), "Reepax_ExportImportTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempTestDir);
+        SettingsService.Instance.Settings.DefaultDownloadDirectory = _tempTestDir;
     }
 
     public void Dispose()
     {
+        SettingsService.Instance.Settings.DefaultDownloadDirectory = _previousDownloadDirectory;
         try
         {
             if (Directory.Exists(_tempTestDir))

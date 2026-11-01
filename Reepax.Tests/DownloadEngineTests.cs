@@ -2908,7 +2908,7 @@ public class DownloadEngineTests
             using var httpClient = new HttpClient(handler);
             var engine = new DownloadEngine(httpClient) { MaxConnectionsPerDownload = 1 };
 
-            // Lock destination file so the initial File.Move(tempFilePath, actualFinalPath, overwrite: true) fails
+            // Keep an occupied destination until its conflict is explicitly resolved.
             using (var lockStream = new FileStream(destinationFile, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
             {
                 await engine.StartDownloadAsync(item, item.DirectDownloadUrl, null, null, null, null);
@@ -2917,6 +2917,9 @@ public class DownloadEngineTests
                 Assert.Equal(payload.Length, new FileInfo(partFile).Length);
                 Assert.Equal(1, httpRequests);
             }
+
+            Assert.Equal(0, new FileInfo(destinationFile).Length);
+            File.Delete(destinationFile);
 
             var completedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             engine.DownloadCompleted += i => { if (i.Id == item.Id) completedTcs.TrySetResult(true); };
