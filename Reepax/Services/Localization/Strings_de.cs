@@ -638,6 +638,12 @@ public static class Strings_de
         ["Integrity_OriginalChecksumMatched"] = "Stimmt mit der bereitgestellten Originalprüfsumme überein.",
         ["Integrity_LocalFingerprintOnly"] = "Lokaler Fingerabdruck berechnet. Zum Vergleich war keine Originalprüfsumme verfügbar.",
         ["Integrity_NotChecked"] = "Die Integrität wurde noch nicht bestätigt.",
+        ["Settings_Section_Appearance"] = "Darstellung & Sprache",
+        ["Settings_Section_Behavior"] = "App-Verhalten",
+        ["Settings_Section_Notifications"] = "Benachrichtigungen & Töne",
+        ["Settings_Section_Workflow"] = "Arbeitsablauf & Diagnose",
+        ["Settings_Section_Transfers"] = "Download-Limits",
+        ["Settings_Section_Extraction"] = "Entpacken & Reparieren",
         // Startup Loading Screen
         ["Startup_LoadingTitle"] = "Downloads werden initialisiert...",
         ["Startup_Step_LoadingDownloads"] = "Lade Download-Liste...",

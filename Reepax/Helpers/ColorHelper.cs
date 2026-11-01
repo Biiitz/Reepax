@@ -5,6 +5,17 @@ namespace Reepax.Helpers;
 
 public static class ColorHelper
 {
+    public static Color GetContrastForeground(Color background)
+    {
+        static double Linear(byte value)
+        {
+            double channel = value / 255.0;
+            return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+        }
+        double luminance = 0.2126 * Linear(background.R) + 0.7152 * Linear(background.G) + 0.0722 * Linear(background.B);
+        return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? Colors.Black : Colors.White;
+    }
+
     public static Color FromHsv(double hue, double saturation, double value)
     {
         hue = Math.Clamp(hue, 0, 360);

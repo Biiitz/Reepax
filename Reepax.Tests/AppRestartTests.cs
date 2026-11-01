@@ -132,8 +132,8 @@ public class AppRestartTests
             System.Windows.ResourceDictionary dict;
             if (File.Exists(themePath))
             {
-                using var stream = File.OpenRead(themePath);
-                dict = (System.Windows.ResourceDictionary)System.Windows.Markup.XamlReader.Load(stream);
+                var theme = File.ReadAllText(themePath).Replace("clr-namespace:Reepax.Helpers", "clr-namespace:Reepax.Helpers;assembly=Reepax");
+                dict = (System.Windows.ResourceDictionary)System.Windows.Markup.XamlReader.Parse(theme);
             }
             else
             {

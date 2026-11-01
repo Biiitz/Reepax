@@ -173,7 +173,7 @@
             </StackPanel>
 
             <!-- Close Button (Primary/Accent) -->
-            <Button x:Name="CloseButton"
+            <Button x:Name="CloseButton" Style="{DynamicResource AccentButtonStyle}"
                     Click="CloseButton_Click"
                     IsDefault="True"
                     IsCancel="True"
@@ -182,7 +182,6 @@
                     HorizontalAlignment="Right"
                     Background="{DynamicResource AccentBlueBrush}"
                     BorderThickness="0"
-                    Foreground="White"
                     Cursor="Hand">
                 <Button.Resources>
                     <Style TargetType="Border">

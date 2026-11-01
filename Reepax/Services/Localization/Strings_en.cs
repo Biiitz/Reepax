@@ -638,6 +638,12 @@ public static class Strings_en
         ["Integrity_OriginalChecksumMatched"] = "Matches the supplied original checksum.",
         ["Integrity_LocalFingerprintOnly"] = "Local fingerprint calculated. No original checksum was available for comparison.",
         ["Integrity_NotChecked"] = "Integrity has not been confirmed.",
+        ["Settings_Section_Appearance"] = "Appearance & language",
+        ["Settings_Section_Behavior"] = "App behavior",
+        ["Settings_Section_Notifications"] = "Notifications & sounds",
+        ["Settings_Section_Workflow"] = "Workflow & diagnostics",
+        ["Settings_Section_Transfers"] = "Download limits",
+        ["Settings_Section_Extraction"] = "Extraction & repair",
         // Startup Loading Screen
         ["Startup_LoadingTitle"] = "Initializing Downloads...",
         ["Startup_Step_LoadingDownloads"] = "Loading download list...",

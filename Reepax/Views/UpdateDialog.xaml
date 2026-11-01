@@ -179,8 +179,8 @@
                             FontWeight="SemiBold"
                             Visibility="Visible">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Data="{StaticResource IconDownload}" Fill="#FFFFFF" Width="12" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{loc:Loc UpdateDialog_Button_InstallUpdate}" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                            <Path Data="{StaticResource IconDownload}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="12" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock Text="{loc:Loc UpdateDialog_Button_InstallUpdate}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
 
@@ -193,8 +193,8 @@
                             FontWeight="SemiBold"
                             Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Path Data="{StaticResource IconGitHub}" Fill="#FFFFFF" Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
-                            <TextBlock Text="{loc:Loc UpdateDialog_Button_GetUpdate}" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                            <Path Data="{StaticResource IconGitHub}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock Text="{loc:Loc UpdateDialog_Button_GetUpdate}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </StackPanel>

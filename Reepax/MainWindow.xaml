@@ -199,6 +199,7 @@
 
         <!-- Toolbar Square Button Style (Tabs-like flat rectangular button with separator line on the right) -->
         <Style x:Key="ToolbarSquareButtonStyle" TargetType="{x:Type Button}">
+            <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Height" Value="34" />
@@ -238,6 +239,7 @@
 
         <!-- Filter Dropdown Menu Item Style -->
         <Style x:Key="FilterDropdownItemStyle" TargetType="{x:Type Button}">
+            <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="BorderThickness" Value="0" />
@@ -2275,6 +2277,7 @@
                                           Drop="PackagesScrollViewer_Drop">
                                 <ScrollViewer.Resources>
                                     <Style x:Key="ScrollBarArrowButton" TargetType="{x:Type Button}">
+                                        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                         <Setter Property="Width" Value="18" />
                                         <Setter Property="Height" Value="18" />
                                         <Setter Property="Focusable" Value="False" />
@@ -2554,61 +2557,55 @@
                       Background="{DynamicResource BgDarkBrush}"
                       Opacity="1.0"
                       IsHitTestVisible="True">
-                    <!-- Centered Minimalist Card (clean, without logo) -->
-                    <Border HorizontalAlignment="Center"
+                    <Border x:Name="StartupPresentation" HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Background="{DynamicResource BgCardBrush}"
-                            BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="32,24"
-                            MinWidth="360"
-                            MaxWidth="420"
+                            Padding="24"
+                            Width="348"
                             SnapsToDevicePixels="True">
-                        <Border.Effect>
-                            <DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="4" Opacity="0.45" />
-                        </Border.Effect>
+                        <Border.RenderTransform>
+                            <TranslateTransform x:Name="StartupPresentationOffset" />
+                        </Border.RenderTransform>
 
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <!-- Main Status Header (localized) -->
                             <TextBlock x:Name="StartupStatusTitle"
                                        Text="{loc:Loc Startup_LoadingTitle}"
-                                       FontSize="13.5"
+                                       FontSize="18"
                                        FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                        HorizontalAlignment="Center"
-                                       Margin="0,0,0,6" />
+                                       Margin="0,0,0,8" />
 
                             <!-- Subtitle / current step detail -->
                             <TextBlock x:Name="StartupStatusDetail"
                                        Text="{loc:Loc Startup_Step_LoadingDownloads}"
-                                       FontSize="11"
+                                       FontSize="12"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center"
-                                       Margin="0,0,0,16" />
+                                       Margin="0,0,0,22" />
 
                             <!-- Progress Bar -->
-                            <Border Height="6"
-                                    Background="{DynamicResource BgDarkBrush}"
-                                    BorderBrush="{DynamicResource BorderDarkBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="3"
+                            <Border Height="3"
+                                    Background="{DynamicResource BgCardAltBrush}"
+                                    CornerRadius="1.5"
                                     Width="300"
                                     ClipToBounds="True"
-                                    Margin="0,0,0,10">
+                                    Margin="0,0,0,12">
                                 <Grid>
                                     <!-- Progress Fill -->
                                     <Border x:Name="StartupProgressFill"
-                                            HorizontalAlignment="Left"
-                                            Width="0"
-                                            CornerRadius="2"
-                                            Background="{DynamicResource AccentBlueBrush}" />
+                                            CornerRadius="1.5"
+                                            Background="{DynamicResource AccentBlueBrush}">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform x:Name="StartupProgressScale" ScaleX="0" />
+                                        </Border.RenderTransform>
+                                    </Border>
                                 </Grid>
                             </Border>
 
                             <!-- Footer / Package count or Ready indication -->
                             <TextBlock x:Name="StartupFooterText"
                                        Text=""
+                                       Height="16"
                                        FontSize="10.5"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        HorizontalAlignment="Center" />
@@ -2776,7 +2773,7 @@
                         </Button.Template>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Path Data="{StaticResource IconSliders}" Fill="{DynamicResource TextSecondaryBrush}" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,5,0" />
-                            <Path Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" />
+                            <Path helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=QuickSettingsPopup}" Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
 
@@ -2889,6 +2886,7 @@
                             Click="StatusFilterButton_Click">
                         <Button.Style>
                             <Style TargetType="Button">
+                                <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
@@ -2945,7 +2943,7 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <Path Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0" />
+                            <Path helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=StatusFilterPopup}" Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0" />
                         </StackPanel>
                     </Button>
 

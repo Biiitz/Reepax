@@ -98,6 +98,12 @@ public class ThemeService
 
                 app.Resources["AccentBlueBrush"] = accentBrush;
                 app.Resources["AccentBlueHoverBrush"] = hoverBrush;
+                var contrastBrush = new System.Windows.Media.SolidColorBrush(Helpers.ColorHelper.GetContrastForeground(color));
+                contrastBrush.Freeze();
+                app.Resources["AccentForegroundBrush"] = contrastBrush;
+                var hoverContrastBrush = new System.Windows.Media.SolidColorBrush(Helpers.ColorHelper.GetContrastForeground(hoverColor));
+                hoverContrastBrush.Freeze();
+                app.Resources["AccentHoverForegroundBrush"] = hoverContrastBrush;
                 app.Resources["BorderHighlightBrush"] = accentBrush;
                 var glowBrush1 = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(55, color.R, color.G, color.B));
                 glowBrush1.Freeze();

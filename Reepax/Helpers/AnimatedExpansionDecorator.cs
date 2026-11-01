@@ -10,7 +10,10 @@ using Reepax.Models;
 public class AnimatedExpansionDecorator : Decorator
 {
     private TranslateTransform? _translateTransform;
+    private TransformGroup? _childTransform;
+    private Transform? _originalChildTransform;
     private bool _suppressAnimation;
+    private int _animationVersion;
 
     public static readonly DependencyProperty IsExpandedProperty =
         DependencyProperty.Register(
@@ -85,6 +88,7 @@ public class AnimatedExpansionDecorator : Decorator
     {
         ClipToBounds = true;
         Loaded += OnLoaded;
+        Unloaded += (_, _) => ApplyExpansionState(animate: false);
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -116,6 +120,11 @@ public class AnimatedExpansionDecorator : Decorator
     protected override void OnVisualChildrenChanged(DependencyObject visualAdded, DependencyObject visualRemoved)
     {
         base.OnVisualChildrenChanged(visualAdded, visualRemoved);
+        if (visualRemoved is UIElement removed && ReferenceEquals(removed.RenderTransform, _childTransform))
+        {
+            removed.RenderTransform = _originalChildTransform!;
+            _childTransform = null;
+        }
         if (visualAdded == Child && Child != null)
         {
             EnsureChildTransform();
@@ -137,10 +146,12 @@ public class AnimatedExpansionDecorator : Decorator
     {
         if (Child == null) return;
 
-        if (Child.RenderTransform != _translateTransform || _translateTransform == null)
+        if (!ReferenceEquals(Child.RenderTransform, _childTransform))
         {
+            _originalChildTransform = Child.RenderTransform;
             _translateTransform = new TranslateTransform();
-            Child.RenderTransform = _translateTransform;
+            _childTransform = new TransformGroup { Children = { _originalChildTransform, _translateTransform } };
+            Child.RenderTransform = _childTransform;
         }
     }
 
@@ -148,7 +159,7 @@ public class AnimatedExpansionDecorator : Decorator
     {
         if (d is AnimatedExpansionDecorator decorator)
         {
-            // Only animate if enabled, user interacted, and loaded; default is instant snappy expansion
+            // Initial binding and recycled content must settle immediately.
             if (decorator._suppressAnimation || !decorator.IsLoaded || !decorator.EnableAnimation)
             {
                 decorator.ApplyExpansionState(animate: false);
@@ -186,17 +197,8 @@ public class AnimatedExpansionDecorator : Decorator
             _translateTransform.Y = (1.0 - p) * -8.0;
         }
 
-        // Toggle visibility to avoid unnecessary hit testing or layout overhead when fully closed
-        if (p <= 0.0001 && !IsExpanded)
-        {
-            Child.Visibility = Visibility.Collapsed;
-            Child.IsHitTestVisible = false;
-        }
-        else if (Child.Visibility != Visibility.Visible)
-        {
-            Child.Visibility = Visibility.Visible;
-            Child.IsHitTestVisible = true;
-        }
+        Child.Visibility = p <= 0.0001 && !IsExpanded ? Visibility.Collapsed : Visibility.Visible;
+        Child.IsHitTestVisible = IsExpanded && p > 0.0001;
     }
 
     public void ApplyExpansionState(bool animate)
@@ -205,29 +207,19 @@ public class AnimatedExpansionDecorator : Decorator
 
         bool targetExpanded = IsExpanded;
         double targetProgress = targetExpanded ? 1.0 : 0.0;
-
-        if (!animate)
+        double currentProgress = ExpansionProgress;
+        int version = ++_animationVersion;
+        BeginAnimation(ExpansionProgressProperty, null);
+        if (!animate || !SystemParameters.ClientAreaAnimation || Math.Abs(currentProgress - targetProgress) < 0.001)
         {
-            BeginAnimation(ExpansionProgressProperty, null);
             ExpansionProgress = targetProgress;
             UpdateChildVisuals(targetProgress);
             return;
         }
 
-        // Make child visible immediately before running opening animation
-        if (targetExpanded)
-        {
-            Child.Visibility = Visibility.Visible;
-            Child.IsHitTestVisible = true;
-        }
-
-        double currentProgress = ExpansionProgress;
-        if (Math.Abs(currentProgress - targetProgress) < 0.001)
-        {
-            UpdateChildVisuals(targetProgress);
-            return;
-        }
-
+        // Preserve the displayed value until the replacement clock receives its first frame.
+        ExpansionProgress = currentProgress;
+        UpdateChildVisuals(currentProgress);
         int baseDuration = targetExpanded ? DurationMilliseconds : CollapseDurationMilliseconds;
         double progressDelta = Math.Abs(targetProgress - currentProgress);
         int effectiveDuration = Math.Max(50, (int)(baseDuration * progressDelta));
@@ -237,29 +229,19 @@ public class AnimatedExpansionDecorator : Decorator
             From = currentProgress,
             To = targetProgress,
             Duration = TimeSpan.FromMilliseconds(effectiveDuration),
-            EasingFunction = targetExpanded
-                ? new CubicEase { EasingMode = EasingMode.EaseOut }
-                : new CubicEase { EasingMode = EasingMode.EaseOut }
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
         };
 
-        animation.Completed += (s, e) =>
+        animation.Completed += (_, _) =>
         {
-            if (!IsExpanded)
-            {
-                ClipToBounds = true;
-                if (Child != null)
-                {
-                    Child.Visibility = Visibility.Collapsed;
-                    Child.IsHitTestVisible = false;
-                }
-            }
-            else
-            {
-                ClipToBounds = false;
-            }
+            if (version != _animationVersion) return;
+            BeginAnimation(ExpansionProgressProperty, null);
+            ExpansionProgress = targetProgress;
+            UpdateChildVisuals(targetProgress);
         };
 
-        BeginAnimation(ExpansionProgressProperty, animation);
+        BeginAnimation(ExpansionProgressProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     protected override Size MeasureOverride(Size constraint)

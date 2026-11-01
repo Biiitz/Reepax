@@ -280,6 +280,17 @@ public partial class MainWindow : Window
 
         try
         {
+            if (SystemParameters.ClientAreaAnimation)
+            {
+                StartupPresentation.BeginAnimation(UIElement.OpacityProperty,
+                    new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { FillBehavior = FillBehavior.Stop });
+                StartupPresentationOffset.BeginAnimation(TranslateTransform.YProperty,
+                    new DoubleAnimation(6, 0, TimeSpan.FromMilliseconds(220))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                        FillBehavior = FillBehavior.Stop
+                    });
+            }
             // Conceal the package tree completely during warmup and container pre-realization
             if (TreeListScrollViewer != null)
                 TreeListScrollViewer.Opacity = 0.0;
@@ -292,10 +303,11 @@ public partial class MainWindow : Window
             if (SettingsTabButton != null)
                 SettingsTabButton.IsEnabled = false;
 
-            // Step 1: Initial load phase (15% progress)
+            // Yield for rendering instead of delaying startup for presentation.
             AnimateStartupProgress(45, 180);
             StartupStatusDetail.Text = Loc.Get("Startup_Step_LoadingDownloads");
-            await System.Threading.Tasks.Task.Delay(180);
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+            if (!IsLoaded) return;
 
             // Step 2: Preheating components & icons (55% progress)
             AnimateStartupProgress(165, 240);
@@ -308,7 +320,7 @@ public partial class MainWindow : Window
                 .ToList();
 
             await SystemIconService.PreloadCommonIconsAsync(itemNames);
-            await System.Threading.Tasks.Task.Delay(100);
+            if (!IsLoaded) return;
 
             // Step 3: UI & Template Warmup (85% progress)
             AnimateStartupProgress(255, 220);
@@ -331,24 +343,24 @@ public partial class MainWindow : Window
                 StartupFooterText.Text = string.Format(Loc.Get("Startup_PackagesLoaded"), pkgCount);
             }
 
-            await System.Threading.Tasks.Task.Delay(150);
+            await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+            if (!IsLoaded) return;
 
             // Step 4: Ready! (100% progress)
             AnimateStartupProgress(300, 160);
             StartupStatusDetail.Text = Loc.Get("Startup_Step_Ready");
-            await System.Threading.Tasks.Task.Delay(250);
 
             // Step 5: Smooth fade out and unlock UI
             if (TreeListScrollViewer != null)
             {
-                var contentFadeIn = new DoubleAnimation(0.0, 1.0, new Duration(TimeSpan.FromMilliseconds(260)))
+                var contentFadeIn = new DoubleAnimation(0.0, 1.0, new Duration(TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 220 : 0)))
                 {
                     EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
                 };
                 TreeListScrollViewer.BeginAnimation(UIElement.OpacityProperty, contentFadeIn);
             }
 
-            var fadeOut = new DoubleAnimation(1.0, 0.0, new Duration(TimeSpan.FromMilliseconds(260)))
+            var fadeOut = new DoubleAnimation(1.0, 0.0, new Duration(TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 220 : 0)))
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             };
@@ -357,6 +369,10 @@ public partial class MainWindow : Window
             {
                 StartupLoadingOverlay.Visibility = Visibility.Collapsed;
                 StartupLoadingOverlay.IsHitTestVisible = false;
+                StartupLoadingOverlay.BeginAnimation(UIElement.OpacityProperty, null);
+                StartupPresentation.BeginAnimation(UIElement.OpacityProperty, null);
+                StartupPresentationOffset.BeginAnimation(TranslateTransform.YProperty, null);
+                StartupProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
 
                 if (TreeListScrollViewer != null)
                 {
@@ -403,12 +419,18 @@ public partial class MainWindow : Window
 
     private void AnimateStartupProgress(double targetWidth, double durationMs)
     {
-        if (StartupProgressFill == null) return;
-        var anim = new DoubleAnimation(targetWidth, new Duration(TimeSpan.FromMilliseconds(durationMs)))
+        if (StartupProgressScale == null) return;
+        double current = StartupProgressScale.ScaleX;
+        double target = Math.Clamp(targetWidth / 300.0, 0, 1);
+        StartupProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        StartupProgressScale.ScaleX = target;
+        if (!SystemParameters.ClientAreaAnimation) return;
+        var anim = new DoubleAnimation(current, target, new Duration(TimeSpan.FromMilliseconds(durationMs)))
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
         };
-        StartupProgressFill.BeginAnimation(FrameworkElement.WidthProperty, anim);
+        StartupProgressScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void WarmupTemplates()

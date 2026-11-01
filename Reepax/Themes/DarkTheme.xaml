@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:helpers="clr-namespace:Reepax.Helpers"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
 
     <!-- Color Palette -->
@@ -15,6 +16,9 @@
     <Color x:Key="TextMutedColor">#6B7280</Color>
     <Color x:Key="AccentBlueColor">#3B82F6</Color>
     <Color x:Key="AccentBlueHoverColor">#2563EB</Color>
+
+    <SolidColorBrush x:Key="AccentForegroundBrush" Color="Black" />
+    <SolidColorBrush x:Key="AccentHoverForegroundBrush" Color="White" />
 
     <!-- Solid Color Brushes -->
     <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDarkColor}" />
@@ -227,14 +231,18 @@
 
     <!-- Base Button Style -->
     <Style x:Key="ModernButtonStyle" TargetType="{x:Type Button}">
+        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Padding" Value="12,7" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
@@ -242,14 +250,17 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="7"
+                            CornerRadius="6"
                             Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" 
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"
                                           TextElement.Foreground="{TemplateBinding Foreground}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
@@ -266,12 +277,15 @@
     </Style>
 
     <!-- Implicit Button Style -->
-    <Style TargetType="{x:Type Button}" BasedOn="{StaticResource ModernButtonStyle}" />
+    <Style TargetType="{x:Type Button}" BasedOn="{StaticResource ModernButtonStyle}" >
+        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
+    </Style>
 
     <!-- Accent Primary Button Style -->
     <Style x:Key="AccentButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource ModernButtonStyle}">
+        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
         <Setter Property="Background" Value="{DynamicResource AccentBlueBrush}" />
-        <Setter Property="Foreground" Value="#FFFFFF" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}" />
         <Setter Property="FontWeight" Value="Bold" />
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
         <Setter Property="Template">
@@ -288,6 +302,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource AccentHoverForegroundBrush}" />
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource AccentBlueHoverBrush}" />
                             <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBlueHoverBrush}" />
                         </Trigger>
@@ -463,7 +478,7 @@
             </Grid.ColumnDefinitions>
             <Border x:Name="Border" Grid.ColumnSpan="2" CornerRadius="7" Background="#1E1E1E" BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="1" />
             <Border Grid.Column="0" CornerRadius="7" Margin="1" Background="Transparent" />
-            <Path x:Name="Arrow" Grid.Column="1" Fill="#F3F4F6" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 3.5 3.5 L 7 0 Z" />
+            <Path x:Name="Arrow" helpers:ControlMotion.IsExpanded="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}" Grid.Column="1" Fill="#F3F4F6" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 3.5 3.5 L 7 0 Z" />
         </Grid>
         <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="true">
@@ -625,7 +640,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
         <Setter Property="BorderBrush" Value="#71717A" />
-        <Setter Property="BorderThickness" Value="1.5" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -657,7 +672,7 @@
                                       Stretch="Uniform"
                                       Width="9.5"
                                       Height="6.5"
-                                      Stroke="White"
+                                      Stroke="{DynamicResource AccentForegroundBrush}"
                                       StrokeThickness="1.8"
                                       StrokeStartLineCap="Round"
                                       StrokeEndLineCap="Round"
@@ -676,7 +691,7 @@
                                 <Border x:Name="IndeterminateGlyph"
                                         Width="8"
                                         Height="2"
-                                        Background="White"
+                                        Background="{DynamicResource AccentForegroundBrush}"
                                         CornerRadius="1"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
@@ -743,6 +758,7 @@
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsChecked" Value="True" />
                             </MultiTrigger.Conditions>
+                            <Setter TargetName="CheckGlyph" Property="Stroke" Value="{DynamicResource AccentHoverForegroundBrush}" />
                             <Setter TargetName="CheckBorder" Property="Background" Value="{DynamicResource AccentBlueHoverBrush}" />
                             <Setter TargetName="CheckBorder" Property="BorderBrush" Value="{DynamicResource AccentBlueHoverBrush}" />
                         </MultiTrigger>
