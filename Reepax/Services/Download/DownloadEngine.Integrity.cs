@@ -22,9 +22,19 @@ public partial class DownloadEngine
         internal RepresentationChangedException() : base("The remote file version changed.") { }
     }
 
-    private static string GetSourceKey(DownloadItem item) => Convert.ToHexString(SHA256.HashData(
-        Encoding.UTF8.GetBytes(new Uri(item.DirectDownloadUrl!, UriKind.Absolute)
+    private static string GetSourceKey(DownloadItem item) => GetSourceKey(item.DirectDownloadUrl!);
+
+    private static string GetSourceKey(string url) => Convert.ToHexString(SHA256.HashData(
+        Encoding.UTF8.GetBytes(new Uri(url, UriKind.Absolute)
             .GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped))));
+
+    internal static bool HasMatchingSourceCheckpoint(string filePath, string? directUrl)
+    {
+        if (!Uri.TryCreate(directUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            return false;
+        var checkpoint = LoadSegmentState(filePath + ".part.segments");
+        return checkpoint?.SourceKey != null && string.Equals(checkpoint.SourceKey, GetSourceKey(directUrl!), StringComparison.Ordinal);
+    }
 
     private static string? GetStrongEntityTag(HttpResponseMessage response) =>
         response.Headers.ETag is { IsWeak: false } tag ? tag.ToString() : null;

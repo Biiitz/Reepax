@@ -28,15 +28,17 @@ internal sealed class PackageExtractionWorkspace : IDisposable
         return Path.Combine(workspace.OutputDirectory, Path.GetRelativePath(root, target));
     }
 
-    internal void Publish(IEnumerable<string> protectedSources, CancellationToken cancellationToken)
+    internal HashSet<string> Publish(IEnumerable<string> protectedSources, CancellationToken cancellationToken)
     {
         var protectedPaths = protectedSources.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var publishedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var workspace in _workspaces.Values)
         foreach (var path in Directory.EnumerateFiles(workspace.OutputDirectory, "*", SearchOption.AllDirectories))
         {
             string destination = Path.GetFullPath(Path.Combine(workspace.TargetDirectory, Path.GetRelativePath(workspace.OutputDirectory, path)));
             if (protectedPaths.Contains(destination))
                 throw new IOException("An extracted file would overwrite a download source.");
+            publishedPaths.Add(destination);
         }
         try
         {
@@ -60,6 +62,7 @@ internal sealed class PackageExtractionWorkspace : IDisposable
             if (recoveryFailed) throw new IOException("Extraction recovery files were retained.");
             throw;
         }
+        return publishedPaths;
     }
 
     private static bool IsWithin(string path, string root) =>

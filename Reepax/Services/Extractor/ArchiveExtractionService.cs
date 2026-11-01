@@ -560,6 +560,7 @@ public partial class ArchiveExtractionService
                 package.NotifyArchivePasswordStateChanged();
             });
             string? firstErrorStatus = null;
+            var cleanupPlan = CaptureArchiveCleanupPlan(package);
             var successfullyExtractedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var verified = new List<PreparedPackageArchive>();
             var targets = primaryArchives.Select(path => GetPackageExtractionTarget(package, path)).ToArray();
@@ -603,7 +604,7 @@ public partial class ArchiveExtractionService
                 {
                     token.ThrowIfCancellationRequested();
                     var sources = enabledItems.Select(item => item.SaveFilePath).OfType<string>().Where(path => !string.IsNullOrWhiteSpace(path));
-                    batch.Publish(sources.Concat(primaryArchives.SelectMany(GetArchiveSourceFiles)), token);
+                    cleanupPlan.ProtectedPaths.UnionWith(batch.Publish(sources.Concat(primaryArchives.SelectMany(GetArchiveSourceFiles)), token));
                 }
                 CommitPackagePasswordResults(package, verified);
                 allSuccess = true;
@@ -667,7 +668,7 @@ public partial class ArchiveExtractionService
 
                 SafeInvoke(() => package.SetNextTaskRunning(cleanupStepName));
 
-                TryDeletePackageArchives(successfullyExtractedFiles, sendToRecycleBin: shouldRecycle, package: package);
+                TryDeletePackageArchives(successfullyExtractedFiles, shouldRecycle, package, cleanupPlan);
 
                 SafeInvoke(() => package.SetNextTaskDone(cleanupStepName));
             }
@@ -1060,10 +1061,10 @@ public partial class ArchiveExtractionService
     }
 
 
-    private void TryDeletePackageArchives(IEnumerable<string> archiveFilesToDelete, bool sendToRecycleBin, DownloadPackage? package = null)
+    private void TryDeletePackageArchives(IEnumerable<string> archiveFilesToDelete, bool sendToRecycleBin, DownloadPackage package, ArchiveCleanupPlan plan)
     {
         // Guard: never delete archives or PAR2 files if the package extraction was not completely successful
-        if (package != null && !package.IsExtracted)
+        if (!package.IsExtracted)
         {
             AppLogger.Warn($"[ArchiveExtractor] Skipping archive/PAR2 deletion for '{package.Name}' because package extraction was not completely successful.");
             return;
@@ -1071,67 +1072,19 @@ public partial class ArchiveExtractionService
 
         var files = new HashSet<string>(archiveFilesToDelete, StringComparer.OrdinalIgnoreCase);
 
-        if (SettingsService.Instance.Settings.DeletePar2AfterExtraction && package != null)
-        {
-            // Add PAR2 items in package
-            foreach (var item in package.Items)
-            {
-                if (!string.IsNullOrWhiteSpace(item.SaveFilePath) &&
-                    Verification.Par2RepairService.Instance.IsPar2File(item.SaveFilePath))
-                {
-                    files.Add(item.SaveFilePath);
-                }
-            }
+        if (SettingsService.Instance.Settings.DeletePar2AfterExtraction)
+            files.UnionWith(plan.Par2Files);
 
-            // Also check package directory for .par2 files
-            var saveDir = package.SaveDirectory;
-            if (!string.IsNullOrWhiteSpace(saveDir) && Directory.Exists(saveDir))
-            {
-                try
-                {
-                    if (ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, saveDir))
-                        foreach (var par2 in Directory.GetFiles(saveDir, "*.par2", SearchOption.TopDirectoryOnly))
-                    {
-                        files.Add(par2);
-                    }
-                }
-                catch { }
-            }
-        }
-
-        if (package != null && !string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory))
+        foreach (var path in plan.Sidecars)
         {
-            if (!ViewModels.MainViewModel.IsProtectedDirectory(package.SaveDirectory) &&
-                ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, package.SaveDirectory))
-            {
-                PurgeTemporaryFilesInDirectory(package.SaveDirectory);
-            }
-            else
-            {
-                // Purge only item-specific temporary sidecar files for this package in shared or protected directories
-                try
-                {
-                    foreach (var item in package.Items.ToList())
-                    {
-                        if (item == null) continue;
-                        var itemFiles = ViewModels.MainViewModel.GetItemFilesOnDisk(item, package.SaveDirectory);
-                        foreach (var file in itemFiles)
-                        {
-                            if (IsTempFile(file))
-                            {
-                                DeleteOrMoveToTemp(file);
-                            }
-                        }
-                    }
-                }
-                catch { }
-            }
+            if (!plan.ProtectedPaths.Contains(path)) DeleteOrMoveToTemp(path);
         }
 
         foreach (var filePath in files)
         {
             try
             {
+                if (plan.ProtectedPaths.Contains(Path.GetFullPath(filePath))) continue;
                 if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath) && (IsArchiveFile(filePath) || Verification.Par2RepairService.Instance.IsPar2File(filePath)))
                 {
                     bool isPar2 = Verification.Par2RepairService.Instance.IsPar2File(filePath);

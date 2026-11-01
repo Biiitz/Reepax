@@ -608,6 +608,7 @@ public class ArchiveExtractionTests
                 IsEnabled = true
             });
 
+            ArchiveCleanupSafetyTests.WriteDownloadSidecars(packageA.Items[0]);
             qm.Packages.Add(packageA);
             qm.Packages.Add(packageB);
 
@@ -635,7 +636,7 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
-    public async Task CheckAndExtractPackage_DedicatedDirectory_PurgesTemporaryFilesAndArchives()
+    public async Task CheckAndExtractPackage_DedicatedDirectory_PreservesUnownedFilesAndCleansDownloadSidecars()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_DedicatedDirTest_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(testDir);
@@ -681,6 +682,7 @@ public class ArchiveExtractionTests
                 IsEnabled = true
             });
 
+            ArchiveCleanupSafetyTests.WriteDownloadSidecars(packageA.Items[0]);
             qm.Packages.Add(packageA);
 
             var success = await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(packageA);
@@ -691,7 +693,7 @@ public class ArchiveExtractionTests
             Assert.False(File.Exists(zipPath));
             Assert.False(File.Exists(tempPart));
             Assert.False(File.Exists(tempSeg));
-            Assert.False(File.Exists(orphanTmp));
+            Assert.True(File.Exists(orphanTmp));
         }
         finally
         {
