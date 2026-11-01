@@ -25,7 +25,7 @@ public partial class DownloadEngine
     public static DownloadEngine Instance => _instance.Value;
 
     private readonly HttpClient _httpClient;
-    private readonly ConcurrentDictionary<Guid, (CancellationTokenSource Cts, TaskCompletionSource<bool> Tcs)> _activeDownloads = new();
+    private readonly ConcurrentDictionary<Guid, ActiveDownload> _activeDownloads = new();
     private readonly ConcurrentDictionary<Guid, bool> _demotedToQueuedItems = new();
     private readonly BandwidthThrottler _throttler = new();
 
@@ -33,11 +33,15 @@ public partial class DownloadEngine
     public bool IsDownloading(Guid itemId) => _activeDownloads.ContainsKey(itemId);
     public long CurrentSpeedLimit => _throttler.MaxBytesPerSecond;
 
-    private void CompleteAndRemoveActiveDownload(Guid itemId)
+    private void CompleteAndRemoveActiveDownload(DownloadItem item, CancellationToken token)
     {
-        _demotedToQueuedItems.TryRemove(itemId, out _);
-        if (_activeDownloads.TryRemove(itemId, out var entry))
+        // Completion callbacks can start a new session before the old worker exits.
+        if (_activeDownloads.TryGetValue(item.Id, out var entry) && entry.Token == token &&
+            ((ICollection<KeyValuePair<Guid, ActiveDownload>>)_activeDownloads)
+                .Remove(new(item.Id, entry)))
         {
+            UiState(item).Stop(token);
+            _demotedToQueuedItems.TryRemove(item.Id, out _);
             try { entry.Cts.Dispose(); } catch { }
             entry.Tcs.TrySetResult(true);
         }
@@ -135,17 +139,20 @@ public partial class DownloadEngine
             return;
 
         var cts = new CancellationTokenSource();
+        var token = cts.Token;
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (!_activeDownloads.TryAdd(item.Id, (cts, tcs)))
+        if (!_activeDownloads.TryAdd(item.Id, new ActiveDownload(cts, tcs)))
         {
             cts.Dispose();
             return;
         }
 
+        UiState(item).Begin(token);
+
         if (item.IsUnavailableForProcessing)
         {
-            CompleteAndRemoveActiveDownload(item.Id);
+            CompleteAndRemoveActiveDownload(item, token);
             return;
         }
 
@@ -156,11 +163,11 @@ public partial class DownloadEngine
         item.UserAgent = userAgent;
         item.Referer = referer;
 
-        SafeInvokeAsync(() =>
+        item.StartDownloadSession();
+        PublishDownloadState(item, token, () =>
         {
             if (item.IsUnavailableForProcessing)
                 return;
-            item.StartDownloadSession();
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_Connecting");
             item.ErrorMessage = null;
@@ -170,27 +177,28 @@ public partial class DownloadEngine
         {
             try
             {
-                await ExecuteDownloadLoopAsync(item, cts.Token);
+                await ExecuteDownloadLoopAsync(item, token);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
+                UiState(item).Stop(token);
                 item.RecordSessionDuration();
                 item.Status = DownloadStatus.Failed;
                 item.ErrorMessage = ex.Message;
-                SafeInvokeAsync(() =>
+                PublishDownloadState(item, token, () =>
                 {
                     item.Status = DownloadStatus.Failed;
                     item.StatusMessage = Loc.Get("Status_ErrorStarting");
                     item.ErrorMessage = ex.Message;
-                });
-                CompleteAndRemoveActiveDownload(item.Id);
+                }, allowEnded: true);
+                CompleteAndRemoveActiveDownload(item, token);
                 DownloadFailed?.Invoke(item, ex);
             }
             finally
             {
-                item.RecordSessionDuration();
-                CompleteAndRemoveActiveDownload(item.Id);
+                if (UiState(item).IsCurrent(token, requireRunning: false)) item.RecordSessionDuration();
+                CompleteAndRemoveActiveDownload(item, token);
             }
         });
 
@@ -203,25 +211,28 @@ public partial class DownloadEngine
             return;
 
         var cts = new CancellationTokenSource();
+        var token = cts.Token;
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (!_activeDownloads.TryAdd(item.Id, (cts, tcs)))
+        if (!_activeDownloads.TryAdd(item.Id, new ActiveDownload(cts, tcs)))
         {
             cts.Dispose();
             return;
         }
 
+        UiState(item).Begin(token);
+
         if (item.IsUnavailableForProcessing)
         {
-            CompleteAndRemoveActiveDownload(item.Id);
+            CompleteAndRemoveActiveDownload(item, token);
             return;
         }
 
-        SafeInvokeAsync(() =>
+        item.StartDownloadSession();
+        PublishDownloadState(item, token, () =>
         {
             if (item.IsUnavailableForProcessing)
                 return;
-            item.StartDownloadSession();
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_ResumingDownload");
             item.ErrorMessage = null;
@@ -231,27 +242,28 @@ public partial class DownloadEngine
         {
             try
             {
-                await ExecuteDownloadLoopAsync(item, cts.Token);
+                await ExecuteDownloadLoopAsync(item, token);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
+                UiState(item).Stop(token);
                 item.RecordSessionDuration();
                 item.Status = DownloadStatus.Failed;
                 item.ErrorMessage = ex.Message;
-                SafeInvokeAsync(() =>
+                PublishDownloadState(item, token, () =>
                 {
                     item.Status = DownloadStatus.Failed;
                     item.StatusMessage = Loc.Get("Status_ErrorResuming");
                     item.ErrorMessage = ex.Message;
-                });
-                CompleteAndRemoveActiveDownload(item.Id);
+                }, allowEnded: true);
+                CompleteAndRemoveActiveDownload(item, token);
                 DownloadFailed?.Invoke(item, ex);
             }
             finally
             {
-                item.RecordSessionDuration();
-                CompleteAndRemoveActiveDownload(item.Id);
+                if (UiState(item).IsCurrent(token, requireRunning: false)) item.RecordSessionDuration();
+                CompleteAndRemoveActiveDownload(item, token);
             }
         });
 
@@ -425,13 +437,14 @@ public partial class DownloadEngine
         }
         catch (OperationCanceledException)
         {
+            UiState(item).Stop(cancellationToken);
             item.RecordSessionDuration();
             bool isDemoted = _demotedToQueuedItems.ContainsKey(item.Id) || item.Status == DownloadStatus.Queued;
             if (!isDemoted)
             {
                 item.Status = DownloadStatus.Paused;
             }
-            SafeInvokeAsync(() =>
+            PublishDownloadState(item, cancellationToken, () =>
             {
                 if (!isDemoted && item.Status != DownloadStatus.Queued)
                 {
@@ -444,26 +457,27 @@ public partial class DownloadEngine
                 {
                     item.ProgressPercentage = Math.Clamp((double)item.DownloadedBytes / item.TotalBytes * 100.0, 0, 100);
                 }
-            });
+            }, allowEnded: true);
 
-            CompleteAndRemoveActiveDownload(item.Id);
+            CompleteAndRemoveActiveDownload(item, cancellationToken);
             DownloadCancelled?.Invoke(item);
         }
         catch (Exception ex)
         {
+            UiState(item).Stop(cancellationToken);
             item.RecordSessionDuration();
             item.Status = DownloadStatus.Failed;
             item.ErrorMessage = ex.Message;
-            SafeInvokeAsync(() =>
+            PublishDownloadState(item, cancellationToken, () =>
             {
                 item.Status = DownloadStatus.Failed;
                 item.StatusMessage = Loc.Get("Status_Failed");
                 item.ErrorMessage = ex.Message;
                 item.SpeedBytesPerSecond = 0;
                 item.RemainingSeconds = 0;
-            });
+            }, allowEnded: true);
 
-            CompleteAndRemoveActiveDownload(item.Id);
+            CompleteAndRemoveActiveDownload(item, cancellationToken);
             DownloadFailed?.Invoke(item, ex);
         }
     }
@@ -610,9 +624,10 @@ public partial class DownloadEngine
             try { File.Delete(tempFilePath); } catch { }
         }
 
+        UiState(item).Clear(cancellationToken);
         item.DownloadedBytes = 0;
         item.ProgressPercentage = 0;
-        SafeInvokeAsync(() =>
+        PublishDownloadState(item, cancellationToken, () =>
         {
             item.DownloadedBytes = 0;
             item.ProgressPercentage = 0;
@@ -863,7 +878,8 @@ public partial class DownloadEngine
         var trickleThrottler = new BandwidthThrottler { MaxBytesPerSecond = 500 * 1024 };
         var segmentsFinished = false;
 
-        SafeInvokeAsync(() =>
+        UiState(item).Clear(cancellationToken);
+        PublishDownloadState(item, cancellationToken, () =>
         {
             item.TotalBytes = totalBytes;
             item.DownloadedBytes = initialDownloaded;
@@ -883,8 +899,7 @@ public partial class DownloadEngine
 
                 long aggregated = segments.Sum(s => s.ReceivedBytes);
                 var speed = speedTracker.CalculateSpeed(aggregated);
-                SafeInvokeAsync(() => item.UpdateProgress(aggregated, totalBytes, speed));
-                DownloadProgressUpdated?.Invoke(item);
+                UiState(item).Report(cancellationToken, aggregated, totalBytes, speed);
 
                 var now = Stopwatch.GetTimestamp();
                 if ((double)(now - lastSaveTs) / Stopwatch.Frequency >= 2.0)
@@ -958,7 +973,9 @@ public partial class DownloadEngine
             try { await watcher; } catch { }
             SaveSegmentState(segMetaPath, state, dataFile: fs);
             long doneBytes = segments.Sum(s => s.Done);
-            SafeInvokeAsync(() =>
+            item.DownloadedBytes = doneBytes;
+            item.TotalBytes = totalBytes;
+            PublishDownloadState(item, cancellationToken, () =>
             {
                 item.DownloadedBytes = doneBytes;
                 if (totalBytes > 0)
@@ -967,7 +984,7 @@ public partial class DownloadEngine
                 }
                 item.SpeedBytesPerSecond = 0;
                 item.RemainingSeconds = 0;
-            });
+            }, allowEnded: true);
         }
 
         foreach (var segment in segments)
@@ -1244,9 +1261,10 @@ public partial class DownloadEngine
             catch { }
         }
 
+        UiState(item).Clear(cancellationToken);
         if (totalBytes > 0) item.TotalBytes = totalBytes;
         item.DownloadedBytes = initialDownloadedBytes;
-        SafeInvokeAsync(() =>
+        PublishDownloadState(item, cancellationToken, () =>
         {
             if (totalBytes > 0) item.TotalBytes = totalBytes;
             item.DownloadedBytes = initialDownloadedBytes;
@@ -1371,11 +1389,7 @@ public partial class DownloadEngine
                     if (((double)(now - lastUiUpdateTime) / Stopwatch.Frequency) >= 0.3) // ~300ms smooth UI updates
                     {
                         var currentSpeed = speedTracker.CalculateSpeed(currentDownloaded);
-                        SafeInvokeAsync(() =>
-                        {
-                            item.UpdateProgress(currentDownloaded, totalBytes, currentSpeed);
-                        });
-                        DownloadProgressUpdated?.Invoke(item);
+                        UiState(item).Report(cancellationToken, currentDownloaded, totalBytes, currentSpeed);
                         lastUiUpdateTime = now;
                     }
                 }
@@ -1396,7 +1410,7 @@ public partial class DownloadEngine
                 try { fileStream.Close(); } catch { }
                 item.DownloadedBytes = currentDownloaded;
                 if (totalBytes > 0) item.TotalBytes = totalBytes;
-                SafeInvokeAsync(() =>
+                PublishDownloadState(item, cancellationToken, () =>
                 {
                     item.DownloadedBytes = currentDownloaded;
                     if (totalBytes > 0)
@@ -1406,16 +1420,12 @@ public partial class DownloadEngine
                     }
                     item.SpeedBytesPerSecond = 0;
                     item.RemainingSeconds = 0;
-                });
+                }, allowEnded: true);
             }
 
             // Validate stream completeness: do not mark complete if stream was truncated
             if (totalBytes > 0 && currentDownloaded != totalBytes)
             {
-                SafeInvokeAsync(() =>
-                {
-                    item.DownloadedBytes = currentDownloaded;
-                });
                 throw new IOException(
                     $"Download was interrupted: Only {currentDownloaded} of {totalBytes} bytes were transferred.");
             }
@@ -1464,21 +1474,27 @@ public partial class DownloadEngine
 
         item.IsVerifyingIntegrity = true;
         item.RecordSessionDuration();
-        item.DownloadedBytes = currentDownloaded;
-        item.TotalBytes = totalBytes > 0 ? totalBytes : currentDownloaded;
-        item.ProgressPercentage = 100;
-        item.SpeedBytesPerSecond = 0;
-        item.RemainingSeconds = 0;
-        item.Status = DownloadStatus.Completed;
-        item.StatusMessage = Loc.Get("Status_Completed");
+        UiState(item).Stop(cancellationToken);
         var completedAt = DateTime.Now;
-        item.CompletedAt = completedAt;
+        void ApplyCompletedState()
+        {
+            item.DownloadedBytes = currentDownloaded;
+            item.TotalBytes = totalBytes > 0 ? totalBytes : currentDownloaded;
+            item.ProgressPercentage = 100;
+            item.SpeedBytesPerSecond = 0;
+            item.RemainingSeconds = 0;
+            item.Status = DownloadStatus.Completed;
+            item.StatusMessage = Loc.Get("Status_Completed");
+            item.CompletedAt = completedAt;
+        }
+        ApplyCompletedState();
+        PublishDownloadState(item, cancellationToken, ApplyCompletedState, allowEnded: true);
         if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && completedAt >= item.StartedAt.Value)
         {
             item.ElapsedDurationMs = (long)(completedAt - item.StartedAt.Value).TotalMilliseconds;
         }
 
-        CompleteAndRemoveActiveDownload(item.Id);
+        CompleteAndRemoveActiveDownload(item, cancellationToken);
         DownloadCompleted?.Invoke(item);
     }
 
@@ -1675,30 +1691,6 @@ public partial class DownloadEngine
         }
     }
 
-    private static void SafeInvokeAsync(Action action)
-    {
-        try
-        {
-            var app = Application.Current;
-            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.HasShutdownFinished)
-            {
-                if (!app.Dispatcher.CheckAccess())
-                {
-                    app.Dispatcher.BeginInvoke(new Action(() =>
-                    {
-                        try { action(); } catch { }
-                    }), System.Windows.Threading.DispatcherPriority.Background);
-                    return;
-                }
-            }
-
-            action();
-        }
-        catch (Exception)
-        {
-            try { action(); } catch { }
-        }
-    }
 }
 
 public class RangeNotSupportedException : Exception
