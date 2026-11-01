@@ -318,7 +318,7 @@ public partial class DownloadPackage : ObservableObject
     public void EnsureNextTaskSteps()
     {
         bool par2Active = AutoPar2Repair && HasPar2Files();
-        var signature = $"{AutoExtractArchives}|{LowResourceExtraction}|{DeleteArchiveAfterExtraction}|{MoveArchiveToRecycleBin}|{AutoPar2Repair}|{par2Active}|{Loc.Get("NextTask_Extract")}|{Loc.Get("NextTask_Par2Repair")}";
+        var signature = $"{HasPendingArchiveCleanup}|{PendingArchiveCleanup?.RecycleArchives}|{AutoExtractArchives}|{LowResourceExtraction}|{DeleteArchiveAfterExtraction}|{MoveArchiveToRecycleBin}|{AutoPar2Repair}|{par2Active}|{Loc.Get("NextTask_Extract")}|{Loc.Get("NextTask_Par2Repair")}";
         if (signature == _lastStepSignature)
             return;
         _lastStepSignature = signature;
@@ -337,6 +337,8 @@ public partial class DownloadPackage : ObservableObject
                     State = NextTaskStepState.Done
                 });
             }
+            if (HasPendingArchiveCleanup)
+                NextTaskSteps.Add(CreatePendingCleanupStep(existingStates));
             return;
         }
 
@@ -359,7 +361,11 @@ public partial class DownloadPackage : ObservableObject
                 : (existingStates.TryGetValue("Extract", out var existingState) ? existingState : NextTaskStepState.Pending)
         });
 
-        if (DeleteArchiveAfterExtraction)
+        if (HasPendingArchiveCleanup)
+        {
+            NextTaskSteps.Add(CreatePendingCleanupStep(existingStates));
+        }
+        else if (DeleteArchiveAfterExtraction)
         {
             NextTaskSteps.Add(new NextTaskStep 
             { 
@@ -982,7 +988,7 @@ public partial class DownloadPackage : ObservableObject
     /// </summary>
     public bool CheckIsFullyCompleted()
     {
-        if (RequiresArchivePassword) return false;
+        if (RequiresArchivePassword || HasPendingArchiveCleanup) return false;
         if (!AreDownloadsCompleted) return false;
 
         if (AutoExtractArchives && NextTaskSteps.Count > 0)

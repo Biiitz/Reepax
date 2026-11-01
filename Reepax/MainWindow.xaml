@@ -106,6 +106,13 @@
                     <Path x:Name="ExtractPackageIconPath" Data="{StaticResource IconArchive}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Tag="RetryArchiveCleanup" Header="{loc:Loc Menu_RetryArchiveCleanup}"
+                      Command="{Binding DataContext.RetryArchiveCleanupCommand, Source={x:Reference RootWindow}}"
+                      CommandParameter="{Binding}" Visibility="Collapsed">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconArchive}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
             <MenuItem x:Name="PauseResumeExtractionMenuItem" Tag="PauseResumeExtractionMenuItem"
                       Header="{loc:Loc Menu_PauseExtraction}" Click="PauseResumeExtraction_MenuItem_Click">
                 <MenuItem.Icon>

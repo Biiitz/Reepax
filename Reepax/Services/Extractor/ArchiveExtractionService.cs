@@ -346,6 +346,7 @@ public partial class ArchiveExtractionService
             return false;
 
         bool resumePasswordWait = package.RequiresArchivePassword;
+        bool retryCleanup = force && package.IsExtracted && package.HasPendingArchiveCleanup && !forceReextract;
         IDisposable pathLease;
         try
         {
@@ -360,7 +361,7 @@ public partial class ArchiveExtractionService
         {
             if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
                 return false;
-            if (package.IsExtracted && !forceReextract)
+            if (package.IsExtracted && !forceReextract && !retryCleanup)
             {
                 AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wurde bereits entpackt. Überspringe.");
                 return true;
@@ -418,6 +419,13 @@ public partial class ArchiveExtractionService
         bool allSuccess = false;
         try
         {
+            if (retryCleanup)
+            {
+                allSuccess = true;
+                await RunArchiveCleanupAsync(package, token, pauseEvent);
+                SafeInvoke(() => Download.QueueManager.Instance.NotifyPackageCompletionIfEligible(package));
+                return true;
+            }
             // 3. Strict Package Completeness Verification:
             // All enabled items in the package MUST be completely finished with status DownloadStatus.Completed.
             // If even a single item is pending, downloading, queued, solving captcha or failed, DO NOT EXTRACT!
@@ -643,50 +651,11 @@ public partial class ArchiveExtractionService
             var shouldDelete = package.DeleteArchiveAfterExtraction || SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
             var shouldRecycle = !shouldDelete && (package.MoveArchiveToRecycleBin || SettingsService.Instance.Settings.MoveArchiveToRecycleBin);
 
-            // Never delete archives or PAR2 files if extraction was only partially successful or failed
             if (allSuccess && (shouldDelete || shouldRecycle) && successfullyExtractedFiles.Count > 0)
             {
-                var cleanupStepName = "Cleanup";
-
-                // Transition to cleanup step: cooldown
-                SafeInvoke(() =>
-                {
-                    if (!package.NextTaskSteps.Any(step => step.Key == cleanupStepName))
-                        package.NextTaskSteps.Add(new NextTaskStep
-                        {
-                            Key = cleanupStepName,
-                            Name = Loc.Get(shouldRecycle ? "NextTask_MoveToRecycleBin" : "NextTask_DeleteArchive")
-                        });
-                    foreach (var step in package.NextTaskSteps)
-                    {
-                        if (step.Key == cleanupStepName || step.Name == cleanupStepName)
-                        {
-                            step.State = NextTaskStepState.Transitioning;
-                            break;
-                        }
-                    }
-                });
-
-                // 2-second cooldown to guarantee all extraction file handles are completely closed and flushed
-                var cooldownMs = DownloadPersistenceService.IsTestEnvironment ? 50 : 2000;
-                await Task.Delay(cooldownMs, token);
-
-                SafeInvoke(() => package.SetNextTaskRunning(cleanupStepName));
-
-                try
-                {
-                    TryDeletePackageArchives(successfullyExtractedFiles, shouldRecycle, package, cleanupPlan);
-                    SafeInvoke(() => package.SetNextTaskDone(cleanupStepName));
-                }
-                catch (Exception) when (shouldRecycle && !token.IsCancellationRequested)
-                {
-                    SafeInvoke(() =>
-                    {
-                        package.SetNextTaskFailed(cleanupStepName);
-                        package.StatusMessage = Loc.Get("Status_ArchiveRecycleFailed");
-                    });
-                    AppLogger.Warn("[ArchiveExtractor] Archive recycling failed; remaining files were retained.");
-                }
+                var cleanupState = CreateCleanupState(package, successfullyExtractedFiles, shouldRecycle, cleanupPlan);
+                SafeInvoke(() => package.PendingArchiveCleanup = cleanupState);
+                await RunArchiveCleanupAsync(package, token, pauseEvent);
             }
 
             SafeInvoke(() =>
@@ -1076,47 +1045,6 @@ public partial class ArchiveExtractionService
         return result;
     }
 
-
-    private void TryDeletePackageArchives(IEnumerable<string> archiveFilesToDelete, bool sendToRecycleBin, DownloadPackage package, ArchiveCleanupPlan plan)
-    {
-        // Guard: never delete archives or PAR2 files if the package extraction was not completely successful
-        if (!package.IsExtracted)
-        {
-            AppLogger.Warn($"[ArchiveExtractor] Skipping archive/PAR2 deletion for '{package.Name}' because package extraction was not completely successful.");
-            return;
-        }
-
-        var files = new HashSet<string>(archiveFilesToDelete, StringComparer.OrdinalIgnoreCase);
-
-        if (SettingsService.Instance.Settings.DeletePar2AfterExtraction)
-            files.UnionWith(plan.Par2Files);
-
-        foreach (var path in plan.Sidecars)
-        {
-            if (!plan.ProtectedPaths.Contains(path)) DeleteOrMoveToTemp(path);
-        }
-
-        foreach (var filePath in files)
-        {
-            try
-            {
-                if (plan.ProtectedPaths.Contains(Path.GetFullPath(filePath))) continue;
-                if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath) && (IsArchiveFile(filePath) || Verification.Par2RepairService.Instance.IsPar2File(filePath)))
-                {
-                    bool isPar2 = Verification.Par2RepairService.Instance.IsPar2File(filePath);
-                    if (sendToRecycleBin && !isPar2)
-                    {
-                        DeleteToRecycleBin(filePath);
-                    }
-                    else
-                    {
-                        DeleteOrMoveToTemp(filePath);
-                    }
-                }
-            }
-            catch when (!sendToRecycleBin) { }
-        }
-    }
 
     /// <summary>
     /// Checks whether a given file is a temporary, partial, sidecar, or discardable cache file.

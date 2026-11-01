@@ -2316,6 +2316,13 @@ public partial class MainWindow : Window
                   ?? ViewModel.Packages.FirstOrDefault(p => p.IsSelected);
 
         menu.DataContext = pkg;
+        var retryCleanupItem = menu.Items.OfType<MenuItem>().FirstOrDefault(item => (string?)item.Tag == "RetryArchiveCleanup");
+        if (retryCleanupItem != null)
+        {
+            retryCleanupItem.Visibility = pkg?.HasPendingArchiveCleanup == true ? Visibility.Visible : Visibility.Collapsed;
+            retryCleanupItem.IsEnabled = pkg != null && !pkg.IsExtracting &&
+                !Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id);
+        }
         var changePathItem = menu.Items.OfType<MenuItem>().FirstOrDefault(item => (string?)item.Tag == "ChangeDownloadPath");
         if (changePathItem != null)
             changePathItem.IsEnabled = pkg != null && ViewModel.CanChangeDownloadPaths(ViewModel.GetPackagesForContextAction(pkg));
@@ -2429,7 +2436,8 @@ public partial class MainWindow : Window
         var verificationSep = menu.Items.OfType<Separator>().FirstOrDefault(s => (string?)s.Tag == "VerificationSeparator");
         if (verificationSep != null)
         {
-            bool hasExtractAction = (extractMenuItem?.Visibility == Visibility.Visible) || (pauseResumeMenuItem?.Visibility == Visibility.Visible);
+            bool hasExtractAction = (extractMenuItem?.Visibility == Visibility.Visible) ||
+                (pauseResumeMenuItem?.Visibility == Visibility.Visible) || (retryCleanupItem?.Visibility == Visibility.Visible);
             bool hasVerify = verifyMenuItem?.Visibility == Visibility.Visible;
             bool hasPar2 = par2MenuItem?.Visibility == Visibility.Visible;
             verificationSep.Visibility = (hasExtractAction || hasVerify || hasPar2) ? Visibility.Visible : Visibility.Collapsed;

@@ -146,6 +146,7 @@ internal sealed class PackageDirectoryMoveService
 
     private static async Task CopyVerifiedAsync(string source, string destination)
     {
+        var lastWrite = File.GetLastWriteTimeUtc(source);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read,
             1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
@@ -162,10 +163,13 @@ internal sealed class PackageDirectoryMoveService
             await output.FlushAsync().ConfigureAwait(false);
             output.Flush(flushToDisk: true);
         }
-        await using var copied = File.OpenRead(destination);
-        var copiedHash = await SHA256.HashDataAsync(copied).ConfigureAwait(false);
-        if (!CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), copiedHash))
-            throw new IOException("The copied download failed verification.");
+        await using (var copied = File.OpenRead(destination))
+        {
+            var copiedHash = await SHA256.HashDataAsync(copied).ConfigureAwait(false);
+            if (!CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), copiedHash))
+                throw new IOException("The copied download failed verification.");
+        }
+        File.SetLastWriteTimeUtc(destination, lastWrite);
     }
 
     private static void AddDirectoryFiles(string directory, string root, Dictionary<string, FileEntry> files, List<string> directories)

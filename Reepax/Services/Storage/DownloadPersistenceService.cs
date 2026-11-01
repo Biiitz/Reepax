@@ -83,6 +83,7 @@ public class DownloadPackageDto
     public DateTime? CompletedAt { get; set; }
     public long ElapsedDurationMs { get; set; }
     public bool IsExtracted { get; set; } = false;
+    public ArchiveCleanupState? PendingArchiveCleanup { get; set; }
     public List<NextTaskStepDto> NextTaskSteps { get; set; } = new();
     public List<DownloadItemDto> Items { get; set; } = new();
 }
@@ -943,6 +944,7 @@ public class DownloadPersistenceService : IDisposable
                     Status = pkgStatus,
                     StatusMessage = pkgStatusMsg,
                     IsExtracted = pkg.IsExtracted,
+                    PendingArchiveCleanup = pkg.PendingArchiveCleanup,
                     CreatedAt = pkg.CreatedAt,
                     StartedAt = pkg.StartedAt,
                     CompletedAt = pkg.CompletedAt,
@@ -1468,6 +1470,7 @@ public class DownloadPersistenceService : IDisposable
                     RequiresRecoveredPathConfirmation = pkgDto.RequiresRecoveredPathConfirmation,
                     IsEnabled = pkgDto.IsEnabled,
                     AutoExtractArchives = pkgDto.AutoExtractArchives,
+                    PendingArchiveCleanup = pkgDto.PendingArchiveCleanup,
                     LowResourceExtraction = pkgDto.LowResourceExtraction,
                     DeleteArchiveAfterExtraction = pkgDto.DeleteArchiveAfterExtraction,
                     MoveArchiveToRecycleBin = pkgDto.MoveArchiveToRecycleBin,
@@ -1601,6 +1604,13 @@ public class DownloadPersistenceService : IDisposable
                           pkgDto.StatusMessage == "Extraction error"))
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
+                }
+
+                if (package.HasPendingArchiveCleanup)
+                {
+                    package.SetNextTaskFailed("Cleanup");
+                    package.StatusMessage = package.PendingArchiveCleanup!.RecycleArchives ? Loc.Get("Status_ArchiveRecycleFailed")
+                        : Loc.Format("Status_ArchiveCleanupFailed", package.PendingArchiveCleanup.Files.Length);
                 }
 
                 package.IsExtracted = pkgDto.IsExtracted ||
@@ -1752,6 +1762,7 @@ public class DownloadPersistenceService : IDisposable
                     RequiresRecoveredPathConfirmation = pkgDto.RequiresRecoveredPathConfirmation,
                     IsEnabled = pkgDto.IsEnabled,
                     AutoExtractArchives = pkgDto.AutoExtractArchives,
+                    PendingArchiveCleanup = pkgDto.PendingArchiveCleanup,
                     LowResourceExtraction = pkgDto.LowResourceExtraction,
                     DeleteArchiveAfterExtraction = pkgDto.DeleteArchiveAfterExtraction,
                     MoveArchiveToRecycleBin = pkgDto.MoveArchiveToRecycleBin,
@@ -1953,6 +1964,13 @@ public class DownloadPersistenceService : IDisposable
                           pkgDto.StatusMessage == "Extraction error"))
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
+                }
+
+                if (package.HasPendingArchiveCleanup)
+                {
+                    package.SetNextTaskFailed("Cleanup");
+                    package.StatusMessage = package.PendingArchiveCleanup!.RecycleArchives ? Loc.Get("Status_ArchiveRecycleFailed")
+                        : Loc.Format("Status_ArchiveCleanupFailed", package.PendingArchiveCleanup.Files.Length);
                 }
 
                 package.IsExtracted = pkgDto.IsExtracted ||
