@@ -236,6 +236,7 @@ public static class Strings_en
         ["Dialog_ConfirmRecoveredPaths_Title"] = "Confirm recovered folders",
         ["Dialog_ConfirmRecoveredPaths_Message"] = "These folders were found automatically. Their names do not prove that the files belong to the selected downloads:\n\n{0}\n\nOnly continue if you have checked these locations and want the selected files or dedicated folders removed. Continue?",
         ["Status_RecycleFailed"] = "Not all files could be moved to the Recycle Bin. The download entries were kept.",
+        ["Status_ArchiveRecycleFailed"] = "Extracted; archive files could not all be moved to the Recycle Bin.",
         ["Status_CleanupBusy"] = "Another operation is using the selected files. Please try again later.",
         ["Status_BrowserStopFailed"] = "The browser download could not be stopped. Please try again.",
         ["Busy_RemovingDownloads"] = "Preparing or removing downloads…",

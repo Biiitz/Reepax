@@ -905,6 +905,7 @@ public partial class DownloadPackage : ObservableObject
                      StatusMessage != "Fertig & Entpackt" &&
                      StatusMessage != "Completed & Extracted" &&
                      StatusMessage != Loc.Get("Status_CompletedExtractionError") &&
+                     !NextTaskSteps.Any(step => step.Key == "Cleanup" && step.State == NextTaskStepState.Failed) &&
                      !Services.Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(StatusMessage) &&
                      !RequiresArchivePassword &&
                      StatusMessage != Loc.Get("Status_Extracting"))

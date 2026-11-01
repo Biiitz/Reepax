@@ -236,6 +236,7 @@ public static class Strings_de
         ["Dialog_ConfirmRecoveredPaths_Title"] = "Wiedergefundene Ordner bestätigen",
         ["Dialog_ConfirmRecoveredPaths_Message"] = "Diese Ordner wurden automatisch gefunden. Die Namen belegen nicht, dass die Dateien zu den ausgewählten Downloads gehören:\n\n{0}\n\nFahre nur fort, wenn du diese Speicherorte geprüft hast und die ausgewählten Dateien oder zugehörigen Paketordner entfernen möchtest. Fortfahren?",
         ["Status_RecycleFailed"] = "Nicht alle Dateien konnten in den Papierkorb verschoben werden. Die Download-Einträge wurden beibehalten.",
+        ["Status_ArchiveRecycleFailed"] = "Entpackt; Archivdateien konnten nicht vollständig in den Papierkorb verschoben werden.",
         ["Status_CleanupBusy"] = "Ein anderer Vorgang verwendet die ausgewählten Dateien. Bitte später erneut versuchen.",
         ["Status_BrowserStopFailed"] = "Der Browser-Download konnte nicht gestoppt werden. Bitte erneut versuchen.",
         ["Busy_RemovingDownloads"] = "Downloads werden geprüft oder entfernt…",

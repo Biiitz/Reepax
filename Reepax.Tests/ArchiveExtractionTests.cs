@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.IO.Compression;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Extractor;
@@ -11,8 +10,12 @@ using Xunit;
 
 namespace Reepax.Tests;
 
-public class ArchiveExtractionTests
+public class ArchiveExtractionTests : IDisposable
 {
+    private readonly ArchiveRecycleTestScope _recycleScope = new();
+
+    public void Dispose() => _recycleScope.Dispose();
+
     [Fact]
     public void IsArchiveFile_CorrectlyIdentifiesArchivesAndMultiPart()
     {
@@ -1310,7 +1313,7 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
-    public void DeleteToRecycleBin_ZeroByteFile_DeletesDirectlyWithoutError()
+    public void DeleteToRecycleBin_ZeroByteFile_UsesRecycleBackend()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), "Reepax_ZeroByte_" + Guid.NewGuid().ToString("N") + ".tmp");
         File.WriteAllBytes(tempFile, Array.Empty<byte>());
@@ -1420,7 +1423,7 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
-    public void DeleteToRecycleBin_TempFilesWithContent_DeletesDirectlyWithoutRecycleBin()
+    public void DeleteToRecycleBin_TempFilesWithContent_UsesRecycleBackend()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_TempDelTest_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(testDir);
@@ -1616,7 +1619,7 @@ public class ArchiveExtractionTests
     }
 
     [Fact]
-    public void DeleteToRecycleBin_DirectoryWithOnlyTempFiles_DeletesDirectlyWithoutRecycleBin()
+    public void DeleteToRecycleBin_DirectoryWithTemporaryFiles_UsesRecycleBackend()
     {
         var testDir = Path.Combine(Path.GetTempPath(), "Reepax_OnlyTempDirTest_" + Guid.NewGuid().ToString("N"));
         var subDir = Path.Combine(testDir, "sub");
@@ -1633,7 +1636,7 @@ public class ArchiveExtractionTests
 
             ArchiveExtractionService.DeleteToRecycleBin(testDir);
 
-            Assert.False(Directory.Exists(testDir), "Directory containing only temp files should be directly deleted");
+            Assert.False(Directory.Exists(testDir));
         }
         finally
         {
@@ -2133,32 +2136,6 @@ public class ArchiveExtractionTests
         Assert.False(vm.AutoExtractArchives);
         Assert.False(vm.LowResourceExtraction);
         Assert.False(settings.LowResourceExtraction == true);
-    }
-
-    [Fact]
-    public void SHFILEOPSTRUCT64_LayoutAndSize_MatchesNativeWindowsShellApi()
-    {
-        if (Environment.Is64BitProcess)
-        {
-            Assert.Equal(56, Marshal.SizeOf<ArchiveExtractionService.SHFILEOPSTRUCT64>());
-            Assert.Equal(0, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("hwnd").ToInt32());
-            Assert.Equal(8, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("wFunc").ToInt32());
-            Assert.Equal(16, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("pFrom").ToInt32());
-            Assert.Equal(24, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("pTo").ToInt32());
-            Assert.Equal(32, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("fFlags").ToInt32());
-            Assert.Equal(36, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("fAnyOperationsAborted").ToInt32());
-            Assert.Equal(40, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("hNameMappings").ToInt32());
-            Assert.Equal(48, Marshal.OffsetOf<ArchiveExtractionService.SHFILEOPSTRUCT64>("lpszProgressTitle").ToInt32());
-        }
-    }
-
-    [Fact]
-    public void SHFILEOPSTRUCT32_HasPack1_ForX86NativeAlignment()
-    {
-        var type = typeof(ArchiveExtractionService.SHFILEOPSTRUCT32);
-        var attr = type.StructLayoutAttribute;
-        Assert.NotNull(attr);
-        Assert.Equal(1, attr.Pack);
     }
 
     [Fact]

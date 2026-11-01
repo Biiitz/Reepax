@@ -13,6 +13,7 @@ namespace Reepax.Tests;
 
 public sealed class ArchiveCleanupSafetyTests : IDisposable
 {
+    private readonly ArchiveRecycleTestScope _recycleScope = new();
     private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("ArchiveCleanup_");
     private readonly DownloadPackage[] _previousPackages = QueueManager.Instance.Packages.ToArray();
     private readonly bool _deleteArchives = SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
@@ -230,6 +231,7 @@ public sealed class ArchiveCleanupSafetyTests : IDisposable
 
     public void Dispose()
     {
+        _recycleScope.Dispose();
         QueueManager.Instance.Packages.Clear();
         foreach (var package in _previousPackages) QueueManager.Instance.Packages.Add(package);
         var settings = SettingsService.Instance.Settings;

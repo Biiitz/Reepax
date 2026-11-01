@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using SharpCompress.Archives;
@@ -652,6 +651,12 @@ public partial class ArchiveExtractionService
                 // Transition to cleanup step: cooldown
                 SafeInvoke(() =>
                 {
+                    if (!package.NextTaskSteps.Any(step => step.Key == cleanupStepName))
+                        package.NextTaskSteps.Add(new NextTaskStep
+                        {
+                            Key = cleanupStepName,
+                            Name = Loc.Get(shouldRecycle ? "NextTask_MoveToRecycleBin" : "NextTask_DeleteArchive")
+                        });
                     foreach (var step in package.NextTaskSteps)
                     {
                         if (step.Key == cleanupStepName || step.Name == cleanupStepName)
@@ -668,9 +673,20 @@ public partial class ArchiveExtractionService
 
                 SafeInvoke(() => package.SetNextTaskRunning(cleanupStepName));
 
-                TryDeletePackageArchives(successfullyExtractedFiles, shouldRecycle, package, cleanupPlan);
-
-                SafeInvoke(() => package.SetNextTaskDone(cleanupStepName));
+                try
+                {
+                    TryDeletePackageArchives(successfullyExtractedFiles, shouldRecycle, package, cleanupPlan);
+                    SafeInvoke(() => package.SetNextTaskDone(cleanupStepName));
+                }
+                catch (Exception) when (shouldRecycle && !token.IsCancellationRequested)
+                {
+                    SafeInvoke(() =>
+                    {
+                        package.SetNextTaskFailed(cleanupStepName);
+                        package.StatusMessage = Loc.Get("Status_ArchiveRecycleFailed");
+                    });
+                    AppLogger.Warn("[ArchiveExtractor] Archive recycling failed; remaining files were retained.");
+                }
             }
 
             SafeInvoke(() =>
@@ -1088,11 +1104,7 @@ public partial class ArchiveExtractionService
                 if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath) && (IsArchiveFile(filePath) || Verification.Par2RepairService.Instance.IsPar2File(filePath)))
                 {
                     bool isPar2 = Verification.Par2RepairService.Instance.IsPar2File(filePath);
-                    bool isTemp = IsTempFile(filePath);
-
-                    // Archives can be moved to Recycle Bin if requested;
-                    // however, PAR2 files and temporary files are never recycled — they are permanently deleted or moved to temp.
-                    if (sendToRecycleBin && !isPar2 && !isTemp)
+                    if (sendToRecycleBin && !isPar2)
                     {
                         DeleteToRecycleBin(filePath);
                     }
@@ -1102,7 +1114,7 @@ public partial class ArchiveExtractionService
                     }
                 }
             }
-            catch { }
+            catch when (!sendToRecycleBin) { }
         }
     }
 
@@ -1301,207 +1313,4 @@ public partial class ArchiveExtractionService
         catch { }
     }
 
-    public static void DeleteToRecycleBin(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return;
-
-        bool isFile = File.Exists(path);
-        bool isDir = !isFile && Directory.Exists(path);
-        if (!isFile && !isDir)
-            return;
-
-        // In test environment, delete directly and never touch the user's real Windows Recycle Bin!
-        if (DownloadPersistenceService.IsTestEnvironment)
-        {
-            try
-            {
-                if (isDir) Directory.Delete(path, recursive: true);
-                else File.Delete(path);
-            }
-            catch { }
-            return;
-        }
-
-        if (isFile)
-        {
-            // 0-byte or temporary files (.part, .segments, .tmp, .bak etc.)
-            // contain no recoverable content and should never go to the
-            // Windows Recycle Bin. They are deleted permanently without trace
-            // or moved to the Windows temp folder upon access conflicts.
-            if (IsTempFile(path))
-            {
-                DeleteOrMoveToTemp(path);
-                return;
-            }
-
-            var fi = new FileInfo(path);
-            if (fi.Length == 0)
-            {
-                DeleteOrMoveToTemp(path);
-                return;
-            }
-
-            try
-            {
-                if ((fi.Attributes & FileAttributes.ReadOnly) != 0)
-                    fi.Attributes &= ~FileAttributes.ReadOnly;
-            }
-            catch { }
-        }
-        else if (isDir)
-        {
-            if (ViewModels.MainViewModel.IsProtectedDirectory(path))
-            {
-                AppLogger.Warn($"[ArchiveExtractor] Prevented deleting protected directory to Recycle Bin: {path}");
-                return;
-            }
-
-            // 1. Permanently delete all temporary/partial/sidecar files directly
-            PurgeTemporaryFilesInDirectory(path);
-
-            // 2. Strip read-only attributes so files/directories can be manipulated cleanly
-            StripReadOnlyAttributes(path);
-
-            // 3. Clean up any empty subdirectories left behind by purged temp files
-            CleanEmptySubdirectories(path);
-
-            // 4. If the directory is now completely empty (it only contained temporary clutter),
-            // delete the directory directly without sending an empty shell to the Recycle Bin.
-            try
-            {
-                if (!Directory.EnumerateFileSystemEntries(path).Any())
-                {
-                    Directory.Delete(path, recursive: true);
-                    return;
-                }
-            }
-            catch { }
-        }
-
-        try
-        {
-            var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            int result = SendToRecycleBin(fullPath);
-            if (result != 0)
-            {
-                if (isDir)
-                {
-                    Directory.Delete(fullPath, recursive: true);
-                }
-                else
-                {
-                    DeleteOrMoveToTemp(fullPath);
-                }
-            }
-        }
-        catch
-        {
-            try
-            {
-                if (isDir)
-                {
-                    Directory.Delete(path, recursive: true);
-                }
-                else
-                {
-                    DeleteOrMoveToTemp(path);
-                }
-            }
-            catch { }
-        }
-    }
-
-
-    #region Win32 Shell Recycle Bin
-
-    internal static int SendToRecycleBin(string fullPath)
-    {
-        // Win32 SHFileOperationW requires a double-null-terminated string buffer (PCZZWSTR), e.g. "C:\path\0\0".
-        // Passing a managed string field to P/Invoke truncates at the first null; manual unmanaged allocation
-        // guarantees that the double-null terminator is preserved in memory.
-        var doubleNullPath = fullPath + "\0\0";
-        IntPtr pFromPtr = Marshal.StringToHGlobalUni(doubleNullPath);
-        try
-        {
-            if (Environment.Is64BitProcess)
-            {
-                var shf = new SHFILEOPSTRUCT64
-                {
-                    wFunc = FO_DELETE,
-                    pFrom = pFromPtr,
-                    pTo = IntPtr.Zero,
-                    fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
-                    hwnd = IntPtr.Zero,
-                    hNameMappings = IntPtr.Zero,
-                    lpszProgressTitle = IntPtr.Zero
-                };
-                return SHFileOperation64(ref shf);
-            }
-            else
-            {
-                var shf = new SHFILEOPSTRUCT32
-                {
-                    wFunc = FO_DELETE,
-                    pFrom = pFromPtr,
-                    pTo = IntPtr.Zero,
-                    fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT,
-                    hwnd = IntPtr.Zero,
-                    hNameMappings = IntPtr.Zero,
-                    lpszProgressTitle = IntPtr.Zero
-                };
-                return SHFileOperation32(ref shf);
-            }
-        }
-        finally
-        {
-            if (pFromPtr != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(pFromPtr);
-            }
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    internal struct SHFILEOPSTRUCT64
-    {
-        public IntPtr hwnd;
-        [MarshalAs(UnmanagedType.U4)]
-        public int wFunc;
-        public IntPtr pFrom;
-        public IntPtr pTo;
-        public ushort fFlags;
-        [MarshalAs(UnmanagedType.Bool)]
-        public bool fAnyOperationsAborted;
-        public IntPtr hNameMappings;
-        public IntPtr lpszProgressTitle;
-    }
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode, Pack = 1)]
-    internal struct SHFILEOPSTRUCT32
-    {
-        public IntPtr hwnd;
-        [MarshalAs(UnmanagedType.U4)]
-        public int wFunc;
-        public IntPtr pFrom;
-        public IntPtr pTo;
-        public ushort fFlags;
-        [MarshalAs(UnmanagedType.Bool)]
-        public bool fAnyOperationsAborted;
-        public IntPtr hNameMappings;
-        public IntPtr lpszProgressTitle;
-    }
-
-    private const int FO_DELETE = 0x0003;
-    private const ushort FOF_ALLOWUNDO = 0x0040;
-    private const ushort FOF_NOCONFIRMATION = 0x0010;
-    private const ushort FOF_SILENT = 0x0004;
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "SHFileOperationW")]
-    private static extern int SHFileOperation64(ref SHFILEOPSTRUCT64 FileOp);
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "SHFileOperationW")]
-    private static extern int SHFileOperation32(ref SHFILEOPSTRUCT32 FileOp);
-
-    #endregion
 }
