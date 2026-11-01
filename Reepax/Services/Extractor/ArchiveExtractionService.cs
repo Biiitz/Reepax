@@ -16,7 +16,7 @@ using Reepax.Services.Storage;
 
 namespace Reepax.Services.Extractor;
 
-public class ArchiveExtractionService
+public partial class ArchiveExtractionService
 {
     private static readonly Lazy<ArchiveExtractionService> _instance = new(() => new ArchiveExtractionService());
     public static ArchiveExtractionService Instance => _instance.Value;
@@ -242,7 +242,7 @@ public class ArchiveExtractionService
     /// 4. All enabled downloads must be 100% completed.
     /// 5. At least one valid, non-empty primary archive file must physically exist on disk.
     /// </summary>
-    public bool CanExtractPackage(DownloadPackage? package, bool allowReextract = true)
+    public bool CanExtractPackage(DownloadPackage? package, bool allowReextract = true, bool ignorePasswordWait = false)
     {
         if (package == null || package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
             return false;
@@ -251,6 +251,9 @@ public class ArchiveExtractionService
             return false;
 
         if (package.IsExtracting || IsPackageExtracting(package.Id))
+            return false;
+
+        if (!ignorePasswordWait && !CanRetryPackagePasswords(package))
             return false;
 
         if (!package.AreDownloadsCompleted)
@@ -343,6 +346,7 @@ public class ArchiveExtractionService
         if (package == null)
             return false;
 
+        bool resumePasswordWait = package.RequiresArchivePassword;
         IDisposable pathLease;
         try
         {
@@ -367,10 +371,20 @@ public class ArchiveExtractionService
                 AppLogger.Info($"[ArchiveExtractor] Auto-extract ist für Paket '{package.Name}' deaktiviert. Überspringe.");
                 return false;
             }
+            if (!force && !CanRetryPackagePasswords(package)) return false;
             if (package.IsExtracting || !_extractingPackages.TryAdd(package.Id, true))
             {
                 AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wird bereits entpackt.");
                 return false;
+            }
+            lock (package.ArchivePasswordState.Sync)
+            {
+                if (force)
+                {
+                    package.ArchivePasswordState.Cancelled = false;
+                    package.ArchivePasswordState.ManualRequest = true;
+                }
+                if (forceReextract) package.ArchivePasswordState.Archives.Clear();
             }
         }
 
@@ -382,6 +396,12 @@ public class ArchiveExtractionService
         {
             package.IsExtracting = true;
             package.IsExtractionPaused = false;
+            if (forceReextract)
+            {
+                package.StatusMessage = Loc.Get("Status_Extracting");
+                foreach (var step in package.NextTaskSteps) step.State = NextTaskStepState.Pending;
+                package.IsExtracted = false;
+            }
         });
 
         var linkedCts = cancellationToken.CanBeCanceled
@@ -443,6 +463,9 @@ public class ArchiveExtractionService
             // 6. Give a small buffer (150ms) for background download file handles to be completely released
             await Task.Delay(150, token);
 
+            bool reuseRepair = resumePasswordWait && !forceReextract &&
+                PackageArchiveSourcesUnchanged(package, primaryArchives.ToArray()) &&
+                package.NextTaskSteps.Any(step => step.Key == "Par2" && step.State == NextTaskStepState.Done);
             SafeInvoke(() =>
             {
                 if (package.NextTaskSteps.All(s => s.Key != "Extract"))
@@ -454,11 +477,11 @@ public class ArchiveExtractionService
                         State = NextTaskStepState.Pending
                     });
                 }
-                package.ResetNextTasks();
+                if (!reuseRepair) package.ResetNextTasks();
             });
 
             // 6b. Automatic PAR2 verification and repair before extraction
-            if (package.AutoPar2Repair && SettingsService.Instance.Settings.AutoPar2Repair)
+            if (!reuseRepair && package.AutoPar2Repair && SettingsService.Instance.Settings.AutoPar2Repair)
             {
                 token.ThrowIfCancellationRequested();
                 if (Verification.Par2RepairService.Instance.HasPar2Files(package, out _))
@@ -509,125 +532,83 @@ public class ArchiveExtractionService
                 }
             }
 
+            void PasswordCheckpoint()
+            {
+                token.ThrowIfCancellationRequested();
+                lock (package.ArchivePasswordState.Sync)
+                    if (package.ArchivePasswordState.Cancelled) throw new OperationCanceledException(token);
+                if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing)) throw new OperationCanceledException(token);
+                if (pauseEvent.IsSet) return;
+                SafeInvoke(() => package.IsExtractionPaused = true);
+                pauseEvent.Wait(token);
+                SafeInvoke(() => package.IsExtractionPaused = false);
+            }
+            SafeInvoke(() => package.StatusMessage = Loc.Get("ArchivePasswords_Checking"));
+            var preparation = await Task.Run(() => PreparePackagePasswords(package, primaryArchives, PasswordCheckpoint), token);
+            if (!preparation.Ready)
+            {
+                if (preparation.FailureStatus != null)
+                    SafeInvoke(() => { package.SetNextTaskFailed("Extract"); package.StatusMessage = preparation.FailureStatus; });
+                else SetPackagePasswordWaiting(package);
+                return false;
+            }
             SafeInvoke(() =>
             {
+                package.RequiresArchivePassword = false;
                 package.SetNextTaskRunning("Extract");
                 package.StatusMessage = Loc.Get("Status_Extracting");
+                package.NotifyArchivePasswordStateChanged();
             });
-            allSuccess = true;
             string? firstErrorStatus = null;
             var successfullyExtractedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var verified = new List<PreparedPackageArchive>();
+            var targets = primaryArchives.Select(path => GetPackageExtractionTarget(package, path)).ToArray();
+            using var batch = new PackageExtractionWorkspace(targets);
             long lastOverallReportTicks = 0;
             double lastOverallReportedPct = -1.0;
             long overallReportIntervalTicks = Stopwatch.Frequency / 10;
-
-            for (int archiveIndex = 0; archiveIndex < primaryArchives.Count; archiveIndex++)
+            for (int index = 0; index < preparation.Archives.Length; index++)
             {
-                token.ThrowIfCancellationRequested();
-                var archivePath = primaryArchives[archiveIndex];
-                try
-                {
-                    string targetDir;
-                    using (await PackagePathOperationGate.Instance.EnterAsync(token))
+                PasswordCheckpoint();
+                var archive = preparation.Archives[index];
+                string target = targets[index];
+                SafeInvoke(() => package.ExtractionDirectory = target);
+                int archiveIndex = index;
+                var result = await ExtractPreparedPackageArchiveAsync(package, archive, batch.GetStagingDirectory(target),
+                    message =>
                     {
-                        token.ThrowIfCancellationRequested();
-                        targetDir = package.SaveDirectory;
-                        if (string.IsNullOrWhiteSpace(targetDir) || !Directory.Exists(targetDir))
-                        {
-                            targetDir = Path.GetDirectoryName(archivePath) ?? targetDir;
-                        }
-
-                        // Extract each update archive into its own subfolder.
-                        bool isUpdate = UpdateDetector.IsUpdatePackage(package) || UpdateDetector.IsUpdate(Path.GetFileName(archivePath));
-                        if (isUpdate)
-                        {
-                            var subfolder = UpdateDetector.GetExtractionSubfolder(archivePath);
-                            if (!string.IsNullOrWhiteSpace(subfolder))
-                            {
-                                var currentDirName = Path.GetFileName(targetDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                                if (!string.Equals(currentDirName, subfolder, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    targetDir = Path.Combine(targetDir, subfolder);
-                                }
-                            }
-                        }
-
-                        if (!Directory.Exists(targetDir))
-                        {
-                            Directory.CreateDirectory(targetDir);
-                        }
-                        package.ExtractionDirectory = targetDir;
-                    }
-
-                    int currentIdx = archiveIndex;
-                    var success = await ExtractArchiveAsync(
-                        archivePath, 
-                        targetDir, 
-                        msg =>
-                        {
-                            if (ExtractionErrorClassifier.IsExtractionErrorStatus(msg))
-                            {
-                                firstErrorStatus ??= msg;
-                            }
-                            SafeInvoke(() => package.StatusMessage = msg);
-                        }, 
-                        lowResourceMode: package.LowResourceExtraction,
-                        progressCallback: currentArchivePct =>
-                        {
-                            double overallPct = primaryArchives.Count > 1
-                                ? ((currentIdx * 100.0) + currentArchivePct) / primaryArchives.Count
-                                : currentArchivePct;
-
-                            long nowTicks = Stopwatch.GetTimestamp();
-                            bool isEdge = (overallPct <= 0.0 && lastOverallReportedPct < 0.0) || (overallPct >= 100.0 && lastOverallReportedPct < 100.0);
-                            if (isEdge || (nowTicks - lastOverallReportTicks >= overallReportIntervalTicks && Math.Abs(overallPct - lastOverallReportedPct) >= 0.1))
-                            {
-                                lastOverallReportTicks = nowTicks;
-                                lastOverallReportedPct = overallPct;
-                                string pctStr = overallPct.ToString("0.00");
-                                string formatted = Loc.Format("Status_ExtractingProgress", pctStr);
-                                SafeInvoke(() => package.StatusMessage = formatted);
-                            }
-                        },
-                        cancellationToken: token,
-                        pauseEvent: pauseEvent,
-                        pauseStateChanged: isPaused =>
-                        {
-                            SafeInvoke(() => package.IsExtractionPaused = isPaused);
-                        });
-
-                    if (success)
+                        if (ExtractionErrorClassifier.IsExtractionErrorStatus(message)) firstErrorStatus ??= message;
+                        SafeInvoke(() => package.StatusMessage = message);
+                    },
+                    archiveProgress =>
                     {
-                        foreach (var item in enabledItems)
-                        {
-                            if (!string.IsNullOrWhiteSpace(item.SaveFilePath) &&
-                                File.Exists(item.SaveFilePath) &&
-                                IsArchiveFile(item.SaveFilePath) &&
-                                ArePartOfSameArchive(archivePath, item.SaveFilePath))
-                            {
-                                successfullyExtractedFiles.Add(item.SaveFilePath);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        allSuccess = false;
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Error($"[ArchiveExtractor] Extraction failed for {archivePath}", ex);
-                    allSuccess = false;
-                }
+                        double overall = Math.Min(99.9, (archiveIndex * 100.0 + archiveProgress) / preparation.Archives.Length);
+                        long now = Stopwatch.GetTimestamp();
+                        if (now - lastOverallReportTicks < overallReportIntervalTicks || Math.Abs(overall - lastOverallReportedPct) < 0.1) return;
+                        lastOverallReportTicks = now;
+                        lastOverallReportedPct = overall;
+                        SafeInvoke(() => package.StatusMessage = Loc.Format("Status_ExtractingProgress", overall.ToString("0.00")));
+                    }, token, pauseEvent);
+                if (result == null) break;
+                verified.Add(result);
+                foreach (var item in enabledItems)
+                    if (!string.IsNullOrWhiteSpace(item.SaveFilePath) && IsArchiveFile(item.SaveFilePath) &&
+                        ArePartOfSameArchive(archive.Path, item.SaveFilePath))
+                        successfullyExtractedFiles.Add(item.SaveFilePath);
             }
-
-            token.ThrowIfCancellationRequested();
-
-
+            PasswordCheckpoint();
+            if (verified.Count == preparation.Archives.Length)
+            {
+                using (await PackagePathOperationGate.Instance.EnterAsync(token))
+                {
+                    token.ThrowIfCancellationRequested();
+                    var sources = enabledItems.Select(item => item.SaveFilePath).OfType<string>().Where(path => !string.IsNullOrWhiteSpace(path));
+                    batch.Publish(sources.Concat(primaryArchives.SelectMany(GetArchiveSourceFiles)), token);
+                }
+                CommitPackagePasswordResults(package, verified);
+                allSuccess = true;
+            }
+            else if (package.RequiresArchivePassword) return false;
 
             if (allSuccess)
             {
@@ -703,12 +684,19 @@ public class ArchiveExtractionService
         }
         catch (OperationCanceledException)
         {
+            allSuccess = false;
+            lock (package.ArchivePasswordState.Sync)
+            {
+                package.ArchivePasswordState.Cancelled = true;
+                package.ArchivePasswordState.ManualRequest = false;
+            }
             AppLogger.Info($"[ArchiveExtractor] Extraction for package '{package.Name}' was canceled.");
             SafeInvoke(() =>
             {
                 package.IsExtracting = false;
                 package.IsExtractionPaused = false;
                 package.StatusMessage = Loc.Get("Status_Paused");
+                package.RequiresArchivePassword = false;
                 foreach (var step in package.NextTaskSteps)
                 {
                     if (step.Key == "Extract" && step.State == NextTaskStepState.Running)
@@ -720,7 +708,13 @@ public class ArchiveExtractionService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[ArchiveExtractor] Error during package extraction for '{package.Name}'", ex);
+            allSuccess = false;
+            SafeInvoke(() =>
+            {
+                package.SetNextTaskFailed("Extract");
+                package.StatusMessage = ExtractionErrorClassifier.BuildStatusMessage(ExtractionErrorClassifier.Classify(ex), ex, string.Empty);
+            });
+            AppLogger.Error("[ArchiveExtractor] Package extraction failed.", ex);
         }
         finally
         {
@@ -814,7 +808,7 @@ public class ArchiveExtractionService
         return true;
     }
 
-    public Task<bool> ExtractArchiveAsync(
+    private async Task<bool> ExtractArchiveCoreAsync(
         string archiveFilePath, 
         string targetDirectory, 
         Action<string>? statusCallback = null,
@@ -823,9 +817,11 @@ public class ArchiveExtractionService
         string? explicitPassword = null,
         CancellationToken cancellationToken = default,
         ManualResetEventSlim? pauseEvent = null,
-        Action<bool>? pauseStateChanged = null)
+        Action<bool>? pauseStateChanged = null,
+        bool isArchiveEncrypted = false,
+        Action<Exception>? failureCallback = null)
     {
-        return Task.Run(async () =>
+        var result = await Task.Run(() =>
         {
             var originalPriority = System.Threading.Thread.CurrentThread.Priority;
             var isLowResource = lowResourceMode
@@ -860,103 +856,7 @@ public class ArchiveExtractionService
                     return false;
                 }
 
-                // 1. Password detection and trial
-                string? passwordToUse = explicitPassword;
-                bool isArchiveEncrypted = false;
-
-                // Reports damaged / incomplete archives found by the initial probe (instead of wrongly treating them as encrypted)
-                bool ReportProbeFailureIfNotPasswordRelated(bool isEncrypted, Exception? probeFailure)
-                {
-                    if (probeFailure == null)
-                        return false;
-
-                    var probeKind = ExtractionErrorClassifier.Classify(probeFailure);
-                    if (probeKind == ExtractionErrorKind.WrongPassword || isEncrypted)
-                        return false;
-
-                    AppLogger.Warn($"[ArchiveExtractor] Archive '{archiveFilePath}' could not be opened ({probeKind}): {probeFailure.Message}");
-                    statusCallback?.Invoke(ExtractionErrorClassifier.BuildStatusMessage(probeKind, probeFailure, archiveFilePath));
-                    return true;
-                }
-
-                if (string.IsNullOrEmpty(passwordToUse))
-                {
-                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted, out var probeFailure) && !isArchiveEncrypted)
-                    {
-                        passwordToUse = null;
-                    }
-                    else
-                    {
-                        if (ReportProbeFailureIfNotPasswordRelated(isArchiveEncrypted, probeFailure))
-                            return false;
-
-                        isArchiveEncrypted = true;
-                        var savedPasswords = SettingsService.Instance.Settings.ExtractionPasswords;
-                        if (savedPasswords != null)
-                        {
-                            foreach (var candidate in savedPasswords)
-                            {
-                                if (!string.IsNullOrWhiteSpace(candidate) &&
-                                    TryTestArchivePassword(archiveFilePath, candidate.Trim(), out _))
-                                {
-                                    passwordToUse = candidate.Trim();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    if (TryTestArchivePassword(archiveFilePath, null, out isArchiveEncrypted, out var explicitProbeFailure) && !isArchiveEncrypted)
-                    {
-                        passwordToUse = null;
-                    }
-                    else
-                    {
-                        if (ReportProbeFailureIfNotPasswordRelated(isArchiveEncrypted, explicitProbeFailure))
-                            return false;
-
-                        isArchiveEncrypted = true;
-                        if (!TryTestArchivePassword(archiveFilePath, passwordToUse, out _))
-                        {
-                            passwordToUse = null;
-                        }
-                    }
-                }
-
-                // If encrypted and no password matched, invoke async prompt handler
-                if (isArchiveEncrypted && string.IsNullOrEmpty(passwordToUse))
-                {
-                    if (PasswordPromptHandler != null)
-                    {
-                        var fileName = Path.GetFileName(archiveFilePath);
-                        var (enteredPassword, remember) = await PasswordPromptHandler.Invoke(fileName);
-                        if (!string.IsNullOrEmpty(enteredPassword))
-                        {
-                            if (TryTestArchivePassword(archiveFilePath, enteredPassword, out _))
-                            {
-                                passwordToUse = enteredPassword;
-                                if (remember)
-                                {
-                                    var list = SettingsService.Instance.Settings.ExtractionPasswords ??= new List<string>();
-                                    if (!list.Contains(enteredPassword, StringComparer.Ordinal))
-                                    {
-                                        list.Add(enteredPassword);
-                                        SettingsService.Instance.Settings.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(list);
-                                        SettingsService.Instance.SaveSettings();
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if (string.IsNullOrEmpty(passwordToUse))
-                    {
-                        statusCallback?.Invoke(Loc.Get("Status_ExtractionPasswordProtected"));
-                        return false;
-                    }
-                }
+                var passwordToUse = explicitPassword;
 
                 if (isLowResource)
                 {
@@ -1001,117 +901,17 @@ public class ArchiveExtractionService
 
                 ReportCurrentProgress(0.0, force: true);
 
-                // If standard unencrypted ZIP, use fast System.IO.Compression with safe entry extraction
-                if (passwordToUse == null && archiveFilePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                {
-                    using var zipArchive = System.IO.Compression.ZipFile.OpenRead(archiveFilePath);
-                    var validZipEntries = zipArchive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
-                    var totalEntriesZip = validZipEntries.Count;
-                    long totalBytesZip = 0;
-                    foreach (var entry in validZipEntries)
-                    {
-                        try { if (entry.Length > 0) totalBytesZip += entry.Length; } catch { }
-                    }
-
-                    long requiredBytesZip = totalBytesZip > 0 ? totalBytesZip : (File.Exists(archiveFilePath) ? new FileInfo(archiveFilePath).Length : 0);
-                    if (requiredBytesZip > 0 && !HasSufficientDiskSpace(fullTarget, requiredBytesZip, out long availableFreeSpaceZip, out long requiredWithBufferZip))
-                    {
-                        var reqFormatted = BytesToHumanReadableConverter.FormatBytes(requiredBytesZip);
-                        var freeFormatted = BytesToHumanReadableConverter.FormatBytes(availableFreeSpaceZip);
-                        var errorMsg = Loc.Format("Status_ExtractionInsufficientDiskSpace", reqFormatted, freeFormatted);
-                        AppLogger.Error($"[ArchiveExtractor] Insufficient disk space to extract '{archiveFilePath}' into '{fullTarget}'. Required: {reqFormatted} (with buffer: {BytesToHumanReadableConverter.FormatBytes(requiredWithBufferZip)}), Available: {freeFormatted}.");
-                        statusCallback?.Invoke(errorMsg);
-                        return false;
-                    }
-
-                    long completedBytesZip = 0;
-                    int completedEntriesZip = 0;
-                    byte[] buffer = new byte[256 * 1024];
-                    int chunkCount = 0;
-
-                    foreach (var entry in validZipEntries)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        WaitIfPaused();
-                        var destinationPath = Path.GetFullPath(Path.Combine(fullTarget, entry.FullName));
-                        if (!destinationPath.StartsWith(fullTarget, StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new InvalidOperationException("Zip Slip Sicherheitsrisiko erkannt.");
-                        }
-
-                        var entryDir = Path.GetDirectoryName(destinationPath);
-                        if (!string.IsNullOrEmpty(entryDir) && !Directory.Exists(entryDir))
-                        {
-                            Directory.CreateDirectory(entryDir);
-                        }
-
-                        long entryExtractedBytes = 0;
-                        try
-                        {
-                            using (var entryStream = entry.Open())
-                            using (var outputStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 256 * 1024, FileOptions.SequentialScan))
-                            {
-                                int bytesRead;
-                                while ((bytesRead = entryStream.Read(buffer, 0, buffer.Length)) > 0)
-                                {
-                                    cancellationToken.ThrowIfCancellationRequested();
-                                    WaitIfPaused();
-                                    outputStream.Write(buffer, 0, bytesRead);
-                                    entryExtractedBytes += bytesRead;
-
-                                    if (totalBytesZip > 0)
-                                    {
-                                        double pct = Math.Clamp((double)(completedBytesZip + entryExtractedBytes) / totalBytesZip * 100.0, 0.0, 100.0);
-                                        ReportCurrentProgress(pct);
-                                    }
-                                    else if (totalEntriesZip > 0)
-                                    {
-                                        double entryFraction = entry.Length > 0 ? Math.Clamp((double)entryExtractedBytes / entry.Length, 0.0, 1.0) : 0.0;
-                                        double pct = Math.Clamp(((double)completedEntriesZip + entryFraction) / totalEntriesZip * 100.0, 0.0, 100.0);
-                                        ReportCurrentProgress(pct);
-                                    }
-
-                                    if (isLowResource && (++chunkCount % 16 == 0))
-                                    {
-                                        System.Threading.Thread.Sleep(2);
-                                    }
-                                }
-                            }
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            try { if (File.Exists(destinationPath)) File.Delete(destinationPath); } catch { }
-                            throw;
-                        }
-
-                        completedBytesZip += entry.Length > 0 ? entry.Length : entryExtractedBytes;
-                        completedEntriesZip++;
-
-                        if (totalBytesZip > 0)
-                        {
-                            double pct = Math.Clamp((double)completedBytesZip / totalBytesZip * 100.0, 0.0, 100.0);
-                            ReportCurrentProgress(pct);
-                        }
-                        else if (totalEntriesZip > 0)
-                        {
-                            double pct = Math.Clamp((double)completedEntriesZip / totalEntriesZip * 100.0, 0.0, 100.0);
-                            ReportCurrentProgress(pct);
-                        }
-                    }
-
-                    ReportCurrentProgress(100.0, force: true);
-                    statusCallback?.Invoke(Loc.Get("Status_ExtractionCompleted"));
-                    return true;
-                }
-
-                // SharpCompress for RAR, 7Z, TAR, GZ, multi-part, and password-protected archives
+                // Use the checked archive reader for every format, including unencrypted ZIP.
                 var readerOptions = new SharpCompress.Readers.ReaderOptions { Password = passwordToUse };
                 using var archive = SharpCompress.Archives.ArchiveFactory.OpenArchive(archiveFilePath, readerOptions);
 
                 if (archive == null)
                     return false;
 
+                ValidateEncryptedArchiveLayout(archive);
                 var validEntries = archive.Entries.Where(e => !e.IsDirectory && !string.IsNullOrEmpty(e.Key)).ToList();
+                if (validEntries.Any(entry => !entry.IsComplete))
+                    throw new EndOfStreamException("Incomplete archive entry.");
                 var totalEntries = validEntries.Count;
                 long totalBytes = 0;
                 foreach (var entry in validEntries)
@@ -1132,18 +932,25 @@ public class ArchiveExtractionService
 
                 long completedBytes = 0;
                 int completedEntries = 0;
-                byte[] sharpBuffer = new byte[256 * 1024];
                 int sharpChunkCount = 0;
+
+                var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var directory in archive.Entries.Where(entry => entry.IsDirectory && !string.IsNullOrEmpty(entry.Key)))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (directory.Key is "." or "./" or ".\\") continue;
+                    Directory.CreateDirectory(GetSafeArchiveDestination(fullTarget, directory.Key!));
+                }
 
                 foreach (var entry in validEntries)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     WaitIfPaused();
-                    var destinationPath = Path.GetFullPath(Path.Combine(fullTarget, entry.Key!));
-                    if (!destinationPath.StartsWith(fullTarget, StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidOperationException("Archive Traversal security risk detected.");
-                    }
+                    var destinationPath = GetSafeArchiveDestination(fullTarget, entry.Key!);
+                    if (!destinations.Add(destinationPath)) throw new InvalidDataException("Duplicate archive destination.");
+                    bool knownLength = isArchiveEncrypted || archive.Type is SharpCompress.Common.ArchiveType.Zip or
+                        SharpCompress.Common.ArchiveType.Rar or SharpCompress.Common.ArchiveType.SevenZip or SharpCompress.Common.ArchiveType.Tar;
+                    long declaredLength = entry.Size;
 
                     var entryDir = Path.GetDirectoryName(destinationPath);
                     if (!string.IsNullOrEmpty(entryDir) && !Directory.Exists(entryDir))
@@ -1154,41 +961,36 @@ public class ArchiveExtractionService
                     long entryExtractedBytes = 0;
                     try
                     {
-                        using (var entryStream = entry.OpenEntryStream())
-                        using (var outputStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 256 * 1024, FileOptions.SequentialScan))
+                        using var outputStream = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.ReadWrite,
+                            FileShare.None, 256 * 1024, FileOptions.SequentialScan);
+                        using var controlledOutput = new ArchiveEntryOutputStream(outputStream, bytesWritten =>
                         {
-                            int bytesRead;
-                            while ((bytesRead = entryStream.Read(sharpBuffer, 0, sharpBuffer.Length)) > 0)
-                            {
-                                cancellationToken.ThrowIfCancellationRequested();
-                                WaitIfPaused();
-                                outputStream.Write(sharpBuffer, 0, bytesRead);
-                                entryExtractedBytes += bytesRead;
-
-                                if (totalBytes > 0)
-                                {
-                                    double pct = Math.Clamp((double)(completedBytes + entryExtractedBytes) / totalBytes * 100.0, 0.0, 100.0);
-                                    ReportCurrentProgress(pct);
-                                }
-                                else if (totalEntries > 0)
-                                {
-                                    double entryFraction = entry.Size > 0 ? Math.Clamp((double)entryExtractedBytes / entry.Size, 0.0, 1.0) : 0.0;
-                                    double pct = Math.Clamp(((double)completedEntries + entryFraction) / totalEntries * 100.0, 0.0, 100.0);
-                                    ReportCurrentProgress(pct);
-                                }
-
-                                if (isLowResource && (++sharpChunkCount % 16 == 0))
-                                {
-                                    System.Threading.Thread.Sleep(2);
-                                }
-                            }
-                        }
+                            cancellationToken.ThrowIfCancellationRequested();
+                            WaitIfPaused();
+                            if (knownLength && (declaredLength < 0 || bytesWritten > declaredLength - entryExtractedBytes))
+                                throw new InvalidDataException("Archive entry exceeds its declared length.");
+                            entryExtractedBytes += bytesWritten;
+                            double pct = totalBytes > 0
+                                ? (double)(completedBytes + entryExtractedBytes) / totalBytes * 100.0
+                                : totalEntries > 0
+                                    ? ((double)completedEntries + (entry.Size > 0 ? (double)entryExtractedBytes / entry.Size : 0)) / totalEntries * 100.0
+                                    : 0;
+                            ReportCurrentProgress(Math.Clamp(pct, 0, 100));
+                            if (isLowResource && (++sharpChunkCount % 16 == 0)) System.Threading.Thread.Sleep(2);
+                        });
+                        // Use the library's format-aware checks, including formats without a CRC field.
+                        entry.WriteTo(controlledOutput, new ExtractionOptions { CheckCrc = true, BufferSize = 256 * 1024 });
+                        outputStream.Flush(flushToDisk: true);
+                        controlledOutput.VerifyWrittenBytes(outputStream.SafeFileHandle, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {
                         try { if (File.Exists(destinationPath)) File.Delete(destinationPath); } catch { }
                         throw;
                     }
+
+                    if (knownLength && entryExtractedBytes != declaredLength)
+                        throw new InvalidDataException("Archive entry length mismatch.");
 
                     completedBytes += entry.Size > 0 ? entry.Size : entryExtractedBytes;
                     completedEntries++;
@@ -1206,7 +1008,6 @@ public class ArchiveExtractionService
                 }
 
                 ReportCurrentProgress(100.0, force: true);
-                statusCallback?.Invoke(Loc.Get("Status_ExtractionCompleted"));
                 return true;
             }
             catch (OperationCanceledException)
@@ -1215,21 +1016,30 @@ public class ArchiveExtractionService
                 statusCallback?.Invoke(Loc.Get("Status_Paused"));
                 return false;
             }
+            catch (UnsupportedEncryptedVolumesException ex)
+            {
+                failureCallback?.Invoke(ex);
+                statusCallback?.Invoke(Loc.Get("Status_ExtractionUnsupportedEncryptedVolumes"));
+                return false;
+            }
             catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException ||
                                        ex is SharpCompress.Common.CryptographicException)
             {
+                failureCallback?.Invoke(ex);
                 statusCallback?.Invoke(Loc.Get("Status_ExtractionPasswordProtected"));
                 return false;
             }
             catch (SharpCompress.Common.ArchiveException aex) when (aex.Message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
                                                                     aex.Message.Contains("encrypted", StringComparison.OrdinalIgnoreCase))
             {
+                failureCallback?.Invoke(aex);
                 statusCallback?.Invoke(Loc.Get("Status_ExtractionPasswordProtected"));
                 return false;
             }
             catch (Exception ex)
             {
-                AppLogger.Error($"[ArchiveExtractor] Error during extraction: {archiveFilePath}", ex);
+                failureCallback?.Invoke(ex);
+                AppLogger.Warn("[ArchiveExtractor] Archive extraction failed.");
                 var errorKind = ExtractionErrorClassifier.Classify(ex);
                 statusCallback?.Invoke(ExtractionErrorClassifier.BuildStatusMessage(errorKind, ex, archiveFilePath));
                 return false;
@@ -1245,85 +1055,10 @@ public class ArchiveExtractionService
                     catch { }
                 }
             }
-        });
+        }).ConfigureAwait(false);
+        return result;
     }
 
-    /// <summary>
-    /// Tests whether an archive is encrypted and whether the specified password successfully unlocks it.
-    /// Returns true if unlocked or if archive is unencrypted (with isEncrypted = false).
-    /// Returns false if password is wrong or required but missing.
-    /// </summary>
-    public static bool TryTestArchivePassword(string archiveFilePath, string? password, out bool isEncrypted)
-    {
-        return TryTestArchivePassword(archiveFilePath, password, out isEncrypted, out _);
-    }
-
-    /// <summary>
-    /// Same as <see cref="TryTestArchivePassword(string, string?, out bool)"/> but additionally returns the exception that
-    /// made the probe fail for reasons other than a missing/wrong password (e.g. damaged or incomplete archive).
-    /// </summary>
-    public static bool TryTestArchivePassword(string archiveFilePath, string? password, out bool isEncrypted, out Exception? probeFailure)
-    {
-        isEncrypted = false;
-        probeFailure = null;
-        try
-        {
-            var options = new SharpCompress.Readers.ReaderOptions { Password = password };
-            using var archive = SharpCompress.Archives.ArchiveFactory.OpenArchive(archiveFilePath, options);
-            if (archive == null)
-                return false;
-
-            var entries = archive.Entries.ToList();
-            var encryptedEntry = entries.FirstOrDefault(e => !e.IsDirectory && e.IsEncrypted);
-
-            if (encryptedEntry != null)
-            {
-                isEncrypted = true;
-                if (string.IsNullOrEmpty(password))
-                {
-                    return false;
-                }
-
-                using var stream = encryptedEntry.OpenEntryStream();
-                byte[] testBuffer = new byte[32];
-                int read = stream.Read(testBuffer, 0, testBuffer.Length);
-                return true;
-            }
-
-            var firstFile = entries.FirstOrDefault(e => !e.IsDirectory);
-            if (firstFile != null && !string.IsNullOrEmpty(password))
-            {
-                using var stream = firstFile.OpenEntryStream();
-                byte[] testBuffer = new byte[32];
-                int read = stream.Read(testBuffer, 0, testBuffer.Length);
-            }
-
-            return true;
-        }
-        catch (System.Security.Cryptography.CryptographicException)
-        {
-            isEncrypted = true;
-            return false;
-        }
-        catch (SharpCompress.Common.CryptographicException)
-        {
-            isEncrypted = true;
-            return false;
-        }
-        catch (SharpCompress.Common.ArchiveException aex)
-        {
-            isEncrypted = aex.Message.Contains("password", StringComparison.OrdinalIgnoreCase) ||
-                          aex.Message.Contains("encrypted", StringComparison.OrdinalIgnoreCase);
-            probeFailure = aex;
-            return false;
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Debug($"[ArchiveExtractor] Password test note for '{archiveFilePath}': {ex.Message}");
-            probeFailure = ex;
-            return false;
-        }
-    }
 
     private void TryDeletePackageArchives(IEnumerable<string> archiveFilesToDelete, bool sendToRecycleBin, DownloadPackage? package = null)
     {

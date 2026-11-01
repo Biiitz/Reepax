@@ -53,6 +53,7 @@ public partial class DownloadItem : ObservableObject
     private double _remainingSeconds;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ChecksumVerificationSummary))]
     private DownloadStatus _status = DownloadStatus.Queued;
 
     [ObservableProperty]
@@ -87,10 +88,12 @@ public partial class DownloadItem : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayChecksum))]
+    [NotifyPropertyChangedFor(nameof(ChecksumVerificationSummary))]
     private string? _expectedChecksum;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayChecksum))]
+    [NotifyPropertyChangedFor(nameof(ChecksumVerificationSummary))]
     private string? _calculatedChecksum;
 
     /// <summary>
@@ -99,6 +102,32 @@ public partial class DownloadItem : ObservableObject
     public string? DisplayChecksum => !string.IsNullOrWhiteSpace(CalculatedChecksum)
         ? CalculatedChecksum
         : (!string.IsNullOrWhiteSpace(ExpectedChecksum) ? ExpectedChecksum : null);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ChecksumVerificationSummary
+    {
+        get
+        {
+            string key = "Integrity_NotChecked";
+            if (IsVerifyingIntegrity) key = "Status_VerifyingChecksum";
+            else if (Status == DownloadStatus.Completed && !string.IsNullOrWhiteSpace(CalculatedChecksum))
+            {
+                key = string.IsNullOrWhiteSpace(ExpectedChecksum) ? "Integrity_LocalFingerprintOnly" :
+                    string.Equals(Services.Verification.ChecksumVerificationService.NormalizeChecksum(ExpectedChecksum),
+                        Services.Verification.ChecksumVerificationService.NormalizeChecksum(CalculatedChecksum), StringComparison.OrdinalIgnoreCase)
+                        ? "Integrity_OriginalChecksumMatched" : "Integrity_NotChecked";
+            }
+            return Loc.Get(key) + (string.IsNullOrWhiteSpace(DisplayChecksum) ? "" : "\n" + DisplayChecksum);
+        }
+    }
+
+    internal void RefreshChecksumVerificationSummary() => OnPropertyChanged(nameof(ChecksumVerificationSummary));
+
+    partial void OnStatusChanged(DownloadStatus value)
+    {
+        if (value != DownloadStatus.Downloading) return;
+        CalculatedChecksum = null;
+    }
 
     [ObservableProperty]
     private int _retryCount;
@@ -130,6 +159,7 @@ public partial class DownloadItem : ObservableObject
 
             _integrityVerificationState = state;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ChecksumVerificationSummary));
         }
     }
 

@@ -36,7 +36,6 @@ public partial class SettingsView : UserControl
     private void SettingsView_Loaded(object sender, RoutedEventArgs e)
     {
         HookViewModel();
-        UpdateGameInstallFolderVisibility(animate: false);
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
 
@@ -68,7 +67,6 @@ public partial class SettingsView : UserControl
     private void SettingsView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         HookViewModel();
-        UpdateGameInstallFolderVisibility(animate: false);
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
 
@@ -116,10 +114,6 @@ public partial class SettingsView : UserControl
             e.PropertyName == nameof(MainViewModel.CurrentAccentColor))
         {
             UpdateSpectrumThumbPosition();
-        }
-        else if (e.PropertyName == nameof(MainViewModel.CreateGameInstallFolder))
-        {
-            UpdateGameInstallFolderVisibility(animate: true);
         }
         else if (e.PropertyName == nameof(MainViewModel.EnableCompletionSound))
         {
@@ -421,159 +415,6 @@ public partial class SettingsView : UserControl
 
         textTranslate.BeginAnimation(TranslateTransform.YProperty, textSlide);
         textBox.BeginAnimation(UIElement.OpacityProperty, textFade);
-    }
-
-    #endregion
-
-    #region Game Install Directory Smooth Expand / Collapse Animation
-
-    private bool _isGameInstallExpanded;
-
-    private void UpdateGameInstallFolderVisibility(bool animate)
-    {
-        if (GameInstallPathContainer == null || GameInstallPathContent == null || GameInstallPathTranslate == null)
-            return;
-
-        bool isEnabled = ViewModel?.CreateGameInstallFolder == true;
-        if (!animate)
-        {
-            _isGameInstallExpanded = isEnabled;
-            GameInstallPathContainer.BeginAnimation(FrameworkElement.HeightProperty, null);
-            GameInstallPathContent.BeginAnimation(UIElement.OpacityProperty, null);
-            GameInstallPathTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-
-            if (isEnabled)
-            {
-                GameInstallPathContainer.Visibility = Visibility.Visible;
-                GameInstallPathContainer.Height = double.NaN;
-                GameInstallPathContent.Opacity = 1.0;
-                GameInstallPathTranslate.Y = 0.0;
-            }
-            else
-            {
-                GameInstallPathContainer.Visibility = Visibility.Collapsed;
-                GameInstallPathContainer.Height = 0.0;
-                GameInstallPathContent.Opacity = 0.0;
-                GameInstallPathTranslate.Y = -8.0;
-            }
-            return;
-        }
-
-        if (_isGameInstallExpanded == isEnabled)
-            return;
-
-        _isGameInstallExpanded = isEnabled;
-
-        if (isEnabled)
-        {
-            // Expanding smoothly
-            GameInstallPathContainer.Visibility = Visibility.Visible;
-            GameInstallPathContainer.Height = double.NaN;
-            GameInstallPathContainer.Measure(new Size(
-                GameInstallPathContainer.ActualWidth > 0 ? GameInstallPathContainer.ActualWidth : 500,
-                double.PositiveInfinity));
-            double targetHeight = GameInstallPathContainer.DesiredSize.Height;
-            if (targetHeight <= 0) targetHeight = 62.0;
-
-            GameInstallPathContainer.Height = 0.0;
-            GameInstallPathContent.Opacity = 0.0;
-            GameInstallPathTranslate.Y = -8.0;
-
-            var duration = TimeSpan.FromMilliseconds(280);
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-            var heightAnim = new DoubleAnimation
-            {
-                From = 0.0,
-                To = targetHeight,
-                Duration = duration,
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            var opacityAnim = new DoubleAnimation
-            {
-                From = 0.0,
-                To = 1.0,
-                Duration = TimeSpan.FromMilliseconds(240),
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            var slideAnim = new DoubleAnimation
-            {
-                From = -8.0,
-                To = 0.0,
-                Duration = duration,
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            heightAnim.Completed += (s, e) =>
-            {
-                GameInstallPathContainer.BeginAnimation(FrameworkElement.HeightProperty, null);
-                GameInstallPathContainer.Height = double.NaN;
-                GameInstallPathContent.BeginAnimation(UIElement.OpacityProperty, null);
-                GameInstallPathContent.Opacity = 1.0;
-                GameInstallPathTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-                GameInstallPathTranslate.Y = 0.0;
-            };
-
-            GameInstallPathContainer.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
-            GameInstallPathContent.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
-            GameInstallPathTranslate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
-        }
-        else
-        {
-            // Collapsing smoothly
-            double startHeight = GameInstallPathContainer.ActualHeight;
-            if (startHeight <= 0) startHeight = 62.0;
-
-            var duration = TimeSpan.FromMilliseconds(240);
-            var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
-
-            var heightAnim = new DoubleAnimation
-            {
-                From = startHeight,
-                To = 0.0,
-                Duration = duration,
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            var opacityAnim = new DoubleAnimation
-            {
-                From = GameInstallPathContent.Opacity,
-                To = 0.0,
-                Duration = TimeSpan.FromMilliseconds(180),
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            var slideAnim = new DoubleAnimation
-            {
-                From = 0.0,
-                To = -8.0,
-                Duration = duration,
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            heightAnim.Completed += (s, e) =>
-            {
-                GameInstallPathContainer.BeginAnimation(FrameworkElement.HeightProperty, null);
-                GameInstallPathContainer.Height = 0.0;
-                GameInstallPathContainer.Visibility = Visibility.Collapsed;
-                GameInstallPathContent.BeginAnimation(UIElement.OpacityProperty, null);
-                GameInstallPathContent.Opacity = 0.0;
-                GameInstallPathTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-                GameInstallPathTranslate.Y = -8.0;
-            };
-
-            GameInstallPathContainer.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
-            GameInstallPathContent.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
-            GameInstallPathTranslate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
-        }
     }
 
     #endregion

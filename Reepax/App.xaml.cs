@@ -160,13 +160,14 @@ public partial class App : Application
         HosterIconService.IconUpdated += _ => RefreshHosterIconBindingsDebounced();
 
         // Register archive password prompt dialog handler for password-protected extraction
-        Services.Extractor.ArchiveExtractionService.PasswordPromptHandler = async (archiveName) =>
+        Services.Extractor.ArchiveExtractionService.PasswordRetryPromptHandler = async (archiveName, retry, cancellationToken) =>
         {
             if (Current?.Dispatcher != null && !Current.Dispatcher.CheckAccess())
             {
-                return await Current.Dispatcher.InvokeAsync(() => Views.PasswordPromptDialog.ShowDialog(archiveName));
+                return await Current.Dispatcher.InvokeAsync(() => Views.PasswordPromptDialog.ShowDialog(archiveName,
+                    retry: retry, cancellationToken: cancellationToken));
             }
-            return Views.PasswordPromptDialog.ShowDialog(archiveName);
+            return Views.PasswordPromptDialog.ShowDialog(archiveName, retry: retry, cancellationToken: cancellationToken);
         };
     }
 

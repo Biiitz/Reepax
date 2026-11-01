@@ -17,7 +17,8 @@ namespace Reepax.Views;
 public partial class AddLinksDialog : Window
 {
     public string EnteredText { get; private set; } = string.Empty;
-    public string CustomPackageName { get; private set; } = string.Empty;
+    public string CustomPackageName => _editingPackage != null || _isPackageNameUserEdited
+        ? PackageNameTextBox.Text.Trim() : string.Empty;
     public string CustomDownloadDirectory { get; private set; } = string.Empty;
     public bool AutoExtractArchives { get; private set; } = false;
     public bool LowResourceExtraction { get; private set; } = false;
@@ -522,25 +523,14 @@ public partial class AddLinksDialog : Window
             links = LinkExtractor.ExtractLinks(text, fileHostersOnly: false);
         ExtractionSummaryText.Text = Services.Localization.Loc.Format("AddLinks_LinksDetectedSummary", links.Count);
 
-        // Smart Update detection:
-        bool isUpdate = UpdateDetector.IsUpdate(PackageNameTextBox.Text) ||
-                        links.Any(l => UpdateDetector.IsUpdate(l.RawFileName) || UpdateDetector.IsUpdate(l.ContextTitle) || UpdateDetector.IsUpdate(l.Url)) ||
-                        (!string.IsNullOrWhiteSpace(text) && UpdateDetector.IsUpdate(text));
-
-        // Prefill package name if update detected and user hasn't manually typed a custom name
-        if (isUpdate && !_isPackageNameUserEdited && _editingPackage == null)
+        if (!_isPackageNameUserEdited && _editingPackage == null)
         {
-            var updateSource = links.Select(l => l.ContextTitle).FirstOrDefault(t => !string.IsNullOrWhiteSpace(t) && UpdateDetector.IsUpdate(t))
-                               ?? links.Select(l => l.RawFileName).FirstOrDefault(f => !string.IsNullOrWhiteSpace(f) && UpdateDetector.IsUpdate(f))
-                               ?? links.Select(l => l.Url).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u) && UpdateDetector.IsUpdate(u))
-                               ?? text;
-
-            var updatePkgName = UpdateDetector.GetUpdatePackageName(updateSource);
-            if (!string.IsNullOrWhiteSpace(updatePkgName) && updatePkgName != "Game - Updates" && PackageNameTextBox.Text != updatePkgName)
+            var suggestedName = links.Count > 0 ? PackageGrouper.DetermineBestPackageName(links) : string.Empty;
+            if (!string.Equals(PackageNameTextBox.Text, suggestedName, StringComparison.Ordinal))
             {
                 _isUpdatingPackageNameInternally = true;
-                PackageNameTextBox.Text = updatePkgName;
-                _isUpdatingPackageNameInternally = false;
+                try { PackageNameTextBox.Text = suggestedName; }
+                finally { _isUpdatingPackageNameInternally = false; }
             }
         }
 
@@ -600,7 +590,6 @@ public partial class AddLinksDialog : Window
     private void AddLinks_Click(object sender, RoutedEventArgs e)
     {
         EnteredText = LinksTextBox.Text;
-        CustomPackageName = PackageNameTextBox.Text.Trim();
         CustomDownloadDirectory = DownloadPathTextBox.Text.Trim();
         AutoExtractArchives = AutoExtractCheckBox.IsChecked == true;
         LowResourceExtraction = LowResourceCheckBox.IsChecked == true;

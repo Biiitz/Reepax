@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>SharpCompress</AssemblyName>
+    <Version>0.50.4-reepax.2</Version>
+    <AssemblyVersion>0.50.4.0</AssemblyVersion>
+    <FileVersion>0.50.4.2</FileVersion>
+    <GenerateAssemblyTitleAttribute>false</GenerateAssemblyTitleAttribute>
+    <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(DecoderSourceRoot)/SharpCompress.snk</AssemblyOriginatorKeyFile>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <PathMap>$(DecoderSourceRoot)=/_/decoder,$(MSBuildProjectDirectory)=/_/build</PathMap>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(DecoderSourceRoot)/src/SharpCompress/**/*.cs" Exclude="**/bin/**;**/obj/**" />
+  </ItemGroup>
+</Project>

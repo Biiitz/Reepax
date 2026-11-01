@@ -115,6 +115,7 @@ public class AppSettings
     public bool AutoPar2Repair { get; set; } = true;
     public bool DeletePar2AfterExtraction { get; set; } = true;
     public List<string> ExtractionPasswords { get; set; } = new();
+    public List<ArchivePasswordEntry> ArchivePasswordStatistics { get; set; } = new();
     public bool IsArchivePasswordsExpanded { get; set; } = false;
 
     public static List<string> SanitizeExtractionPasswords(IEnumerable<string>? passwords)
@@ -127,13 +128,12 @@ public class AppSettings
         var list = new List<string>();
         foreach (var pwd in passwords)
         {
-            if (string.IsNullOrWhiteSpace(pwd))
+            if (string.IsNullOrEmpty(pwd))
                 continue;
 
-            var trimmed = pwd.Trim();
-            if (!list.Contains(trimmed, StringComparer.Ordinal))
+            if (!list.Contains(pwd, StringComparer.Ordinal))
             {
-                list.Add(trimmed);
+                list.Add(pwd);
             }
         }
 
@@ -141,7 +141,6 @@ public class AppSettings
     }
 
     // Game Installation Directory Settings
-    public bool CreateGameInstallFolder { get; set; } = false;
     public string GameInstallDirectory { get; set; } = GetDefaultGameInstallDirectory();
 
     private static string GetDefaultGameInstallDirectory()
@@ -248,8 +247,8 @@ public class AppSettings
         return list;
     }
 
-    public static readonly string[] ValidCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3", "7.mp3", "8.mp3", "9.mp3", "10.mp3"];
-    public static readonly string[] ValidErrorSounds = ["1.mp3", "2.mp3", "3.mp3"];
+    public static readonly string[] ValidCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3", "7.mp3", "8.mp3", "9.mp3", "10.mp3", "11.mp3", "12.mp3"];
+    public static readonly string[] ValidErrorSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3"];
 
     public static void SanitizeSoundSettings(AppSettings? settings)
     {

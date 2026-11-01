@@ -78,8 +78,8 @@ public class AppUpdateServiceTests
     {
         string script = AppUpdateService.GenerateInstallerUpdateScript(
             1234,
-            @"C:\Users\test\AppData\Local\Temp\setup.exe",
-            @"C:\Users\test\AppData\Local\Programs\Reepax\Reepax.exe");
+            Path.Combine(Path.GetTempPath(), "UpdateScriptTests", "setup.exe"),
+            Path.Combine(Path.GetTempPath(), "UpdateScriptTests", "Reepax.exe"));
 
         Assert.Contains("/VERYSILENT", script);
         Assert.Contains("/SUPPRESSMSGBOXES", script);

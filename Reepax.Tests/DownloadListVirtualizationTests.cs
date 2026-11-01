@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
@@ -44,6 +45,12 @@ public class DownloadListVirtualizationTests
         {
             if (child.Name.NamespaceName.StartsWith("clr-namespace:") && !child.Name.NamespaceName.Contains(";assembly="))
                 child.Name = XName.Get(child.Name.LocalName, child.Name.NamespaceName + ";assembly=Reepax");
+            foreach (var attribute in child.Attributes().Where(attribute =>
+                attribute.Name.NamespaceName.StartsWith("clr-namespace:") && !attribute.Name.NamespaceName.Contains(";assembly=")).ToArray())
+            {
+                child.SetAttributeValue(XName.Get(attribute.Name.LocalName, attribute.Name.NamespaceName + ";assembly=Reepax"), attribute.Value);
+                attribute.Remove();
+            }
         }
         foreach (var attribute in owner.Attributes().Where(a => a.IsNamespaceDeclaration))
         {
@@ -191,6 +198,161 @@ public class DownloadListVirtualizationTests
         timer.Start();
         try { Dispatcher.PushFrame(frame); }
         finally { timer.Stop(); }
+    }
+
+    [Fact]
+    public void ToolbarFade_RetainsCompletedTextAndHandlesImmediateRestart()
+    {
+        RunInSta(() =>
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax", "MainWindow.xaml");
+            var document = XDocument.Load(path);
+            XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+            var fragment = new XElement(document.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "ToolbarAnalysisStatus"));
+            SetNamespaces(fragment, document.Root!);
+            var toolbar = (StackPanel)XamlReader.Parse(fragment.ToString());
+            var vm = new MainViewModel();
+            toolbar.DataContext = vm;
+            using var source = new HwndSource(new HwndSourceParameters("ToolbarFadeProbe")
+            {
+                Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                WindowStyle = unchecked((int)0x80000000)
+            });
+            try
+            {
+                source.RootVisual = toolbar;
+                Layout(toolbar);
+                Assert.Equal(Visibility.Collapsed, toolbar.Visibility);
+                vm.BusyMessage = "Analyzing metadata (2 of 2)";
+                vm.IsAnalyzingMetadata = true;
+                vm.IsBusy = true;
+                Layout(toolbar);
+                PumpFor(TimeSpan.FromMilliseconds(250));
+                Assert.True(toolbar.IsLoaded);
+                Assert.Equal(1, toolbar.Opacity);
+                vm.IsAnalyzingMetadata = false;
+                vm.IsBusy = false;
+                vm.BusyMessage = string.Empty;
+                var text = Assert.IsType<TextBlock>(toolbar.Children[1]);
+                Assert.Equal("Analyzing metadata (2 of 2)", text.Text);
+                if (SystemParameters.ClientAreaAnimation) Assert.Equal(Visibility.Visible, toolbar.Visibility);
+                vm.BusyMessage = "Analyzing metadata (0 of 3)";
+                vm.IsAnalyzingMetadata = true;
+                vm.IsBusy = true;
+                PumpFor(TimeSpan.FromMilliseconds(250));
+                Assert.Equal(Visibility.Visible, toolbar.Visibility);
+                Assert.Equal(1, toolbar.Opacity);
+                Assert.Equal("Analyzing metadata (0 of 3)", text.Text);
+                vm.IsAnalyzingMetadata = false;
+                vm.IsBusy = false;
+                vm.BusyMessage = string.Empty;
+                PumpFor(TimeSpan.FromMilliseconds(250));
+                Assert.Equal(Visibility.Collapsed, toolbar.Visibility);
+                Assert.Equal(0, toolbar.Opacity);
+                Assert.False(toolbar.HasAnimatedProperties);
+                Assert.Equal(Visibility.Collapsed, ((Grid)toolbar.Children[0]).Visibility);
+            }
+            finally { source.RootVisual = null; }
+        });
+    }
+
+    [Fact]
+    public void SelectionFade_RecycledDataContextCancelsPreviousHighlight()
+    {
+        RunInSta(() =>
+        {
+            var first = new DownloadItem { IsSelected = true };
+            var next = new DownloadItem();
+            var highlight = new Grid { DataContext = first };
+            FadeAnimation.SetCollapseWhenHidden(highlight, false);
+            highlight.SetBinding(FadeAnimation.IsShownProperty, new Binding(nameof(DownloadItem.IsSelected)));
+            using var source = new HwndSource(new HwndSourceParameters("SelectionFadeProbe")
+            {
+                Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                WindowStyle = unchecked((int)0x80000000)
+            });
+            try
+            {
+                source.RootVisual = highlight;
+                Layout(highlight);
+                Assert.Equal(1, highlight.Opacity);
+                first.IsSelected = false;
+                highlight.DataContext = next;
+                Assert.Equal(0, highlight.Opacity);
+                Assert.False(highlight.HasAnimatedProperties);
+                next.IsSelected = true;
+                highlight.DataContext = first;
+                Assert.Equal(0, highlight.Opacity);
+                first.IsSelected = true;
+                PumpFor(TimeSpan.FromMilliseconds(250));
+                Assert.Equal(1, highlight.Opacity);
+                Assert.Equal(Visibility.Visible, highlight.Visibility);
+                Assert.True(next.IsSelected);
+                first.IsSelected = false;
+                source.RootVisual = null;
+                Layout(highlight);
+                Assert.False(highlight.HasAnimatedProperties);
+                Assert.Equal(0, highlight.Opacity);
+            }
+            finally { source.RootVisual = null; }
+        });
+    }
+
+    [Fact]
+    public void SelectionFade_BulkSelectionAndClearingPreserveVirtualizationAndItemOrder()
+    {
+        RunInSta(() =>
+        {
+            var package = new DownloadPackage { Name = "Collection", IsCustomName = true, AutoPar2Repair = false };
+            package.AddItems(Enumerable.Range(0, 1000).Select(index => new DownloadItem
+            {
+                FileName = $"data-{index}.bin", Status = DownloadStatus.Paused
+            }));
+            var original = package.Items.ToArray();
+            var (_, list) = CreateList(new ObservableCollection<DownloadPackage> { package }, useFullTemplates: true);
+            using var source = new HwndSource(new HwndSourceParameters("BulkSelectionFadeProbe")
+            {
+                Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                WindowStyle = unchecked((int)0x80000000)
+            });
+            try
+            {
+                source.RootVisual = list;
+                Layout(list);
+                foreach (var item in package.Items) item.IsSelected = true;
+                PumpFor(TimeSpan.FromMilliseconds(250));
+                void VerifyVisibleSelection()
+                {
+                    var visible = 0;
+                    for (int index = 1; index < list.Items.Count; index++)
+                    {
+                        var container = list.ItemContainerGenerator.ContainerFromIndex(index);
+                        if (container == null) continue;
+                        visible++;
+                        var presenter = FindVisual<ContentPresenter>(container)!;
+                        var item = Assert.IsType<DownloadItem>(presenter.Content);
+                        var template = ((DownloadRowTemplateSelector)presenter.ContentTemplateSelector).ItemTemplate!;
+                        var highlight = (Grid)template.FindName("ItemSelectionBorder", presenter);
+                        Assert.Equal(item.IsSelected ? 1 : 0, highlight.Opacity);
+                        Assert.False(highlight.HasAnimatedProperties);
+                    }
+                    Assert.InRange(visible, 1, 60);
+                }
+                VerifyVisibleSelection();
+                foreach (var item in package.Items) item.IsSelected = false;
+                package.Items[0].IsSelected = true;
+                PumpFor(TimeSpan.FromMilliseconds(250));
+                VerifyVisibleSelection();
+                Assert.Single(package.Items.Where(item => item.IsSelected));
+                Assert.Equal(original, package.Items);
+                Assert.Null(list.ItemContainerGenerator.ContainerFromIndex(1000));
+            }
+            finally
+            {
+                ((DownloadListView)list).Packages = null;
+                source.RootVisual = null;
+            }
+        });
     }
 
     [Theory]

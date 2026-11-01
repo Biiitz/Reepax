@@ -1,7 +1,9 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Windows.Input;
 using Reepax.Models;
 using Reepax.Services;
@@ -17,6 +19,44 @@ namespace Reepax.Tests;
 
 public class MainViewModelUiAndSettingsTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void RestoredPackageName_RefinesAutomaticNamesAndPreservesCustomOrExtractedPackages(bool custom, bool extracted)
+    {
+        var vm = new MainViewModel();
+        var previous = vm.Packages.ToArray();
+        vm.Packages.Clear();
+        QueueManager.Instance.StopQueue();
+        var root = Path.Combine(Path.GetTempPath(), "RestoredNaming_" + Guid.NewGuid().ToString("N"));
+        const string component = "pkg-selective-videos-hd";
+        var package = new DownloadPackage { Name = component, SaveDirectory = Path.Combine(root, component), IsCustomName = custom,
+            IsExtracted = extracted, AutoPar2Repair = false };
+        for (int index = 0; index < 8; index++)
+        {
+            var name = index < 6 ? $"{component}.part{index + 1:00}.rar" : $"Sample.Collection.part{index - 5:00}.rar";
+            package.Items.Add(new DownloadItem { FileName = name, OriginalUrl = "https://example.invalid/" + name,
+                SaveFilePath = Path.Combine(package.SaveDirectory, name), IsMetadataResolved = true, Status = DownloadStatus.Paused });
+        }
+        vm.Packages.Add(package);
+        try
+        {
+            _ = new MainViewModel();
+            var expected = custom || extracted ? component : "Sample Collection";
+            Assert.Equal(expected, package.Name);
+            Assert.Equal(Path.Combine(root, expected), package.SaveDirectory);
+            Assert.All(package.Items, item => Assert.Equal(Path.Combine(package.SaveDirectory, item.FileName), item.SaveFilePath));
+            Assert.Equal(8, package.Items.Count);
+            Assert.False(Directory.Exists(root));
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var entry in previous) vm.Packages.Add(entry);
+        }
+    }
+
     // =========================================================================
     // 1. ConnectionsPerDownload Stepper & Slider Tests
     // =========================================================================
@@ -240,11 +280,11 @@ public class MainViewModelUiAndSettingsTests
         vm.CycleCompletionSound(forward: false);
         Assert.Equal("1.mp3", vm.SelectedCompletionSound);
 
-        // Cycle backward from 1.mp3 wraps to 10.mp3
+        // Cycling backward wraps to the final registered sound.
         vm.CycleCompletionSound(forward: false);
-        Assert.Equal("10.mp3", vm.SelectedCompletionSound);
+        Assert.Equal(AppSettings.ValidCompletionSounds[^1], vm.SelectedCompletionSound);
 
-        // Cycle forward from 10.mp3 wraps to 1.mp3
+        // Cycling forward from the final sound restores the first sound.
         vm.CycleCompletionSound(forward: true);
         Assert.Equal("1.mp3", vm.SelectedCompletionSound);
     }
@@ -260,13 +300,13 @@ public class MainViewModelUiAndSettingsTests
         vm.CycleErrorSound(forward: true);
         Assert.Equal("2.mp3", vm.SelectedErrorSound);
 
-        // Cycle forward from 2.mp3 wraps to 1.mp3
+        vm.SelectedErrorSound = AppSettings.ValidErrorSounds[^1];
         vm.CycleErrorSound(forward: true);
         Assert.Equal("1.mp3", vm.SelectedErrorSound);
 
-        // Cycle backward wraps to 2.mp3
+        // Cycling backward wraps to the final registered sound.
         vm.CycleErrorSound(forward: false);
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        Assert.Equal(AppSettings.ValidErrorSounds[^1], vm.SelectedErrorSound);
 
         // Restore default
         vm.SelectedErrorSound = "1.mp3";
@@ -393,7 +433,7 @@ public class MainViewModelUiAndSettingsTests
     public void ArchivePasswords_AddRemoveExpandAndCopy_WorkReliably()
     {
         var vm = new MainViewModel();
-        vm.ArchivePasswords.Clear();
+        SettingsService.Instance.ReplaceArchivePasswords(Array.Empty<string>());
 
         // Toggle expanded
         bool initExpanded = vm.IsArchivePasswordsExpanded;
@@ -407,20 +447,20 @@ public class MainViewModelUiAndSettingsTests
         vm.AddArchivePassword();
         Assert.Equal(1, vm.ArchivePasswordsCount);
         Assert.True(vm.HasArchivePasswords);
-        Assert.Contains("Secret123", vm.ArchivePasswords);
+        Assert.Contains(" Secret123 ", vm.ArchivePasswords);
         Assert.Empty(vm.NewArchivePasswordInput);
 
         // Adding duplicate is ignored
-        vm.NewArchivePasswordInput = "Secret123";
+        vm.NewArchivePasswordInput = " Secret123 ";
         vm.AddArchivePassword();
         Assert.Equal(1, vm.ArchivePasswordsCount);
 
         // Copy command does not crash
-        vm.CopyArchivePassword("Secret123");
+        vm.CopyArchivePassword(" Secret123 ");
         vm.CopyArchivePassword(null);
 
         // Remove password
-        vm.RemoveArchivePassword("Secret123");
+        vm.RemoveArchivePassword(" Secret123 ");
         Assert.Equal(0, vm.ArchivePasswordsCount);
         Assert.False(vm.HasArchivePasswords);
     }
@@ -570,6 +610,129 @@ public class MainViewModelUiAndSettingsTests
         vm.ToggleExpandCollapseAll();
         Assert.False(pkg1.IsExpanded);
         Assert.False(pkg2.IsExpanded);
+    }
+
+    [Theory]
+    [InlineData(DownloadStatus.Paused, false)]
+    [InlineData(DownloadStatus.Queued, false)]
+    [InlineData(DownloadStatus.WaitingForBrowser, false)]
+    [InlineData(DownloadStatus.InBrowser, false)]
+    [InlineData(DownloadStatus.Downloading, true)]
+    public void PauseAll_StoppedQueueUsesCurrentItemState(DownloadStatus status, bool canPause)
+    {
+        var vm = new MainViewModel();
+        var previous = vm.Packages.ToArray();
+        vm.Packages.Clear();
+        QueueManager.Instance.StopQueue();
+        try
+        {
+            var package = new DownloadPackage { Name = "Package" };
+            package.Items.Add(new DownloadItem { FileName = "data.bin", Status = status });
+            vm.Packages.Add(package);
+            vm.RecalculateGlobalStats();
+            vm.ActiveDownloadsCount = 1;
+            Assert.Equal(canPause, vm.CanPauseAll);
+            Assert.Equal(canPause, vm.PauseAllCommand.CanExecute(null));
+            if (status == DownloadStatus.InBrowser) Assert.True(vm.StartAllCommand.CanExecute(null));
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+        }
+    }
+
+    [Fact]
+    public async Task MetadataAnalysis_AggregatesPackagesAndSerializesOverlappingRequests()
+    {
+        var vm = new MainViewModel();
+        var previous = vm.Packages.ToArray();
+        vm.Packages.Clear();
+        QueueManager.Instance.StopQueue();
+        var requested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var handler = new TestMockHttpMessageHandler(async (_, cancellationToken) =>
+        {
+            requested.TrySetResult(true);
+            await release.Task.WaitAsync(cancellationToken);
+            var content = new ByteArrayContent(new byte[8]);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        });
+        using var client = new HttpClient(handler);
+        vm.MetadataResolver = new LinkMetadataResolverService(client);
+        DownloadPackage CreatePackage(string name, int count)
+        {
+            var package = new DownloadPackage { Name = name, IsCustomName = true, AutoPar2Repair = false };
+            for (int index = 0; index < count; index++)
+                package.Items.Add(new DownloadItem { FileName = "download_file", TotalBytes = 8, OriginalUrl = $"https://example.invalid/{name}/{index}.bin" });
+            vm.Packages.Add(package);
+            return package;
+        }
+        var first = CreatePackage("First", 2);
+        var second = CreatePackage("Second", 1);
+        var later = CreatePackage("Later", 1);
+        Task? firstRun = null;
+        Task? laterRun = null;
+        try
+        {
+            firstRun = vm.ResolvePackageSizesAsync(new[] { first, second });
+            await requested.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(vm.IsAnalyzingMetadata);
+            Assert.True(vm.IsBusy);
+            Assert.Equal(3, vm.MetadataAnalysisTotal);
+            Assert.Equal(0, vm.MetadataAnalysisCompleted);
+            laterRun = vm.ResolvePackageSizesAsync(new[] { later });
+            Assert.False(laterRun.IsCompleted);
+            Assert.Equal(3, vm.MetadataAnalysisTotal);
+            release.TrySetResult(true);
+            await Task.WhenAll(firstRun, laterRun).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.All(vm.Packages.SelectMany(package => package.Items), item => Assert.True(item.IsMetadataResolved));
+            Assert.Equal(1, vm.MetadataAnalysisCompleted);
+            Assert.Equal(1, vm.MetadataAnalysisTotal);
+            Assert.False(vm.IsAnalyzingMetadata);
+            Assert.False(vm.IsBusy);
+            Assert.Empty(vm.BusyMessage);
+        }
+        finally
+        {
+            release.TrySetResult(true);
+            if (firstRun != null) await firstRun.WaitAsync(TimeSpan.FromSeconds(10));
+            if (laterRun != null) await laterRun.WaitAsync(TimeSpan.FromSeconds(10));
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+        }
+    }
+
+    [Fact]
+    public void PauseAll_RefreshesCommandWhenLastWaitingItemIsPaused()
+    {
+        var vm = new MainViewModel();
+        var previous = vm.Packages.ToArray();
+        vm.Packages.Clear();
+        QueueManager.Instance.StartQueue();
+        try
+        {
+            var package = new DownloadPackage { Name = "Package" };
+            var item = new DownloadItem { FileName = "data.bin", Status = DownloadStatus.Queued };
+            package.Items.Add(item);
+            vm.Packages.Add(package);
+            vm.RecalculateGlobalStats();
+            Assert.True(vm.PauseAllCommand.CanExecute(null));
+            int notifications = 0;
+            vm.PauseAllCommand.CanExecuteChanged += (_, _) => notifications++;
+            item.Status = DownloadStatus.Paused;
+            vm.RecalculateGlobalStats();
+            Assert.False(vm.PauseAllCommand.CanExecute(null));
+            Assert.True(vm.StartAllCommand.CanExecute(null));
+            Assert.True(notifications > 0);
+        }
+        finally
+        {
+            QueueManager.Instance.StopQueue();
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+        }
     }
 
     [Fact]

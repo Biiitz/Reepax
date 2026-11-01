@@ -9,9 +9,9 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>Reepax</AssemblyName>
     <RootNamespace>Reepax</RootNamespace>
-    <Version>26.10.5</Version>
-    <AssemblyVersion>26.10.5.0</AssemblyVersion>
-    <FileVersion>26.10.5.0</FileVersion>
+    <Version>26.11.1</Version>
+    <AssemblyVersion>26.11.1.0</AssemblyVersion>
+    <FileVersion>26.11.1.0</FileVersion>
     <Product>Reepax</Product>
     <Company>Biiitz</Company>
     <Authors>Biiitz</Authors>
@@ -32,6 +32,14 @@
 
   <ItemGroup>
     <Resource Include="Assets\app.ico" />
+    <Content Include="..\legal\THIRD_PARTY_LICENSES.md" Link="legal\THIRD_PARTY_LICENSES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\legal\THIRD_PARTY_NOTICES.txt" Link="legal\THIRD_PARTY_NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
     <Content Include="Assets\app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -69,7 +77,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
-    <PackageReference Include="SharpCompress" Version="0.50.4" />
+    <PackageReference Include="SharpCompress" Version="[0.50.4-reepax.2]" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />
   </ItemGroup>
 

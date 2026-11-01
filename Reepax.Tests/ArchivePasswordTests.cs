@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
 using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
@@ -13,11 +14,12 @@ using Xunit;
 
 namespace Reepax.Tests;
 
-public class ArchivePasswordTests : IDisposable
+public partial class ArchivePasswordTests : IDisposable
 {
     private readonly string _tempDirectory;
     private readonly Func<string, Task<(string? Password, bool Remember)>>? _originalPromptHandler;
     private readonly List<string> _originalSavedPasswords;
+    private readonly List<ArchivePasswordEntry> _originalPasswordStatistics;
 
     public ArchivePasswordTests()
     {
@@ -25,6 +27,7 @@ public class ArchivePasswordTests : IDisposable
         Directory.CreateDirectory(_tempDirectory);
 
         _originalPromptHandler = ArchiveExtractionService.PasswordPromptHandler;
+        _originalPasswordStatistics = SettingsService.Instance.Settings.ArchivePasswordStatistics.Select(entry => entry.Snapshot()).ToList();
         _originalSavedPasswords = SettingsService.Instance.Settings.ExtractionPasswords != null
             ? new List<string>(SettingsService.Instance.Settings.ExtractionPasswords)
             : new List<string>();
@@ -34,15 +37,161 @@ public class ArchivePasswordTests : IDisposable
     {
         ArchiveExtractionService.PasswordPromptHandler = _originalPromptHandler;
         SettingsService.Instance.Settings.ExtractionPasswords = new List<string>(_originalSavedPasswords);
+        SettingsService.Instance.Settings.ArchivePasswordStatistics = _originalPasswordStatistics;
 
         try
         {
             if (Directory.Exists(_tempDirectory))
             {
+                var fullDirectory = Path.GetFullPath(_tempDirectory);
+                if (Path.GetDirectoryName(fullDirectory) != Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath())) ||
+                    !Path.GetFileName(fullDirectory).StartsWith("Reepax_PwdTests_", StringComparison.Ordinal))
+                    throw new InvalidOperationException("Unexpected test directory.");
                 Directory.Delete(_tempDirectory, recursive: true);
             }
         }
         catch { }
+    }
+
+    [Fact]
+    public void PasswordDetails_LegacySettingsKeepUnknownDateAndZeroCounters()
+    {
+        var settingsPath = Path.Combine(_tempDirectory, "legacy.json");
+        File.WriteAllText(settingsPath, "{\"ExtractionPasswords\":[\" LegacyKey \",\"LegacyKey\",\"legacykey\"]}");
+        var service = new SettingsService(settingsPath);
+        var entries = service.GetArchivePasswordEntries();
+        Assert.Equal(new[] { " LegacyKey ", "LegacyKey", "legacykey" }, entries.Select(entry => entry.Password));
+        Assert.All(entries, entry =>
+        {
+            Assert.Null(entry.AddedAt);
+            Assert.Equal(0, entry.UsageCount);
+            Assert.Equal(0, entry.SuccessCount);
+        });
+        service.SaveSettings();
+        Assert.All(new SettingsService(settingsPath).GetArchivePasswordEntries(), entry => Assert.Null(entry.AddedAt));
+    }
+
+    [Fact]
+    public void PasswordDetails_PersistAndDoNotApplyOldSuccessToRemovedAndReaddedPassword()
+    {
+        var settingsPath = Path.Combine(_tempDirectory, "details.json");
+        var service = new SettingsService(settingsPath);
+        var before = DateTimeOffset.UtcNow;
+        service.RememberArchivePassword("KnownKey");
+        var token = service.RecordArchivePasswordAttempt("KnownKey")!;
+        service.RecordArchivePasswordSuccess(token);
+        var entry = Assert.Single(service.GetArchivePasswordEntries());
+        Assert.InRange(entry.AddedAt!.Value, before, DateTimeOffset.UtcNow);
+        Assert.Equal(1, entry.UsageCount);
+        Assert.Equal(1, entry.SuccessCount);
+        service.SaveSettings();
+        var loaded = Assert.Single(new SettingsService(settingsPath).GetArchivePasswordEntries());
+        Assert.Equal(entry.AddedAt, loaded.AddedAt);
+        Assert.Equal(1, loaded.UsageCount);
+        Assert.Equal(1, loaded.SuccessCount);
+        service.ReplaceArchivePasswords(Array.Empty<string>());
+        service.RememberArchivePassword("KnownKey");
+        service.RecordArchivePasswordSuccess(token);
+        var readded = Assert.Single(service.GetArchivePasswordEntries());
+        Assert.Equal(0, readded.UsageCount);
+        Assert.Equal(0, readded.SuccessCount);
+        service.SaveSettings();
+    }
+
+    [Fact]
+    public void AddCommand_RejectsDuplicatesWithoutClearingInputAndReenablesAfterRemoval()
+    {
+        SettingsService.Instance.Settings.ExtractionPasswords = new List<string>();
+        SettingsService.Instance.Settings.ArchivePasswordStatistics = new();
+        var vm = new Reepax.ViewModels.MainViewModel();
+        Assert.False(vm.AddArchivePasswordCommand.CanExecute(null));
+        vm.NewArchivePasswordInput = " KnownKey ";
+        Assert.True(vm.AddArchivePasswordCommand.CanExecute(null));
+        vm.AddArchivePasswordCommand.Execute(null);
+        var added = Assert.Single(vm.ArchivePasswordEntries);
+        Assert.NotNull(added.AddedAt);
+        vm.NewArchivePasswordInput = " KnownKey ";
+        Assert.False(vm.CanAddArchivePassword);
+        Assert.False(vm.AddArchivePasswordCommand.CanExecute(null));
+        vm.AddArchivePassword();
+        Assert.Equal(" KnownKey ", vm.NewArchivePasswordInput);
+        Assert.Single(vm.ArchivePasswordEntries);
+        Assert.Equal(added.AddedAt, vm.ArchivePasswordEntries[0].AddedAt);
+        vm.NewArchivePasswordInput = "knownkey";
+        Assert.True(vm.CanAddArchivePassword);
+        vm.NewArchivePasswordInput = " KnownKey ";
+        vm.RemoveArchivePassword(" KnownKey ");
+        Assert.True(vm.AddArchivePasswordCommand.CanExecute(null));
+        SettingsService.Instance.RememberArchivePassword(" KnownKey ");
+        Assert.False(vm.AddArchivePasswordCommand.CanExecute(null));
+        Assert.Single(vm.ArchivePasswordEntries);
+    }
+
+    [Fact]
+    public async Task PasswordUsage_CountsActualAttemptsAndOnlyCompletedExtractionsAsSuccess()
+    {
+        SettingsService.Instance.Settings.ExtractionPasswords = new List<string> { "WrongKey", "KnownKey", "UnusedKey" };
+        SettingsService.Instance.Settings.ArchivePasswordStatistics = new();
+        var archive = Path.Combine(_tempDirectory, "encrypted.zip");
+        File.WriteAllBytes(archive, CreateEncryptedZip("KnownKey", "payload.txt", "sample payload"));
+        var output = Path.Combine(_tempDirectory, "output");
+        ArchiveExtractionService.PasswordPromptHandler = _ => throw new InvalidOperationException("Unexpected password prompt.");
+        Assert.True(await ArchiveExtractionService.Instance.ExtractArchiveAsync(archive, output));
+        var entries = SettingsService.Instance.GetArchivePasswordEntries();
+        Assert.Equal(1, entries[0].UsageCount);
+        Assert.Equal(0, entries[0].SuccessCount);
+        Assert.Equal(1, entries[1].UsageCount);
+        Assert.Equal(1, entries[1].SuccessCount);
+        Assert.Equal(0, entries[2].UsageCount);
+        Assert.True(ArchiveExtractionService.TryTestArchivePassword(archive, "KnownKey", out _));
+        Assert.Equal(1, SettingsService.Instance.GetArchivePasswordEntries()[1].UsageCount);
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = await ArchiveExtractionService.Instance.ExtractArchiveAsync(archive, Path.Combine(_tempDirectory, "cancelled"),
+            progressCallback: _ => cancellation.Cancel(),
+            cancellationToken: cancellation.Token, lowResourceMode: false);
+        Assert.False(cancelled);
+        var after = SettingsService.Instance.GetArchivePasswordEntries()[1];
+        Assert.Equal(2, after.UsageCount);
+        Assert.Equal(1, after.SuccessCount);
+    }
+
+    [Fact]
+    public async Task UnencryptedArchive_DoesNotConsumeOrCountSavedPasswords()
+    {
+        SettingsService.Instance.Settings.ExtractionPasswords = new List<string> { "KnownKey" };
+        SettingsService.Instance.Settings.ArchivePasswordStatistics = new();
+        var archive = Path.Combine(_tempDirectory, "plain.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(archive, System.IO.Compression.ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("payload.txt").Open())) writer.Write("sample payload");
+        Assert.True(await ArchiveExtractionService.Instance.ExtractArchiveAsync(archive, Path.Combine(_tempDirectory, "plain")));
+        var entry = Assert.Single(SettingsService.Instance.GetArchivePasswordEntries());
+        Assert.Equal(0, entry.UsageCount);
+        Assert.Equal(0, entry.SuccessCount);
+    }
+
+    [Fact]
+    public void PasswordCounters_ConcurrentUpdatesAreNotLostAndUiRowsRemainStable()
+    {
+        var path = Path.Combine(_tempDirectory, "concurrent.json");
+        var service = new SettingsService(path);
+        service.RememberArchivePassword("KnownKey");
+        Parallel.For(0, 24, _ =>
+        {
+            var token = service.RecordArchivePasswordAttempt("KnownKey")!;
+            service.RecordArchivePasswordSuccess(token);
+        });
+        service.SaveSettings();
+        var stored = Assert.Single(new SettingsService(path).GetArchivePasswordEntries());
+        Assert.Equal(24, stored.UsageCount);
+        Assert.Equal(24, stored.SuccessCount);
+        SettingsService.Instance.Settings.ExtractionPasswords = new List<string>();
+        SettingsService.Instance.Settings.ArchivePasswordStatistics = new();
+        var vm = new Reepax.ViewModels.MainViewModel();
+        SettingsService.Instance.RememberArchivePassword("KnownKey");
+        var row = Assert.Single(vm.ArchivePasswordEntries);
+        SettingsService.Instance.RecordArchivePasswordAttempt("KnownKey");
+        Assert.Same(row, Assert.Single(vm.ArchivePasswordEntries));
+        Assert.Equal(1, row.UsageCount);
     }
 
     private static uint Crc32(uint crc, byte b)
@@ -154,15 +303,13 @@ public class ArchivePasswordTests : IDisposable
     }
 
     [Fact]
-    public void ExtractionPasswords_Sanitization_TrimsAndRemovesDuplicates()
+    public void ExtractionPasswords_Sanitization_PreservesExactValuesAndRemovesDuplicates()
     {
         var input = new List<string> { " passwordAlpha ", "", "  ", "custom_pwd", "passwordAlpha", "another_pwd " };
         var sanitized = AppSettings.SanitizeExtractionPasswords(input);
 
-        Assert.Equal(3, sanitized.Count);
-        Assert.Equal("passwordAlpha", sanitized[0]);
-        Assert.Equal("custom_pwd", sanitized[1]);
-        Assert.Equal("another_pwd", sanitized[2]);
+        Assert.Equal(new[] { " passwordAlpha ", "  ", "custom_pwd", "passwordAlpha", "another_pwd " }, sanitized);
+        Assert.Equal(sanitized, AppSettings.SanitizeExtractionPasswords(sanitized.Concat(sanitized)));
 
         // Null list falls back to empty
         var nullSanitized = AppSettings.SanitizeExtractionPasswords(null);
@@ -294,6 +441,10 @@ public class ArchivePasswordTests : IDisposable
 
         // Password should now be saved in Settings because Remember was true
         Assert.Contains(userPassword, SettingsService.Instance.Settings.ExtractionPasswords);
+        var statistics = SettingsService.Instance.GetArchivePasswordEntries().Single(entry => entry.Password == userPassword);
+        Assert.NotNull(statistics.AddedAt);
+        Assert.Equal(1, statistics.UsageCount);
+        Assert.Equal(1, statistics.SuccessCount);
     }
 
     [Fact]
@@ -324,7 +475,9 @@ public class ArchivePasswordTests : IDisposable
         File.WriteAllBytes(archivePath, CreateEncryptedZip("actualSecret", "never_extracted.txt", "content"));
         SettingsService.Instance.Settings.ExtractionPasswords = new List<string> { "nonMatchingKey" };
 
-        ArchiveExtractionService.PasswordPromptHandler = _ => Task.FromResult<(string?, bool)>(("wrongInputPassword", false));
+        int promptCount = 0;
+        ArchiveExtractionService.PasswordPromptHandler = _ => Task.FromResult<(string?, bool)>(
+            (++promptCount == 1 ? "wrongInputPassword" : null, false));
 
         string? lastStatus = null;
         var result = await ArchiveExtractionService.Instance.ExtractArchiveAsync(archivePath, targetDir, status => lastStatus = status);
@@ -368,7 +521,7 @@ public class ArchivePasswordTests : IDisposable
     public void ArchivePasswords_Count_TracksCollectionChanges()
     {
         var vm = new Reepax.ViewModels.MainViewModel();
-        vm.ArchivePasswords.Clear();
+        SettingsService.Instance.ReplaceArchivePasswords(Array.Empty<string>());
         Assert.Equal(0, vm.ArchivePasswordsCount);
 
         vm.NewArchivePasswordInput = "Pass1";
@@ -405,6 +558,13 @@ public class ArchivePasswordTests : IDisposable
     [InlineData("Settings_Card_ArchivePasswords_Subtitle")]
     [InlineData("Settings_ArchivePasswords_Badge_Label")]
     [InlineData("Settings_ArchivePasswords_Add")]
+    [InlineData("Settings_ArchivePasswords_Column_Password")]
+    [InlineData("Settings_ArchivePasswords_Column_Added")]
+    [InlineData("Settings_ArchivePasswords_Column_Used")]
+    [InlineData("Settings_ArchivePasswords_Column_Success")]
+    [InlineData("Settings_ArchivePasswords_UnknownDate")]
+    [InlineData("Settings_ArchivePasswords_Usage_ToolTip")]
+    [InlineData("Settings_ArchivePasswords_Success_ToolTip")]
     [InlineData("Settings_ArchivePasswords_Placeholder")]
     [InlineData("Settings_ArchivePasswords_Remove")]
     [InlineData("Settings_ArchivePasswords_Copy")]
@@ -412,6 +572,9 @@ public class ArchivePasswordTests : IDisposable
     [InlineData("Settings_ArchivePasswords_Empty")]
     [InlineData("Settings_ArchivePasswords_Empty_Detail")]
     [InlineData("Settings_ArchivePasswords_Toggle_ToolTip")]
+    [InlineData("PasswordPrompt_Retry")]
+    [InlineData("PasswordPrompt_ExactInput")]
+    [InlineData("Status_ExtractionUnsupportedEncryptedVolumes")]
     public void ArchivePasswords_LocalizationKeys_ExistInBothLanguages(string key)
     {
         Assert.True(Strings_de.Map.ContainsKey(key), $"Key '{key}' missing in Strings_de");

@@ -218,6 +218,14 @@ public class DownloadReliabilityTests : IDisposable
             return Task.FromResult(response);
         }));
         await new DownloadEngine(client).ResumeDownloadAsync(item);
+        if (!explicitChecksum)
+        {
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.False(item.IsReadyForPostProcessing);
+            Assert.False(File.Exists(item.SaveFilePath));
+            Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath + ".part"));
+            return;
+        }
         var settings = SettingsService.Instance.Settings;
         bool previousVerification = settings.EnableChecksumVerification;
         int previousRetries = settings.MaxAutoRetryOnCorruption;

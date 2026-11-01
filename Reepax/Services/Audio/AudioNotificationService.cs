@@ -17,10 +17,7 @@ public sealed class AudioNotificationService
 
     public static AudioNotificationService Instance => _instance.Value;
 
-    private MediaPlayer? _mediaPlayer;
-    private readonly object _lock = new();
-    private DateTime _lastSoundPlayedTime = DateTime.MinValue;
-    private const int MinMillisecondsBetweenSounds = 500;
+    private AudioNotificationPlayback? _playback;
 
     private AudioNotificationService()
     {
@@ -65,13 +62,13 @@ public sealed class AudioNotificationService
     /// <summary>
     /// Plays a preview of a specific sound at the specified volume.
     /// </summary>
-    public void PlayPreview(string folder, string fileName, int? volume = null)
+    public void PlayPreview(string folder, string fileName, int? volume = null, bool updateVolumeOnlyIfPlaying = false)
     {
         int defaultVol = folder.Contains("error", StringComparison.OrdinalIgnoreCase)
             ? SettingsService.Instance.Settings.ErrorSoundVolume
             : SettingsService.Instance.Settings.CompletionSoundVolume;
         int effectiveVolume = volume ?? defaultVol;
-        PlaySoundInternal(folder, fileName, effectiveVolume, isPreview: true);
+        PlaySoundInternal(folder, fileName, effectiveVolume, isPreview: true, updateVolumeOnlyIfPlaying);
     }
 
     /// <summary>
@@ -116,25 +113,26 @@ public sealed class AudioNotificationService
         return Math.Clamp((volumePercent * 0.99) / 100.0, 0.0, 0.99);
     }
 
-    private void PlaySoundInternal(string folder, string fileName, int volumePercent, bool isPreview)
+    internal static string? ResolvePlayableSoundPath(string folder, string fileName)
     {
-        lock (_lock)
+        foreach (var candidate in new[] { fileName, "1.mp3" })
         {
-            if (!isPreview)
+            try
             {
-                var now = DateTime.UtcNow;
-                if ((now - _lastSoundPlayedTime).TotalMilliseconds < MinMillisecondsBetweenSounds)
-                {
-                    return; // Throttle consecutive event-driven sounds to avoid audio overlap
-                }
-                _lastSoundPlayedTime = now;
+                var path = ResolveSoundPath(folder, candidate);
+                if (path != null && File.Exists(path)) return path;
             }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException) { }
         }
+        return null;
+    }
 
-        string? resolvedPath = ResolveSoundPath(folder, fileName);
-        if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath))
+    private void PlaySoundInternal(string folder, string fileName, int volumePercent, bool isPreview, bool updateVolumeOnlyIfPlaying = false)
+    {
+        string? resolvedPath = ResolvePlayableSoundPath(folder, fileName);
+        if (resolvedPath == null)
         {
-            AppLogger.Warn($"Audio notification file not found: folder '{folder}', file '{fileName}'");
+            AppLogger.Warn("[Audio] The configured sound asset is unavailable.");
             return;
         }
 
@@ -156,30 +154,62 @@ public sealed class AudioNotificationService
             {
                 try
                 {
-                    if (_mediaPlayer == null)
+                    if (app.Dispatcher.HasShutdownStarted || app.Dispatcher.HasShutdownFinished) return;
+                    if (_playback == null)
                     {
-                        _mediaPlayer = new MediaPlayer();
+                        _playback = new AudioNotificationPlayback(() => new MediaAudioVoice());
+                        app.Dispatcher.ShutdownStarted += (_, _) => _playback.Dispose();
                     }
-                    else
+                    var source = new Uri(resolvedPath, UriKind.Absolute);
+                    double volume = ConvertToMediaPlayerVolume(volumePercent);
+                    if (isPreview) _playback.PlayPreview(source, volume, updateVolumeOnlyIfPlaying);
+                    else _playback.PlayNotification(folder, source, volume, () =>
                     {
-                        _mediaPlayer.Stop();
-                        _mediaPlayer.Close();
-                    }
-
-                    double clampedVolume = ConvertToMediaPlayerVolume(volumePercent);
-                    _mediaPlayer.Volume = clampedVolume;
-                    _mediaPlayer.Open(new Uri(resolvedPath, UriKind.Absolute));
-                    _mediaPlayer.Play();
+                        var settings = SettingsService.Instance.Settings;
+                        bool error = string.Equals(folder, "sounds_error", StringComparison.Ordinal);
+                        bool enabled = error ? settings.EnableErrorSound : settings.EnableCompletionSound;
+                        return enabled ? ConvertToMediaPlayerVolume(error ? settings.ErrorSoundVolume : settings.CompletionSoundVolume) : 0;
+                    });
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    AppLogger.Warn($"Failed to play audio notification: {ex.Message}");
+                    AppLogger.Warn("[Audio] Could not play an audio notification.");
                 }
             }));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            AppLogger.Warn($"Failed to dispatch audio playback: {ex.Message}");
+            AppLogger.Warn("[Audio] Could not dispatch audio playback.");
+        }
+    }
+
+    private sealed class MediaAudioVoice : IAudioNotificationVoice
+    {
+        private readonly MediaPlayer _player = new();
+        public event Action? Opened;
+        public event Action? Ended;
+        public event Action? Failed;
+        public double Volume { get => _player.Volume; set => _player.Volume = value; }
+
+        internal MediaAudioVoice()
+        {
+            _player.MediaOpened += OnOpened;
+            _player.MediaEnded += OnEnded;
+            _player.MediaFailed += OnFailed;
+        }
+
+        private void OnOpened(object? sender, EventArgs args) => Opened?.Invoke();
+        private void OnEnded(object? sender, EventArgs args) => Ended?.Invoke();
+        private void OnFailed(object? sender, ExceptionEventArgs args) => Failed?.Invoke();
+        public void Open(Uri source) => _player.Open(source);
+        public void Play() => _player.Play();
+
+        public void Dispose()
+        {
+            _player.MediaOpened -= OnOpened;
+            _player.MediaEnded -= OnEnded;
+            _player.MediaFailed -= OnFailed;
+            _player.Close();
         }
     }
 }

@@ -1,48 +1,14 @@
-# Third-Party Notices & Licenses
+# Third-Party Licenses
 
-Reepax integrates and bundles third-party software and open-source libraries. Each component is governed by its own respective license.
+Reepax's original code is licensed under MIT. Third-party components retain their own licenses.
 
-The **MIT License** applies to the original Reepax codebase and does not restrict, alter, or override any rights granted under the open-source licenses of the third-party components listed below.
+Full license texts and copyright notices are collected in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
----
-
-### Bundled Native Binaries
-
-- **par2cmdline-turbo** (`par2.exe`)
-  - **Purpose:** AVX2/AVX-512 SIMD-accelerated Reed-Solomon PAR2 archive verification and repair.
-  - **License:** GNU General Public License v2.0 or later (GPL-2.0-or-later)
-  - **Copyright:** © 2003–2015 Peter Brian Clements, © 2011–2012 Marcel Partap, © 2012–2026 Ike Devolder, © 2014–2017 Jussi Kansanen, © 2019 Michael Nahas, animeTosho.
-  - **Upstream Source:** [https://github.com/animetosho/par2cmdline-turbo](https://github.com/animetosho/par2cmdline-turbo)
-
-- **adblock-rust** (`reepax_adblock.dll`)
-  - **Purpose:** Content blocking engine for network requests and cosmetic filter rules.
-  - **License:** Mozilla Public License 2.0 (MPL-2.0) / Apache-2.0 / MIT
-  - **Copyright:** © Brave Software
-  - **Upstream Source:** [https://github.com/brave/adblock-rust](https://github.com/brave/adblock-rust)
-
----
-
-### Third-Party Libraries
-
-- **SharpCompress**
-  - **License:** MIT License
-  - **Copyright:** © Adam Hathcock
-
-- **CommunityToolkit.Mvvm**
-  - **License:** MIT License
-  - **Copyright:** © .NET Foundation and Contributors
-
-- **Microsoft.Web.WebView2**
-  - **License:** Microsoft Software License
-  - **Copyright:** © Microsoft Corporation
-
-- **System.Security.Cryptography.ProtectedData**
-  - **License:** MIT License
-  - **Copyright:** © .NET Foundation and Contributors
-
----
-
-### Disclaimer
-
-All third-party components are provided by their respective copyright holders "as is", without warranty of any kind, express or implied. In no event shall the authors or copyright holders of either Reepax or the third-party components be liable for any claim, damages, or other liability arising from the use of these components.
-
+| Component | Version | License | Source |
+| --- | --- | --- | --- |
+| par2cmdline-turbo | 1.5.0 | GPL-2.0-or-later | [Corresponding source archive](https://github.com/animetosho/par2cmdline-turbo/releases/download/v1.5.0/par2cmdline-turbo-1.5.0.tar.xz) |
+| adblock-rust | 0.13.3 | MPL-2.0; dependencies retain their respective licenses | [Engine source](https://github.com/brave/adblock-rust/tree/v0.13.3), [bridge source and lockfile](../native/adblock_bridge) |
+| SharpCompress | 0.50.4-reepax.2 | MIT declared by the package; incorporated code has additional notices | [Base source revision](https://github.com/adamhathcock/sharpcompress/tree/c083c6efd843a844b0c8f7878787360e815be781), [local corrections and rebuild script](../vendor/archive-decoder) |
+| CommunityToolkit.Mvvm | 8.4.2 | MIT | [Exact source revision](https://github.com/CommunityToolkit/dotnet/tree/35dfe7b12da0e64384bfaec7ebc0883196a89f9f) |
+| Microsoft.Web.WebView2 SDK | 1.0.4129.50 | BSD-3-Clause; the separately installed runtime has its own terms | [SDK package](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4129.50) |
+| System.Security.Cryptography.ProtectedData | 10.0.11 | MIT | [Exact source revision](https://github.com/dotnet/dotnet/tree/e2f47b0110ed922f21a1522da67279133ce28f32) |

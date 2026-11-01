@@ -299,6 +299,15 @@ public class ChecksumVerificationService
         }
     }
 
+    internal async Task VerifyExpectedChecksumAsync(string path, string expected, CancellationToken token)
+    {
+        string normalized = NormalizeChecksum(expected);
+        var (actual, algorithm) = await CalculateChecksumForExpectedAsync(path, normalized, token).ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        if (!string.Equals(actual, normalized, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException(Loc.Format("Validation_ChecksumMismatch", algorithm, normalized, actual));
+    }
+
     public static string NormalizeChecksum(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;

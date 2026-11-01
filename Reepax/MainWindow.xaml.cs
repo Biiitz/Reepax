@@ -563,7 +563,7 @@ public partial class MainWindow : Window
             ViewModel.PropertyChanged += ViewModel_TabIndicator_PropertyChanged;
 
         UpdateSlidingTabIndicator(animate: false);
-        UpdateSearchFilterBarVisibility(animate: false);
+        UpdateDownloadToolsAvailability();
         _isTabIndicatorInitialized = true;
     }
 
@@ -571,145 +571,27 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(ViewModel.SelectedMainTab))
         {
-            UpdateSearchFilterBarVisibility(animate: true);
+            UpdateDownloadToolsAvailability();
             Dispatcher.BeginInvoke(new Action(() => UpdateSlidingTabIndicator(animate: true)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
     }
 
-    private int _searchFilterBarAnimGeneration;
-
-    private void UpdateSearchFilterBarVisibility(bool animate = true)
+    private void UpdateDownloadToolsAvailability()
     {
-        if (SearchFilterBarContainer == null) return;
-
-        bool isDownloads = ViewModel?.SelectedMainTab == AppMainTab.Downloads;
-
-        if (!isDownloads)
+        bool enabled = ViewModel.SelectedMainTab == AppMainTab.Downloads;
+        if (!enabled)
         {
-            if (StatusFilterPopup != null && StatusFilterPopup.IsOpen)
-            {
-                _isStatusFilterPopupOpen = false;
-                StatusFilterPopup.IsOpen = false;
-            }
+            QuickSettingsPopup.IsOpen = false;
+            _isStatusFilterPopupOpen = false;
+            StatusFilterPopup.IsOpen = false;
 
-            if (BottomSearchFilterBox != null && BottomSearchFilterBox.IsKeyboardFocused)
-            {
+            if (SearchFilterBarContainer.IsKeyboardFocusWithin || QuickSettingsButton.IsKeyboardFocusWithin)
                 Keyboard.ClearFocus();
-            }
-
-            SearchFilterBarContainer.IsHitTestVisible = false;
-
-            if (!animate || !_isTabIndicatorInitialized)
-            {
-                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
-                SearchFilterBarContainer.Opacity = 0.0;
-                if (SearchFilterBarTransform != null)
-                {
-                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
-                    SearchFilterBarTransform.Y = 12.0;
-                }
-                SearchFilterBarContainer.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            int currentGen = ++_searchFilterBarAnimGeneration;
-
-            var fadeOut = new DoubleAnimation
-            {
-                To = 0.0,
-                Duration = TimeSpan.FromMilliseconds(160),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-            };
-
-            if (SearchFilterBarTransform != null)
-            {
-                var slideDown = new DoubleAnimation
-                {
-                    To = 12.0,
-                    Duration = TimeSpan.FromMilliseconds(180),
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
-                };
-                SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, slideDown);
-            }
-
-            fadeOut.Completed += (_, _) =>
-            {
-                if (_searchFilterBarAnimGeneration != currentGen) return;
-                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
-                SearchFilterBarContainer.Opacity = 0.0;
-                if (SearchFilterBarTransform != null)
-                {
-                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
-                    SearchFilterBarTransform.Y = 12.0;
-                }
-                SearchFilterBarContainer.Visibility = Visibility.Collapsed;
-            };
-
-            SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, fadeOut);
         }
-        else
-        {
-            bool wasCollapsed = SearchFilterBarContainer.Visibility != Visibility.Visible;
-            SearchFilterBarContainer.Visibility = Visibility.Visible;
-            SearchFilterBarContainer.IsHitTestVisible = true;
 
-            if (wasCollapsed)
-            {
-                SearchFilterBarContainer.Opacity = 0.0;
-                if (SearchFilterBarTransform != null)
-                {
-                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
-                    SearchFilterBarTransform.Y = 12.0;
-                }
-            }
-
-            if (!animate || !_isTabIndicatorInitialized)
-            {
-                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
-                SearchFilterBarContainer.Opacity = 1.0;
-                if (SearchFilterBarTransform != null)
-                {
-                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
-                    SearchFilterBarTransform.Y = 0.0;
-                }
-                return;
-            }
-
-            int currentGen = ++_searchFilterBarAnimGeneration;
-
-            var fadeIn = new DoubleAnimation
-            {
-                To = 1.0,
-                Duration = TimeSpan.FromMilliseconds(220),
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            };
-
-            if (SearchFilterBarTransform != null)
-            {
-                var slideUp = new DoubleAnimation
-                {
-                    To = 0.0,
-                    Duration = TimeSpan.FromMilliseconds(240),
-                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-                };
-                SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, slideUp);
-            }
-
-            fadeIn.Completed += (_, _) =>
-            {
-                if (_searchFilterBarAnimGeneration != currentGen) return;
-                SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, null);
-                SearchFilterBarContainer.Opacity = 1.0;
-                if (SearchFilterBarTransform != null)
-                {
-                    SearchFilterBarTransform.BeginAnimation(TranslateTransform.YProperty, null);
-                    SearchFilterBarTransform.Y = 0.0;
-                }
-            };
-
-            SearchFilterBarContainer.BeginAnimation(UIElement.OpacityProperty, fadeIn);
-        }
+        SearchFilterBarContainer.IsEnabled = enabled;
+        QuickSettingsButton.IsEnabled = enabled;
     }
 
     private void UpdateSlidingTabIndicator(bool animate = true)
@@ -2411,6 +2293,11 @@ public partial class MainWindow : Window
                   ?? ViewModel.SelectedPackage 
                   ?? ViewModel.Packages.FirstOrDefault(p => p.IsSelected);
 
+        menu.DataContext = pkg;
+        var changePathItem = menu.Items.OfType<MenuItem>().FirstOrDefault(item => (string?)item.Tag == "ChangeDownloadPath");
+        if (changePathItem != null)
+            changePathItem.IsEnabled = pkg != null && ViewModel.CanChangeDownloadPaths(ViewModel.GetPackagesForContextAction(pkg));
+
         var openPackageMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "OpenPackageMenuItem" || (string?)m.Tag == "OpenPackageMenuItem");
         if (openPackageMenuItem != null)
         {
@@ -2428,12 +2315,19 @@ public partial class MainWindow : Window
         var extractMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "ExtractPackageMenuItem" || (string?)m.Tag == "ExtractPackageMenuItem");
         var pauseResumeMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "PauseResumeExtractionMenuItem" || (string?)m.Tag == "PauseResumeExtractionMenuItem");
         var cancelExtractMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CancelExtractionMenuItem" || (string?)m.Tag == "CancelExtractionMenuItem");
+        var passwordsMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(item => (string?)item.Tag == "ArchivePasswordsMenuItem");
+        if (passwordsMenuItem != null) passwordsMenuItem.Visibility = Visibility.Collapsed;
 
         if (pkg != null)
         {
             bool isExtracting = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id);
             bool isPaused = Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtractionPaused(pkg.Id);
-            bool canExtract = Services.Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg, allowReextract: true);
+            bool canExtract = Services.Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg, allowReextract: true, ignorePasswordWait: true);
+            if (passwordsMenuItem != null)
+            {
+                passwordsMenuItem.Visibility = canExtract ? Visibility.Visible : Visibility.Collapsed;
+                passwordsMenuItem.IsEnabled = canExtract && !isExtracting;
+            }
 
             if (isExtracting)
             {
@@ -2457,7 +2351,7 @@ public partial class MainWindow : Window
             else
             {
                 if (pauseResumeMenuItem != null) pauseResumeMenuItem.Visibility = Visibility.Collapsed;
-                if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = Visibility.Collapsed;
+                if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = pkg.RequiresArchivePassword ? Visibility.Visible : Visibility.Collapsed;
 
                 // Only show "Extract Package" if the package can be cleanly extracted
                 if (extractMenuItem != null)
@@ -2589,6 +2483,12 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ArchivePasswords_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var package = GetPackageFromSender(sender);
+        if (package != null) _ = ViewModel.ManageArchivePasswordsCommand.ExecuteAsync(package);
+    }
+
     private void ExtractPackage_MenuItem_Click(object sender, RoutedEventArgs e)
     {
         var package = GetPackageFromSender(sender);
@@ -2612,7 +2512,7 @@ public partial class MainWindow : Window
         var package = GetPackageFromSender(sender);
         if (package != null)
         {
-            Services.Extractor.ArchiveExtractionService.Instance.CancelPackageExtraction(package.Id);
+            Services.Extractor.ArchiveExtractionService.Instance.CancelPackageExtraction(package);
             ViewModel.StatusSummary = Loc.Format("Status_ExtractionCancelledForPackage", package.Name);
         }
     }
@@ -2661,32 +2561,32 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ChangeDownloadPath_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var package = GetPackageFromSender(sender);
+        if (package == null) return;
+        var packages = ViewModel.GetPackagesForContextAction(package);
+        if (!ViewModel.CanChangeDownloadPaths(packages)) return;
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = Loc.Get("Dialog_SelectDownloadDestination") };
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName)) return;
+        await ViewModel.ChangeDownloadPathsAsync(packages, dialog.FolderName);
+    }
+
     private void CreateGameInstallFolder_MenuItem_Click(object sender, RoutedEventArgs e)
     {
         var package = GetPackageFromSender(sender);
         if (package == null) return;
 
-        string? targetBaseDir = null;
-
-        // If "Game installation directory" setting is disabled:
-        // Prompt dialog to choose destination directory.
-        if (!SettingsService.Instance.Settings.CreateGameInstallFolder)
+        var dialog = new Microsoft.Win32.OpenFolderDialog
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog
-            {
-                Title = Loc.Get("Dialog_SelectGameInstallDestinationDirTitle"),
-                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-            };
+            Title = Loc.Get("Dialog_SelectGameInstallDestinationDirTitle"),
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+        };
 
-            if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName))
-            {
-                return; // User cancelled
-            }
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName))
+            return;
 
-            targetBaseDir = dialog.FolderName;
-        }
-
-        var result = GameInstallFolderService.CreateOrValidateGameInstallFolder(package, targetBaseDir);
+        var result = GameInstallFolderService.CreateOrValidateGameInstallFolder(package, dialog.FolderName);
 
         if (result.Status == GameInstallFolderStatus.AlreadyExists)
         {
@@ -2785,6 +2685,7 @@ public partial class MainWindow : Window
         if (sender is not ContextMenu menu) return;
         var item = (menu.PlacementTarget as FrameworkElement)?.DataContext as DownloadItem
                   ?? ViewModel.SelectedItem;
+        menu.DataContext = item;
 
         var extractItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "ExtractArchiveItemMenuItem" || (string?)m.Tag == "ExtractArchiveItemMenuItem");
         if (extractItem != null)
@@ -2811,6 +2712,12 @@ public partial class MainWindow : Window
                     : Loc.Get("Menu_ExtractArchive");
             }
         }
+    }
+
+    private void OpenItemInBrowser_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var item = GetItemFromSender(sender);
+        if (item != null) ViewModel.OpenItemsInDefaultBrowser(item);
     }
 
     private void ExtractItem_MenuItem_Click(object sender, RoutedEventArgs e)
@@ -4280,7 +4187,8 @@ public partial class MainWindow : Window
 
     private void QuickSettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        QuickSettingsPopup.Toggle(QuickSettingsButton);
+        if (ViewModel.SelectedMainTab == AppMainTab.Downloads)
+            QuickSettingsPopup.Toggle(QuickSettingsButton);
     }
 
     private void PostDownloadActionButton_Click(object sender, RoutedEventArgs e)

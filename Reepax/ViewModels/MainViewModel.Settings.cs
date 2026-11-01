@@ -292,30 +292,6 @@ public partial class MainViewModel
     private string _driveStorageTypeDescription = string.Empty;
 
     [ObservableProperty]
-    private bool _createGameInstallFolder;
-
-    partial void OnCreateGameInstallFolderChanged(bool value)
-    {
-        if (_settingsService.Settings.CreateGameInstallFolder != value)
-        {
-            _settingsService.Settings.CreateGameInstallFolder = value;
-            _settingsService.SaveSettings();
-        }
-    }
-
-    [ObservableProperty]
-    private string _gameInstallDirectory = string.Empty;
-
-    partial void OnGameInstallDirectoryChanged(string value)
-    {
-        if (!string.IsNullOrWhiteSpace(value) && _settingsService.Settings.GameInstallDirectory != value)
-        {
-            _settingsService.Settings.GameInstallDirectory = value.Trim();
-            _settingsService.SaveSettings();
-        }
-    }
-
-    [ObservableProperty]
     private bool _isDarkMode = true;
 
     partial void OnAutoExtractArchivesChanged(bool value)
@@ -385,11 +361,15 @@ public partial class MainViewModel
             if (SetProperty(ref _newArchivePasswordInput, value))
             {
                 OnPropertyChanged(nameof(HasNewArchivePasswordInput));
+                NotifyArchivePasswordAddState();
             }
         }
     }
 
-    public bool HasNewArchivePasswordInput => !string.IsNullOrWhiteSpace(_newArchivePasswordInput);
+    public bool HasNewArchivePasswordInput => !string.IsNullOrEmpty(_newArchivePasswordInput);
+    public bool CanAddArchivePassword => HasNewArchivePasswordInput &&
+        !ArchivePasswords.Contains(NewArchivePasswordInput, StringComparer.Ordinal) &&
+        !_settingsService.ContainsArchivePassword(NewArchivePasswordInput);
 
     private bool _isArchivePasswordsExpanded = false;
     public bool IsArchivePasswordsExpanded
@@ -418,6 +398,66 @@ public partial class MainViewModel
     }
 
     public ObservableCollection<string> ArchivePasswords { get; } = new();
+    public ObservableCollection<ArchivePasswordEntry> ArchivePasswordEntries { get; } = new();
+    private readonly object _archivePasswordRefreshLock = new();
+
+    private void InitializeArchivePasswords()
+    {
+        RefreshArchivePasswordEntries();
+        ArchivePasswords.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasArchivePasswords));
+            OnPropertyChanged(nameof(ArchivePasswordsCount));
+            NotifyArchivePasswordAddState();
+        };
+        var reference = new WeakReference<MainViewModel>(this);
+        EventHandler? handler = null;
+        handler = (_, _) =>
+        {
+            if (reference.TryGetTarget(out var viewModel))
+                SafeDispatch(viewModel.RefreshArchivePasswordEntries);
+            else
+                SettingsService.Instance.ArchivePasswordsChanged -= handler;
+        };
+        _settingsService.ArchivePasswordsChanged += handler;
+    }
+
+    private void RefreshArchivePasswordEntries()
+    {
+        lock (_archivePasswordRefreshLock)
+        {
+            var entries = _settingsService.GetArchivePasswordEntries();
+            if (!ArchivePasswords.SequenceEqual(entries.Select(entry => entry.Password), StringComparer.Ordinal))
+            {
+                ArchivePasswords.Clear();
+                foreach (var entry in entries) ArchivePasswords.Add(entry.Password);
+            }
+            if (!ArchivePasswordEntries.Select(entry => entry.Password).SequenceEqual(entries.Select(entry => entry.Password), StringComparer.Ordinal))
+            {
+                ArchivePasswordEntries.Clear();
+                foreach (var entry in entries) ArchivePasswordEntries.Add(entry);
+            }
+            else
+            {
+                for (int index = 0; index < entries.Length; index++)
+                {
+                    ArchivePasswordEntries[index].AddedAt = entries[index].AddedAt;
+                    ArchivePasswordEntries[index].UsageCount = entries[index].UsageCount;
+                    ArchivePasswordEntries[index].SuccessCount = entries[index].SuccessCount;
+                    ArchivePasswordEntries[index].RefreshDateText();
+                }
+            }
+            OnPropertyChanged(nameof(HasArchivePasswords));
+            OnPropertyChanged(nameof(ArchivePasswordsCount));
+            NotifyArchivePasswordAddState();
+        }
+    }
+
+    private void NotifyArchivePasswordAddState()
+    {
+        OnPropertyChanged(nameof(CanAddArchivePassword));
+        _addArchivePasswordCommand?.NotifyCanExecuteChanged();
+    }
 
     public bool HasArchivePasswords => ArchivePasswords.Count > 0;
 
@@ -425,22 +465,17 @@ public partial class MainViewModel
 
     private RelayCommand? _addArchivePasswordCommand;
     public IRelayCommand AddArchivePasswordCommand =>
-        _addArchivePasswordCommand ??= new RelayCommand(AddArchivePassword);
+        _addArchivePasswordCommand ??= new RelayCommand(AddArchivePassword, () => CanAddArchivePassword);
 
     public void AddArchivePassword()
     {
-        if (string.IsNullOrWhiteSpace(NewArchivePasswordInput))
+        if (!CanAddArchivePassword)
             return;
 
-        var pwd = NewArchivePasswordInput.Trim();
-        if (!ArchivePasswords.Contains(pwd, StringComparer.Ordinal))
-        {
-            ArchivePasswords.Add(pwd);
-            OnPropertyChanged(nameof(HasArchivePasswords));
-            OnPropertyChanged(nameof(ArchivePasswordsCount));
-            SyncArchivePasswordsToSettings();
-            IsArchivePasswordsExpanded = true;
-        }
+        var pwd = NewArchivePasswordInput;
+        if (!_settingsService.RememberArchivePassword(pwd)) return;
+        RefreshArchivePasswordEntries();
+        IsArchivePasswordsExpanded = true;
         NewArchivePasswordInput = string.Empty;
     }
 
@@ -453,12 +488,8 @@ public partial class MainViewModel
         if (string.IsNullOrEmpty(password))
             return;
 
-        if (ArchivePasswords.Remove(password))
-        {
-            OnPropertyChanged(nameof(HasArchivePasswords));
-            OnPropertyChanged(nameof(ArchivePasswordsCount));
-            SyncArchivePasswordsToSettings();
-        }
+        _settingsService.RemoveArchivePassword(password);
+        RefreshArchivePasswordEntries();
     }
 
     private RelayCommand<string?>? _copyArchivePasswordCommand;
@@ -471,12 +502,6 @@ public partial class MainViewModel
             return;
 
         SafeSetClipboardText(password, Loc.Get("Settings_ArchivePasswords_Copied"));
-    }
-
-    private void SyncArchivePasswordsToSettings()
-    {
-        _settingsService.Settings.ExtractionPasswords = ArchivePasswords.ToList();
-        _settingsService.SaveSettings();
     }
 
     partial void OnIsDarkModeChanged(bool value)
@@ -651,8 +676,8 @@ public partial class MainViewModel
         }
     }
 
-    private static readonly string[] AvailableCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3", "7.mp3", "8.mp3", "9.mp3", "10.mp3"];
-    private static readonly string[] AvailableErrorSounds = ["1.mp3", "2.mp3"];
+    private static readonly string[] AvailableCompletionSounds = AppSettings.ValidCompletionSounds;
+    private static readonly string[] AvailableErrorSounds = AppSettings.ValidErrorSounds;
 
     [RelayCommand]
     public void SelectAndPreviewCompletionSound(string? soundFileName)
@@ -698,14 +723,14 @@ public partial class MainViewModel
     public void PreviewCompletionVolumeSound()
     {
         string sound = !string.IsNullOrWhiteSpace(SelectedCompletionSound) ? SelectedCompletionSound : "1.mp3";
-        AudioNotificationService.Instance.PlayPreview("sounds_done", sound, CompletionSoundVolume);
+        AudioNotificationService.Instance.PlayPreview("sounds_done", sound, CompletionSoundVolume, updateVolumeOnlyIfPlaying: true);
     }
 
     [RelayCommand]
     public void PreviewErrorVolumeSound()
     {
         string sound = !string.IsNullOrWhiteSpace(SelectedErrorSound) ? SelectedErrorSound : "1.mp3";
-        AudioNotificationService.Instance.PlayPreview("sounds_error", sound, ErrorSoundVolume);
+        AudioNotificationService.Instance.PlayPreview("sounds_error", sound, ErrorSoundVolume, updateVolumeOnlyIfPlaying: true);
     }
 
     [RelayCommand]
@@ -1144,62 +1169,6 @@ public partial class MainViewModel
             _settingsService.SaveSettings();
             CurrentDownloadDirectory = dialog.FolderName;
             StatusSummary = Loc.Format("Status_DownloadDirChanged", dialog.FolderName);
-        }
-    }
-
-    [RelayCommand]
-    public void BrowseGameInstallDirectory()
-    {
-        var currentDir = GameInstallDirectory;
-        var dialog = new Microsoft.Win32.OpenFolderDialog
-        {
-            Title = Loc.Get("Dialog_SelectGameInstallDirTitle"),
-            InitialDirectory = Directory.Exists(currentDir) ? currentDir : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
-        };
-
-        if (dialog.ShowDialog() == true)
-        {
-            GameInstallDirectory = dialog.FolderName;
-            _settingsService.Settings.GameInstallDirectory = dialog.FolderName;
-            _settingsService.SaveSettings();
-        }
-    }
-
-    [RelayCommand]
-    public void OpenGameInstallDirectory()
-    {
-        try
-        {
-            var dir = GameInstallDirectory;
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                dir = GameInstallFolderService.GetEffectiveBaseDirectory();
-            }
-            if (!Directory.Exists(dir))
-            {
-                Directory.CreateDirectory(dir);
-            }
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    Arguments = $"\"{dir}\"",
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = dir,
-                    UseShellExecute = true
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("Failed to open game install directory", ex);
         }
     }
 

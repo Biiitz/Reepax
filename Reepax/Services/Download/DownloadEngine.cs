@@ -495,7 +495,7 @@ public partial class DownloadEngine
         if (checkpoint != null)
         {
             long committed = checkpoint.Segments[0].Done;
-            if (!MatchesSource(item, checkpoint) || existingBytes < committed || existingBytes > checkpoint.TotalBytes)
+            if (!MatchesSource(item, checkpoint) || existingBytes < committed || (!checkpoint.IsUnknownLength && existingBytes > checkpoint.TotalBytes))
             {
                 checkpoint = null;
                 existingBytes = 0;
@@ -503,11 +503,20 @@ public partial class DownloadEngine
             else existingBytes = committed;
         }
 
-        long expectedTotal = checkpoint?.TotalBytes ?? item.TotalBytes;
+        using var checkpointLifetime = new SegmentIntegrityLifetime(checkpoint?.Segments ?? new());
+        if (checkpoint != null && existingBytes > 0)
+        {
+            using var existing = new FileStream(tempFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var segment = checkpoint.Segments[0];
+            segment.Integrity = LocalDownloadIntegrity.ReadVerifiedPrefix(existing.SafeFileHandle, 0, existingBytes, segment.LocalHashes, cancellationToken);
+            segment.Done = existingBytes = segment.Integrity.Snapshot().Length;
+        }
+
+        long expectedTotal = checkpoint?.IsUnknownLength == true ? 0 : checkpoint?.TotalBytes ?? item.TotalBytes;
         // Finalize a fully committed transfer after a transient final move failure.
         if (existingBytes > 0 && expectedTotal > 0 && existingBytes == expectedTotal)
         {
-            FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, expectedTotal);
+            await FinalizeCompletedPartFileAsync(item, tempFilePath, destinationPath, existingBytes, expectedTotal, cancellationToken);
             return;
         }
 
@@ -540,7 +549,7 @@ public partial class DownloadEngine
                 ((remoteTotal.HasValue && remoteTotal.Value > 0 && existingBytes == remoteTotal.Value) ||
                  (expectedTotal > 0 && existingBytes == expectedTotal)))
             {
-                FinalizeCompletedPartFile(item, tempFilePath, destinationPath, existingBytes, existingBytes);
+                await FinalizeCompletedPartFileAsync(item, tempFilePath, destinationPath, existingBytes, existingBytes, cancellationToken);
                 return;
             }
 
@@ -661,6 +670,9 @@ public partial class DownloadEngine
         public long Start { get; set; }
         public long End { get; set; }
         public long Done { get; set; }
+        public List<string>? LocalHashes { get; set; }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public LocalDownloadIntegrity? Integrity { get; set; }
 
         [System.Text.Json.Serialization.JsonIgnore]
         private long _receivedBytes;
@@ -683,6 +695,7 @@ public partial class DownloadEngine
     {
         public long TotalBytes { get; set; }
         public bool IsSequential { get; set; }
+        public bool IsUnknownLength { get; set; }
         public string? EntityTag { get; set; }
         public string? SourceKey { get; set; }
         public List<SegmentState> Segments { get; set; } = new();
@@ -713,16 +726,19 @@ public partial class DownloadEngine
             if (state == null || state.TotalBytes <= 0 || state.Segments.Count == 0)
                 return null;
             if (state.IsSequential && state.Segments.Count != 1) return null;
+            if (state.IsUnknownLength && !state.IsSequential) return null;
             if (state.EntityTag != null &&
                 (!EntityTagHeaderValue.TryParse(state.EntityTag, out var tag) || tag.IsWeak || state.SourceKey == null)) return null;
-            if (state.IsSequential && state.EntityTag == null) return null;
+            if (state.IsSequential && state.EntityTag == null && state.Segments[0].LocalHashes == null) return null;
 
             // Validation: segments must cover the range 0..TotalBytes-1 without gaps
             long expectedStart = 0;
             foreach (var seg in state.Segments)
             {
                 if (seg.Start != expectedStart || seg.End < seg.Start || seg.End >= state.TotalBytes ||
-                    seg.Done < 0 || seg.Done > seg.End - seg.Start + 1)
+                    seg.Done < 0 || seg.Done > seg.End - seg.Start + 1 ||
+                    (seg.LocalHashes != null && (seg.LocalHashes.Count != (seg.Done + LocalDownloadIntegrity.BlockSize - 1) / LocalDownloadIntegrity.BlockSize ||
+                        seg.LocalHashes.Any(hash => hash == null || hash.Length != 64 || !hash.All(Uri.IsHexDigit)))))
                     return null;
                 expectedStart = seg.End + 1;
             }
@@ -820,6 +836,7 @@ public partial class DownloadEngine
     {
         var totalBytes = state.TotalBytes;
         var segments = state.Segments;
+        using var integrityLifetime = new SegmentIntegrityLifetime(segments);
         if (!MatchesSource(item, state)) throw new RepresentationChangedException();
         using var fs = new FileStream(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096, FileOptions.Asynchronous);
         if (fs.Length != totalBytes)
@@ -833,7 +850,12 @@ public partial class DownloadEngine
             fs.SetLength(totalBytes);
         }
 
-        foreach (var segment in segments) segment.InitializeReceivedBytes();
+        foreach (var segment in segments)
+        {
+            segment.Integrity = LocalDownloadIntegrity.ReadVerifiedPrefix(fs.SafeFileHandle, segment.Start, segment.Done, segment.LocalHashes, cancellationToken);
+            segment.Done = segment.Integrity.Snapshot().Length;
+            segment.InitializeReceivedBytes();
+        }
         long initialDownloaded = segments.Sum(segment => segment.ReceivedBytes);
 
         var speedTracker = new RollingSpeedTracker(initialDownloaded);
@@ -948,6 +970,8 @@ public partial class DownloadEngine
             });
         }
 
+        foreach (var segment in segments)
+            segment.Integrity!.VerifyFile(fs.SafeFileHandle, segment.Start, cancellationToken);
         // Verify completeness
         long written = segments.Sum(s => s.Done);
         if (written < totalBytes)
@@ -955,44 +979,11 @@ public partial class DownloadEngine
             throw new IOException($"Download was interrupted: Only {written} of {totalBytes} bytes were transferred.");
         }
 
-        // Completion: .part -> final filename
-        var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : tempFilePath[..^5];
-        var targetDir = Path.GetDirectoryName(actualFinalPath);
-        if (!string.IsNullOrWhiteSpace(targetDir) && !Directory.Exists(targetDir))
-        {
-            Directory.CreateDirectory(targetDir);
-        }
-
         fs.Flush(flushToDisk: true);
         fs.Close();
-        File.Move(tempFilePath, actualFinalPath, overwrite: true);
-        Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segMetaPath);
-
-        item.IsVerifyingIntegrity = true;
-        item.RecordSessionDuration();
-        item.DownloadedBytes = written;
-        item.ProgressPercentage = 100;
-        item.SpeedBytesPerSecond = 0;
-        item.RemainingSeconds = 0;
-        item.Status = DownloadStatus.Completed;
-        item.StatusMessage = Loc.Get("Status_Completed");
-        var completedAt = DateTime.Now;
-        item.CompletedAt = completedAt;
-        if (item.ElapsedDurationMs <= 0 && item.StartedAt.HasValue && completedAt >= item.StartedAt.Value)
-        {
-            item.ElapsedDurationMs = (long)(completedAt - item.StartedAt.Value).TotalMilliseconds;
-        }
-
-        CompleteAndRemoveActiveDownload(item.Id);
-        DownloadCompleted?.Invoke(item);
+        await FinalizeCompletedPartFileAsync(item, tempFilePath, item.SaveFilePath ?? tempFilePath[..^5], written, totalBytes, cancellationToken);
     }
 
-    /// <summary>
-    /// Downloads a single byte-range segment into the preallocated .part file.
-    /// Internal retries (3x) on network errors; progress is preserved.
-    /// Uses ArrayPool-backed zero-allocation memory and coalesces network reads into batch disk writes
-    /// with a 250ms watchdog to minimize disk thrashing on high-speed and gigabit connections.
-    /// </summary>
     private async Task DownloadSegmentAsync(
         DownloadItem item,
         SegmentState segment,
@@ -1062,6 +1053,7 @@ public partial class DownloadEngine
                         if (bufferedBytes >= bufferSize)
                         {
                             await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                            segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
                             offset += bufferedBytes;
                             segment.Done += bufferedBytes;
                             bufferedBytes = 0;
@@ -1115,6 +1107,7 @@ public partial class DownloadEngine
                         if (bufferedBytes >= bufferSize || isSegmentDone || isWatchdogElapsed)
                         {
                             await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                            segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
                             offset += bufferedBytes;
                             segment.Done += bufferedBytes;
                             bufferedBytes = 0;
@@ -1125,6 +1118,7 @@ public partial class DownloadEngine
                     if (bufferedBytes > 0)
                     {
                         await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                        segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
                         offset += bufferedBytes;
                         segment.Done += bufferedBytes;
                         bufferedBytes = 0;
@@ -1179,7 +1173,7 @@ public partial class DownloadEngine
         bool encoded = HasEncodedContent(response);
         if (response.StatusCode == HttpStatusCode.PartialContent)
             ValidateContentRange(response, initialDownloadedBytes,
-                initialDownloadedBytes > 0 ? checkpoint?.TotalBytes ?? (item.TotalBytes > 0 ? item.TotalBytes : null) : null);
+                initialDownloadedBytes > 0 ? checkpoint?.IsUnknownLength == true ? null : checkpoint?.TotalBytes ?? (item.TotalBytes > 0 ? item.TotalBytes : null) : null);
         long? contentLength = response.Content.Headers.ContentLength;
         long totalBytes;
 
@@ -1271,20 +1265,28 @@ public partial class DownloadEngine
             {
                 checkpoint = null;
                 string? entityTag = encoded ? null : GetStrongEntityTag(response);
-                if (entityTag != null && totalBytes > 0)
+                if (!encoded)
                 {
-                    checkpoint = CreateSegments(totalBytes, 1);
+                    checkpoint = CreateSegments(Math.Max(1, totalBytes), 1);
+                    checkpoint.IsUnknownLength = totalBytes <= 0;
+                    checkpoint.Segments[0].LocalHashes = new();
                     checkpoint.IsSequential = true;
                     checkpoint.EntityTag = entityTag;
                     checkpoint.SourceKey = GetSourceKey(item);
                     SaveSegmentState(checkpointPath, checkpoint, required: true);
                 }
             }
+            if (checkpoint != null && totalBytes > 0)
+            {
+                checkpoint.IsUnknownLength = false;
+                checkpoint.TotalBytes = totalBytes;
+                checkpoint.Segments[0].End = totalBytes - 1;
+            }
             var fileStreamOptions = new FileStreamOptions
             {
                 Mode = initialDownloadedBytes > 0 ? FileMode.Open : FileMode.Create,
-                Access = FileAccess.Write,
-                Share = FileShare.ReadWrite,
+                Access = FileAccess.ReadWrite,
+                Share = FileShare.Read,
                 BufferSize = bufferSize,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             };
@@ -1294,6 +1296,16 @@ public partial class DownloadEngine
             fileStream.SetLength(initialDownloadedBytes);
             fileStream.Position = initialDownloadedBytes;
             if (checkpoint == null && File.Exists(checkpointPath)) File.Delete(checkpointPath);
+
+            using var transferIntegrity = LocalDownloadIntegrity.ReadVerifiedPrefix(fileStream.SafeFileHandle, 0,
+                initialDownloadedBytes, checkpoint?.Segments[0].LocalHashes, cancellationToken);
+            if (transferIntegrity.Snapshot().Length != initialDownloadedBytes)
+                throw new InvalidDataException("Partial file changed before resuming.");
+            if (checkpoint != null)
+            {
+                checkpoint.Segments[0].Integrity?.Dispose();
+                checkpoint.Segments[0].Integrity = transferIntegrity;
+            }
 
             long currentDownloaded = initialDownloadedBytes;
             var speedTracker = new RollingSpeedTracker(initialDownloadedBytes);
@@ -1345,6 +1357,7 @@ public partial class DownloadEngine
                         throw new InvalidDataException("Server sent more bytes than the declared file size.");
 
                     await fileStream.WriteAsync(rentedBuffer.AsMemory(0, bytesRead), cancellationToken);
+                    transferIntegrity.Append(rentedBuffer.AsSpan(0, bytesRead));
                     currentDownloaded += bytesRead;
 
                     var now = Stopwatch.GetTimestamp();
@@ -1368,6 +1381,8 @@ public partial class DownloadEngine
 
                 await fileStream.FlushAsync(cancellationToken);
                 fileStream.Flush(flushToDisk: true);
+                if (fileStream.Length != currentDownloaded) throw new InvalidDataException("Downloaded file length changed.");
+                transferIntegrity.VerifyFile(fileStream.SafeFileHandle, 0, cancellationToken);
             }
             finally
             {
@@ -1393,8 +1408,6 @@ public partial class DownloadEngine
                 });
             }
 
-            fileStream.Close();
-
             // Validate stream completeness: do not mark complete if stream was truncated
             if (totalBytes > 0 && currentDownloaded != totalBytes)
             {
@@ -1407,7 +1420,7 @@ public partial class DownloadEngine
             }
 
             // Download completed, atomically rename temp file to final destination
-            FinalizeCompletedPartFile(item, tempFilePath, finalFilePath, currentDownloaded, totalBytes);
+            await FinalizeCompletedPartFileAsync(item, tempFilePath, finalFilePath, currentDownloaded, totalBytes, cancellationToken);
         }
         finally
         {
@@ -1418,13 +1431,25 @@ public partial class DownloadEngine
         }
     }
 
-    private void FinalizeCompletedPartFile(
+    private async Task FinalizeCompletedPartFileAsync(
         DownloadItem item,
         string tempFilePath,
         string finalFilePath,
         long currentDownloaded,
-        long totalBytes)
+        long totalBytes,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!string.IsNullOrWhiteSpace(item.ExpectedChecksum))
+        {
+            try
+            {
+                await Reepax.Services.Verification.ChecksumVerificationService.Instance.VerifyExpectedChecksumAsync(
+                    tempFilePath, item.ExpectedChecksum, cancellationToken).ConfigureAwait(false);
+            }
+            catch (InvalidDataException ex) { throw new DownloadIntegrityException(ex.Message, ex); }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
         var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
         var targetDir = Path.GetDirectoryName(actualFinalPath);
         if (!string.IsNullOrWhiteSpace(targetDir) && !Directory.Exists(targetDir))

@@ -27,6 +27,10 @@ public static class PackageGrouper
         @"[_\.\+]+",
         RegexOptions.Compiled);
 
+    private static readonly Regex SupplementaryComponentRegex = new(
+        @"^(?:[a-z0-9]{1,12}[\s._-]+)?(?:optional|selective)[\s._-]+(?:videos?|audio|languages?|voices?|textures?|files|components|content)(?:$|[\s._-])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex DomainPrefixRegex = new(
         @"(?i)^www[\._\-][a-z0-9\-]+[\._\-](?:com|net|org|to|cc|co)[\._\-]",
         RegexOptions.Compiled);
@@ -168,7 +172,8 @@ public static class PackageGrouper
         }
 
         // 1. Check ContextTitle if available
-        var contextTitle = links.FirstOrDefault(l => !string.IsNullOrWhiteSpace(l.ContextTitle))?.ContextTitle;
+        var contextTitle = links.FirstOrDefault(l => !string.IsNullOrWhiteSpace(l.ContextTitle) &&
+            !IsSupplementaryComponentName(SanitizeCleanName(l.ContextTitle)))?.ContextTitle;
         if (!string.IsNullOrWhiteSpace(contextTitle) && !LinkExtractor.IsPureNumericOrHash(contextTitle))
         {
             var cleanContext = SanitizeCleanName(contextTitle);
@@ -186,13 +191,7 @@ public static class PackageGrouper
 
         if (cleanCandidates.Count > 0)
         {
-            // Find most frequent or longest common candidate
-            var mostCommon = cleanCandidates
-                .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(g => g.Count())
-                .First().Key;
-
-            return mostCommon;
+            return SelectPackageNameCandidate(cleanCandidates)!;
         }
 
         // 3. Fallback: Clean hoster-based package name (NEVER random numbers or hashes!)
@@ -203,6 +202,18 @@ public static class PackageGrouper
         }
 
         return Loc.Format("Package_HosterSingleDownloadName", primaryHoster, DateTime.Now.ToString("yyyy-MM-dd HHmm"));
+    }
+
+    internal static bool IsSupplementaryComponentName(string name) =>
+        !string.IsNullOrWhiteSpace(name) && SupplementaryComponentRegex.IsMatch(name.Trim());
+
+    internal static string? SelectPackageNameCandidate(IEnumerable<string> candidates)
+    {
+        var names = candidates.Where(name => !string.IsNullOrWhiteSpace(name) && !IsGenericOrCrypticName(name)).ToArray();
+        var primary = names.Where(name => !IsSupplementaryComponentName(name)).ToArray();
+        return (primary.Length > 0 ? primary : names)
+            .GroupBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count()).FirstOrDefault()?.Key;
     }
 
     public static DownloadPackage CreatePackage(

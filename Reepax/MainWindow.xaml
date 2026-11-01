@@ -48,6 +48,12 @@
                     <Path Data="{StaticResource IconFolderOpen}" Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="{loc:Loc Menu_ChangeDownloadPath}" Tag="ChangeDownloadPath"
+                      Click="ChangeDownloadPath_MenuItem_Click" ToolTip="{loc:Loc Menu_ChangeDownloadPath_ToolTip}">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconFolderMove}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
             <MenuItem Header="{loc:Loc Menu_CreateGameInstallFolder}" Click="CreateGameInstallFolder_MenuItem_Click">
                 <MenuItem.Icon>
                     <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
@@ -104,6 +110,12 @@
                       Header="{loc:Loc Menu_PauseExtraction}" Click="PauseResumeExtraction_MenuItem_Click">
                 <MenuItem.Icon>
                     <Path x:Name="PauseResumeExtractionIconPath" Data="{StaticResource IconPause}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
+            <MenuItem Tag="ArchivePasswordsMenuItem" Header="{loc:Loc Menu_ArchivePasswords}"
+                      Click="ArchivePasswords_MenuItem_Click" Visibility="Collapsed">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconShield}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem x:Name="CancelExtractionMenuItem" Tag="CancelExtractionMenuItem"
@@ -165,9 +177,15 @@
                     <Path Data="{StaticResource IconFile}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
-            <MenuItem Header="{loc:Loc Menu_CopyOriginalUrl}" Click="CopyItemUrl_MenuItem_Click">
+            <MenuItem Header="{loc:Loc Menu_CopyUrl}" Click="CopyItemUrl_MenuItem_Click">
                 <MenuItem.Icon>
                     <Path Data="{StaticResource IconCopy}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
+
+            <MenuItem Header="{loc:Loc Menu_OpenInBrowser}" Click="OpenItemInBrowser_MenuItem_Click">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconExternalLink}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
 
@@ -550,7 +568,7 @@
                     <Border Grid.Column="{Binding DataContext.ColIndexChecksum, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="{Binding DataContext.ShowDividerChecksum, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="6,0"
                             Visibility="{Binding DataContext.ShowColChecksum, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                        <TextBlock Text="{Binding DisplayChecksum, TargetNullValue='---'}" FontFamily="Consolas, monospace" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding DisplayChecksum}" />
+                        <TextBlock Text="{Binding DisplayChecksum, TargetNullValue='---'}" FontFamily="Consolas, monospace" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding ChecksumVerificationSummary}" />
                     </Border>
 
                     <!-- 11: Item Actions (Pause/Resume + Copy Link, left-aligned) -->
@@ -582,17 +600,10 @@
                           Grid.Column="0" Grid.ColumnSpan="20"
                           Margin="0,-3"
                           SnapsToDevicePixels="True"
-                          IsHitTestVisible="False">
-                        <Grid.Style>
-                            <Style TargetType="Grid">
-                                <Setter Property="Opacity" Value="0" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                        <Setter Property="Opacity" Value="1" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Grid.Style>
+                          IsHitTestVisible="False"
+                          helpers:FadeAnimation.CollapseWhenHidden="False"
+                          helpers:FadeAnimation.DurationMilliseconds="120"
+                          helpers:FadeAnimation.IsShown="{Binding IsSelected}">
 
                         <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
                         <Border CornerRadius="4"
@@ -1178,17 +1189,10 @@
                               Grid.Column="0" Grid.ColumnSpan="20"
                               Margin="0,-2"
                               SnapsToDevicePixels="True"
-                              IsHitTestVisible="False">
-                            <Grid.Style>
-                                <Style TargetType="Grid">
-                                    <Setter Property="Opacity" Value="0" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                            <Setter Property="Opacity" Value="1" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Grid.Style>
+                              IsHitTestVisible="False"
+                              helpers:FadeAnimation.CollapseWhenHidden="False"
+                              helpers:FadeAnimation.DurationMilliseconds="120"
+                              helpers:FadeAnimation.IsShown="{Binding IsSelected}">
 
                             <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
                             <Border CornerRadius="4"
@@ -1648,51 +1652,41 @@
                                 </Button>
                             </StackPanel>
 
-                            <!-- Busy / Link Extraction Spinner & Message -->
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0"
-                                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}">
-                                <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,8,0">
-                                    <Canvas Width="20" Height="20" RenderTransformOrigin="0.5,0.5">
-                                        <Canvas.RenderTransform>
-                                            <RotateTransform Angle="0" />
-                                        </Canvas.RenderTransform>
-                                        <Canvas.Style>
-                                            <Style TargetType="Canvas">
-                                                <Style.Triggers>
-                                                    <Trigger Property="Visibility" Value="Visible">
-                                                        <Trigger.EnterActions>
-                                                            <BeginStoryboard Name="ToolbarSpinStoryboard">
-                                                                <Storyboard>
-                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                                                     From="0" To="360"
-                                                                                     Duration="0:0:0.9"
-                                                                                     RepeatBehavior="Forever" />
-                                                                </Storyboard>
-                                                            </BeginStoryboard>
-                                                        </Trigger.EnterActions>
-                                                        <Trigger.ExitActions>
-                                                            <StopStoryboard BeginStoryboardName="ToolbarSpinStoryboard" />
-                                                        </Trigger.ExitActions>
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Canvas.Style>
-
-                                        <Ellipse Canvas.Left="15.75" Canvas.Top="8.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="1.00" />
-                                        <Ellipse Canvas.Left="14.8" Canvas.Top="12.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.92" />
-                                        <Ellipse Canvas.Left="12.25" Canvas.Top="14.8" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.83" />
-                                        <Ellipse Canvas.Left="8.75" Canvas.Top="15.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.75" />
-                                        <Ellipse Canvas.Left="5.25" Canvas.Top="14.8" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.67" />
-                                        <Ellipse Canvas.Left="2.7" Canvas.Top="12.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.58" />
-                                        <Ellipse Canvas.Left="1.75" Canvas.Top="8.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.50" />
-                                        <Ellipse Canvas.Left="2.7" Canvas.Top="5.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.42" />
-                                        <Ellipse Canvas.Left="5.25" Canvas.Top="2.7" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.33" />
-                                        <Ellipse Canvas.Left="8.75" Canvas.Top="1.75" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.25" />
-                                        <Ellipse Canvas.Left="12.25" Canvas.Top="2.7" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.17" />
-                                        <Ellipse Canvas.Left="14.8" Canvas.Top="5.25" Width="2.5" Height="2.5" Fill="{DynamicResource AccentBlueBrush}" Opacity="0.08" />
-                                    </Canvas>
-                                </Viewbox>
-                                <TextBlock Text="{Binding BusyMessage}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="500" />
+                            <!-- Metadata analysis progress and operation status -->
+                            <StackPanel x:Name="ToolbarAnalysisStatus" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0"
+                                        helpers:FadeAnimation.IsShown="{Binding IsBusy}">
+                                <Grid x:Name="MetadataAnalysisSpinner" Width="16" Height="16" Margin="0,0,10,0" VerticalAlignment="Center"
+                                      RenderTransformOrigin="0.5,0.5" IsHitTestVisible="False"
+                                      helpers:FadeAnimation.IsShown="{Binding IsAnalyzingMetadata}"
+                                      AutomationProperties.Name="{Binding BusyDisplayMessage}">
+                                    <Grid.RenderTransform>
+                                        <RotateTransform />
+                                    </Grid.RenderTransform>
+                                    <Grid.Style>
+                                        <Style TargetType="Grid">
+                                            <Style.Triggers>
+                                                <Trigger Property="IsVisible" Value="True">
+                                                    <Trigger.EnterActions>
+                                                        <BeginStoryboard Name="MetadataSpinnerRotation">
+                                                            <Storyboard>
+                                                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                                                 From="0" To="360" Duration="0:0:1" RepeatBehavior="Forever" />
+                                                            </Storyboard>
+                                                        </BeginStoryboard>
+                                                    </Trigger.EnterActions>
+                                                    <Trigger.ExitActions>
+                                                        <StopStoryboard BeginStoryboardName="MetadataSpinnerRotation" />
+                                                    </Trigger.ExitActions>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
+                                    <Ellipse Stroke="{DynamicResource BorderHighlightBrush}" StrokeThickness="2" />
+                                    <Path Data="M 8,1 A 7,7 0 1 1 1,8" Stroke="{DynamicResource AccentBlueBrush}" StrokeThickness="2"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                </Grid>
+                                <TextBlock Text="{Binding BusyDisplayMessage}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="400" />
                             </StackPanel>
                         </StackPanel>
 
@@ -2639,9 +2633,14 @@
 
         <!-- ================= BOTTOM ACTION & STATUS BAR ================= -->
         <Border x:Name="BottomStatusBarBorder" Grid.Row="2" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,1,0,0" Padding="12,6">
-            <DockPanel LastChildFill="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <!-- Left Section: 'Add New Links' Button + Live Disk Space Box -->
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="AddLinksButton" Click="AddLinks_Click"
                             Height="28" Padding="14,0" Margin="0,0,8,0"
                             Background="{DynamicResource BgCardAltBrush}" 
@@ -2703,23 +2702,24 @@
                 </StackPanel>
 
                 <!-- Right Section: Extensions folder + Settings Button + Popup -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- Open extensions folder -->
-                    <Button Command="{Binding OpenExtensionsFolderCommand}"
+                    <Button x:Name="OpenExtensionsFolderButton"
+                            Command="{Binding OpenExtensionsFolderCommand}"
                             Width="32" Height="28" Padding="0" Margin="0,0,8,0"
-                            Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
+                            Background="{DynamicResource BgCardAltBrush}"
+                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="1"
                             Cursor="Hand"
                             SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_OpenExtensionsFolder_ToolTip}">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
-                                <Border x:Name="Border" 
-                                        Background="{TemplateBinding Background}" 
-                                        BorderBrush="{TemplateBinding BorderBrush}" 
-                                        BorderThickness="{TemplateBinding BorderThickness}" 
-                                        CornerRadius="4" 
+                                <Border x:Name="Border"
+                                        Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="4"
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -2786,14 +2786,11 @@
                 </StackPanel>
 
                 <!-- Center Section: Search Bar & Status Filter Dropdown Popup (fills remaining space with equal margins) -->
-                <Grid x:Name="SearchFilterBarContainer"
+                <Grid x:Name="SearchFilterBarContainer" Grid.Column="1"
                       Margin="8,0" 
                       VerticalAlignment="Center"
                       SnapsToDevicePixels="True"
                       UseLayoutRounding="True">
-                    <Grid.RenderTransform>
-                        <TranslateTransform x:Name="SearchFilterBarTransform" X="0" Y="0" />
-                    </Grid.RenderTransform>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -3054,7 +3051,7 @@
                         </Border>
                     </Popup>
                 </Grid>
-            </DockPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -50,6 +51,11 @@ public partial class MainViewModel : ObservableObject
     private int _lastCommandStateActiveCount = -1;
     private bool _lastCommandStateQueueRunning = false;
     private int _lastCommandStatePackageCount = -1;
+    private bool _lastCommandStateCanPauseAll;
+    private bool _lastCommandStateCanStartAll;
+    private readonly SemaphoreSlim _metadataAnalysisGate = new(1, 1);
+    private int _metadataAnalysisVersion;
+    internal LinkMetadataResolverService MetadataResolver { get; set; } = LinkMetadataResolverService.Instance;
     private readonly NavigationHistoryManager _navManager = new();
     private bool _isApplyingNavigation = false;
     private bool _isReorderingPackages = false;
@@ -305,6 +311,24 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _busyMessage = string.Empty;
 
+    private string _busyDisplayMessage = string.Empty;
+    public string BusyDisplayMessage => _busyDisplayMessage;
+
+    partial void OnBusyMessageChanged(string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            SetProperty(ref _busyDisplayMessage, value, nameof(BusyDisplayMessage));
+    }
+
+    [ObservableProperty]
+    private bool _isAnalyzingMetadata;
+
+    [ObservableProperty]
+    private int _metadataAnalysisCompleted;
+
+    [ObservableProperty]
+    private int _metadataAnalysisTotal;
+
     [ObservableProperty]
     private long _totalBytes;
 
@@ -461,19 +485,7 @@ public partial class MainViewModel : ObservableObject
         AutoPar2Repair = settings.AutoPar2Repair;
         DeletePar2AfterExtraction = settings.DeletePar2AfterExtraction;
 
-        ArchivePasswords.Clear();
-        if (settings.ExtractionPasswords != null)
-        {
-            foreach (var pwd in settings.ExtractionPasswords)
-            {
-                if (!string.IsNullOrWhiteSpace(pwd) && !ArchivePasswords.Contains(pwd.Trim(), StringComparer.Ordinal))
-                {
-                    ArchivePasswords.Add(pwd.Trim());
-                }
-            }
-        }
-        OnPropertyChanged(nameof(HasArchivePasswords));
-        OnPropertyChanged(nameof(ArchivePasswordsCount));
+        InitializeArchivePasswords();
         IsArchivePasswordsExpanded = settings.IsArchivePasswordsExpanded;
 
         var targetDir = settings.DefaultDownloadDirectory;
@@ -516,10 +528,6 @@ public partial class MainViewModel : ObservableObject
         EnableFileLogging = settings.EnableFileLogging;
         AppLogger.IsLoggingEnabled = EnableFileLogging;
         EnableClipboardMonitor = settings.EnableClipboardMonitor;
-        CreateGameInstallFolder = settings.CreateGameInstallFolder;
-        GameInstallDirectory = !string.IsNullOrWhiteSpace(settings.GameInstallDirectory)
-            ? settings.GameInstallDirectory
-            : GameInstallFolderService.GetEffectiveBaseDirectory();
         SelectedLanguage = settings.Language ?? "en";
         LocalizationService.Instance.CurrentLanguage = SelectedLanguage;
         StatusSummary = Loc.Get("Status_ReadyDragDrop");
@@ -537,8 +545,14 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(PostDownloadActionTooltip));
             SafeDispatch(() =>
             {
+                RefreshArchivePasswordEntries();
+                if (IsAnalyzingMetadata)
+                    BusyMessage = Loc.Format("Busy_AnalyzingMetadata", MetadataAnalysisCompleted, MetadataAnalysisTotal);
                 foreach (var package in Packages.ToArray())
+                {
                     package.RefreshLocalizedAggregateText();
+                    foreach (var item in package.Items.ToArray()) item.RefreshChecksumVerificationSummary();
+                }
             });
         };
         
@@ -704,6 +718,12 @@ public partial class MainViewModel : ObservableObject
         };
 
         InitializeContributors();
+        foreach (var package in Packages.Where(package => !package.IsCustomName &&
+            !package.IsExtracted && !package.RequiresRecoveredPathConfirmation && PackageGrouper.IsSupplementaryComponentName(package.Name)))
+        {
+            if (!IsPackageBusyForPathChange(package))
+                LinkMetadataResolverService.TryUpdatePackageName(package);
+        }
     }
 
     // Settings commands, directory browsers, and diagnostic actions have been moved to MainViewModel.Settings.cs
@@ -721,6 +741,8 @@ public partial class MainViewModel : ObservableObject
                 {
                     if (i.IsEnabled &&
                         (i.Status is DownloadStatus.Paused or DownloadStatus.Failed or DownloadStatus.Aborted ||
+                         (!_queueManager.IsRunning && i.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or
+                             DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha) ||
                          (i.Status != DownloadStatus.Completed &&
                           i.Status != DownloadStatus.Downloading &&
                           i.Status != DownloadStatus.InBrowser &&
@@ -740,12 +762,15 @@ public partial class MainViewModel : ObservableObject
         get
         {
             if (SelectedMainTab != AppMainTab.Downloads || Packages.Count == 0) return false;
-            if (ActiveDownloadsCount > 0 || DownloadEngine.Instance.ActiveDownloadsCount > 0) return true;
             foreach (var p in Packages)
             {
                 foreach (var i in p.Items)
                 {
-                    if (i.IsEnabled && i.Status is DownloadStatus.Downloading or DownloadStatus.Queued or DownloadStatus.InBrowser or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)
+                    if (i.IsUnavailableForProcessing) continue;
+                    if (i.Status == DownloadStatus.Downloading ||
+                        (_queueManager.IsRunning && p.IsEnabled && i.IsEnabled &&
+                         i.Status is DownloadStatus.Queued or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or
+                             DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser))
                     {
                         return true;
                     }
@@ -1063,7 +1088,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        if (!Services.Extractor.ArchiveExtractionService.Instance.CanExtractPackage(package, allowReextract: true))
+        if (!Services.Extractor.ArchiveExtractionService.Instance.CanExtractPackage(package, allowReextract: true, ignorePasswordWait: true))
         {
             StatusSummary = Loc.Get("Status_NoExtractableArchivesFound");
             return;
@@ -1093,8 +1118,16 @@ public partial class MainViewModel : ObservableObject
             forceReextract = true;
         }
 
-        StatusSummary = Loc.Format("Status_ExtractingPackage", package.Name);
-        await Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true, forceReextract: forceReextract);
+        while (true)
+        {
+            StatusSummary = Loc.Format("Status_ExtractingPackage", package.Name);
+            bool extracted = await Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package,
+                force: true, forceReextract: forceReextract);
+            StatusSummary = package.StatusMessage;
+            if (extracted || !package.RequiresArchivePassword || !ShowArchivePasswords(package)) break;
+            forceReextract = false;
+        }
+        StatusSummary = package.StatusMessage;
     }
 
     [RelayCommand]
@@ -1120,6 +1153,8 @@ public partial class MainViewModel : ObservableObject
         if (success)
         {
             package.SetNextTaskDone("Par2");
+            if (package.RequiresArchivePassword)
+                Services.Extractor.ArchiveExtractionService.Instance.InvalidatePackageArchivePasswords(package);
             StatusSummary = Loc.Get("Status_Par2Repaired");
         }
         else
@@ -2992,34 +3027,39 @@ public partial class MainViewModel : ObservableObject
         IEnumerable<DownloadItem>? specificItems = null)
     {
         var specificList = specificItems?.ToList();
-        var packageList = packages.Where(p =>
-        {
-            var itemsToCheck = specificList != null 
-                ? p.Items.Where(specificList.Contains) 
-                : p.Items;
-            return itemsToCheck.Any(i => !i.IsMetadataResolved && (i.TotalBytes <= 0 || (i.IsFastHost && string.IsNullOrWhiteSpace(i.DirectDownloadUrl))));
-        }).ToList();
-
-        if (packageList.Count == 0)
-            return;
-
-        IsBusy = true;
+        var candidates = packages.Distinct().ToArray();
+        await _metadataAnalysisGate.WaitAsync();
+        bool started = false;
         try
         {
-            var progress = new Progress<string>(msg =>
+            var jobs = candidates.Select(package => (Package: package,
+                Items: LinkMetadataResolverService.GetPendingMetadataItems(package, specificList)))
+                .Where(job => job.Items.Length > 0).ToArray();
+            if (jobs.Length == 0) return;
+            started = true;
+            int version = ++_metadataAnalysisVersion;
+            MetadataAnalysisTotal = jobs.Sum(job => job.Items.Length);
+            MetadataAnalysisCompleted = 0;
+            IsAnalyzingMetadata = true;
+            IsBusy = true;
+            BusyMessage = Loc.Format("Busy_AnalyzingMetadata", 0, MetadataAnalysisTotal);
+            int completed = 0;
+            foreach (var job in jobs)
             {
-                BusyMessage = msg;
-                RecalculateGlobalStats();
-                UpdateDriveSpace();
-            });
-
-            foreach (var pkg in packageList)
-            {
-                var pkgTargetItems = specificList != null 
-                    ? pkg.Items.Where(specificList.Contains).ToList() 
-                    : null;
-                await LinkMetadataResolverService.Instance.ResolvePackageMetadataAsync(pkg, progress, targetItems: pkgTargetItems);
-                pkg.RecalculateAggregates();
+                int offset = completed;
+                var progress = new Progress<MetadataAnalysisProgress>(state =>
+                {
+                    if (IsAnalyzingMetadata && version == _metadataAnalysisVersion)
+                    {
+                        MetadataAnalysisCompleted = Math.Clamp(Math.Max(MetadataAnalysisCompleted, offset + state.Completed), 0, MetadataAnalysisTotal);
+                        BusyMessage = Loc.Format("Busy_AnalyzingMetadata", MetadataAnalysisCompleted, MetadataAnalysisTotal);
+                    }
+                });
+                await MetadataResolver.ResolvePackageMetadataAsync(job.Package, targetItems: job.Items, analysisProgress: progress);
+                completed += job.Items.Length;
+                MetadataAnalysisCompleted = completed;
+                BusyMessage = Loc.Format("Busy_AnalyzingMetadata", completed, MetadataAnalysisTotal);
+                job.Package.RecalculateAggregates();
                 RecalculateGlobalStats();
                 UpdateDriveSpace();
             }
@@ -3033,16 +3073,24 @@ public partial class MainViewModel : ObservableObject
                 DownloadPersistenceService.Instance.SaveDownloadsFromDtos(dtos);
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler bei Dateigrößen-Auflösung: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not finish metadata analysis.");
         }
         finally
         {
-            IsBusy = false;
-            BusyMessage = string.Empty;
-            RecalculateGlobalStats();
-            UpdateDriveSpace();
+            try
+            {
+                if (started)
+                {
+                    IsAnalyzingMetadata = false;
+                    IsBusy = false;
+                    BusyMessage = string.Empty;
+                    RecalculateGlobalStats();
+                    UpdateDriveSpace();
+                }
+            }
+            finally { _metadataAnalysisGate.Release(); }
         }
     }
 
@@ -3107,13 +3155,18 @@ public partial class MainViewModel : ObservableObject
         PostDownloadActionService.Instance.Evaluate(Packages);
 
         // Update Command CanExecute only on genuine state changes
+        bool canPauseAll = CanPauseAll;
+        bool canStartAll = CanStartAll;
         if (_lastCommandStateActiveCount != stats.ActiveDownloads ||
             _lastCommandStateQueueRunning != IsQueueRunning ||
-            _lastCommandStatePackageCount != packageSnapshot.Length)
+            _lastCommandStatePackageCount != packageSnapshot.Length ||
+            _lastCommandStateCanPauseAll != canPauseAll || _lastCommandStateCanStartAll != canStartAll)
         {
             _lastCommandStateActiveCount = stats.ActiveDownloads;
             _lastCommandStateQueueRunning = IsQueueRunning;
             _lastCommandStatePackageCount = packageSnapshot.Length;
+            _lastCommandStateCanPauseAll = canPauseAll;
+            _lastCommandStateCanStartAll = canStartAll;
             NotifyCommandStates();
             OnPropertyChanged(nameof(HasDownloads));
             OnPropertyChanged(nameof(IsDownloadsEmpty));

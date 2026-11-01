@@ -658,6 +658,7 @@ public partial class DownloadPackage : ObservableObject
 
     private void Item_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DownloadItem.ChecksumVerificationSummary)) return;
         _isAggregatesDirty = true;
 
         bool allPropertiesChanged = string.IsNullOrEmpty(e.PropertyName);
@@ -1055,6 +1056,7 @@ public partial class DownloadPackage : ObservableObject
                      StatusMessage != "Completed & Extracted" &&
                      StatusMessage != Loc.Get("Status_CompletedExtractionError") &&
                      !Services.Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(StatusMessage) &&
+                     !RequiresArchivePassword &&
                      StatusMessage != Loc.Get("Status_Extracting"))
             {
                 StatusMessage = Loc.Get("Status_Completed");
@@ -1132,6 +1134,7 @@ public partial class DownloadPackage : ObservableObject
     /// </summary>
     public bool CheckIsFullyCompleted()
     {
+        if (RequiresArchivePassword) return false;
         bool hasEnabledItems = false;
         foreach (var item in Volatile.Read(ref _itemsSnapshot))
         {
@@ -1397,6 +1400,8 @@ public partial class DownloadPackage : ObservableObject
 
     internal bool RefreshAndCheckExistsOnDisk(bool persistChanges)
     {
+        if (ItemsSnapshot.Any(item => item.IsPathChangePending))
+            return !string.IsNullOrWhiteSpace(SaveDirectory) && Directory.Exists(SaveDirectory);
         // 1. Direct check: current SaveDirectory exists and contains files/subdirectories
         if (!string.IsNullOrWhiteSpace(SaveDirectory) && Directory.Exists(SaveDirectory))
         {

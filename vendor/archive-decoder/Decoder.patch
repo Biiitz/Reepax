@@ -1,0 +1,1386 @@
+--- a/src/SharpCompress/Archives/Rar/RarArchiveEntry.Async.cs
++++ b/src/SharpCompress/Archives/Rar/RarArchiveEntry.Async.cs
+@@ -3,41 +3,25 @@
+ using System.Threading.Tasks;
+ using SharpCompress.Common;
+ using SharpCompress.Common.Rar;
+-using SharpCompress.Common.Rar.Headers;
+ using SharpCompress.Compressors.Rar;
+-using SharpCompress.Readers;
+-
+ namespace SharpCompress.Archives.Rar;
+-
+ public partial class RarArchiveEntry
+ {
+-    public async ValueTask<Stream> OpenEntryStreamAsync(
+-        CancellationToken cancellationToken = default
+-    )
++    public async ValueTask<Stream> OpenEntryStreamAsync(CancellationToken cancellationToken = default)
+     {
++        var input = await MultiVolumeReadOnlyAsyncStream.Create(Parts.ToAsyncEnumerable().CastAsync<RarFilePart>(), readerOptions.Password, cancellationToken).ConfigureAwait(false);
+         RarStream stream;
+         if (IsRarV3)
++            stream = await RarCrcStream.CreateAsync(archive.UnpackV1.Value, FileHeader, input, cancellationToken).ConfigureAwait(false);
++        else if (FileHeader.FileCrc?.Length > 5)
++            stream = await RarBLAKE2spStream.CreateAsync(archive.UnpackV2017.Value, FileHeader, input, cancellationToken).ConfigureAwait(false);
++        else
++            stream = await RarCrcStream.CreateAsync(archive.UnpackV2017.Value, FileHeader, input, cancellationToken).ConfigureAwait(false);
++        try
+         {
+-            stream = new RarStream(
+-                archive.UnpackV1.Value,
+-                FileHeader,
+-                await MultiVolumeReadOnlyAsyncStream
+-                    .Create(Parts.ToAsyncEnumerable().CastAsync<RarFilePart>())
+-                    .ConfigureAwait(false)
+-            );
++            await stream.InitializeAsync(cancellationToken).ConfigureAwait(false);
++            return stream;
+         }
+-        else
+-        {
+-            stream = new RarStream(
+-                archive.UnpackV2017.Value,
+-                FileHeader,
+-                await MultiVolumeReadOnlyAsyncStream
+-                    .Create(Parts.ToAsyncEnumerable().CastAsync<RarFilePart>())
+-                    .ConfigureAwait(false)
+-            );
+-        }
+-
+-        await stream.InitializeAsync(cancellationToken).ConfigureAwait(false);
+-        return stream;
++        catch { await stream.DisposeAsync().ConfigureAwait(false); throw; }
+     }
+ }
+--- a/src/SharpCompress/Archives/Rar/RarArchiveEntry.cs
++++ b/src/SharpCompress/Archives/Rar/RarArchiveEntry.cs
+@@ -35,6 +35,8 @@
+ 
+     public IArchive Archive => archive;
+ 
++    public bool IsRar5 => FileHeader.IsRar5;
++
+     internal override IEnumerable<FilePart> Parts => parts.Cast<FilePart>();
+ 
+     internal override FileHeader FileHeader => parts.First().FileHeader;
+@@ -56,7 +58,9 @@
+         get
+         {
+             CheckIncomplete();
+-            return parts.First().FileHeader.UncompressedSize;
++            // The final continuation can supply a size omitted from the first header.
++            var first = parts.First().FileHeader.UncompressedSize;
++            return first == long.MaxValue ? parts.Last().FileHeader.UncompressedSize : first;
+         }
+     }
+ 
+@@ -71,7 +75,7 @@
+ 
+     public Stream OpenEntryStream()
+     {
+-        var readStream = new MultiVolumeReadOnlyStream(Parts.Cast<RarFilePart>());
++        var readStream = new MultiVolumeReadOnlyStream(Parts.Cast<RarFilePart>(), readerOptions.Password);
+         RarStream stream;
+         if (IsRarV3)
+         {
+--- a/src/SharpCompress/Archives/Rar/SeekableFilePart.cs
++++ b/src/SharpCompress/Archives/Rar/SeekableFilePart.cs
+@@ -22,6 +22,12 @@
+         _password = password;
+     }
+ 
++    internal override Stream GetRawStream()
++    {
++        _stream.Position = FileHeader.DataStartPosition;
++        return _stream;
++    }
++
+     internal override Stream GetCompressedStream()
+     {
+         _stream.Position = FileHeader.DataStartPosition;
+--- a/src/SharpCompress/Common/Rar/Headers/RarHeaderFactory.Async.cs
++++ b/src/SharpCompress/Common/Rar/Headers/RarHeaderFactory.Async.cs
+@@ -173,25 +173,7 @@
+                     case StreamingMode.Streaming:
+                         {
+                             var ms = new ReadOnlySubStream(reader.BaseStream, fh.CompressedSize);
+-                            if (fh.R4Salt is null && fh.Rar5CryptoInfo is null)
+-                            {
+-                                fh.PackedStream = ms;
+-                            }
+-                            else
+-                            {
+-                                fh.PackedStream = new RarCryptoWrapper(
+-                                    ms,
+-                                    fh.R4Salt is null
+-                                        ? fh.Rar5CryptoInfo.NotNull().Salt
+-                                        : fh.R4Salt,
+-                                    fh.R4Salt is null
+-                                        ? new CryptKey5(
+-                                            Options.Password,
+-                                            fh.Rar5CryptoInfo.NotNull()
+-                                        )
+-                                        : new CryptKey3(Options.Password)
+-                                );
+-                            }
++                            fh.PackedStream = ms;
+                         }
+                         break;
+                     default:
+--- a/src/SharpCompress/Common/Rar/Headers/RarHeaderFactory.cs
++++ b/src/SharpCompress/Common/Rar/Headers/RarHeaderFactory.cs
+@@ -153,25 +153,7 @@
+                     case StreamingMode.Streaming:
+                         {
+                             var ms = new ReadOnlySubStream(reader.BaseStream, fh.CompressedSize);
+-                            if (fh.R4Salt is null && fh.Rar5CryptoInfo is null)
+-                            {
+-                                fh.PackedStream = ms;
+-                            }
+-                            else
+-                            {
+-                                fh.PackedStream = new RarCryptoWrapper(
+-                                    ms,
+-                                    fh.R4Salt is null
+-                                        ? fh.Rar5CryptoInfo.NotNull().Salt
+-                                        : fh.R4Salt,
+-                                    fh.R4Salt is null
+-                                        ? new CryptKey5(
+-                                            Options.Password,
+-                                            fh.Rar5CryptoInfo.NotNull()
+-                                        )
+-                                        : new CryptKey3(Options.Password)
+-                                );
+-                            }
++                            fh.PackedStream = ms;
+                         }
+                         break;
+                     default:
+--- a/src/SharpCompress/Common/Rar/Rar5CryptoInfo.cs
++++ b/src/SharpCompress/Common/Rar/Rar5CryptoInfo.cs
+@@ -24,6 +24,7 @@
+             encryptionFlags,
+             EncryptionFlagsV5.CHFL_CRYPT_PSWCHECK
+         );
++        cryptoInfo.UseHashKey = (encryptionFlags & 2) != 0;
+         cryptoInfo.LG2Count = reader.ReadRarVIntByte(1);
+ 
+         if (cryptoInfo.LG2Count > EncryptionConstV5.CRYPT5_KDF_LG2_COUNT_MAX)
+@@ -78,6 +79,7 @@
+             encryptionFlags,
+             EncryptionFlagsV5.CHFL_CRYPT_PSWCHECK
+         );
++        cryptoInfo.UseHashKey = (encryptionFlags & 2) != 0;
+         cryptoInfo.LG2Count = (int)
+             await reader
+                 .ReadRarVIntUInt32Async(cancellationToken: CancellationToken.None)
+@@ -130,6 +132,8 @@
+ 
+     public bool UsePswCheck = false;
+ 
++    public bool UseHashKey;
++
+     public int LG2Count = 0;
+ 
+     public byte[] InitV = [];
+--- a/src/SharpCompress/Common/Rar/RarCryptoWrapper.cs
++++ b/src/SharpCompress/Common/Rar/RarCryptoWrapper.cs
+@@ -1,160 +1,109 @@
+ using System;
+-using System.Collections.Generic;
+ using System.IO;
++using System.Security.Cryptography;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using SharpCompress.Common;
+ using SharpCompress.Crypto;
+-
+ namespace SharpCompress.Common.Rar;
+-
+ internal sealed class RarCryptoWrapper : Stream
+ {
+     private readonly Stream _actualStream;
+-    private BlockTransformer _rijndael;
+-    private readonly Queue<byte> _data = new();
+-
++    private readonly BlockTransformer _transformer;
++    private readonly byte[] _block = new byte[8192];
++    private int _offset;
++    private int _available;
+     public RarCryptoWrapper(Stream actualStream, byte[] salt, ICryptKey key)
+     {
+         _actualStream = actualStream;
+-        _rijndael = new BlockTransformer(key.Transformer(salt));
++        _transformer = new BlockTransformer(key.Transformer(salt));
+     }
+-
+-    public override void Flush() { }
+-
+-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+-
+-    public override void SetLength(long value) => throw new NotSupportedException();
+-
+-    public override int Read(byte[] buffer, int offset, int count) =>
+-        ReadAndDecrypt(buffer, offset, count);
+-
+-    public int ReadAndDecrypt(byte[] buffer, int offset, int count)
++    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
++    public int ReadAndDecrypt(byte[] buffer, int offset, int count) => Read(buffer, offset, count);
++    public override int Read(Span<byte> buffer)
+     {
+-        var queueSize = _data.Count;
+-        var sizeToRead = count - queueSize;
+-
+-        if (sizeToRead > 0)
++        int written = 0;
++        while (!buffer.IsEmpty)
+         {
+-            var alignedSize = sizeToRead + ((~sizeToRead + 1) & 0xf);
+-            Span<byte> cipherText = stackalloc byte[16];
+-            for (var i = 0; i < alignedSize / 16; i++)
++            if (_offset == _available)
+             {
+-                //long ax = System.currentTimeMillis();
+-                _actualStream.Read(cipherText);
+-
+-                var readBytes = _rijndael.ProcessBlock(cipherText);
+-                foreach (var readByte in readBytes)
++                int requested = (Math.Min(buffer.Length, _block.Length) + 15) & ~15;
++                int filled = 0;
++                while (filled < requested)
+                 {
+-                    _data.Enqueue(readByte);
++                    int read = _actualStream.Read(_block, filled, requested - filled);
++                    if (read == 0)
++                    {
++                        if ((filled & 15) != 0) throw new InvalidFormatException("Incomplete encrypted block.");
++                        if (filled == 0) return written;
++                        break;
++                    }
++                    filled += read;
+                 }
++                _transformer.ProcessBlocks(_block, filled);
++                _offset = 0;
++                _available = filled;
+             }
+-
+-            for (var i = 0; i < count; i++)
+-            {
+-                buffer[offset + i] = _data.Dequeue();
+-            }
++            int count = Math.Min(buffer.Length, _available - _offset);
++            _block.AsSpan(_offset, count).CopyTo(buffer);
++            _offset += count;
++            written += count;
++            buffer = buffer.Slice(count);
+         }
+-        return count;
++        return written;
+     }
+-
+-    public override Task<int> ReadAsync(
+-        byte[] buffer,
+-        int offset,
+-        int count,
+-        CancellationToken cancellationToken
+-    ) => ReadAndDecryptAsync(buffer, offset, count, cancellationToken).AsTask();
+-
+-    private async ValueTask<int> ReadAndDecryptAsync(
+-        byte[] buffer,
+-        int offset,
+-        int count,
+-        CancellationToken cancellationToken
+-    )
++    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
++        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
++    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+     {
+         cancellationToken.ThrowIfCancellationRequested();
+-
+-        var queueSize = _data.Count;
+-        var sizeToRead = count - queueSize;
+-
+-        if (sizeToRead > 0)
++        int written = 0;
++        while (!buffer.IsEmpty)
+         {
+-            var alignedSize = sizeToRead + ((~sizeToRead + 1) & 0xf);
+-            byte[] cipherText = new byte[16];
+-
+-            try
++            cancellationToken.ThrowIfCancellationRequested();
++            if (_offset == _available)
+             {
+-                for (var i = 0; i < alignedSize / 16; i++)
++                int requested = (Math.Min(buffer.Length, _block.Length) + 15) & ~15;
++                int filled = 0;
++                while (filled < requested)
+                 {
+-                    await _actualStream
+-                        .ReadExactAsync(cipherText, 0, 16, cancellationToken)
+-                        .ConfigureAwait(false);
+-
+-                    var readBytes = _rijndael.ProcessBlock(cipherText);
+-                    foreach (var readByte in readBytes)
++                    int read = await _actualStream.ReadAsync(_block.AsMemory(filled, requested - filled), cancellationToken).ConfigureAwait(false);
++                    if (read == 0)
+                     {
+-                        _data.Enqueue(readByte);
++                        if ((filled & 15) != 0) throw new InvalidFormatException("Incomplete encrypted block.");
++                        if (filled == 0) return written;
++                        break;
+                     }
++                    filled += read;
+                 }
++                _transformer.ProcessBlocks(_block, filled);
++                _offset = 0;
++                _available = filled;
+             }
+-            catch (EndOfStreamException e)
+-            {
+-                throw new InvalidFormatException("Unexpected end of encrypted stream", e);
+-            }
++            int count = Math.Min(buffer.Length, _available - _offset);
++            _block.AsMemory(_offset, count).CopyTo(buffer);
++            _offset += count;
++            written += count;
++            buffer = buffer.Slice(count);
+         }
+-
+-        var bytesToReturn = Math.Min(count, _data.Count);
+-        for (var i = 0; i < bytesToReturn; i++)
+-        {
+-            buffer[offset + i] = _data.Dequeue();
+-        }
+-
+-        return bytesToReturn;
++        return written;
+     }
+-
+-#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+-    public override async ValueTask<int> ReadAsync(
+-        Memory<byte> buffer,
+-        CancellationToken cancellationToken = default
+-    )
+-    {
+-        cancellationToken.ThrowIfCancellationRequested();
+-
+-        var array = System.Buffers.ArrayPool<byte>.Shared.Rent(buffer.Length);
+-        try
+-        {
+-            var bytesRead = await ReadAndDecryptAsync(array, 0, buffer.Length, cancellationToken)
+-                .ConfigureAwait(false);
+-            new ReadOnlySpan<byte>(array, 0, bytesRead).CopyTo(buffer.Span);
+-            return bytesRead;
+-        }
+-        finally
+-        {
+-            System.Buffers.ArrayPool<byte>.Shared.Return(array);
+-        }
+-    }
+-#endif
+-
+-    public override void Write(byte[] buffer, int offset, int count) =>
+-        throw new NotSupportedException();
+-
+-    public override bool CanRead => true;
+-
+-    public override bool CanSeek => false;
+-
+-    public override bool CanWrite => false;
+-
+-    public override long Length => throw new NotSupportedException();
+-
+-    public override long Position { get; set; }
+-
+     protected override void Dispose(bool disposing)
+     {
+         if (disposing)
+         {
+-            _rijndael.Dispose();
++            _transformer.Dispose();
++            CryptographicOperations.ZeroMemory(_block);
+         }
+-
+         base.Dispose(disposing);
+     }
++    public override bool CanRead => true;
++    public override bool CanSeek => false;
++    public override bool CanWrite => false;
++    public override long Length => throw new NotSupportedException();
++    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
++    public override void Flush() { }
++    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
++    public override void SetLength(long value) => throw new NotSupportedException();
++    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+ }
+--- a/src/SharpCompress/Compressors/Rar/IRarUnpack.cs
++++ b/src/SharpCompress/Compressors/Rar/IRarUnpack.cs
+@@ -21,6 +21,7 @@
+     // eg u/i pause/resume button
+     bool Suspended { get; set; }
+ 
++    bool FileExtracted { get; }
+     long DestSize { get; }
+     int ReadChar();
+     ValueTask<int> ReadCharAsync(CancellationToken cancellationToken);
+--- a/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyAsyncStream.Async.cs
++++ b/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyAsyncStream.Async.cs
+@@ -1,168 +1 @@
+-using System;
+-using System.Collections.Generic;
+-using System.IO;
+-using System.Threading;
+-using System.Threading.Tasks;
+-using SharpCompress.Common;
+-using SharpCompress.Common.Rar;
+-
+ namespace SharpCompress.Compressors.Rar;
+-
+-internal sealed partial class MultiVolumeReadOnlyAsyncStream : MultiVolumeReadOnlyStreamBase
+-{
+-    internal static async ValueTask<MultiVolumeReadOnlyAsyncStream> Create(
+-        IAsyncEnumerable<RarFilePart> parts
+-    )
+-    {
+-        var stream = new MultiVolumeReadOnlyAsyncStream(parts);
+-        await stream.filePartEnumerator.MoveNextAsync().ConfigureAwait(false);
+-        stream.InitializeNextFilePart();
+-        return stream;
+-    }
+-
+-#if NET8_0_OR_GREATER
+-    public override async ValueTask DisposeAsync()
+-    {
+-        await base.DisposeAsync().ConfigureAwait(false);
+-        if (filePartEnumerator != null)
+-        {
+-            await filePartEnumerator.DisposeAsync().ConfigureAwait(false);
+-        }
+-        currentStream = null;
+-    }
+-#else
+-    protected override void Dispose(bool disposing)
+-    {
+-        base.Dispose(disposing);
+-        //acceptable for now?
+-#pragma warning disable VSTHRD002 // Avoid problematic synchronous waits
+-        filePartEnumerator.DisposeAsync().AsTask().GetAwaiter().GetResult();
+-#pragma warning restore VSTHRD002 // Avoid problematic synchronous waits
+-
+-        currentStream = null;
+-    }
+-#endif
+-
+-    public override async Task<int> ReadAsync(
+-        byte[] buffer,
+-        int offset,
+-        int count,
+-        CancellationToken cancellationToken
+-    )
+-    {
+-        var totalRead = 0;
+-        var currentOffset = offset;
+-        var currentCount = count;
+-        while (currentCount > 0)
+-        {
+-            var readSize = currentCount;
+-            if (currentCount > maxPosition - currentPosition)
+-            {
+-                readSize = (int)(maxPosition - currentPosition);
+-            }
+-
+-            var read = await currentStream
+-                .NotNull()
+-                .ReadAsync(buffer, currentOffset, readSize, cancellationToken)
+-                .ConfigureAwait(false);
+-            if (read < 0)
+-            {
+-                throw new IncompleteArchiveException("Unexpected end of stream.");
+-            }
+-
+-            currentPosition += read;
+-            currentOffset += read;
+-            currentCount -= read;
+-            totalRead += read;
+-            if (
+-                ((maxPosition - currentPosition) == 0)
+-                && filePartEnumerator.Current.FileHeader.IsSplitAfter
+-            )
+-            {
+-                if (filePartEnumerator.Current.FileHeader.R4Salt != null)
+-                {
+-                    throw new InvalidFormatException(
+-                        "Sharpcompress currently does not support multi-volume decryption."
+-                    );
+-                }
+-
+-                var fileName = filePartEnumerator.Current.FileHeader.FileName;
+-                if (!await filePartEnumerator.MoveNextAsync().ConfigureAwait(false))
+-                {
+-                    throw new InvalidFormatException(
+-                        "Multi-part rar file is incomplete.  Entry expects a new volume: "
+-                            + fileName
+-                    );
+-                }
+-
+-                InitializeNextFilePart();
+-            }
+-            else
+-            {
+-                break;
+-            }
+-        }
+-
+-        return totalRead;
+-    }
+-
+-#if NETCOREAPP2_1_OR_GREATER || NETSTANDARD2_1_OR_GREATER
+-    public override async ValueTask<int> ReadAsync(
+-        Memory<byte> buffer,
+-        CancellationToken cancellationToken = default
+-    )
+-    {
+-        var totalRead = 0;
+-        var currentOffset = 0;
+-        var currentCount = buffer.Length;
+-        while (currentCount > 0)
+-        {
+-            var readSize = currentCount;
+-            if (currentCount > maxPosition - currentPosition)
+-            {
+-                readSize = (int)(maxPosition - currentPosition);
+-            }
+-
+-            var read = await currentStream
+-                .NotNull()
+-                .ReadAsync(buffer.Slice(currentOffset, readSize), cancellationToken)
+-                .ConfigureAwait(false);
+-            if (read < 0)
+-            {
+-                throw new IncompleteArchiveException("Unexpected end of stream.");
+-            }
+-
+-            currentPosition += read;
+-            currentOffset += read;
+-            currentCount -= read;
+-            totalRead += read;
+-            if (
+-                ((maxPosition - currentPosition) == 0)
+-                && filePartEnumerator.Current.FileHeader.IsSplitAfter
+-            )
+-            {
+-                if (filePartEnumerator.Current.FileHeader.R4Salt != null)
+-                {
+-                    throw new InvalidFormatException(
+-                        "Sharpcompress currently does not support multi-volume decryption."
+-                    );
+-                }
+-                var fileName = filePartEnumerator.Current.FileHeader.FileName;
+-                if (!await filePartEnumerator.MoveNextAsync().ConfigureAwait(false))
+-                {
+-                    throw new InvalidFormatException(
+-                        "Multi-part rar file is incomplete.  Entry expects a new volume: "
+-                            + fileName
+-                    );
+-                }
+-                InitializeNextFilePart();
+-            }
+-            else
+-            {
+-                break;
+-            }
+-        }
+-        return totalRead;
+-    }
+-#endif
+-}
+--- a/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyAsyncStream.cs
++++ b/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyAsyncStream.cs
+@@ -1,61 +1,49 @@
+ using System;
+ using System.Collections.Generic;
+-using System.IO;
++using System.Threading;
+ using System.Threading.Tasks;
+ using SharpCompress.Common;
+ using SharpCompress.Common.Rar;
+-
+ namespace SharpCompress.Compressors.Rar;
+-
+ internal sealed partial class MultiVolumeReadOnlyAsyncStream : MultiVolumeReadOnlyStreamBase
+ {
+-    private long currentPosition;
+-    private long maxPosition;
+-
+-    private IAsyncEnumerator<RarFilePart> filePartEnumerator;
+-    private Stream? currentStream;
+-
+-    private MultiVolumeReadOnlyAsyncStream(IAsyncEnumerable<RarFilePart> parts)
++    private readonly IAsyncEnumerator<RarFilePart> _parts;
++    private bool _partsDisposed;
++    private MultiVolumeReadOnlyAsyncStream(IAsyncEnumerable<RarFilePart> parts, CancellationToken cancellationToken) =>
++        _parts = parts.GetAsyncEnumerator(cancellationToken);
++    internal static async ValueTask<MultiVolumeReadOnlyAsyncStream> Create(IAsyncEnumerable<RarFilePart> parts, string? password, CancellationToken cancellationToken = default)
+     {
+-        filePartEnumerator = parts.GetAsyncEnumerator();
++        var stream = new MultiVolumeReadOnlyAsyncStream(parts, cancellationToken);
++        try
++        {
++            if (!await stream._parts.MoveNextAsync().ConfigureAwait(false))
++                throw new IncompleteArchiveException("Missing archive entry.");
++            stream.Initialize(password);
++            return stream;
++        }
++        catch { await stream.DisposeAsync().ConfigureAwait(false); throw; }
+     }
+-
+-    // Async methods moved to MultiVolumeReadOnlyAsyncStream.Async.cs
+-
+-    private void InitializeNextFilePart()
++    protected override RarFilePart CurrentPart => _parts.Current;
++    protected override bool MoveNextPart() => throw new NotSupportedException("Use asynchronous reads.");
++    protected override ValueTask<bool> MoveNextPartAsync(CancellationToken cancellationToken)
+     {
+-        maxPosition = filePartEnumerator.Current.FileHeader.CompressedSize;
+-        currentPosition = 0;
+-        currentStream = filePartEnumerator.Current.GetCompressedStream();
+-
+-        CurrentCrc = filePartEnumerator.Current.FileHeader.FileCrc;
++        cancellationToken.ThrowIfCancellationRequested();
++        return _parts.MoveNextAsync();
+     }
+-
+-    public override int Read(byte[] buffer, int offset, int count) =>
+-        throw new NotSupportedException(
+-            "Synchronous read is not supported in MultiVolumeReadOnlyAsyncStream."
+-        );
+-
+-    public override bool CanRead => true;
+-
+-    public override bool CanSeek => false;
+-
+-    public override bool CanWrite => false;
+-
+-    public override void Flush() { }
+-
+-    public override long Length => throw new NotSupportedException();
+-
+-    public override long Position
++    private ValueTask DisposePartsAsync()
+     {
+-        get => throw new NotSupportedException();
+-        set => throw new NotSupportedException();
++        if (_partsDisposed) return ValueTask.CompletedTask;
++        _partsDisposed = true;
++        return _parts.DisposeAsync();
+     }
+-
+-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+-
+-    public override void SetLength(long value) => throw new NotSupportedException();
+-
+-    public override void Write(byte[] buffer, int offset, int count) =>
+-        throw new NotSupportedException();
++    protected override void Dispose(bool disposing)
++    {
++        if (disposing) DisposePartsAsync().AsTask().GetAwaiter().GetResult();
++        base.Dispose(disposing);
++    }
++    public override async ValueTask DisposeAsync()
++    {
++        try { await DisposePartsAsync().ConfigureAwait(false); }
++        finally { base.Dispose(true); GC.SuppressFinalize(this); }
++    }
+ }
+--- a/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyStream.Async.cs
++++ b/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyStream.Async.cs
+@@ -1,135 +1 @@
+-using System;
+-using System.Collections.Generic;
+-using System.IO;
+-using System.Threading;
+-using System.Threading.Tasks;
+-using SharpCompress.Common;
+-using SharpCompress.Common.Rar;
+-
+ namespace SharpCompress.Compressors.Rar;
+-
+-internal sealed partial class MultiVolumeReadOnlyStream : MultiVolumeReadOnlyStreamBase
+-{
+-    public override async Task<int> ReadAsync(
+-        byte[] buffer,
+-        int offset,
+-        int count,
+-        CancellationToken cancellationToken
+-    )
+-    {
+-        var totalRead = 0;
+-        var currentOffset = offset;
+-        var currentCount = count;
+-        while (currentCount > 0)
+-        {
+-            var readSize = currentCount;
+-            if (currentCount > maxPosition - currentPosition)
+-            {
+-                readSize = (int)(maxPosition - currentPosition);
+-            }
+-
+-            var read = await currentStream
+-                .NotNull()
+-                .ReadAsync(buffer, currentOffset, readSize, cancellationToken)
+-                .ConfigureAwait(false);
+-            if (read < 0)
+-            {
+-                throw new IncompleteArchiveException("Unexpected end of stream.");
+-            }
+-
+-            currentPosition += read;
+-            currentOffset += read;
+-            currentCount -= read;
+-            totalRead += read;
+-            if (
+-                ((maxPosition - currentPosition) == 0)
+-                && filePartEnumerator.Current.FileHeader.IsSplitAfter
+-            )
+-            {
+-                if (filePartEnumerator.Current.FileHeader.R4Salt != null)
+-                {
+-                    throw new InvalidFormatException(
+-                        "Sharpcompress currently does not support multi-volume decryption."
+-                    );
+-                }
+-
+-                var fileName = filePartEnumerator.Current.FileHeader.FileName;
+-                if (!filePartEnumerator.MoveNext())
+-                {
+-                    throw new InvalidFormatException(
+-                        "Multi-part rar file is incomplete.  Entry expects a new volume: "
+-                            + fileName
+-                    );
+-                }
+-
+-                InitializeNextFilePart();
+-            }
+-            else
+-            {
+-                break;
+-            }
+-        }
+-
+-        return totalRead;
+-    }
+-
+-#if !LEGACY_DOTNET
+-    public override async ValueTask<int> ReadAsync(
+-        Memory<byte> buffer,
+-        CancellationToken cancellationToken = default
+-    )
+-    {
+-        var totalRead = 0;
+-        var currentOffset = 0;
+-        var currentCount = buffer.Length;
+-        while (currentCount > 0)
+-        {
+-            var readSize = currentCount;
+-            if (currentCount > maxPosition - currentPosition)
+-            {
+-                readSize = (int)(maxPosition - currentPosition);
+-            }
+-
+-            var read = await currentStream
+-                .NotNull()
+-                .ReadAsync(buffer.Slice(currentOffset, readSize), cancellationToken)
+-                .ConfigureAwait(false);
+-            if (read < 0)
+-            {
+-                throw new IncompleteArchiveException("Unexpected end of stream.");
+-            }
+-
+-            currentPosition += read;
+-            currentOffset += read;
+-            currentCount -= read;
+-            totalRead += read;
+-            if (
+-                ((maxPosition - currentPosition) == 0)
+-                && filePartEnumerator.Current.FileHeader.IsSplitAfter
+-            )
+-            {
+-                if (filePartEnumerator.Current.FileHeader.R4Salt != null)
+-                {
+-                    throw new InvalidFormatException(
+-                        "Sharpcompress currently does not support multi-volume decryption."
+-                    );
+-                }
+-                var fileName = filePartEnumerator.Current.FileHeader.FileName;
+-                if (!filePartEnumerator.MoveNext())
+-                {
+-                    throw new InvalidFormatException(
+-                        "Multi-part rar file is incomplete.  Entry expects a new volume: "
+-                            + fileName
+-                    );
+-                }
+-                InitializeNextFilePart();
+-            }
+-            else
+-            {
+-                break;
+-            }
+-        }
+-        return totalRead;
+-    }
+-#endif
+-}
+--- a/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyStream.cs
++++ b/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyStream.cs
+@@ -1,121 +1,33 @@
+ using System;
+ using System.Collections.Generic;
+-using System.IO;
++using System.Threading;
++using System.Threading.Tasks;
+ using SharpCompress.Common;
+ using SharpCompress.Common.Rar;
+-
+ namespace SharpCompress.Compressors.Rar;
+-
+ internal sealed partial class MultiVolumeReadOnlyStream : MultiVolumeReadOnlyStreamBase
+ {
+-    private long currentPosition;
+-    private long maxPosition;
+-
+-    private IEnumerator<RarFilePart> filePartEnumerator;
+-    private Stream? currentStream;
+-
+-    internal MultiVolumeReadOnlyStream(IEnumerable<RarFilePart> parts)
++    private readonly IEnumerator<RarFilePart> _parts;
++    internal MultiVolumeReadOnlyStream(IEnumerable<RarFilePart> parts, string? password)
+     {
+-        filePartEnumerator = parts.GetEnumerator();
+-        filePartEnumerator.MoveNext();
+-        InitializeNextFilePart();
++        _parts = parts.GetEnumerator();
++        try
++        {
++            if (!_parts.MoveNext()) throw new IncompleteArchiveException("Missing archive entry.");
++            Initialize(password);
++        }
++        catch { _parts.Dispose(); throw; }
+     }
+-
++    protected override RarFilePart CurrentPart => _parts.Current;
++    protected override bool MoveNextPart() => _parts.MoveNext();
++    protected override ValueTask<bool> MoveNextPartAsync(CancellationToken cancellationToken)
++    {
++        cancellationToken.ThrowIfCancellationRequested();
++        return ValueTask.FromResult(MoveNextPart());
++    }
+     protected override void Dispose(bool disposing)
+     {
++        if (disposing) _parts.Dispose();
+         base.Dispose(disposing);
+-        if (disposing)
+-        {
+-            filePartEnumerator.Dispose();
+-
+-            currentStream = null;
+-        }
+     }
+-
+-    private void InitializeNextFilePart()
+-    {
+-        maxPosition = filePartEnumerator.Current.FileHeader.CompressedSize;
+-        currentPosition = 0;
+-        currentStream = filePartEnumerator.Current.GetCompressedStream();
+-
+-        CurrentCrc = filePartEnumerator.Current.FileHeader.FileCrc;
+-    }
+-
+-    public override int Read(byte[] buffer, int offset, int count)
+-    {
+-        var totalRead = 0;
+-        var currentOffset = offset;
+-        var currentCount = count;
+-        while (currentCount > 0)
+-        {
+-            var readSize = currentCount;
+-            if (currentCount > maxPosition - currentPosition)
+-            {
+-                readSize = (int)(maxPosition - currentPosition);
+-            }
+-
+-            var read = currentStream.NotNull().Read(buffer, currentOffset, readSize);
+-            if (read < 0)
+-            {
+-                throw new IncompleteArchiveException("Unexpected end of stream.");
+-            }
+-
+-            currentPosition += read;
+-            currentOffset += read;
+-            currentCount -= read;
+-            totalRead += read;
+-            if (
+-                ((maxPosition - currentPosition) == 0)
+-                && filePartEnumerator.Current.FileHeader.IsSplitAfter
+-            )
+-            {
+-                if (filePartEnumerator.Current.FileHeader.R4Salt != null)
+-                {
+-                    throw new InvalidFormatException(
+-                        "Sharpcompress currently does not support multi-volume decryption."
+-                    );
+-                }
+-
+-                var fileName = filePartEnumerator.Current.FileHeader.FileName;
+-                if (!filePartEnumerator.MoveNext())
+-                {
+-                    throw new InvalidFormatException(
+-                        "Multi-part rar file is incomplete.  Entry expects a new volume: "
+-                            + fileName
+-                    );
+-                }
+-
+-                InitializeNextFilePart();
+-            }
+-            else
+-            {
+-                break;
+-            }
+-        }
+-
+-        return totalRead;
+-    }
+-
+-    public override bool CanRead => true;
+-
+-    public override bool CanSeek => false;
+-
+-    public override bool CanWrite => false;
+-
+-    public override void Flush() { }
+-
+-    public override long Length => throw new NotSupportedException();
+-
+-    public override long Position
+-    {
+-        get => throw new NotSupportedException();
+-        set => throw new NotSupportedException();
+-    }
+-
+-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+-
+-    public override void SetLength(long value) => throw new NotSupportedException();
+-
+-    public override void Write(byte[] buffer, int offset, int count) =>
+-        throw new NotSupportedException();
+ }
+--- a/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyStreamBase.cs
++++ b/src/SharpCompress/Compressors/Rar/MultiVolumeReadOnlyStreamBase.cs
+@@ -1,8 +1,159 @@
++using System;
++using System.Buffers.Binary;
+ using System.IO;
+-
++using System.Linq;
++using System.Security.Cryptography;
++using System.Threading;
++using System.Threading.Tasks;
++using SharpCompress.Common;
++using SharpCompress.Common.Rar;
++using SharpCompress.Common.Rar.Headers;
+ namespace SharpCompress.Compressors.Rar;
+-
+ internal abstract class MultiVolumeReadOnlyStreamBase : Stream
+ {
++    private Stream? _packedStream;
++    private RarCryptoWrapper? _decryption;
++    private FileHeader? _firstHeader;
++    private byte[]? _hashKey;
++    private long _remaining;
++    private bool _useHashKey;
+     public byte[]? CurrentCrc { get; protected set; }
++    protected abstract RarFilePart CurrentPart { get; }
++    protected abstract bool MoveNextPart();
++    protected abstract ValueTask<bool> MoveNextPartAsync(CancellationToken cancellationToken);
++    protected void Initialize(string? password)
++    {
++        _firstHeader = CurrentPart.FileHeader;
++        InitializePart();
++        // Join packed parts before decryption because a volume may end inside an AES block.
++        if (_firstHeader.Rar5CryptoInfo is { } info)
++        {
++            var key = new CryptKey5(password!, info);
++            _decryption = new RarCryptoWrapper(new PackedInput(this), info.Salt, key);
++            _hashKey = key.HashKey;
++        }
++        else if (_firstHeader.R4Salt is { } salt)
++            _decryption = new RarCryptoWrapper(new PackedInput(this), salt, new CryptKey3(password!));
++        else if (_firstHeader.IsEncrypted)
++            throw new InvalidFormatException("Missing encryption parameters.");
++    }
++    private void InitializePart()
++    {
++        var header = CurrentPart.FileHeader;
++        if (header.CompressedSize < 0) throw new InvalidFormatException("Invalid packed size.");
++        if (header != _firstHeader)
++        {
++            if (!header.IsSplitBefore || header.FileName != _firstHeader!.FileName || header.IsEncrypted != _firstHeader.IsEncrypted)
++                throw new InvalidFormatException("Mismatched archive continuation.");
++            var first = _firstHeader.Rar5CryptoInfo;
++            var next = header.Rar5CryptoInfo;
++            if (first != null && (next == null || first.LG2Count != next.LG2Count ||
++                !first.Salt.SequenceEqual(next.Salt) || !first.InitV.SequenceEqual(next.InitV)))
++                throw new InvalidFormatException("Mismatched encryption parameters.");
++        }
++        _remaining = header.CompressedSize;
++        _packedStream = CurrentPart.GetRawStream() ?? throw new InvalidFormatException("Missing packed stream.");
++        CurrentCrc = header.FileCrc;
++        // Continuations can use plain packed hashes while the final part uses a keyed hash.
++        _useHashKey = header.Rar5CryptoInfo?.UseHashKey ?? false;
++    }
++    public bool MatchesChecksum(ReadOnlySpan<byte> checksum)
++    {
++        if (CurrentCrc == null) return true;
++        if (!_useHashKey || _hashKey == null) return CryptographicOperations.FixedTimeEquals(checksum, CurrentCrc);
++        byte[] mac = HMACSHA256.HashData(_hashKey, checksum);
++        if (checksum.Length == 4)
++        {
++            uint folded = 0;
++            for (int index = 0; index < mac.Length; index += 4)
++                folded ^= BinaryPrimitives.ReadUInt32LittleEndian(mac.AsSpan(index, 4));
++            Span<byte> value = stackalloc byte[4];
++            BinaryPrimitives.WriteUInt32LittleEndian(value, folded);
++            return CryptographicOperations.FixedTimeEquals(value, CurrentCrc);
++        }
++        return CryptographicOperations.FixedTimeEquals(mac, CurrentCrc);
++    }
++    public override int Read(byte[] buffer, int offset, int count) =>
++        _decryption?.Read(buffer, offset, count) ?? ReadPacked(buffer, offset, count);
++    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
++        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
++    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
++        _decryption?.ReadAsync(buffer, cancellationToken) ?? ReadPackedAsync(buffer, cancellationToken);
++    private int ReadPacked(byte[] buffer, int offset, int count)
++    {
++        _ = buffer.AsSpan(offset, count);
++        int total = 0;
++        while (count > 0)
++        {
++            if (_remaining == 0)
++            {
++                if (!CurrentPart.FileHeader.IsSplitAfter) break;
++                if (!MoveNextPart()) throw new IncompleteArchiveException("Missing archive volume.");
++                InitializePart();
++                continue;
++            }
++            int read = _packedStream!.Read(buffer, offset, (int)Math.Min(count, _remaining));
++            if (read <= 0) throw new IncompleteArchiveException("Unexpected end of archive volume.");
++            _remaining -= read;
++            offset += read;
++            count -= read;
++            total += read;
++        }
++        return total;
++    }
++    private async ValueTask<int> ReadPackedAsync(Memory<byte> buffer, CancellationToken cancellationToken)
++    {
++        cancellationToken.ThrowIfCancellationRequested();
++        int total = 0;
++        while (!buffer.IsEmpty)
++        {
++            cancellationToken.ThrowIfCancellationRequested();
++            if (_remaining == 0)
++            {
++                if (!CurrentPart.FileHeader.IsSplitAfter) break;
++                if (!await MoveNextPartAsync(cancellationToken).ConfigureAwait(false))
++                    throw new IncompleteArchiveException("Missing archive volume.");
++                InitializePart();
++                continue;
++            }
++            int read = await _packedStream!.ReadAsync(buffer.Slice(0, (int)Math.Min(buffer.Length, _remaining)), cancellationToken).ConfigureAwait(false);
++            if (read <= 0) throw new IncompleteArchiveException("Unexpected end of archive volume.");
++            _remaining -= read;
++            buffer = buffer.Slice(read);
++            total += read;
++        }
++        return total;
++    }
++    protected override void Dispose(bool disposing)
++    {
++        if (disposing)
++        {
++            _decryption?.Dispose();
++            if (_hashKey != null) CryptographicOperations.ZeroMemory(_hashKey);
++        }
++        base.Dispose(disposing);
++    }
++    public override bool CanRead => true;
++    public override bool CanSeek => false;
++    public override bool CanWrite => false;
++    public override long Length => throw new NotSupportedException();
++    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
++    public override void Flush() { }
++    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
++    public override void SetLength(long value) => throw new NotSupportedException();
++    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
++    private sealed class PackedInput(MultiVolumeReadOnlyStreamBase owner) : Stream
++    {
++        public override int Read(byte[] buffer, int offset, int count) => owner.ReadPacked(buffer, offset, count);
++        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => owner.ReadPackedAsync(buffer, cancellationToken);
++        public override bool CanRead => true;
++        public override bool CanSeek => false;
++        public override bool CanWrite => false;
++        public override long Length => throw new NotSupportedException();
++        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
++        public override void Flush() { }
++        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
++        public override void SetLength(long value) => throw new NotSupportedException();
++        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
++    }
+ }
+--- a/src/SharpCompress/Compressors/Rar/RarBLAKE2spStream.Async.cs
++++ b/src/SharpCompress/Compressors/Rar/RarBLAKE2spStream.Async.cs
+@@ -26,6 +26,8 @@
+         CancellationToken cancellationToken
+     )
+     {
++        cancellationToken.ThrowIfCancellationRequested();
++        if (count == 0) return 0;
+         var result = await base.ReadAsync(buffer, offset, count, cancellationToken)
+             .ConfigureAwait(false);
+         if (result != 0)
+@@ -35,7 +37,7 @@
+         else
+         {
+             EnsureHash();
+-            if (!disableCRCCheck && !GetCrc().SequenceEqual(readStream.CurrentCrc) && count != 0)
++            if (!readStream.MatchesChecksum(GetCrc()) && count != 0)
+             {
+                 // NOTE: we use the last FileHeader in a multipart volume to check CRC
+                 throw new InvalidFormatException("file crc mismatch");
+@@ -51,6 +53,8 @@
+         CancellationToken cancellationToken = default
+     )
+     {
++        cancellationToken.ThrowIfCancellationRequested();
++        if (buffer.IsEmpty) return 0;
+         var result = await base.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+         if (result != 0)
+         {
+@@ -60,8 +64,7 @@
+         {
+             EnsureHash();
+             if (
+-                !disableCRCCheck
+-                && !GetCrc().SequenceEqual(readStream.CurrentCrc)
++                !readStream.MatchesChecksum(GetCrc())
+                 && buffer.Length != 0
+             )
+             {
+--- a/src/SharpCompress/Compressors/Rar/RarBLAKE2spStream.cs
++++ b/src/SharpCompress/Compressors/Rar/RarBLAKE2spStream.cs
+@@ -8,7 +8,6 @@
+ internal partial class RarBLAKE2spStream : RarStream
+ {
+     private readonly MultiVolumeReadOnlyStreamBase readStream;
+-    private readonly bool disableCRCCheck;
+ 
+     private const int BLAKE2S_NUM_ROUNDS = 10;
+     private const uint BLAKE2S_FINAL_FLAG = ~(uint)0;
+@@ -113,7 +112,6 @@
+         this.readStream = readStream;
+ 
+         // TODO: rar uses a modified hash xor'ed with encryption key?
+-        disableCRCCheck = fileHeader.IsEncrypted;
+         this._blake2sp = CreateBlake2sp();
+     }
+ 
+@@ -314,7 +312,7 @@
+         ResetCrc(blake2s);
+ 
+         var h = blake2s.h;
+-        // word[0]: digest_length | (fanout<<16) | (depth<<24)  — same as leaves
++        // word[0]: digest_length | (fanout<<16) | (depth<<24)  â€” same as leaves
+         h[0] ^= BLAKE2S_DIGEST_SIZE | (BLAKE2SP_PARALLEL_DEGREE << 16) | (2 << 24);
+         // word[3]: node_depth=1 (bits 16-23), inner_length=32 (bits 24-31)
+         h[3] ^= (1 << 16) | (BLAKE2S_DIGEST_SIZE << 24);
+@@ -343,6 +341,7 @@
+ 
+     public override int Read(byte[] buffer, int offset, int count)
+     {
++        if (count == 0) return 0;
+         var result = base.Read(buffer, offset, count);
+         if (result != 0)
+         {
+@@ -351,7 +350,7 @@
+         else
+         {
+             EnsureHash();
+-            if (!disableCRCCheck && !GetCrc().SequenceEqual(readStream.CurrentCrc) && count != 0)
++            if (!readStream.MatchesChecksum(GetCrc()) && count != 0)
+             {
+                 // NOTE: we use the last FileHeader in a multipart volume to check CRC
+                 throw new InvalidFormatException("file crc mismatch");
+--- a/src/SharpCompress/Compressors/Rar/RarCrcStream.Async.cs
++++ b/src/SharpCompress/Compressors/Rar/RarCrcStream.Async.cs
+@@ -33,8 +33,7 @@
+             _currentCrc = RarCRC.CheckCrc(_currentCrc, buffer, offset, result);
+         }
+         else if (
+-            !_disableCrc
+-            && GetCrc() != BitConverter.ToUInt32(_readStream.NotNull().CurrentCrc.NotNull(), 0)
++            !_readStream.MatchesChecksum(BitConverter.GetBytes(GetCrc()))
+             && count != 0
+         )
+         {
+@@ -58,8 +57,7 @@
+             _currentCrc = RarCRC.CheckCrc(_currentCrc, buffer.Span, 0, result);
+         }
+         else if (
+-            !_disableCrc
+-            && GetCrc() != BitConverter.ToUInt32(_readStream.NotNull().CurrentCrc.NotNull(), 0)
++            !_readStream.MatchesChecksum(BitConverter.GetBytes(GetCrc()))
+             && buffer.Length != 0
+         )
+         {
+--- a/src/SharpCompress/Compressors/Rar/RarCrcStream.cs
++++ b/src/SharpCompress/Compressors/Rar/RarCrcStream.cs
+@@ -9,7 +9,6 @@
+     private readonly string? _key;
+     private readonly MultiVolumeReadOnlyStreamBase _readStream;
+     private uint _currentCrc;
+-    private readonly bool _disableCrc;
+ 
+     private RarCrcStream(
+         IRarUnpack unpack,
+@@ -20,7 +19,6 @@
+     {
+         this._readStream = readStream;
+         _key = fileHeader.FileName;
+-        _disableCrc = fileHeader.IsEncrypted;
+         ResetCrc();
+     }
+ 
+@@ -47,8 +45,7 @@
+             _currentCrc = RarCRC.CheckCrc(_currentCrc, buffer, offset, result);
+         }
+         else if (
+-            !_disableCrc
+-            && GetCrc() != BitConverter.ToUInt32(_readStream.NotNull().CurrentCrc.NotNull(), 0)
++            !_readStream.MatchesChecksum(BitConverter.GetBytes(GetCrc()))
+             && count != 0
+         )
+         {
+--- a/src/SharpCompress/Compressors/Rar/RarStream.Async.cs
++++ b/src/SharpCompress/Compressors/Rar/RarStream.Async.cs
+@@ -53,7 +53,7 @@
+         CancellationToken cancellationToken
+     )
+     {
+-        if (count == 0)
++        if (count == 0 || _endOfStream)
+         {
+             return 0;
+         }
+@@ -70,7 +70,7 @@
+             count -= toCopy;
+             outTotal += toCopy;
+         }
+-        if (count > 0 && unpack.DestSize > 0)
++        if (count > 0 && unpack.DestSize > 0 && (fileHeader.IsStored || !unpack.FileExtracted))
+         {
+             outBuffer = buffer;
+             outOffset = offset;
+@@ -80,7 +80,8 @@
+             fetch = false;
+         }
+         _position += outTotal;
+-        if (count > 0 && outTotal == 0 && _position < Length)
++        if (outTotal == 0) _endOfStream = true;
++        if (count > 0 && outTotal == 0 && Length != long.MaxValue && _position < Length)
+         {
+             // sanity check, eg if we try to decompress a redir entry
+             throw new ArchiveOperationException(
+--- a/src/SharpCompress/Compressors/Rar/RarStream.cs
++++ b/src/SharpCompress/Compressors/Rar/RarStream.cs
+@@ -27,6 +27,7 @@
+     private bool initialized;
+     private bool isDisposed;
+     private long _position;
++    private bool _endOfStream;
+ 
+     public RarStream(IRarUnpack unpack, FileHeader fileHeader, Stream readStream)
+     {
+@@ -83,7 +84,7 @@
+ 
+     public override int Read(byte[] buffer, int offset, int count)
+     {
+-        if (count == 0)
++        if (count == 0 || _endOfStream)
+         {
+             return 0;
+         }
+@@ -100,7 +101,7 @@
+             count -= toCopy;
+             outTotal += toCopy;
+         }
+-        if (count > 0 && unpack.DestSize > 0)
++        if (count > 0 && unpack.DestSize > 0 && (fileHeader.IsStored || !unpack.FileExtracted))
+         {
+             outBuffer = buffer;
+             outOffset = offset;
+@@ -110,7 +111,8 @@
+             fetch = false;
+         }
+         _position += outTotal;
+-        if (count > 0 && outTotal == 0 && _position < Length)
++        if (outTotal == 0) _endOfStream = true;
++        if (count > 0 && outTotal == 0 && Length != long.MaxValue && _position < Length)
+         {
+             // sanity check, eg if we try to decompress a redir entry
+             throw new ArchiveOperationException(
+--- a/src/SharpCompress/Compressors/Rar/UnpackV2017/Unpack.cs
++++ b/src/SharpCompress/Compressors/Rar/UnpackV2017/Unpack.cs
+@@ -160,6 +160,8 @@
+ 
+     public bool Suspended { get; set; }
+ 
++    bool IRarUnpack.FileExtracted => FileExtracted;
++
+     public long DestSize => DestUnpSize;
+ 
+     public int ReadChar()
+--- a/src/SharpCompress/Crypto/BlockTransformer.cs
++++ b/src/SharpCompress/Crypto/BlockTransformer.cs
+@@ -13,5 +13,8 @@
+         return decryptedBytes;
+     }
+ 
++    public void ProcessBlocks(byte[] buffer, int count) =>
++        transformer.TransformBlock(buffer, 0, count, buffer, 0);
++
+     public void Dispose() { }
+ }
+--- a/src/SharpCompress/Readers/Rar/RarReader.Async.cs
++++ b/src/SharpCompress/Readers/Rar/RarReader.Async.cs
+@@ -33,7 +33,7 @@
+         }
+ 
+         var stream = await MultiVolumeReadOnlyAsyncStream
+-            .Create(CreateFilePartEnumerableForCurrentEntryAsync().CastAsync<RarFilePart>())
++            .Create(CreateFilePartEnumerableForCurrentEntryAsync().CastAsync<RarFilePart>(), Options.Password, cancellationToken)
+             .ConfigureAwait(false);
+         if (Entry.IsRarV3)
+         {
+--- a/src/SharpCompress/Readers/Rar/RarReader.cs
++++ b/src/SharpCompress/Readers/Rar/RarReader.cs
+@@ -123,7 +123,7 @@
+         }
+ 
+         var stream = new MultiVolumeReadOnlyStream(
+-            CreateFilePartEnumerableForCurrentEntry().Cast<RarFilePart>()
++            CreateFilePartEnumerableForCurrentEntry().Cast<RarFilePart>(), Options.Password
+         );
+         if (Entry.IsRarV3)
+         {

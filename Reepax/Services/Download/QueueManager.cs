@@ -1679,10 +1679,39 @@ public partial class QueueManager
         return Task.CompletedTask;
     }
 
-    private void OnBackgroundDownloadFailed(DownloadItem item, Exception ex)
+    internal void OnBackgroundDownloadFailed(DownloadItem item, Exception ex)
     {
         if (item.IsUnavailableForProcessing)
             return;
+        if (ex is DownloadIntegrityException)
+        {
+            int maxRetries = SettingsService.Instance.Settings.MaxAutoRetryOnCorruption;
+            bool retry = item.RetryCount < maxRetries;
+            if (retry && !string.IsNullOrWhiteSpace(item.SaveFilePath))
+            {
+                // The destination may still contain the user's original file.
+                retry = Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(item.SaveFilePath + ".part") &&
+                    Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(item.SaveFilePath + ".part.segments");
+            }
+            SafeInvoke(() =>
+            {
+                if (item.IsUnavailableForProcessing) return;
+                item.LastVerificationError = ex.Message;
+                item.Status = retry ? DownloadStatus.Queued : DownloadStatus.Failed;
+                item.CurrentSlot = null;
+                item.IsVerifyingIntegrity = false;
+                if (retry)
+                {
+                    item.RetryCount++;
+                    item.DownloadedBytes = 0;
+                    item.ProgressPercentage = 0;
+                    item.StatusMessage = Loc.Format("Status_RetryingAfterChecksumError", item.RetryCount, maxRetries);
+                }
+                else item.StatusMessage = Loc.Format("Status_ChecksumError", ex.Message);
+            });
+            ProcessQueue();
+            return;
+        }
         // Expired/dead direct link (404/410/403)? -> Re-resolve original page
         // (e.g. direct host links whose /dl/ token expires after several hours)
         if (IsExpiredLinkError(ex) && CanReResolve(item))
@@ -1879,21 +1908,7 @@ public partial class QueueManager
         // 1a. Post-download action evaluation (auto-shutdown/sleep/exit)
         SystemIntegration.PostDownloadActionService.Instance.Evaluate(Packages);
 
-        // 1b. Automatic game install folder & clipboard
-        string? createdInstallDir = null;
-        if (SettingsService.Instance.Settings.CreateGameInstallFolder)
-        {
-            try
-            {
-                createdInstallDir = SystemIntegration.GameInstallFolderService.CreateAndCopyGameInstallFolder(package, showNotification: true);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error($"[QueueManager] Error creating automatic game install folder for '{package.Name}'", ex);
-            }
-        }
-
-        // 1c. Play Completion Sound if configured for entire package completion
+        // 1b. Play Completion Sound if configured for entire package completion
         if (SettingsService.Instance.Settings.CompletionSoundTrigger == CompletionSoundTrigger.EntirePackage)
         {
             Audio.AudioNotificationService.Instance.PlayCompletionSound();
@@ -1912,10 +1927,6 @@ public partial class QueueManager
         {
             var title = Loc.Get("Notification_PackageCompleted_Title");
             var body = Loc.Format("Notification_PackageCompleted_Body", package.Name);
-            if (!string.IsNullOrWhiteSpace(createdInstallDir))
-            {
-                body += $"\n{Loc.Format("Status_GameInstallFolderCreated", createdInstallDir)}";
-            }
             SystemIntegration.TrayIconService.Instance.ShowNotification(title, body);
         }
         catch (Exception ex)

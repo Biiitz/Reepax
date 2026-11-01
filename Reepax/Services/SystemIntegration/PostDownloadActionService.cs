@@ -181,7 +181,7 @@ public sealed class PostDownloadActionService
                 continue;
 
             // Is package or archive extraction running?
-            if (pkg.IsExtracting || ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id))
+            if (pkg.RequiresArchivePassword || pkg.IsExtracting || ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id))
                 return true;
 
             // Is package downloading or queued to start?

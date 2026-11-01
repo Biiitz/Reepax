@@ -7,12 +7,50 @@ using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Extractor;
+using Reepax.Services.Localization;
 using Xunit;
 
 namespace Reepax.Tests;
 
 public class LinkMetadataResolverTests
 {
+    [Theory]
+    [InlineData("en", "Analyzing metadata (0 of 3)", "Analyzing metadata (3 of 3)")]
+    [InlineData("de", "Metadaten werden analysiert (0 von 3)", "Metadaten werden analysiert (3 von 3)")]
+    public async Task MetadataProgress_ReportsOrderedCountsAndLocalizedText(string language, string initial, string final)
+    {
+        var localization = LocalizationService.Instance;
+        var previousLanguage = localization.CurrentLanguage;
+        try
+        {
+            localization.CurrentLanguage = language;
+            using var handler = new MockHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(new byte[8])
+            });
+            using var client = new HttpClient(handler);
+            var resolver = new LinkMetadataResolverService(client);
+            var package = new DownloadPackage { Name = "Collection", IsCustomName = true, AutoPar2Repair = false };
+            for (int index = 0; index < 3; index++)
+                package.Items.Add(new DownloadItem { OriginalUrl = $"https://example.invalid/{index}.bin", FileName = $"data{index}.bin" });
+            package.Items.Add(new DownloadItem { FileName = "resolved.bin", IsMetadataResolved = true, TotalBytes = 8 });
+            var messages = new System.Collections.Generic.List<string>();
+            var states = new System.Collections.Generic.List<MetadataAnalysisProgress>();
+            await resolver.ResolvePackageMetadataAsync(package, new InlineProgress<string>(messages.Add),
+                analysisProgress: new InlineProgress<MetadataAnalysisProgress>(states.Add));
+            Assert.Equal(initial, messages[0]);
+            Assert.Equal(final, messages[^1]);
+            Assert.Equal(new[] { 0, 1, 2, 3 }, states.Select(state => state.Completed));
+            Assert.All(states, state => Assert.Equal(3, state.Total));
+        }
+        finally { localization.CurrentLanguage = previousLanguage; }
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
+    }
+
     [Theory]
     [InlineData("24.5 GB", 26306674688)]
     [InlineData("24.5GB", 26306674688)]

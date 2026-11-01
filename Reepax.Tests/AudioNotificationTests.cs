@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Xml.Linq;
 using System.Text.Json;
 using Reepax.Models;
 using Reepax.Services.Audio;
@@ -11,6 +14,176 @@ namespace Reepax.Tests;
 public class AudioNotificationTests
 {
     [Theory]
+    [InlineData("missing.mp3")]
+    [InlineData("\0invalid.mp3")]
+    public void UnavailableSound_UsesTheBundledDefaultWithoutThrowing(string fileName)
+    {
+        var resolved = AudioNotificationService.ResolvePlayableSoundPath("sounds_done", fileName);
+        Assert.NotNull(resolved);
+        Assert.Equal("1.mp3", Path.GetFileName(resolved));
+        Assert.True(File.Exists(resolved));
+        Assert.Null(AudioNotificationService.ResolvePlayableSoundPath("unavailable", fileName));
+    }
+
+    [Fact]
+    public void Notifications_FinishBeforeTheNextSoundStartsAndIgnoreStaleEvents()
+    {
+        var voices = new List<FakeAudioVoice>();
+        long now = 0;
+        using var playback = CreatePlayback(voices, () => now);
+        playback.PlayNotification("completion", SoundUri("first"), 0.8);
+        var first = Assert.Single(voices);
+        Assert.Equal(0, first.PlayCalls);
+        var staleOpened = first.OpenedSnapshot;
+        var staleEnded = first.EndedSnapshot;
+        first.RaiseOpened();
+        Assert.Equal(1, first.PlayCalls);
+        now = 600;
+        playback.PlayNotification("error", SoundUri("second"), 0.5);
+        Assert.Single(voices);
+        Assert.Equal(0, first.DisposeCalls);
+        first.RaiseEnded();
+        Assert.Equal(1, first.DisposeCalls);
+        Assert.Equal(2, voices.Count);
+        var second = voices[1];
+        Assert.Equal(SoundUri("second"), second.Source);
+        staleOpened?.Invoke();
+        staleEnded?.Invoke();
+        Assert.Equal(0, second.DisposeCalls);
+        second.RaiseOpened();
+        second.RaiseOpened();
+        Assert.Equal(1, second.PlayCalls);
+        second.RaiseEnded();
+        Assert.Equal(1, second.DisposeCalls);
+    }
+
+    [Fact]
+    public void NotificationBursts_CoalesceWithoutDroppingErrorsOrCreatingAnUnboundedQueue()
+    {
+        var voices = new List<FakeAudioVoice>();
+        long now = 0;
+        using var playback = CreatePlayback(voices, () => now);
+        playback.PlayNotification("completion", SoundUri("first"), 0.8);
+        now = 100;
+        playback.PlayNotification("error", SoundUri("error"), 0.6);
+        for (int index = 0; index < 30; index++)
+        {
+            now += 600;
+            playback.PlayNotification("completion", SoundUri("latest"), 0.8);
+        }
+        Assert.Single(voices);
+        Assert.Equal(0, voices[0].DisposeCalls);
+        voices[0].RaiseEnded();
+        Assert.Equal(SoundUri("error"), voices[1].Source);
+        voices[1].RaiseEnded();
+        Assert.Equal(SoundUri("latest"), voices[2].Source);
+        voices[2].RaiseEnded();
+        Assert.Equal(3, voices.Count);
+        Assert.All(voices, voice => Assert.Equal(1, voice.DisposeCalls));
+    }
+
+    [Fact]
+    public void PreviewVolumeChanges_KeepPlaybackPositionAndDoNotInterruptNotifications()
+    {
+        var voices = new List<FakeAudioVoice>();
+        using var playback = CreatePlayback(voices, () => 0);
+        var source = SoundUri("preview");
+        playback.PlayPreview(source, 0.8, updateVolumeOnlyIfPlaying: false);
+        playback.PlayPreview(source, 0.3, updateVolumeOnlyIfPlaying: true);
+        Assert.Single(voices);
+        voices[0].RaiseOpened();
+        Assert.Equal(0.3, voices[0].Volume);
+        playback.PlayPreview(source, 0.2, updateVolumeOnlyIfPlaying: true);
+        Assert.Equal(1, voices[0].OpenCalls);
+        Assert.Equal(1, voices[0].PlayCalls);
+        Assert.Equal(0.2, voices[0].Volume);
+        playback.PlayNotification("completion", SoundUri("notification"), 0.6);
+        voices[1].RaiseOpened();
+        Assert.Equal(0, voices[0].DisposeCalls);
+        playback.PlayPreview(SoundUri("replacement"), 0.4, updateVolumeOnlyIfPlaying: false);
+        Assert.Equal(1, voices[0].DisposeCalls);
+        Assert.Equal(0, voices[1].DisposeCalls);
+        Assert.Equal(3, voices.Count);
+    }
+
+    [Fact]
+    public void PlaybackFailureAndShutdown_ReleasePlayersAndPreventLatePlayback()
+    {
+        var voices = new List<FakeAudioVoice>();
+        using var playback = CreatePlayback(voices, () => 0);
+        playback.PlayNotification("completion", SoundUri("first"), 0.8);
+        playback.PlayNotification("error", SoundUri("second"), 0.7);
+        voices[0].RaiseFailed();
+        Assert.Equal(1, voices[0].DisposeCalls);
+        Assert.Equal(2, voices.Count);
+        playback.PlayPreview(SoundUri("preview"), 0.5, updateVolumeOnlyIfPlaying: false);
+        var lateOpened = voices[1].OpenedSnapshot;
+        playback.Dispose();
+        lateOpened?.Invoke();
+        playback.PlayNotification("error", SoundUri("ignored"), 0.8);
+        Assert.Equal(3, voices.Count);
+        Assert.All(voices, voice => Assert.Equal(1, voice.DisposeCalls));
+        Assert.Equal(0, voices[1].PlayCalls);
+    }
+
+    [Fact]
+    public void QueuedNotifications_RespectUpdatedVolumeAndDisabledSounds()
+    {
+        var voices = new List<FakeAudioVoice>();
+        long now = 0;
+        double completionVolume = 0.8;
+        double errorVolume = 0.7;
+        using var playback = CreatePlayback(voices, () => now);
+        playback.PlayNotification("completion", SoundUri("first"), completionVolume, () => completionVolume);
+        now = 600;
+        playback.PlayNotification("completion", SoundUri("muted"), completionVolume, () => completionVolume);
+        playback.PlayNotification("error", SoundUri("error"), errorVolume, () => errorVolume);
+        completionVolume = 0;
+        errorVolume = 0.2;
+        voices[0].RaiseEnded();
+        Assert.Equal(2, voices.Count);
+        Assert.Equal(SoundUri("error"), voices[1].Source);
+        voices[1].RaiseOpened();
+        Assert.Equal(0.2, voices[1].Volume);
+        Assert.Equal(1, voices[1].PlayCalls);
+    }
+
+    private static Uri SoundUri(string name) => new("https://example.invalid/" + name + ".mp3");
+
+    private static AudioNotificationPlayback CreatePlayback(List<FakeAudioVoice> voices, Func<long> timestamp) => new(() =>
+    {
+        var voice = new FakeAudioVoice();
+        voices.Add(voice);
+        return voice;
+    }, timestamp);
+
+    private sealed class FakeAudioVoice : IAudioNotificationVoice
+    {
+        public event Action? Opened;
+        public event Action? Ended;
+        public event Action? Failed;
+        public double Volume { get; set; }
+        internal Uri? Source;
+        internal int OpenCalls;
+        internal int PlayCalls;
+        internal int DisposeCalls;
+        internal Action? OpenedSnapshot;
+        internal Action? EndedSnapshot;
+        public void Open(Uri source)
+        {
+            Source = source;
+            OpenCalls++;
+            OpenedSnapshot = Opened;
+            EndedSnapshot = Ended;
+        }
+        public void Play() => PlayCalls++;
+        public void Dispose() => DisposeCalls++;
+        internal void RaiseOpened() => Opened?.Invoke();
+        internal void RaiseEnded() => Ended?.Invoke();
+        internal void RaiseFailed() => Failed?.Invoke();
+    }
+
+    [Theory]
     [InlineData("sounds_done", "1.mp3")]
     [InlineData("sounds_done", "2.mp3")]
     [InlineData("sounds_done", "3.mp3")]
@@ -21,13 +194,41 @@ public class AudioNotificationTests
     [InlineData("sounds_done", "8.mp3")]
     [InlineData("sounds_done", "9.mp3")]
     [InlineData("sounds_done", "10.mp3")]
+    [InlineData("sounds_done", "11.mp3")]
+    [InlineData("sounds_done", "12.mp3")]
     [InlineData("sounds_error", "1.mp3")]
     [InlineData("sounds_error", "2.mp3")]
+    [InlineData("sounds_error", "3.mp3")]
+    [InlineData("sounds_error", "4.mp3")]
+    [InlineData("sounds_error", "5.mp3")]
     public void AudioAssets_AllRequiredFilesExist(string folder, string fileName)
     {
         string? resolvedPath = AudioNotificationService.ResolveSoundPath(folder, fileName);
         Assert.NotNull(resolvedPath);
         Assert.True(File.Exists(resolvedPath), $"Sound file not found: {resolvedPath}");
+    }
+
+    [Theory]
+    [InlineData("sounds_done", "CompletionSoundOption_Click")]
+    [InlineData("sounds_error", "ErrorSoundOption_Click")]
+    public void SoundCatalog_MatchesBundledAssetsMenusAndPersistedSettings(string folder, string clickHandler)
+    {
+        bool completion = folder == "sounds_done";
+        var catalog = completion ? AppSettings.ValidCompletionSounds : AppSettings.ValidErrorSounds;
+        var project = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax"));
+        var files = Directory.GetFiles(Path.Combine(project, "Assets", folder), "*.mp3").Select(Path.GetFileName).ToArray();
+        Assert.Equal(catalog.OrderBy(name => name, StringComparer.Ordinal), files.OrderBy(name => name, StringComparer.Ordinal));
+        var view = XDocument.Load(Path.Combine(project, "Views", "SettingsView.xaml"));
+        var options = view.Descendants().Where(element => element.Name.LocalName == "Button" &&
+            (string?)element.Attribute("Click") == clickHandler).Select(element => (string?)element.Attribute("CommandParameter"));
+        Assert.Equal(catalog, options);
+        foreach (var sound in catalog)
+        {
+            var settings = new AppSettings { SelectedCompletionSound = completion ? sound : "1.mp3", SelectedErrorSound = completion ? "1.mp3" : sound };
+            var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
+            AppSettings.SanitizeSoundSettings(restored);
+            Assert.Equal(sound, completion ? restored.SelectedCompletionSound : restored.SelectedErrorSound);
+        }
     }
 
     [Fact]
@@ -204,7 +405,7 @@ public class AudioNotificationTests
             SelectedCompletionSound = "1.mp3"
         };
 
-        // Forward cycling: 1 -> 2 -> 3 ... 10 -> 1
+        // Forward cycling includes the newly registered sounds.
         vm.CycleCompletionSound(true);
         Assert.Equal("2.mp3", vm.SelectedCompletionSound);
 
@@ -213,14 +414,18 @@ public class AudioNotificationTests
 
         vm.SelectedCompletionSound = "10.mp3";
         vm.CycleCompletionSound(true);
+        Assert.Equal("11.mp3", vm.SelectedCompletionSound);
+        vm.CycleCompletionSound(true);
+        Assert.Equal("12.mp3", vm.SelectedCompletionSound);
+        vm.CycleCompletionSound(true);
         Assert.Equal("1.mp3", vm.SelectedCompletionSound);
 
-        // Backward cycling: 1 -> 10 -> 9
+        // Backward cycling wraps to the final registered sound.
         vm.CycleCompletionSound(false);
-        Assert.Equal("10.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("12.mp3", vm.SelectedCompletionSound);
 
         vm.CycleCompletionSound(false);
-        Assert.Equal("9.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("11.mp3", vm.SelectedCompletionSound);
     }
 
     [Fact]
@@ -231,19 +436,22 @@ public class AudioNotificationTests
             SelectedErrorSound = "1.mp3"
         };
 
-        // Forward cycling: 1 -> 2 -> 1
+        // Forward cycling includes the newly registered sounds.
         vm.CycleErrorSound(true);
         Assert.Equal("2.mp3", vm.SelectedErrorSound);
 
         vm.CycleErrorSound(true);
+        Assert.Equal("3.mp3", vm.SelectedErrorSound);
+        vm.SelectedErrorSound = "5.mp3";
+        vm.CycleErrorSound(true);
         Assert.Equal("1.mp3", vm.SelectedErrorSound);
 
-        // Backward cycling: 1 -> 2 -> 1
+        // Backward cycling wraps to the final registered sound.
         vm.CycleErrorSound(false);
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        Assert.Equal("5.mp3", vm.SelectedErrorSound);
 
         vm.CycleErrorSound(false);
-        Assert.Equal("1.mp3", vm.SelectedErrorSound);
+        Assert.Equal("4.mp3", vm.SelectedErrorSound);
     }
 
     [Fact]
@@ -355,7 +563,9 @@ public class AudioNotificationTests
     [InlineData("8.mp3")]
     [InlineData("9.mp3")]
     [InlineData("10.mp3")]
-    public void AppSettings_AudioProperties_Sanitization_PreservesAll10CompletionSounds(string sound)
+    [InlineData("11.mp3")]
+    [InlineData("12.mp3")]
+    public void AppSettings_AudioProperties_Sanitization_PreservesAllCompletionSounds(string sound)
     {
         var settings = new AppSettings { SelectedCompletionSound = sound };
         AppSettings.SanitizeSoundSettings(settings);

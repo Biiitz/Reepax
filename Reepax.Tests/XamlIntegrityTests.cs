@@ -10,6 +10,46 @@ namespace Reepax.Tests;
 
 public class XamlIntegrityTests
 {
+    [Fact]
+    public void PasswordTable_BindsStatisticsAndUsesOneGuardedEnterAction()
+    {
+        var document = XDocument.Load(Path.Combine(GetReepaxProjectDir(), "Views", "SettingsView.xaml"));
+        XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var input = document.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "NewArchivePasswordTextBox");
+        Assert.Equal("NewArchivePasswordTextBox_KeyDown", (string?)input.Attribute("KeyDown"));
+        Assert.DoesNotContain(input.Descendants(), element => element.Name.LocalName == "KeyBinding");
+        var add = document.Descendants().Single(element => (string?)element.Attribute("Command") == "{Binding AddArchivePasswordCommand}");
+        Assert.Equal("{Binding CanAddArchivePassword}", (string?)add.Attribute("IsEnabled"));
+        var table = document.Descendants().Single(element => (string?)element.Attribute("ItemsSource") == "{Binding ArchivePasswordEntries}");
+        foreach (var binding in new[] { "Password", "AddedAtText", "UsageCount", "SuccessCount" })
+            Assert.Contains(table.Descendants(), element => (string?)element.Attribute("Text") == "{Binding " + binding + "}");
+        Assert.All(table.Descendants().Where(element => element.Name.LocalName == "Button"),
+            button => Assert.Equal("{Binding Password}", (string?)button.Attribute("CommandParameter")));
+    }
+
+    [Fact]
+    public void ToolbarAnalysis_ShowsSpinnerAtExistingPositionAndStopsWhenHidden()
+    {
+        var xaml = XDocument.Load(Path.Combine(GetReepaxProjectDir(), "MainWindow.xaml"));
+        XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
+        XNamespace helpers = "clr-namespace:Reepax.Helpers";
+        var status = xaml.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "ToolbarAnalysisStatus");
+        Assert.Equal("14,0,0,0", (string?)status.Attribute("Margin"));
+        Assert.Equal("{Binding IsBusy}", (string?)status.Attribute(helpers + "FadeAnimation.IsShown"));
+        Assert.DoesNotContain(status.Descendants(), element => element.Name.LocalName == "ProgressBar");
+        var spinner = status.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "MetadataAnalysisSpinner");
+        Assert.Equal("{Binding IsAnalyzingMetadata}", (string?)spinner.Attribute(helpers + "FadeAnimation.IsShown"));
+        Assert.Same(spinner, status.Elements().First());
+        var text = Assert.Single(status.Elements().Where(element => element.Name.LocalName == "TextBlock"));
+        Assert.Equal("{Binding BusyDisplayMessage}", (string?)text.Attribute("Text"));
+        var trigger = Assert.Single(spinner.Descendants().Where(element => element.Name.LocalName == "Trigger"));
+        Assert.Equal("IsVisible", (string?)trigger.Attribute("Property"));
+        var animation = Assert.Single(trigger.Descendants().Where(element => element.Name.LocalName == "DoubleAnimation"));
+        Assert.Equal("360", (string?)animation.Attribute("To"));
+        Assert.Equal("Forever", (string?)animation.Attribute("RepeatBehavior"));
+        Assert.Contains(trigger.Descendants(), element => element.Name.LocalName == "StopStoryboard");
+    }
+
     private static string GetReepaxProjectDir()
     {
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;

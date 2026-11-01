@@ -1,7 +1,15 @@
-using System;
+﻿using System;
 using System.Threading;
+using System.IO;
+using System.Linq;
+using System.Xml.Linq;
 using System.Windows;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Markup;
+using Reepax.Services.Storage;
+using Reepax.ViewModels;
 using System.Windows.Threading;
 using Reepax.Models;
 using Reepax.Services.Extractor;
@@ -10,7 +18,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
-public class DialogUiTests
+public partial class DialogUiTests
 {
     private static Dispatcher? _staDispatcher;
     private static readonly object _staLock = new();
@@ -100,6 +108,97 @@ public class DialogUiTests
             Assert.False(dialog.RecycleArchivesCheckBox.IsEnabled);
             Assert.False(dialog.DeleteArchivesCheckBox.IsChecked);
             Assert.False(dialog.RecycleArchivesCheckBox.IsChecked);
+        });
+    }
+
+    [Fact]
+    public void PasswordInput_EnterCannotResubmitAnExistingPassword()
+    {
+        RunInSta(() =>
+        {
+            var settings = SettingsService.Instance.Settings;
+            var previousPasswords = settings.ExtractionPasswords;
+            var previousStatistics = settings.ArchivePasswordStatistics;
+            settings.ExtractionPasswords = new();
+            settings.ArchivePasswordStatistics = new();
+            var project = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax"));
+            var application = XDocument.Load(Path.Combine(project, "App.xaml"));
+            var resources = new XElement(application.Descendants().First(element => element.Name.LocalName == "ResourceDictionary"));
+            foreach (var element in resources.DescendantsAndSelf())
+            {
+                if (element.Name.NamespaceName.StartsWith("clr-namespace:") && !element.Name.NamespaceName.Contains(";assembly="))
+                    element.Name = XName.Get(element.Name.LocalName, element.Name.NamespaceName + ";assembly=Reepax");
+                if (element.Attribute("Source") is { } source)
+                    source.Value = "pack://application:,,,/Reepax;component/" + source.Value;
+            }
+            foreach (var attribute in application.Root!.Attributes().Where(attribute => attribute.IsNamespaceDeclaration))
+                resources.SetAttributeValue(attribute.Name, attribute.Value.StartsWith("clr-namespace:")
+                    ? attribute.Value + ";assembly=Reepax" : attribute.Value);
+            var dictionary = (ResourceDictionary)XamlReader.Parse(resources.ToString());
+            Application.Current.Resources.MergedDictionaries.Add(dictionary);
+            try
+            {
+                var vm = new MainViewModel();
+                var view = new SettingsView { DataContext = vm };
+                using var source = new HwndSource(new HwndSourceParameters("PasswordInputProbe")
+                {
+                    Width = 600, Height = 400, PositionX = -32000, PositionY = -32000,
+                    WindowStyle = unchecked((int)0x80000000)
+                });
+                void PressEnter() => view.NewArchivePasswordTextBox.RaiseEvent(new KeyEventArgs(
+                    Keyboard.PrimaryDevice, source, 0, Key.Enter) { RoutedEvent = Keyboard.KeyDownEvent });
+                vm.NewArchivePasswordInput = "KnownKey";
+                PressEnter();
+                Assert.Single(vm.ArchivePasswordEntries);
+                vm.NewArchivePasswordInput = "KnownKey";
+                PressEnter();
+                Assert.Single(vm.ArchivePasswordEntries);
+                Assert.Equal("KnownKey", vm.NewArchivePasswordInput);
+                Assert.False(vm.AddArchivePasswordCommand.CanExecute(null));
+                view.DataContext = null;
+            }
+            finally
+            {
+                Application.Current.Resources.MergedDictionaries.Remove(dictionary);
+                settings.ExtractionPasswords = previousPasswords;
+                settings.ArchivePasswordStatistics = previousStatistics;
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("Project.Alpha.part01.rar")]
+    [InlineData("Project.Alpha.7z.001")]
+    public void AddLinksDialog_AutomaticNameTracksLinksWithoutBecomingCustom(string fileName)
+    {
+        RunInSta(() =>
+        {
+            var dialog = new AddLinksDialog("https://example.invalid/" + fileName);
+            Assert.Equal("Project Alpha", dialog.PackageNameTextBox.Text);
+            Assert.Empty(dialog.CustomPackageName);
+            dialog.LinksTextBox.Text = "https://example.invalid/Project.Beta.Update.v2.0.zip";
+            Assert.Contains("Project Beta", dialog.PackageNameTextBox.Text);
+            dialog.LinksTextBox.Text = "https://example.invalid/Project.Gamma.zip";
+            Assert.Equal("Project Gamma", dialog.PackageNameTextBox.Text);
+            dialog.LinksTextBox.Clear();
+            Assert.Empty(dialog.PackageNameTextBox.Text);
+        });
+    }
+
+    [Fact]
+    public void AddLinksDialog_ManualNameSurvivesLinkChangesAndCanReturnToAutomaticNaming()
+    {
+        RunInSta(() =>
+        {
+            var dialog = new AddLinksDialog("https://example.invalid/Project.Alpha.zip");
+            dialog.PackageNameTextBox.Text = "My Collection";
+            dialog.LinksTextBox.Text = "https://example.invalid/Project.Beta.zip";
+            Assert.Equal("My Collection", dialog.PackageNameTextBox.Text);
+            Assert.Equal("My Collection", dialog.CustomPackageName);
+            dialog.PackageNameTextBox.Clear();
+            dialog.LinksTextBox.Text = "https://example.invalid/Project.Gamma.zip";
+            Assert.Equal("Project Gamma", dialog.PackageNameTextBox.Text);
+            Assert.Empty(dialog.CustomPackageName);
         });
     }
 
@@ -196,7 +295,9 @@ public class DialogUiTests
     {
         RunInSta(() =>
         {
-            var dialog = new PasswordPromptDialog("top_secret.7z");
+            var dialog = new PasswordPromptDialog("top_secret.7z", retry: true);
+            Assert.Equal(Visibility.Visible, dialog.RetryMessage.Visibility);
+            Assert.False(dialog.ExtractButton.IsEnabled);
 
             // Verify archive name chip display
             Assert.Equal("top_secret.7z", dialog.ArchiveNameTextBlock.Text);
@@ -205,6 +306,7 @@ public class DialogUiTests
             // Type masked password
             dialog.PasswordInputBox.Password = "SuperSecretPassword42";
             Assert.Equal("SuperSecretPassword42", dialog.Password);
+            Assert.True(dialog.ExtractButton.IsEnabled);
 
             // Click reveal button to show plain text
             dialog.RevealButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -217,6 +319,10 @@ public class DialogUiTests
             // Edit password while revealed
             dialog.PasswordRevealBox.Text = "ModifiedSecretKey99";
             Assert.Equal("ModifiedSecretKey99", dialog.Password);
+            dialog.PasswordRevealBox.Text = string.Empty;
+            Assert.False(dialog.ExtractButton.IsEnabled);
+            dialog.PasswordRevealBox.Text = "ModifiedSecretKey99";
+            Assert.True(dialog.ExtractButton.IsEnabled);
 
             // Click reveal button again to hide password
             dialog.RevealButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));

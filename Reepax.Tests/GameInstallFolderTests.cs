@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
@@ -11,16 +12,19 @@ namespace Reepax.Tests;
 public class GameInstallFolderTests : IDisposable
 {
     private readonly string _tempTestDir;
+    private readonly string _previousInstallDirectory;
 
     public GameInstallFolderTests()
     {
         _tempTestDir = Path.Combine(Path.GetTempPath(), "Reepax_GameInstallTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempTestDir);
+        _previousInstallDirectory = SettingsService.Instance.Settings.GameInstallDirectory;
         SettingsService.Instance.Settings.GameInstallDirectory = _tempTestDir;
     }
 
     public void Dispose()
     {
+        SettingsService.Instance.Settings.GameInstallDirectory = _previousInstallDirectory;
         try
         {
             if (Directory.Exists(_tempTestDir))
@@ -92,26 +96,21 @@ public class GameInstallFolderTests : IDisposable
     }
 
     [Fact]
-    public void AppSettings_GameInstallDirectory_PersistsCorrectly()
+    public void AppSettings_LegacyAutomaticFolderOption_IsIgnoredAndDirectoryIsPreserved()
     {
-        // Arrange
         var customPath = Path.Combine(_tempTestDir, "CustomApps");
-        SettingsService.Instance.Settings.CreateGameInstallFolder = true;
-        SettingsService.Instance.Settings.GameInstallDirectory = customPath;
+        var legacyJson = JsonSerializer.Serialize(new { CreateGameInstallFolder = true, GameInstallDirectory = customPath });
+        var settings = JsonSerializer.Deserialize<AppSettings>(legacyJson);
 
-        // Act
-        SettingsService.Instance.SaveSettings();
-
-        // Assert
-        Assert.True(SettingsService.Instance.Settings.CreateGameInstallFolder);
-        Assert.Equal(customPath, SettingsService.Instance.Settings.GameInstallDirectory);
+        Assert.NotNull(settings);
+        Assert.Equal(customPath, settings.GameInstallDirectory);
+        Assert.DoesNotContain("CreateGameInstallFolder", JsonSerializer.Serialize(settings));
     }
 
     [Fact]
-    public void QueueManager_NotifyPackageCompletion_CreatesFolderWhenEnabled()
+    public void QueueManager_NotifyPackageCompletion_DoesNotCreateInstallFolder()
     {
         // Arrange
-        SettingsService.Instance.Settings.CreateGameInstallFolder = true;
         SettingsService.Instance.Settings.GameInstallDirectory = _tempTestDir;
 
         var pkg = new DownloadPackage
@@ -134,7 +133,7 @@ public class GameInstallFolderTests : IDisposable
 
         // Assert
         var expectedFolder = Path.Combine(_tempTestDir, "Example Package");
-        Assert.True(Directory.Exists(expectedFolder));
+        Assert.False(Directory.Exists(expectedFolder));
     }
 
     [Fact]

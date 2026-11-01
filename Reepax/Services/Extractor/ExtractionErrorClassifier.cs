@@ -47,6 +47,9 @@ public static class ExtractionErrorClassifier
     {
         "Status_ExtractionFailed",
         "Status_ExtractionPasswordProtected",
+        "Status_ArchivePasswordRequired",
+        "Status_ArchivePasswordUnconfirmed",
+        "Status_ExtractionUnsupportedEncryptedVolumes",
         "Status_ExtractionInsufficientDiskSpace",
         "Status_ExtractionDiskFull",
         "Status_ExtractionCorruptArchive",

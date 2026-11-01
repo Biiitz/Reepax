@@ -1658,27 +1658,34 @@ public class DownloadEngineTests
     public void MainViewModel_TogglePauseResume_CanExecuteAndTogglesState()
     {
         var vm = new Reepax.ViewModels.MainViewModel();
+        var previous = vm.Packages.ToArray();
         vm.Packages.Clear();
-
-        // When empty, cannot execute
-        Assert.False(vm.TogglePauseResumeCommand.CanExecute(null));
-
-        var p = new Reepax.Models.DownloadPackage { Name = "Pkg" };
-        var item = new Reepax.Models.DownloadItem { FileName = "Test.zip", Status = Reepax.Models.DownloadStatus.Queued };
-        p.Items.Add(item);
-        vm.Packages.Add(p);
-
-        // When packages exist, CanExecute is true
-        Assert.True(vm.TogglePauseResumeCommand.CanExecute(null));
-
-        // When downloads are queued/running (CanPauseAll is true), toggle invokes PauseAll
-        Assert.True(vm.CanPauseAll);
-        vm.TogglePauseResume();
-        Assert.True(vm.StatusSummary.Contains("pausiert", StringComparison.OrdinalIgnoreCase) || vm.StatusSummary.Contains("paused", StringComparison.OrdinalIgnoreCase));
-
-        // When paused, toggle resumes
-        vm.TogglePauseResume();
-        Assert.True(vm.StatusSummary.Contains("gestartet", StringComparison.OrdinalIgnoreCase) || vm.StatusSummary.Contains("started", StringComparison.OrdinalIgnoreCase) || vm.StatusSummary.Contains("resumed", StringComparison.OrdinalIgnoreCase));
+        QueueManager.Instance.StopQueue();
+        try
+        {
+            Assert.False(vm.TogglePauseResumeCommand.CanExecute(null));
+            var package = new DownloadPackage { Name = "Package" };
+            var item = new DownloadItem { FileName = "data.bin", Status = DownloadStatus.Queued };
+            package.Items.Add(item);
+            vm.Packages.Add(package);
+            Assert.True(vm.TogglePauseResumeCommand.CanExecute(null));
+            Assert.False(vm.CanPauseAll);
+            vm.TogglePauseResume();
+            Assert.True(QueueManager.Instance.IsRunning);
+            Assert.True(vm.CanPauseAll);
+            vm.TogglePauseResume();
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.False(vm.CanPauseAll);
+            vm.TogglePauseResume();
+            Assert.True(QueueManager.Instance.IsRunning);
+            Assert.NotEqual(DownloadStatus.Paused, item.Status);
+        }
+        finally
+        {
+            QueueManager.Instance.StopQueue();
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+        }
     }
 
     [Fact]

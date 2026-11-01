@@ -6,12 +6,15 @@ public partial class DownloadItem
 {
     private volatile bool _isRemovalPending;
     private volatile bool _isRemoved;
+    private volatile bool _isPathChangePending;
     private readonly object _removalSync = new();
     private TaskCompletionSource<bool>? _removalDecision;
 
     internal bool IsRemovalPending => _isRemovalPending;
     internal bool IsRemoved => _isRemoved;
-    internal bool IsUnavailableForProcessing => _isRemovalPending || _isRemoved;
+    internal bool IsPathChangePending => _isPathChangePending;
+    internal bool IsUnavailableForProcessing => _isRemovalPending || _isRemoved || _isPathChangePending;
+    internal void SetPathChangePending(bool pending) => _isPathChangePending = pending;
 
     internal void ReserveForRemoval()
     {

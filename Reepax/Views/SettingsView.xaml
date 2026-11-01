@@ -1281,6 +1281,32 @@
                                                                   Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='10.mp3'}" />
                                                         </Grid>
                                                     </Button>
+                                                    <Button Style="{StaticResource SoundDropdownItemStyle}"
+                                                            Click="CompletionSoundOption_Click"
+                                                            CommandParameter="11.mp3">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="Sound 11" FontSize="11.5" VerticalAlignment="Center" />
+                                                            <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                  Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='11.mp3'}" />
+                                                        </Grid>
+                                                    </Button>
+                                                    <Button Style="{StaticResource SoundDropdownItemStyle}"
+                                                            Click="CompletionSoundOption_Click"
+                                                            CommandParameter="12.mp3">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="Sound 12" FontSize="11.5" VerticalAlignment="Center" />
+                                                            <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                  Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='12.mp3'}" />
+                                                        </Grid>
+                                                    </Button>
                                                 </StackPanel>
                                             </Border>
                                         </Popup>
@@ -1468,6 +1494,45 @@
                                                         <TextBlock Text="Sound 2" FontSize="11.5" VerticalAlignment="Center" />
                                                         <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                               Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='2.mp3'}" />
+                                                    </Grid>
+                                                </Button>
+                                                <Button Style="{StaticResource SoundDropdownItemStyle}"
+                                                        Click="ErrorSoundOption_Click"
+                                                        CommandParameter="3.mp3">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Sound 3" FontSize="11.5" VerticalAlignment="Center" />
+                                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                              Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='3.mp3'}" />
+                                                    </Grid>
+                                                </Button>
+                                                <Button Style="{StaticResource SoundDropdownItemStyle}"
+                                                        Click="ErrorSoundOption_Click"
+                                                        CommandParameter="4.mp3">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Sound 4" FontSize="11.5" VerticalAlignment="Center" />
+                                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                              Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='4.mp3'}" />
+                                                    </Grid>
+                                                </Button>
+                                                <Button Style="{StaticResource SoundDropdownItemStyle}"
+                                                        Click="ErrorSoundOption_Click"
+                                                        CommandParameter="5.mp3">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Sound 5" FontSize="11.5" VerticalAlignment="Center" />
+                                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                              Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='5.mp3'}" />
                                                     </Grid>
                                                 </Button>
                                             </StackPanel>
@@ -1814,77 +1879,6 @@
                         </Border>
                     </Grid>
 
-                    <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,16,0,16" />
-
-                    <!-- ==================== SPIEL-INSTALLATIONSORDNER ==================== -->
-                    <Grid Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                            <TextBlock Text="{loc:Loc Settings_GameInstall_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                            <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_GameInstall_Subtitle}">
-                                <Path Style="{StaticResource SettingInfoPathStyle}" />
-                            </Border>
-                        </StackPanel>
-                        <CheckBox Grid.Column="1"
-                                  HorizontalAlignment="Right"
-                                  IsChecked="{Binding CreateGameInstallFolder, Mode=TwoWay}"
-                                  VerticalAlignment="Center"
-                                  Cursor="Hand" />
-                    </Grid>
-
-                    <!-- Path selection -->
-                    <Border x:Name="GameInstallPathContainer"
-                            ClipToBounds="True"
-                            Focusable="False">
-                        <Grid Margin="0,4,0,0" x:Name="GameInstallPathContent" RenderTransformOrigin="0.5,0.5">
-                            <Grid.RenderTransform>
-                                <TranslateTransform x:Name="GameInstallPathTranslate" Y="0" />
-                            </Grid.RenderTransform>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="{loc:Loc Settings_GameInstall_PathSubtitle}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="30" Margin="0,0,8,0">
-                                    <TextBox Text="{Binding GameInstallDirectory, UpdateSourceTrigger=PropertyChanged}"
-                                             Background="Transparent"
-                                             Foreground="{DynamicResource TextPrimaryBrush}"
-                                             CaretBrush="{DynamicResource TextPrimaryBrush}"
-                                             BorderThickness="0"
-                                             Padding="10,0"
-                                             FontSize="12"
-                                             VerticalContentAlignment="Center" />
-                                </Border>
-                                <Button Grid.Column="1"
-                                        Style="{StaticResource SettingsActionButtonStyle}"
-                                        Command="{Binding BrowseGameInstallDirectoryCommand}"
-                                        Margin="0,0,6,0"
-                                        VerticalAlignment="Center">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource AccentBlueBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                        <TextBlock Text="{loc:Loc Common_Browse}" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Button>
-                                <Button Grid.Column="2"
-                                        Style="{StaticResource SettingsActionButtonStyle}"
-                                        Command="{Binding OpenGameInstallDirectoryCommand}"
-                                        ToolTip="{Binding GameInstallDirectory}"
-                                        VerticalAlignment="Center">
-                                    <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" />
-                                </Button>
-                            </Grid>
-                        </Grid>
-                    </Border>
-
                     <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,18,0,18" />
 
                     <!-- 1. Automatic extraction (Default) -->
@@ -2074,9 +2068,6 @@
                                                  FontSize="12"
                                                  Padding="4,0,8,0"
                                                  VerticalContentAlignment="Center">
-                                            <TextBox.InputBindings>
-                                                <KeyBinding Key="Enter" Command="{Binding AddArchivePasswordCommand}" />
-                                            </TextBox.InputBindings>
                                         </TextBox>
 
                                         <TextBlock Text="{loc:Loc Settings_ArchivePasswords_Placeholder}"
@@ -2094,7 +2085,7 @@
                             <Button Grid.Column="1"
                                     Style="{StaticResource SettingsActionButtonStyle}"
                                     Command="{Binding AddArchivePasswordCommand}"
-                                    IsEnabled="{Binding HasNewArchivePasswordInput}"
+                                    IsEnabled="{Binding CanAddArchivePassword}"
                                     Height="30"
                                     Margin="0,0,6,0"
                                     ToolTip="{loc:Loc Settings_ArchivePasswords_Add}"
@@ -2156,12 +2147,38 @@
                                     </StackPanel>
 
                                     <!-- Passwords List -->
-                                    <ScrollViewer MaxHeight="220"
-                                                  VerticalScrollBarVisibility="Auto"
+                                    <Grid Visibility="{Binding HasArchivePasswords, Converter={StaticResource BoolToVisConverter}}">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <Border Background="{DynamicResource BgHeaderBrush}" Padding="12,8"
+                                                BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1">
+                                            <Grid TextBlock.FontSize="11" TextBlock.FontWeight="SemiBold"
+                                                  TextBlock.Foreground="{DynamicResource TextSecondaryBrush}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="21" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="130" />
+                                                    <ColumnDefinition Width="65" />
+                                                    <ColumnDefinition Width="90" />
+                                                    <ColumnDefinition Width="60" />
+                                                    <ColumnDefinition Width="{x:Static SystemParameters.VerticalScrollBarWidth}" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.ColumnSpan="2" Text="{loc:Loc Settings_ArchivePasswords_Column_Password}" />
+                                                <TextBlock Grid.Column="2" Text="{loc:Loc Settings_ArchivePasswords_Column_Added}" Margin="8,0" />
+                                                <TextBlock Grid.Column="3" Text="{loc:Loc Settings_ArchivePasswords_Column_Used}" HorizontalAlignment="Right" Margin="8,0"
+                                                           ToolTip="{loc:Loc Settings_ArchivePasswords_Usage_ToolTip}" />
+                                                <TextBlock Grid.Column="4" Text="{loc:Loc Settings_ArchivePasswords_Column_Success}" HorizontalAlignment="Right" Margin="8,0"
+                                                           ToolTip="{loc:Loc Settings_ArchivePasswords_Success_ToolTip}" />
+                                            </Grid>
+                                        </Border>
+                                    <ScrollViewer Grid.Row="1" MaxHeight="220"
+                                                  VerticalScrollBarVisibility="Visible"
                                                   HorizontalScrollBarVisibility="Disabled"
                                                   Focusable="False"
                                                   Visibility="{Binding HasArchivePasswords, Converter={StaticResource BoolToVisConverter}}">
-                                        <ItemsControl ItemsSource="{Binding ArchivePasswords}">
+                                        <ItemsControl ItemsSource="{Binding ArchivePasswordEntries}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Background="Transparent"
@@ -2170,9 +2187,12 @@
                                                             Padding="12,7">
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="21" />
                                                                 <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="130" />
+                                                                <ColumnDefinition Width="65" />
+                                                                <ColumnDefinition Width="90" />
+                                                                <ColumnDefinition Width="60" />
                                                             </Grid.ColumnDefinitions>
 
                                                             <!-- Subtle key icon bullet -->
@@ -2187,20 +2207,30 @@
 
                                                             <!-- Password Text in clean monospace style -->
                                                             <TextBlock Grid.Column="1"
-                                                                       Text="{Binding}"
+                                                                       Text="{Binding Password}"
                                                                        FontFamily="Consolas, Cascadia Code, Segoe UI Mono, monospace"
                                                                        FontSize="12"
                                                                        FontWeight="SemiBold"
                                                                        Foreground="{DynamicResource TextPrimaryBrush}"
                                                                        VerticalAlignment="Center"
                                                                        TextTrimming="CharacterEllipsis"
-                                                                       ToolTip="{Binding}" />
+                                                                       ToolTip="{Binding Password}" />
+
+                                                            <TextBlock Grid.Column="2" Text="{Binding AddedAtText}" Margin="8,0" FontSize="11"
+                                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding AddedAtText}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="3" Text="{Binding UsageCount}" Margin="8,0" FontSize="11.5"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                                       ToolTip="{loc:Loc Settings_ArchivePasswords_Usage_ToolTip}" />
+                                                            <TextBlock Grid.Column="4" Text="{Binding SuccessCount}" Margin="8,0" FontSize="11.5"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                                       ToolTip="{loc:Loc Settings_ArchivePasswords_Success_ToolTip}" />
 
                                                             <!-- Action Buttons: Copy & Remove -->
-                                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
                                                                 <!-- Copy Button -->
                                                                 <Button Command="{Binding DataContext.CopyArchivePasswordCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                        CommandParameter="{Binding}"
+                                                                        CommandParameter="{Binding Password}"
                                                                         Style="{StaticResource PasswordActionButtonStyle}"
                                                                         ToolTip="{loc:Loc Settings_ArchivePasswords_Copy}"
                                                                         Width="28" Height="26"
@@ -2215,7 +2245,7 @@
 
                                                                 <!-- Remove Button (red hover) -->
                                                                 <Button Command="{Binding DataContext.RemoveArchivePasswordCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                        CommandParameter="{Binding}"
+                                                                        CommandParameter="{Binding Password}"
                                                                         Style="{StaticResource PasswordDeleteButtonStyle}"
                                                                         ToolTip="{loc:Loc Settings_ArchivePasswords_Remove}"
                                                                         Width="28" Height="26">
@@ -2233,6 +2263,7 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                     </ScrollViewer>
+                                    </Grid>
                                 </Grid>
                             </Border>
                         </helpers:AnimatedExpansionDecorator>

@@ -1,5 +1,6 @@
 using System;
 using System.Windows;
+using System.Threading;
 using Reepax.Services;
 using Reepax.Services.Storage;
 
@@ -12,9 +13,10 @@ public partial class PasswordPromptDialog : Window
     public string Password { get; private set; } = string.Empty;
     public bool RememberPassword { get; private set; }
 
-    public PasswordPromptDialog(string? archiveName = null)
+    public PasswordPromptDialog(string? archiveName = null, bool retry = false)
     {
         InitializeComponent();
+        RetryMessage.Visibility = retry ? Visibility.Visible : Visibility.Collapsed;
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
 
         if (!string.IsNullOrWhiteSpace(archiveName))
@@ -38,6 +40,7 @@ public partial class PasswordPromptDialog : Window
         if (!_isPasswordRevealed)
         {
             Password = PasswordInputBox.Password;
+            UpdateExtractButton();
         }
     }
 
@@ -46,6 +49,7 @@ public partial class PasswordPromptDialog : Window
         if (_isPasswordRevealed)
         {
             Password = PasswordRevealBox.Text;
+            UpdateExtractButton();
         }
     }
 
@@ -74,8 +78,14 @@ public partial class PasswordPromptDialog : Window
     private void ExtractButton_Click(object sender, RoutedEventArgs e)
     {
         Password = _isPasswordRevealed ? PasswordRevealBox.Text : PasswordInputBox.Password;
+        if (string.IsNullOrEmpty(Password)) return;
         RememberPassword = RememberCheckBox.IsChecked == true;
         DialogResult = true;
+    }
+
+    private void UpdateExtractButton()
+    {
+        if (ExtractButton != null) ExtractButton.IsEnabled = !string.IsNullOrEmpty(Password);
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e)
@@ -87,26 +97,32 @@ public partial class PasswordPromptDialog : Window
     /// Displays the password prompt dialog modally on the UI thread.
     /// Returns the entered password and whether it should be remembered.
     /// </summary>
-    public static (string? Password, bool Remember) ShowDialog(string archiveName, Window? owner = null)
+    public static (string? Password, bool Remember) ShowDialog(string archiveName, Window? owner = null,
+        bool retry = false, CancellationToken cancellationToken = default)
     {
-        if (DownloadPersistenceService.IsTestEnvironment)
+        if (DownloadPersistenceService.IsTestEnvironment || cancellationToken.IsCancellationRequested)
         {
             return (null, false);
         }
 
         if (Application.Current != null && Application.Current.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
         {
-            return Application.Current.Dispatcher.Invoke(() => ShowDialog(archiveName, owner));
+            return Application.Current.Dispatcher.Invoke(() => ShowDialog(archiveName, owner, retry, cancellationToken));
         }
 
         var targetOwner = owner ?? Application.Current?.MainWindow;
-        var dialog = new PasswordPromptDialog(archiveName);
+        var dialog = new PasswordPromptDialog(archiveName, retry);
 
         if (targetOwner != null && targetOwner.IsVisible && targetOwner.WindowState != WindowState.Minimized)
         {
             dialog.Owner = targetOwner;
         }
 
+        using var registration = cancellationToken.Register(() => dialog.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (dialog.IsVisible) dialog.Close();
+        })));
+        if (cancellationToken.IsCancellationRequested) return (null, false);
         bool result = dialog.ShowDialog() == true;
         if (result && !string.IsNullOrEmpty(dialog.Password))
         {

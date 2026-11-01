@@ -5,7 +5,7 @@ using Reepax.Models;
 
 namespace Reepax.Services.Storage;
 
-public class SettingsService
+public partial class SettingsService
 {
     private static readonly Lazy<SettingsService> _instance = new(() => new SettingsService());
     public static SettingsService Instance => _instance.Value;
@@ -183,7 +183,7 @@ public class SettingsService
                         if (loaded != null)
                         {
                             loaded.ColumnOrder = AppSettings.SanitizeColumnOrder(loaded.ColumnOrder);
-                            loaded.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(loaded.ExtractionPasswords);
+                            ArchivePasswordEntry.NormalizeSettings(loaded);
                             AppSettings.SanitizeSoundSettings(loaded);
                             _currentSettings = loaded;
                             loadedSuccessfully = true;
@@ -217,7 +217,7 @@ public class SettingsService
                         if (loadedFromBackup != null)
                         {
                             loadedFromBackup.ColumnOrder = AppSettings.SanitizeColumnOrder(loadedFromBackup.ColumnOrder);
-                            loadedFromBackup.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(loadedFromBackup.ExtractionPasswords);
+                            ArchivePasswordEntry.NormalizeSettings(loadedFromBackup);
                             AppSettings.SanitizeSoundSettings(loadedFromBackup);
                             _currentSettings = loadedFromBackup;
                             loadedSuccessfully = true;
@@ -360,7 +360,7 @@ public class SettingsService
             string? tempFile = null;
             try
             {
-                _currentSettings.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(_currentSettings.ExtractionPasswords);
+                ArchivePasswordEntry.NormalizeSettings(_currentSettings);
                 _currentSettings.SecurityDescriptor = "made by Biiitz";
                 _currentSettings.EngineSignature = "made by Biiitz";
                 var json = JsonSerializer.Serialize(_currentSettings, new JsonSerializerOptions { WriteIndented = true });

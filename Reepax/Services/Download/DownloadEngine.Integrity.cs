@@ -30,7 +30,7 @@ public partial class DownloadEngine
         response.Headers.ETag is { IsWeak: false } tag ? tag.ToString() : null;
 
     private static bool MatchesSource(DownloadItem item, SegmentFileState state) =>
-        state.EntityTag == null || string.Equals(state.SourceKey, GetSourceKey(item), StringComparison.Ordinal);
+        state.SourceKey == null || string.Equals(state.SourceKey, GetSourceKey(item), StringComparison.Ordinal);
 
     private static void ApplyRangeValidator(HttpRequestMessage request, SegmentFileState? state)
     {
@@ -153,17 +153,36 @@ public partial class DownloadEngine
         return result;
     }
 
-    private static SegmentFileState SnapshotState(SegmentFileState state) => new()
+    private sealed class SegmentIntegrityLifetime(System.Collections.Generic.List<SegmentState> segments) : IDisposable
     {
-        TotalBytes = state.TotalBytes,
-        IsSequential = state.IsSequential,
-        EntityTag = state.EntityTag,
-        SourceKey = state.SourceKey,
-        Segments = state.Segments.Select(segment => new SegmentState
+        public void Dispose()
         {
-            Start = segment.Start, End = segment.End, Done = segment.Done
-        }).ToList()
-    };
+            foreach (var segment in segments) segment.Integrity?.Dispose();
+        }
+    }
+
+    private static SegmentFileState SnapshotState(SegmentFileState state)
+    {
+        var segments = state.Segments.Select(segment =>
+        {
+            var local = segment.Integrity?.Snapshot();
+            long committed = local?.Length ?? segment.Done;
+            return new SegmentState
+            {
+                Start = segment.Start, End = state.IsUnknownLength ? Math.Max(1, committed) - 1 : segment.End,
+                Done = committed, LocalHashes = local?.Hashes ?? segment.LocalHashes
+            };
+        }).ToList();
+        return new SegmentFileState
+        {
+            TotalBytes = state.IsUnknownLength ? Math.Max(1, segments[0].Done) : state.TotalBytes,
+            IsUnknownLength = state.IsUnknownLength,
+            IsSequential = state.IsSequential,
+            EntityTag = state.EntityTag,
+            SourceKey = state.SourceKey,
+            Segments = segments
+        };
+    }
 
     private static void SaveSegmentState(string path, SegmentFileState state, bool required = false, FileStream? dataFile = null)
     {
@@ -182,6 +201,6 @@ public partial class DownloadEngine
             else File.Move(stagingPath, path);
         }
         catch when (!required) { }
-        finally { File.Delete(stagingPath); }
+        finally { try { File.Delete(stagingPath); } catch when (!required) { } }
     }
 }

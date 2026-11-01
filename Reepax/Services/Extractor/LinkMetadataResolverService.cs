@@ -12,9 +12,12 @@ using System.Threading.Tasks;
 using Reepax.Helpers;
 using Reepax.Models;
 using Reepax.Services.Storage;
+using Reepax.Services.Localization;
 using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services.Extractor;
+
+public readonly record struct MetadataAnalysisProgress(int Completed, int Total);
 
 public partial class LinkMetadataResolverService
 {
@@ -199,36 +202,40 @@ public partial class LinkMetadataResolverService
         return item.TotalBytes > 0;
     }
 
+    internal static DownloadItem[] GetPendingMetadataItems(DownloadPackage package, IEnumerable<DownloadItem>? targetItems = null)
+    {
+        var items = package.ItemsSnapshot;
+        var source = targetItems != null ? targetItems.Where(items.Contains) : items;
+        return source.Where(item => !item.IsMetadataResolved && (
+            item.TotalBytes <= 0 || PackageGrouper.IsGenericOrCrypticName(item.FileName) ||
+            item.FileName.StartsWith("download_file", StringComparison.OrdinalIgnoreCase) ||
+            item.FileName.Contains("Package (") ||
+            (package.AutoResolveHostLinks && item.IsFastHost && string.IsNullOrWhiteSpace(item.DirectDownloadUrl)))).ToArray();
+    }
+
     public async Task ResolvePackageMetadataAsync(
         DownloadPackage package, 
         IProgress<string>? progress = null, 
         CancellationToken cancellationToken = default,
-        IEnumerable<DownloadItem>? targetItems = null)
+        IEnumerable<DownloadItem>? targetItems = null,
+        IProgress<MetadataAnalysisProgress>? analysisProgress = null)
     {
         if (package == null || package.Items.Count == 0)
             return;
 
-        var sourceItems = targetItems != null 
-            ? targetItems.Where(package.Items.Contains) 
-            : package.Items;
+        var itemsToResolve = GetPendingMetadataItems(package, targetItems);
 
-        var itemsToResolve = sourceItems.Where(i => 
-            !i.IsMetadataResolved && (
-            i.TotalBytes <= 0 || 
-            PackageGrouper.IsGenericOrCrypticName(i.FileName) ||
-            i.FileName.StartsWith("download_file", StringComparison.OrdinalIgnoreCase) ||
-            i.FileName.Contains("Package (") ||
-            (package.AutoResolveHostLinks && i.IsFastHost && string.IsNullOrWhiteSpace(i.DirectDownloadUrl)))
-        ).ToList();
-
-        if (itemsToResolve.Count == 0)
+        if (itemsToResolve.Length == 0)
         {
             TryUpdatePackageName(package);
             return;
         }
 
-        int totalCount = itemsToResolve.Count;
+        int totalCount = itemsToResolve.Length;
         int completedCount = 0;
+        var progressSync = new object();
+        analysisProgress?.Report(new MetadataAnalysisProgress(0, totalCount));
+        progress?.Report(Loc.Format("Busy_AnalyzingMetadata", 0, totalCount));
 
         using var semaphore = new SemaphoreSlim(3, 3); // Max 3 concurrent probe requests
         var tasks = itemsToResolve.Select(async item =>
@@ -251,8 +258,12 @@ public partial class LinkMetadataResolverService
                 }
                 catch (ObjectDisposedException) { }
 
-                var currentCompleted = Interlocked.Increment(ref completedCount);
-                progress?.Report($"Analysiere Dateigrößen ({currentCompleted}/{totalCount}) für '{package.Name}'…");
+                lock (progressSync)
+                {
+                    completedCount++;
+                    analysisProgress?.Report(new MetadataAnalysisProgress(completedCount, totalCount));
+                    progress?.Report(Loc.Format("Busy_AnalyzingMetadata", completedCount, totalCount));
+                }
                 package.RecalculateAggregates();
             }
         });
@@ -626,6 +637,12 @@ public partial class LinkMetadataResolverService
         if (package == null || package.IsCustomName || package.Items.Any(item => item.IsUnavailableForProcessing))
             return;
 
+        if (PackageGrouper.IsSupplementaryComponentName(package.Name) &&
+            (package.IsExtracted || package.IsExtracting || ArchiveExtractionService.Instance.IsPackageExtracting(package.Id) ||
+             package.ItemsSnapshot.Any(item => item.IsVerifyingIntegrity || item.Status == DownloadStatus.Downloading ||
+                 Services.Download.DownloadEngine.Instance.IsDownloading(item.Id))))
+            return;
+
         var itemsSnapshot = package.Items.ToArray();
         if (itemsSnapshot.Length == 0)
             return;
@@ -680,9 +697,10 @@ public partial class LinkMetadataResolverService
             return;
         }
 
-        // 2. If package has a generic/cryptic/fallback name (e.g., "Filecrypt Package (2 files)", "Rapidgator Package (1 files)", "Download_Paket...", or token directory):
+        // Refine automatic placeholders and supplementary component names.
         var currentDirName = Path.GetFileName(package.SaveDirectory?.TrimEnd('\\', '/'));
         bool isPkgNameGeneric = PackageGrouper.IsGenericOrCrypticName(package.Name) ||
+            PackageGrouper.IsSupplementaryComponentName(package.Name) ||
             package.Name.Contains("Package (") ||
             package.Name.Contains("Paket (") ||
             package.Name.StartsWith("Download_Paket", StringComparison.OrdinalIgnoreCase) ||
@@ -700,10 +718,7 @@ public partial class LinkMetadataResolverService
 
             if (cleanCandidates.Count > 0)
             {
-                var bestName = cleanCandidates
-                    .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
-                    .OrderByDescending(g => g.Count())
-                    .First().Key;
+                var bestName = PackageGrouper.SelectPackageNameCandidate(cleanCandidates);
 
                 if (!string.IsNullOrWhiteSpace(bestName))
                 {

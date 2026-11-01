@@ -26,6 +26,7 @@
 
 # NuGet Packages & Cache
 *.nupkg
+!vendor/packages/SharpCompress.0.50.4-reepax.2.nupkg
 *.snupkg
 *.nuget.props
 *.nuget.targets
@@ -39,6 +40,8 @@ project.assets.json
 *.trx
 *.coverage
 *.coveragexml
+*.binlog
+*.pdb
 
 # Temporary & Cache Files
 *.tmp
@@ -56,9 +59,31 @@ Thumbs.db
 # Runtime Data & Local Persistence
 downloads.json
 settings.json
+history.json
+extensions.json
 AGENTS.md
 storage_type_cache.json
 Downloads/
+Data/
+WebView2/
+*.WebView2/
+*.part
+*.part.segments
+.archive-work-*/
+*.repx
+*.sdlr
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pfx
+*.p12
+*.key
+*.private.pem
+id_rsa
+id_ed25519
 
 # Scratch & OS Files
 scratch/

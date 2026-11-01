@@ -11,6 +11,48 @@ public class PackageGrouperTests
 {
     private readonly string _testBaseFolder = @"C:\Downloads\Test";
 
+    [Theory]
+    [InlineData("Sample.Collection", "Sample Collection")]
+    [InlineData("Optional.Worlds", "Optional Worlds")]
+    public void PackageName_PrefersMainArchivesOverMoreNumerousSupplementaryParts(string title, string expected)
+    {
+        var links = CreateComponentLinks(title);
+        links[0].ContextTitle = "pkg selective videos hd";
+        Assert.Equal(expected, PackageGrouper.DetermineBestPackageName(links));
+        links.Reverse();
+        Assert.Equal(expected, PackageGrouper.DetermineBestPackageName(links));
+        var root = Path.Combine(Path.GetTempPath(), "PackageNaming_" + System.Guid.NewGuid().ToString("N"));
+        var package = Assert.Single(PackageGrouper.GroupLinksIntoPackages(links, root));
+        Assert.Equal(expected, package.Name);
+        Assert.Equal(22, package.Items.Count);
+        Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
+    public void PackageName_SupplementaryOnlySelectionKeepsItsDescriptiveName()
+    {
+        var links = CreateComponentLinks("Sample.Collection");
+        links.RemoveAll(link => link.RawFileName.StartsWith("Sample.", System.StringComparison.Ordinal));
+        Assert.Equal("Pkg-selective-videos-hd", PackageGrouper.DetermineBestPackageName(links));
+    }
+
+    private static List<ExtractedLink> CreateComponentLinks(string title)
+    {
+        var links = new List<ExtractedLink>();
+        void AddParts(string stem, int count)
+        {
+            for (int index = 1; index <= count; index++)
+            {
+                var name = $"{stem}.part{index:00}.rar";
+                links.Add(new ExtractedLink { RawFileName = name, Url = "https://example.invalid/" + name });
+            }
+        }
+        AddParts("pkg-selective-videos-hd", 15);
+        AddParts("pkg-selective-videos-sd", 4);
+        AddParts(title, 3);
+        return links;
+    }
+
     [Fact]
     public void CleanPackageBaseName_StripsPartNumbersAndHashes()
     {
