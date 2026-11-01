@@ -189,8 +189,10 @@ public sealed class PostDownloadActionService
                 return true;
 
             // Are any enabled items in downloading or queued status?
-            if (pkg.Items != null && pkg.Items.Any(i => i.IsEnabled &&
-                (i.Status == DownloadStatus.Downloading || i.Status == DownloadStatus.Queued || i.IsVerifyingIntegrity)))
+            bool hasActiveItems = pkg.TryGetItemCounts(out var counts) ? counts.HasActiveWork :
+                pkg.Items.Any(i => i.IsEnabled &&
+                    (i.Status == DownloadStatus.Downloading || i.Status == DownloadStatus.Queued || i.IsVerifyingIntegrity));
+            if (hasActiveItems)
                 return true;
 
             // Are there pending or running next tasks (extraction, par2, cleanup) on an uncompleted package?

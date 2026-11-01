@@ -737,6 +737,11 @@ public partial class MainViewModel : ObservableObject
             if (SelectedMainTab != AppMainTab.Downloads) return false;
             foreach (var p in Packages)
             {
+                if (p.TryGetItemCounts(out var counts))
+                {
+                    if (counts.CanStart(_queueManager.IsRunning, IsQueueRunning)) return true;
+                    continue;
+                }
                 foreach (var i in p.Items)
                 {
                     if (i.IsEnabled &&
@@ -764,6 +769,11 @@ public partial class MainViewModel : ObservableObject
             if (SelectedMainTab != AppMainTab.Downloads || Packages.Count == 0) return false;
             foreach (var p in Packages)
             {
+                if (p.TryGetItemCounts(out var counts))
+                {
+                    if (counts.PausableDownload || (_queueManager.IsRunning && p.IsEnabled && counts.PausableQueued)) return true;
+                    continue;
+                }
                 foreach (var i in p.Items)
                 {
                     if (i.IsUnavailableForProcessing) continue;
@@ -787,6 +797,11 @@ public partial class MainViewModel : ObservableObject
             if (SelectedMainTab != AppMainTab.Downloads || IsRemovalInProgress) return false;
             foreach (var p in Packages)
             {
+                if (p.TryGetItemCounts(out var counts))
+                {
+                    if (counts.HasCompleted) return true;
+                    continue;
+                }
                 foreach (var i in p.Items)
                 {
                     if (i.Status == DownloadStatus.Completed) return true;

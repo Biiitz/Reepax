@@ -27,8 +27,7 @@ public partial class MainViewModel
 
         foreach (var package in packages)
         {
-            if (package.IsDirty || package.Status == DownloadStatus.Downloading || package.SpeedBytesPerSecond > 0)
-                package.RecalculateAggregates();
+            package.RefreshStatistics();
 
             if (!package.IsEnabled)
                 continue;
@@ -36,15 +35,19 @@ public partial class MainViewModel
             var items = package.ItemsSnapshot;
             int enabledItems = 0;
             int activeItems = 0;
-            for (int i = 0; i < items.Count; i++)
+            if (package.TryGetItemCounts(out var counts))
             {
-                var item = items[i];
-                if (!item.IsEnabled)
-                    continue;
-
-                enabledItems++;
-                if (item.Status == DownloadStatus.Downloading)
-                    activeItems++;
+                enabledItems = counts.Enabled;
+                activeItems = counts.Active;
+            }
+            else
+            {
+                foreach (var item in items)
+                {
+                    if (!item.IsEnabled) continue;
+                    enabledItems++;
+                    if (item.Status == DownloadStatus.Downloading) activeItems++;
+                }
             }
 
             if (items.Count > 0 && enabledItems == 0)

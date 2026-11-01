@@ -14,7 +14,12 @@ public partial class DownloadItem
     internal bool IsRemoved => _isRemoved;
     internal bool IsPathChangePending => _isPathChangePending;
     internal bool IsUnavailableForProcessing => _isRemovalPending || _isRemoved || _isPathChangePending;
-    internal void SetPathChangePending(bool pending) => _isPathChangePending = pending;
+    internal void SetPathChangePending(bool pending)
+    {
+        if (_isPathChangePending == pending) return;
+        _isPathChangePending = pending;
+        OnPropertyChanged(nameof(IsUnavailableForProcessing));
+    }
 
     internal void ReserveForRemoval()
     {
@@ -23,6 +28,7 @@ public partial class DownloadItem
             _removalDecision ??= new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _isRemovalPending = true;
         }
+        OnPropertyChanged(nameof(IsUnavailableForProcessing));
     }
 
     internal void ReleaseFromRemoval(bool removed)
@@ -34,6 +40,7 @@ public partial class DownloadItem
             _removalDecision?.TrySetResult(!removed);
             _removalDecision = null;
         }
+        OnPropertyChanged(nameof(IsUnavailableForProcessing));
     }
 
     internal Task<bool> WaitForRemovalDecisionAsync()

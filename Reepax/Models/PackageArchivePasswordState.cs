@@ -66,6 +66,7 @@ public partial class DownloadPackage
 
     partial void OnAutoExtractArchivesChanged(bool value)
     {
+        MarkDirty();
         if (value)
         {
             lock (ArchivePasswordState.Sync)

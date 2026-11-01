@@ -514,9 +514,12 @@ public partial class DownloadPackage : ObservableObject
             if (CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
                 return CompletedAt.Value - StartedAt.Value;
 
-            long sumTicks = 0;
-            foreach (var item in Volatile.Read(ref _itemsSnapshot))
-                sumTicks = checked(sumTicks + item.Duration.Ticks);
+            if (!_progressCache.TryGetDuration(out long sumTicks))
+            {
+                sumTicks = 0;
+                foreach (var item in Volatile.Read(ref _itemsSnapshot))
+                    sumTicks = checked(sumTicks + item.Duration.Ticks);
+            }
             if (sumTicks > 0)
                 return TimeSpan.FromTicks(sumTicks);
 
@@ -567,18 +570,18 @@ public partial class DownloadPackage : ObservableObject
         get
         {
             var items = Volatile.Read(ref _itemsSnapshot);
-            return items.Length - CountEnabledItems(items);
+            return items.Length - GetEnabledItemCount(items);
         }
     }
 
-    public int EnabledItemsCount => CountEnabledItems(Volatile.Read(ref _itemsSnapshot));
+    public int EnabledItemsCount => GetEnabledItemCount(Volatile.Read(ref _itemsSnapshot));
 
     public string ItemsCountSummary
     {
         get
         {
             var items = Volatile.Read(ref _itemsSnapshot);
-            return FormatItemsCountSummary(items.Length, CountEnabledItems(items));
+            return FormatItemsCountSummary(items.Length, GetEnabledItemCount(items));
         }
     }
 
@@ -635,7 +638,7 @@ public partial class DownloadPackage : ObservableObject
             }
         }
 
-        _isAggregatesDirty = true;
+        MarkDirty();
         if (_deferItemUpdates)
             return;
 
@@ -649,16 +652,21 @@ public partial class DownloadPackage : ObservableObject
     private volatile bool _isAggregatesDirty = true;
     private int _asyncRecalcQueued;
 
-    public bool IsDirty => _isAggregatesDirty;
+    public bool IsDirty => _isAggregatesDirty || Interlocked.Read(ref _publishedProgressRevision) != _progressCache.Revision;
 
     public void MarkDirty()
     {
+        _progressCache.Invalidate();
         _isAggregatesDirty = true;
     }
 
     private void Item_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(DownloadItem.ChecksumVerificationSummary)) return;
+        if (sender is DownloadItem item && IsProgressProperty(e.PropertyName))
+            _progressCache.Update(item);
+        else
+            _progressCache.Invalidate();
         _isAggregatesDirty = true;
 
         bool allPropertiesChanged = string.IsNullOrEmpty(e.PropertyName);
@@ -684,7 +692,7 @@ public partial class DownloadPackage : ObservableObject
             nameof(DownloadItem.IsEnabled))
         {
             // Structural changes: recalculate aggregates immediately (asynchronously if on a background thread)
-            RecalculateAggregatesFromEvent(force: false);
+            RecalculateAggregatesFromEvent();
             return;
         }
 
@@ -697,15 +705,15 @@ public partial class DownloadPackage : ObservableObject
             nameof(DownloadItem.AverageSpeedFormatted))
         {
             // Progress events fire ~5x per tick per item: throttle aggregation.
-            // Intermediate state is periodically refreshed by the 500ms timer in MainViewModel.
+            // The global statistics timer publishes intermediate state.
             if (Environment.TickCount64 - Interlocked.Read(ref _lastAggregateRecalcTicks) < ProgressRecalcIntervalMs)
                 return;
 
-            RecalculateAggregatesFromEvent(force: false);
+            RecalculateAggregatesFromEvent();
         }
     }
 
-    private void RecalculateAggregatesFromEvent(bool force)
+    private void RecalculateAggregatesFromEvent()
     {
         if (_deferItemUpdates)
             return;
@@ -725,13 +733,13 @@ public partial class DownloadPackage : ObservableObject
                 app.Dispatcher.BeginInvoke(new Action(() =>
                 {
                     Interlocked.Exchange(ref _asyncRecalcQueued, 0);
-                    try { RecalculateAggregatesInternal(); } catch { }
+                    try { RefreshStatisticsInternal(); } catch { }
                 }), System.Windows.Threading.DispatcherPriority.DataBind);
             }
             return;
         }
 
-        RecalculateAggregates(force);
+        SafeInvoke(RefreshStatisticsInternal);
     }
 
     private static void SafeInvokeAsync(Action action)
@@ -786,11 +794,12 @@ public partial class DownloadPackage : ObservableObject
         if (_deferItemUpdates)
             return;
 
-        if (!force && !_isAggregatesDirty && Status != DownloadStatus.Downloading && SpeedBytesPerSecond <= 0)
+        if (!force && !IsDirty && Status != DownloadStatus.Downloading && SpeedBytesPerSecond <= 0)
         {
             return;
         }
 
+        _progressCache.Invalidate();
         Interlocked.Exchange(ref _lastAggregateRecalcTicks, Environment.TickCount64);
         SafeInvoke(RecalculateAggregatesInternal);
     }
@@ -819,190 +828,31 @@ public partial class DownloadPackage : ObservableObject
             CompletedItemsCount = 0;
             Status = DownloadStatus.Queued;
             StatusMessage = "Leer";
+            _progressCache.Rebuild(itemsSnapshot);
+            long emptyRevision = _progressCache.Revision;
             PublishStructuralChanges(itemsSnapshot, 0);
-            _isAggregatesDirty = false;
+            FinishProgressPublication(emptyRevision);
             return;
         }
 
-        long total = 0;
-        long downloaded = 0;
-        long enabledDownloaded = 0;
-        double speed = 0;
-        int completed = 0;
         bool hasActive = false;
-        int activeDownloadingCount = 0;
-        bool hasError = false;
         bool hasCaptcha = false;
-        int enabledCount = 0;
-        long enabledRemainingBytes = 0;
-        double maxActiveItemEta = 0;
-
-        int enabledKnownCount = 0;
-        long enabledKnownTotal = 0;
-        double sumItemProgress = 0;
-
+        bool hasError = false;
         foreach (var item in itemsSnapshot)
         {
             if (item.Status == DownloadStatus.Completed && item.TotalBytes <= 0 && item.DownloadedBytes > 0)
-            {
                 item.TotalBytes = item.DownloadedBytes;
-            }
-
-            total += item.TotalBytes;
-            downloaded += item.DownloadedBytes;
-            if (item.IsEnabled)
-            {
-                enabledCount++;
-                enabledDownloaded += item.DownloadedBytes;
-                speed += item.SpeedBytesPerSecond;
-
-                if (item.TotalBytes > 0)
-                {
-                    enabledKnownCount++;
-                    enabledKnownTotal += item.TotalBytes;
-                }
-
-                if (item.Status == DownloadStatus.Completed)
-                {
-                    completed++;
-                    sumItemProgress += 100.0;
-                }
-                else
-                {
-                    double itemPct = 0;
-                    if (item.TotalBytes > 0)
-                    {
-                        itemPct = Math.Clamp((double)item.DownloadedBytes / item.TotalBytes * 100.0, 0, 100.0);
-                        if (item.TotalBytes > item.DownloadedBytes)
-                        {
-                            enabledRemainingBytes += (item.TotalBytes - item.DownloadedBytes);
-                        }
-                    }
-                    else if (item.ProgressPercentage > 0)
-                    {
-                        itemPct = Math.Clamp(item.ProgressPercentage, 0, 100.0);
-                    }
-                    sumItemProgress += itemPct;
-
-                    if (item.Status == DownloadStatus.Downloading)
-                    {
-                        hasActive = true;
-                        activeDownloadingCount++;
-                    }
-                    else if (item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser)
-                        hasCaptcha = true;
-                    else if (item.Status is DownloadStatus.Failed or DownloadStatus.Aborted)
-                        hasError = true;
-
-                    if (item.Status == DownloadStatus.Downloading && item.RemainingSeconds > 0)
-                    {
-                        if (item.RemainingSeconds > maxActiveItemEta)
-                        {
-                            maxActiveItemEta = item.RemainingSeconds;
-                        }
-                    }
-                }
-            }
+            if (!item.IsEnabled) continue;
+            hasActive |= item.Status == DownloadStatus.Downloading;
+            hasCaptcha |= item.Status is DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or
+                DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser;
+            hasError |= item.Status is DownloadStatus.Failed or DownloadStatus.Aborted;
         }
 
-        int enabledUnknownCount = enabledCount - enabledKnownCount;
-
-        if (enabledCount > 0)
-        {
-            CompletedItemsCount = completed;
-            DownloadedBytes = enabledDownloaded;
-
-            if (completed == enabledCount)
-            {
-                TotalBytes = enabledKnownTotal > 0 ? enabledKnownTotal : enabledDownloaded;
-                DownloadedBytes = TotalBytes;
-                ProgressPercentage = 100;
-            }
-            else
-            {
-                // Not all items are completed: progress must represent the entire package
-                // and cannot reach 100.00% until every enabled item is completed.
-                long effectiveTotalBytes = enabledKnownTotal;
-
-                if (enabledUnknownCount > 0)
-                {
-                    if (enabledKnownCount > 0)
-                    {
-                        long avgKnownBytes = Math.Max(1L, enabledKnownTotal / enabledKnownCount);
-                        long estimatedUnknownBytes = enabledUnknownCount * avgKnownBytes;
-                        effectiveTotalBytes = Math.Max(enabledDownloaded, enabledKnownTotal + estimatedUnknownBytes);
-                        enabledRemainingBytes += estimatedUnknownBytes;
-                    }
-                    else
-                    {
-                        effectiveTotalBytes = Math.Max(enabledKnownTotal, enabledDownloaded);
-                    }
-                }
-
-                TotalBytes = effectiveTotalBytes;
-
-                double progressByBytes = effectiveTotalBytes > 0
-                    ? ((double)enabledDownloaded / effectiveTotalBytes * 100.0)
-                    : 0;
-                double progressByItems = sumItemProgress / enabledCount;
-
-                double rawProgress;
-                if (enabledUnknownCount == 0)
-                {
-                    // All sizes are known: byte ratio is exact
-                    rawProgress = progressByBytes;
-                }
-                else if (enabledKnownCount > 0)
-                {
-                    // Some sizes known, some unknown: conservative minimum prevents premature spikes
-                    rawProgress = Math.Min(progressByBytes, progressByItems);
-                }
-                else
-                {
-                    // No sizes known yet: average item completion percentage
-                    rawProgress = progressByItems;
-                }
-
-                ProgressPercentage = Math.Clamp(rawProgress, 0, 99.99);
-            }
-        }
-        else
-        {
-            TotalBytes = total;
-            DownloadedBytes = 0;
-            CompletedItemsCount = 0;
-            ProgressPercentage = 0;
-        }
-
-        SpeedBytesPerSecond = speed;
-
-        bool structureChanged = activeDownloadingCount != _lastActiveDownloadingCount || enabledCount != _lastEnabledCount;
-        _lastActiveDownloadingCount = activeDownloadingCount;
-        _lastEnabledCount = enabledCount;
-
-        if (speed > 0 && enabledRemainingBytes > 0)
-        {
-            _smoothedPackageSpeed = (_smoothedPackageSpeed <= 0 || structureChanged)
-                ? speed
-                : (PackageEtaSmoothingAlpha * speed) + ((1.0 - PackageEtaSmoothingAlpha) * _smoothedPackageSpeed);
-            double naiveEta = (double)enabledRemainingBytes / _smoothedPackageSpeed;
-            RemainingSeconds = Math.Max(naiveEta, maxActiveItemEta);
-        }
-        else if (maxActiveItemEta > 0)
-        {
-            _smoothedPackageSpeed = 0;
-            RemainingSeconds = maxActiveItemEta;
-        }
-        else
-        {
-            _smoothedPackageSpeed = 0;
-            RemainingSeconds = 0;
-        }
-
-        if (double.IsNaN(RemainingSeconds) || double.IsInfinity(RemainingSeconds) || RemainingSeconds < 0)
-        {
-            RemainingSeconds = 0;
-        }
+        _progressCache.Rebuild(itemsSnapshot);
+        _progressCache.TryGet(out var cachedProgress, out _, out long revision);
+        int enabledCount = cachedProgress.Enabled;
+        ApplyProgressTotals(cachedProgress);
 
         if (!IsEnabled)
         {
@@ -1120,10 +970,7 @@ public partial class DownloadPackage : ObservableObject
         PublishStructuralChanges(itemsSnapshot, enabledCount);
         PublishTimeChanges();
 
-        if (Status != DownloadStatus.Downloading && SpeedBytesPerSecond <= 0)
-        {
-            _isAggregatesDirty = false;
-        }
+        FinishProgressPublication(revision);
     }
 
     /// <summary>
@@ -1135,14 +982,7 @@ public partial class DownloadPackage : ObservableObject
     public bool CheckIsFullyCompleted()
     {
         if (RequiresArchivePassword) return false;
-        bool hasEnabledItems = false;
-        foreach (var item in Volatile.Read(ref _itemsSnapshot))
-        {
-            if (!item.IsEnabled) continue;
-            hasEnabledItems = true;
-            if (!item.IsReadyForPostProcessing) return false;
-        }
-        if (!hasEnabledItems) return false;
+        if (!AreDownloadsCompleted) return false;
 
         if (AutoExtractArchives && NextTaskSteps.Count > 0)
         {
@@ -1161,6 +1001,8 @@ public partial class DownloadPackage : ObservableObject
     {
         get
         {
+            if (TryGetItemCounts(out var counts))
+                return counts.Enabled > 0 && counts.Ready == counts.Enabled;
             bool hasEnabledItems = false;
             foreach (var item in Volatile.Read(ref _itemsSnapshot))
             {
@@ -1179,20 +1021,26 @@ public partial class DownloadPackage : ObservableObject
             if (Status == DownloadStatus.Completed || IsFullyCompleted || IsExtracted)
                 return false;
 
-            bool hasEnabledItems = false;
-            bool allEnabledItemsCompleted = true;
-            foreach (var item in Volatile.Read(ref _itemsSnapshot))
+            if (_progressCache.TryGet(out var progress, out _))
             {
-                if (!item.IsEnabled) continue;
-                hasEnabledItems = true;
-                if (item.Status != DownloadStatus.Completed)
-                {
-                    allEnabledItemsCompleted = false;
-                    break;
-                }
+                if (progress.Enabled > 0 && progress.Completed == progress.Enabled) return false;
             }
-            if (hasEnabledItems && allEnabledItemsCompleted)
-                return false;
+            else
+            {
+                bool hasEnabledItems = false;
+                bool allEnabledItemsCompleted = true;
+                foreach (var item in Volatile.Read(ref _itemsSnapshot))
+                {
+                    if (!item.IsEnabled) continue;
+                    hasEnabledItems = true;
+                    if (item.Status != DownloadStatus.Completed)
+                    {
+                        allEnabledItemsCompleted = false;
+                        break;
+                    }
+                }
+                if (hasEnabledItems && allEnabledItemsCompleted) return false;
+            }
 
             if (NextTaskSteps.Count > 0 && AreAllNextTaskStepsDone())
                 return false;
@@ -1299,6 +1147,7 @@ public partial class DownloadPackage : ObservableObject
 
     partial void OnIsEnabledChanged(bool value)
     {
+        MarkDirty();
         if (!value)
         {
             try
