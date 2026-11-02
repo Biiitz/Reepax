@@ -1644,7 +1644,7 @@
                             <!-- Metadata analysis progress and operation status -->
                             <StackPanel x:Name="ToolbarAnalysisStatus" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0"
                                         helpers:FadeAnimation.IsShown="{Binding IsBusy}">
-                                <helpers:PixelLogoLoader x:Name="MetadataAnalysisLoader" Width="18" Height="24" Margin="0,0,10,0" VerticalAlignment="Center"
+                                <helpers:PixelLogoLoader x:Name="MetadataAnalysisLoader" Width="8" Height="11" Margin="0,0,8,0" VerticalAlignment="Center"
                                     IsActive="{Binding IsAnalyzingMetadata}"
                                     helpers:FadeAnimation.IsShown="{Binding IsAnalyzingMetadata}"
                                     AutomationProperties.Name="{Binding BusyDisplayMessage}" />
