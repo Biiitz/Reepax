@@ -12,12 +12,22 @@ namespace Reepax.Services.Storage;
 internal sealed class PackageDirectoryMoveService
 {
     private readonly bool _allowDirectoryRename;
+    private readonly Action<string>? _fileCopied;
 
-    internal PackageDirectoryMoveService(bool allowDirectoryRename = true) => _allowDirectoryRename = allowDirectoryRename;
+    internal PackageDirectoryMoveService(bool allowDirectoryRename = true, Action<string>? fileCopied = null)
+    {
+        _allowDirectoryRename = allowDirectoryRename;
+        _fileCopied = fileCopied;
+    }
 
     internal sealed record FileEntry(string Source, string RelativePath);
     internal sealed record Plan(DownloadPackage Package, string? Source, string Target, bool WholeDirectory,
         Dictionary<DownloadItem, string> ItemPaths, string? ExtractionDirectory, FileEntry[] Files, string[] Directories);
+
+    private sealed record ProtectedCopy(RelocationFileAccess.SourceLease Source, byte[] Hash, string RelativePath) : IDisposable
+    {
+        public void Dispose() => Source.Dispose();
+    }
 
     internal static Plan[] Prepare(DownloadPackage[] packages, DownloadPackage[] allPackages, string destination)
     {
@@ -118,6 +128,8 @@ internal sealed class PackageDirectoryMoveService
         }
         var stage = Path.Combine(Path.GetDirectoryName(plan.Target)!, ".download-move-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
+        var copies = new List<ProtectedCopy>();
+        var publishedFiles = new List<FileStream>();
         try
         {
             foreach (var directory in plan.Directories) Directory.CreateDirectory(Path.Combine(stage, directory));
@@ -125,51 +137,70 @@ internal sealed class PackageDirectoryMoveService
             {
                 var output = Path.Combine(stage, file.RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-                await CopyVerifiedAsync(file.Source, output).ConfigureAwait(false);
+                copies.Add(await CopyVerifiedAsync(file.Source, output, file.RelativePath).ConfigureAwait(false));
+                _fileCopied?.Invoke(file.Source);
             }
             Directory.Move(stage, plan.Target);
+            foreach (var copy in copies)
+            {
+                var published = new FileStream(Path.Combine(plan.Target, copy.RelativePath), FileMode.Open,
+                    FileAccess.Read, FileShare.Read, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
+                publishedFiles.Add(published);
+                // Directory publication requires closed staging files; recheck under the final write/delete lock.
+                var publishedHash = await SHA256.HashDataAsync(published).ConfigureAwait(false);
+                if (!CryptographicOperations.FixedTimeEquals(copy.Hash, publishedHash))
+                    throw new IOException("The verified destination changed before relocation completed.");
+            }
+            bool cleaned = true;
+            foreach (var copy in copies) cleaned &= copy.Source.TryDelete();
+            foreach (var copy in copies) copy.Source.Dispose();
+            if (plan.WholeDirectory && plan.Source != null)
+                cleaned &= DeleteEmptyDirectories(plan.Source);
+            return cleaned;
         }
         finally
         {
+            foreach (var published in publishedFiles) published.Dispose();
+            foreach (var copy in copies) copy.Dispose();
             if (Directory.Exists(stage)) DeleteOwnedTree(stage);
         }
-        bool cleaned = true;
-        foreach (var file in plan.Files)
-        {
-            try { File.Delete(file.Source); }
-            catch (Exception) { cleaned = false; }
-        }
-        if (plan.WholeDirectory && plan.Source != null)
-            cleaned &= DeleteEmptyDirectories(plan.Source);
-        return cleaned;
     }
 
-    private static async Task CopyVerifiedAsync(string source, string destination)
+    private static async Task<ProtectedCopy> CopyVerifiedAsync(string source, string destination, string relativePath)
     {
-        var lastWrite = File.GetLastWriteTimeUtc(source);
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read,
-            1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
-        await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-            1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+        EnsurePlainPath(source);
+        var lease = RelocationFileAccess.OpenSource(source);
+        try
         {
-            var buffer = new byte[1024 * 1024];
-            int read;
-            while ((read = await input.ReadAsync(buffer).ConfigureAwait(false)) != 0)
+            var lastWrite = File.GetLastWriteTimeUtc(source);
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            await using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                hash.AppendData(buffer, 0, read);
-                await output.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(false);
+                var buffer = new byte[1024 * 1024];
+                int read;
+                while ((read = await lease.Stream.ReadAsync(buffer).ConfigureAwait(false)) != 0)
+                {
+                    hash.AppendData(buffer, 0, read);
+                    await output.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(false);
+                }
+                await output.FlushAsync().ConfigureAwait(false);
+                output.Flush(flushToDisk: true);
             }
-            await output.FlushAsync().ConfigureAwait(false);
-            output.Flush(flushToDisk: true);
-        }
-        await using (var copied = File.OpenRead(destination))
-        {
-            var copiedHash = await SHA256.HashDataAsync(copied).ConfigureAwait(false);
-            if (!CryptographicOperations.FixedTimeEquals(hash.GetHashAndReset(), copiedHash))
+            await using var verified = new FileStream(destination, FileMode.Open, FileAccess.Read, FileShare.Read,
+                bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var copiedHash = await SHA256.HashDataAsync(verified).ConfigureAwait(false);
+            var sourceHash = hash.GetHashAndReset();
+            if (!CryptographicOperations.FixedTimeEquals(sourceHash, copiedHash))
                 throw new IOException("The copied download failed verification.");
+            File.SetLastWriteTimeUtc(destination, lastWrite);
+            return new ProtectedCopy(lease, sourceHash, relativePath);
         }
-        File.SetLastWriteTimeUtc(destination, lastWrite);
+        catch
+        {
+            lease.Dispose();
+            throw;
+        }
     }
 
     private static void AddDirectoryFiles(string directory, string root, Dictionary<string, FileEntry> files, List<string> directories)
