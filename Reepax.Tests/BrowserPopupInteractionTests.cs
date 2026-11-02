@@ -1,5 +1,8 @@
+using System;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Reepax.Models;
 using Reepax.Services.Browser;
 using Xunit;
 
@@ -142,6 +145,31 @@ public sealed class BrowserPopupInteractionTests : IClassFixture<BrowserScriptTe
         Assert.True(await _browser.EvaluateAsync<bool>("window.prevented"));
         Assert.Equal(0, _browser.BlockedPopups);
         Assert.Single(_browser.NativePopups);
+    });
+
+    [Fact]
+    public Task BrowserCookieTransfer_PreservesHostOnlyDomainPathAndExpiration() => _browser.OnUi(async () =>
+    {
+        var manager = _browser.Core.CookieManager;
+        var hostCookie = manager.CreateCookie("scope_host", "synthetic", "page.example.test", "/allowed");
+        hostCookie.IsSecure = true;
+        hostCookie.IsHttpOnly = true;
+        hostCookie.Expires = DateTime.UtcNow.AddHours(1);
+        manager.AddOrUpdateCookie(hostCookie);
+        var domainCookie = manager.CreateCookie("scope_domain", "synthetic", ".example.test", "/allowed");
+        domainCookie.IsSecure = true;
+        manager.AddOrUpdateCookie(domainCookie);
+        var browserCookies = await manager.GetCookiesAsync("https://page.example.test/allowed/file");
+        var context = DownloadCookieContext.FromBrowserCookies("https://page.example.test/allowed/file",
+            browserCookies.Select(cookie => cookie.ToSystemNetCookie()));
+        Assert.Contains(context.Cookies, cookie => cookie.Name == "scope_host" && cookie.HostOnly && cookie.HttpOnly && cookie.ExpiresUtc.HasValue);
+        Assert.Contains(context.Cookies, cookie => cookie.Name == "scope_domain" && !cookie.HostOnly);
+        var subdomain = new Uri("https://child.page.example.test/allowed/file");
+        Assert.Equal("scope_domain=synthetic", context.Container.GetCookieHeader(subdomain));
+        Assert.Equal("", context.Container.GetCookieHeader(new Uri("https://page.example.test/elsewhere")));
+        Assert.Equal("", context.Container.GetCookieHeader(new Uri("http://page.example.test/allowed/file")));
+        manager.DeleteCookie(hostCookie);
+        manager.DeleteCookie(domainCookie);
     });
 
     [Theory]

@@ -126,11 +126,13 @@ public static class HttpUserAgentService
     /// Creates a new HttpClient with an optimized SocketsHttpHandler, automatic decompression,
     /// and full standard browser headers.
     /// </summary>
-    public static HttpClient CreateHttpClient(TimeSpan? timeout = null, HttpContentType contentType = HttpContentType.Html, bool automaticDecompression = true)
+    public static HttpClient CreateHttpClient(TimeSpan? timeout = null, HttpContentType contentType = HttpContentType.Html,
+        bool automaticDecompression = true, bool scopedCookies = false)
     {
         var handler = new SocketsHttpHandler
         {
-            AllowAutoRedirect = true,
+            AllowAutoRedirect = !scopedCookies,
+            UseCookies = !scopedCookies,
             MaxAutomaticRedirections = 10,
             AutomaticDecompression = automaticDecompression ? DecompressionMethods.All : DecompressionMethods.None,
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
@@ -141,7 +143,7 @@ public static class HttpUserAgentService
             InitialHttp2StreamWindowSize = 16 * 1024 * 1024 // 16 MB HTTP/2 flow window
         };
 
-        var client = new HttpClient(handler)
+        var client = new HttpClient(scopedCookies ? new CookieRedirectHandler(handler) : handler)
         {
             Timeout = timeout ?? TimeSpan.FromSeconds(30)
         };

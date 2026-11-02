@@ -811,7 +811,8 @@ public partial class QueueManager
         string? cookies, 
         string? userAgent, 
         string? referer, 
-        string? suggestedFileName)
+        string? suggestedFileName,
+        DownloadCookieContext? cookieContext = null)
     {
         DownloadItem? item;
         TaskCompletionSource<bool>? pathOperation;
@@ -844,6 +845,7 @@ public partial class QueueManager
                         return;
                     item.DirectDownloadUrl = isBlob ? null : directUrl;
                     item.Cookies = cookies;
+                    item.CookieContext = cookieContext ?? DownloadCookieContext.FromHeader(directUrl, cookies);
                     item.UserAgent = userAgent;
                     item.Referer = referer;
                     if (!item.IsCustomName && !string.IsNullOrWhiteSpace(suggestedFileName) && !suggestedFileName.Equals("download", StringComparison.OrdinalIgnoreCase))
@@ -860,7 +862,8 @@ public partial class QueueManager
                 return;
             if (!isBlob && GetActiveDownloadsCount() < MaxConcurrentDownloads)
             {
-                _ = DownloadEngine.Instance.StartDownloadAsync(item, directUrl, cookies, userAgent, referer, suggestedFileName);
+                _ = DownloadEngine.Instance.StartDownloadAsync(item, directUrl, cookies, userAgent, referer,
+                    suggestedFileName, item.CookieContext);
             }
             else
             {

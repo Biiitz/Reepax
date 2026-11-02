@@ -400,7 +400,7 @@ public partial class BrowserWindowController : IDisposable
         }
     }
 
-    private async Task<string?> GetCookiesForUrlAsync(string url)
+    private async Task<DownloadCookieContext?> GetCookiesForUrlAsync(string url)
     {
         try
         {
@@ -409,7 +409,7 @@ public partial class BrowserWindowController : IDisposable
                 var cookies = await _webView.CoreWebView2.CookieManager.GetCookiesAsync(url);
                 if (cookies != null && cookies.Count > 0)
                 {
-                    return string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}"));
+                    return DownloadCookieContext.FromBrowserCookies(url, cookies.Select(cookie => cookie.ToSystemNetCookie()));
                 }
             }
         }
@@ -490,15 +490,16 @@ public partial class BrowserWindowController : IDisposable
                     ? _webView.CoreWebView2.Settings.UserAgent
                     : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
                 var referer = _webView.Source?.ToString() ?? _currentTopLevelUrl;
-                var cookieHeader = await GetCookiesForUrlAsync(url);
+                var cookieContext = await GetCookiesForUrlAsync(url);
 
                 await QueueManager.Instance.OnDownloadInterceptedAsync(
                     _windowId,
                     url,
-                    cookieHeader,
+                    cookieContext?.GetCookieHeader(),
                     userAgent,
                     referer,
-                    null);
+                    null,
+                    cookieContext);
             }
             catch (Exception ex)
             {
@@ -562,20 +563,7 @@ public partial class BrowserWindowController : IDisposable
                 : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
             var referer = _webView.Source?.ToString();
 
-            // 2. Extract session cookies for the direct download link domain
-            string? cookieHeader = null;
-            try
-            {
-                var cookies = await _webView.CoreWebView2.CookieManager.GetCookiesAsync(directUrl);
-                if (cookies != null && cookies.Count > 0)
-                {
-                    cookieHeader = string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}"));
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[Browser Window {_windowId}] Cookie extract error: {ex.Message}", ex);
-            }
+            var cookieContext = await GetCookiesForUrlAsync(directUrl);
 
             AppLogger.Info($"[Browser Window {_windowId}] Intercepted Download! URL: {directUrl}, File: {suggestedFileName}");
 
@@ -583,10 +571,11 @@ public partial class BrowserWindowController : IDisposable
             await QueueManager.Instance.OnDownloadInterceptedAsync(
                 _windowId, 
                 directUrl, 
-                cookieHeader, 
+                cookieContext?.GetCookieHeader(),
                 userAgent, 
                 referer, 
-                suggestedFileName);
+                suggestedFileName,
+                cookieContext);
         }
         catch (Exception ex)
         {
@@ -742,16 +731,17 @@ public partial class BrowserWindowController : IDisposable
                             ? _webView.CoreWebView2.Settings.UserAgent 
                             : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
                         var referer = _webView.Source?.ToString();
-                        var cookieHeader = await GetCookiesForUrlAsync(directUrl);
+                        var cookieContext = await GetCookiesForUrlAsync(directUrl);
 
                         AppLogger.Info($"[Browser Window {_windowId}] Direct URL extracted from page: {directUrl}");
                         await QueueManager.Instance.OnDownloadInterceptedAsync(
                             _windowId,
                             directUrl,
-                            cookieHeader,
+                            cookieContext?.GetCookieHeader(),
                             userAgent,
                             referer,
-                            null);
+                            null,
+                            cookieContext);
                     }
                 }
             }
@@ -777,15 +767,16 @@ public partial class BrowserWindowController : IDisposable
                                 ? _webView.CoreWebView2.Settings.UserAgent 
                                 : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
                             var referer = _webView.Source?.ToString();
-                            var cookieHeader = await GetCookiesForUrlAsync(targetUrl);
+                            var cookieContext = await GetCookiesForUrlAsync(targetUrl);
 
                             await QueueManager.Instance.OnDownloadInterceptedAsync(
                                 _windowId,
                                 targetUrl,
-                                cookieHeader,
+                                cookieContext?.GetCookieHeader(),
                                 userAgent,
                                 referer,
-                                null);
+                                null,
+                                cookieContext);
                         }
                         else
                         {

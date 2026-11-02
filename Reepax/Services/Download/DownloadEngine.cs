@@ -124,7 +124,8 @@ public partial class DownloadEngine
 
     public DownloadEngine(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny, automaticDecompression: false);
+        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny,
+            automaticDecompression: false, scopedCookies: true);
     }
 
     public async Task StartDownloadAsync(
@@ -133,7 +134,8 @@ public partial class DownloadEngine
         string? cookieHeader, 
         string? userAgent, 
         string? referer,
-        string? suggestedFileName)
+        string? suggestedFileName,
+        DownloadCookieContext? cookieContext = null)
     {
         if (item.IsUnavailableForProcessing || string.IsNullOrWhiteSpace(directUrl))
             return;
@@ -160,6 +162,7 @@ public partial class DownloadEngine
         // to prevent an asynchronous race condition with ExecuteDownloadLoopAsync on the ThreadPool.
         item.DirectDownloadUrl = directUrl;
         item.Cookies = cookieHeader;
+        item.CookieContext = cookieContext ?? DownloadCookieContext.FromHeader(directUrl, cookieHeader);
         item.UserAgent = userAgent;
         item.Referer = referer;
 
@@ -784,8 +787,7 @@ public partial class DownloadEngine
     {
         request.Headers.AcceptEncoding.Clear();
         request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("identity"));
-        if (!string.IsNullOrWhiteSpace(item.Cookies))
-            request.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
+        CookieRedirectHandler.ApplyCookies(request, item);
 
         // Apply item's custom User-Agent if set, otherwise apply the latest live User-Agent
         // per-request so that DefaultRequestHeaders is never mutated while downloads are running.

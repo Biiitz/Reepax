@@ -33,6 +33,7 @@ public class DownloadItemDto
     public string? ErrorMessage { get; set; }
     public string? SaveFilePath { get; set; }
     public string? Cookies { get; set; }
+    public DownloadCookieContext? CookieContext { get; set; }
     public string? UserAgent { get; set; }
     public string? Referer { get; set; }
     public bool IsEnabled { get; set; } = true;
@@ -869,6 +870,7 @@ public class DownloadPersistenceService : IDisposable
                         ErrorMessage = item.ErrorMessage,
                         SaveFilePath = item.SaveFilePath,
                         Cookies = item.Cookies,
+                        CookieContext = item.GetCookieContext(),
                         UserAgent = item.UserAgent,
                         Referer = item.Referer,
                         IsEnabled = item.IsEnabled,
@@ -1542,6 +1544,9 @@ public class DownloadPersistenceService : IDisposable
                             ErrorMessage = itemDto.ErrorMessage,
                             SaveFilePath = itemSavePath,
                             Cookies = itemDto.Cookies,
+                            CookieContext = itemDto.CookieContext ?? DownloadCookieContext.FromHeader(
+                                string.IsNullOrWhiteSpace(itemDto.DirectDownloadUrl) ? itemDto.OriginalUrl : itemDto.DirectDownloadUrl,
+                                itemDto.Cookies),
                             UserAgent = itemDto.UserAgent,
                             Referer = itemDto.Referer,
                             IsEnabled = itemDto.IsEnabled,
@@ -1834,6 +1839,9 @@ public class DownloadPersistenceService : IDisposable
                             ErrorMessage = itemDto.ErrorMessage,
                             SaveFilePath = itemSavePath,
                             Cookies = itemDto.Cookies,
+                            CookieContext = itemDto.CookieContext ?? DownloadCookieContext.FromHeader(
+                                string.IsNullOrWhiteSpace(itemDto.DirectDownloadUrl) ? itemDto.OriginalUrl : itemDto.DirectDownloadUrl,
+                                itemDto.Cookies),
                             UserAgent = itemDto.UserAgent,
                             Referer = itemDto.Referer,
                             IsEnabled = itemDto.IsEnabled,

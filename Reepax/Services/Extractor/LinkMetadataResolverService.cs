@@ -68,13 +68,13 @@ public partial class LinkMetadataResolverService
 
     public LinkMetadataResolverService(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny);
+        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny,
+            scopedCookies: true);
     }
 
     private static void ApplyRequestHeaders(HttpRequestMessage request, DownloadItem? item = null)
     {
-        if (item != null && !string.IsNullOrWhiteSpace(item.Cookies))
-            request.Headers.TryAddWithoutValidation("Cookie", item.Cookies);
+        if (item != null) CookieRedirectHandler.ApplyCookies(request, item);
 
         var userAgent = item != null && !string.IsNullOrWhiteSpace(item.UserAgent)
             ? item.UserAgent
