@@ -1076,7 +1076,8 @@ public class QueueManagerTests
 
             var completedTask = await Task.WhenAny(item2AssignedWhileExtractingTcs.Task, Task.Delay(3000));
             Assert.Same(item2AssignedWhileExtractingTcs.Task, completedTask);
-            Assert.True(await item2AssignedWhileExtractingTcs.Task, "Next queued item should be scheduled immediately while archive extraction is still running in the background.");
+            Assert.True(await item2AssignedWhileExtractingTcs.Task,
+                $"Next queued item should be scheduled while extraction is running. Status: {pkg1.StatusMessage}; extracted: {pkg1.IsExtracted}; paused: {pkg1.IsExtractionPaused}; item: {item1.Status}.");
             Assert.True(ArchiveExtractionService.Instance.IsPackageExtractionPaused(pkg1.Id));
             Assert.Equal(DownloadStatus.InBrowser, item2.Status);
         }

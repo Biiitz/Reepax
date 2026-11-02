@@ -15,13 +15,16 @@ internal sealed class AsciiGlyphAtlas
     internal ImageSource[] Soft { get; } = new ImageSource[Characters.Length];
     internal ImageSource[] Glow { get; } = new ImageSource[Characters.Length];
 
-    internal AsciiGlyphAtlas(double pixelsPerDip)
+    internal AsciiGlyphAtlas(double pixelsPerDip, Color? glyphColor = null)
     {
+        var color = glyphColor ?? Colors.White;
+        var foreground = new SolidColorBrush(color);
+        foreground.Freeze();
         int size = Math.Max(1, (int)Math.Ceiling(ImageSize * pixelsPerDip));
         for (int index = 0; index < Characters.Length; index++)
         {
             var text = new FormattedText(Characters[index].ToString(), CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, new Typeface("Consolas"), 19, Brushes.White, pixelsPerDip);
+                FlowDirection.LeftToRight, new Typeface("Consolas"), 19, foreground, pixelsPerDip);
             var visual = new DrawingVisual();
             using (var context = visual.RenderOpen())
                 context.DrawText(text, new Point((ImageSize - text.WidthIncludingTrailingWhitespace) / 2, (ImageSize - text.Height) / 2));
@@ -31,12 +34,12 @@ internal sealed class AsciiGlyphAtlas
             Sharp[index] = bitmap;
             var pixels = new byte[size * size * 4];
             bitmap.CopyPixels(pixels, size * 4, 0);
-            Soft[index] = Blur(pixels, size, Math.Max(1, (int)Math.Round(pixelsPerDip)));
-            Glow[index] = Blur(pixels, size, Math.Max(2, (int)Math.Round(2 * pixelsPerDip)));
+            Soft[index] = Blur(pixels, size, Math.Max(1, (int)Math.Round(pixelsPerDip)), color);
+            Glow[index] = Blur(pixels, size, Math.Max(2, (int)Math.Round(2 * pixelsPerDip)), color);
         }
     }
 
-    private static BitmapSource Blur(byte[] source, int size, int radius)
+    private static BitmapSource Blur(byte[] source, int size, int radius, Color color)
     {
         var output = new byte[source.Length];
         var horizontal = new int[size * size];
@@ -63,8 +66,11 @@ internal sealed class AsciiGlyphAtlas
             }
             byte alpha = (byte)(sum / (diameter * diameter));
             int position = (y * size + x) * 4;
-            // White glyphs use premultiplied alpha, including their cached soft edges.
-            output[position] = output[position + 1] = output[position + 2] = output[position + 3] = alpha;
+            // Cached soft edges retain premultiplied alpha for either palette.
+            output[position] = (byte)(color.B * alpha / 255);
+            output[position + 1] = (byte)(color.G * alpha / 255);
+            output[position + 2] = (byte)(color.R * alpha / 255);
+            output[position + 3] = alpha;
         }
         var image = BitmapSource.Create(size, size, 96 * size / ImageSize, 96 * size / ImageSize,
             PixelFormats.Pbgra32, null, output, size * 4);

@@ -1,4 +1,4 @@
-<Window x:Class="Reepax.Views.CrashReportDialog"
+<Window FontFamily="{DynamicResource AppFontFamily}" x:Class="Reepax.Views.CrashReportDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -39,14 +39,14 @@
 
             <Border Grid.Column="0"
                     Width="42" Height="42"
-                    CornerRadius="10"
-                    Background="#2AEE4444"
-                    BorderBrush="#88EE4444"
+                    CornerRadius="{DynamicResource CardCornerRadius}"
+                    Background="{DynamicResource CrashDangerSurfaceBrush}"
+                    BorderBrush="{DynamicResource CrashDangerBorderBrush}"
                     BorderThickness="1"
                     Margin="0,0,14,0"
                     VerticalAlignment="Center">
                 <Path Data="{StaticResource IconWarning}"
-                      Fill="#EF4444"
+                      Fill="{DynamicResource DangerBrush}"
                       Width="20" Height="20"
                       Stretch="Uniform"
                       HorizontalAlignment="Center"
@@ -72,7 +72,7 @@
                 Background="{DynamicResource BgCardBrush}"
                 BorderBrush="{DynamicResource BorderDarkBrush}"
                 BorderThickness="1"
-                CornerRadius="8"
+                CornerRadius="{DynamicResource SurfaceCornerRadius}"
                 Padding="12,10"
                 Margin="0,0,0,16">
             <ScrollViewer MaxHeight="130"
@@ -97,7 +97,7 @@
             <Border Background="{DynamicResource BgInputBrush}"
                     BorderBrush="{DynamicResource BorderDarkBrush}"
                     BorderThickness="1"
-                    CornerRadius="6"
+                    CornerRadius="{DynamicResource ControlCornerRadius}"
                     Padding="10,8">
                 <TextBox x:Name="LogPathTextBox"
                          IsReadOnly="True"
@@ -127,7 +127,7 @@
                         Cursor="Hand">
                     <Button.Resources>
                         <Style TargetType="Border">
-                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
                         </Style>
                     </Button.Resources>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -154,7 +154,7 @@
                         Cursor="Hand">
                     <Button.Resources>
                         <Style TargetType="Border">
-                            <Setter Property="CornerRadius" Value="6" />
+                            <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
                         </Style>
                     </Button.Resources>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -185,7 +185,7 @@
                     Cursor="Hand">
                 <Button.Resources>
                     <Style TargetType="Border">
-                        <Setter Property="CornerRadius" Value="6" />
+                        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
                     </Style>
                 </Button.Resources>
                 <TextBlock Text="{loc:Loc Crash_Close}"

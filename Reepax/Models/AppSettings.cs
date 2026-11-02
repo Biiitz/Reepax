@@ -18,6 +18,7 @@ public class AppSettings
         set => MaxConcurrentBackgroundDownloads = value; 
     }
     public bool IsDarkMode { get; set; } = true;
+    public string ThemeId { get; set; } = Services.ThemeCatalog.DefaultId;
     public bool EnableForcedDarkMode { get; set; } = true;
     public string AccentColorHex { get; set; } = "#3B82F6";
     public double? AccentColorHue { get; set; } = 217.22;

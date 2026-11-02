@@ -1,4 +1,4 @@
-<Window x:Class="Reepax.Views.AddLinksDialog"
+<Window FontFamily="{DynamicResource AppFontFamily}" x:Class="Reepax.Views.AddLinksDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:Reepax.Converters"
@@ -30,7 +30,7 @@
         </Grid.RowDefinitions>
 
         <!-- 0: Links Input Area with Watermark -->
-        <Border Grid.Row="0" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="2" Margin="0,0,0,10" ClipToBounds="True">
+        <Border Grid.Row="0" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="2" Margin="0,0,0,10" ClipToBounds="True">
             <Grid>
                 <TextBox x:Name="LinksTextBox" 
                          AcceptsReturn="True"
@@ -82,7 +82,7 @@
         </Border>
 
         <!-- 1: Download Target Directory Row with Browse Button -->
-        <Border Grid.Row="1" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,8">
+        <Border Grid.Row="1" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="10,6" Margin="0,0,0,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -98,7 +98,7 @@
         </Border>
 
         <!-- 2: Package Name Row -->
-        <Border Grid.Row="2" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,8">
+        <Border Grid.Row="2" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="10,6" Margin="0,0,0,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -121,7 +121,7 @@
         </Border>
 
         <!-- 3: Options Row (Auto-extraction & low-resource mode) -->
-        <Border x:Name="OptionsBorder" Grid.Row="3" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Padding="10,7" Margin="0,0,0,10">
+        <Border x:Name="OptionsBorder" Grid.Row="3" Background="{DynamicResource BgCardBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="10,7" Margin="0,0,0,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />

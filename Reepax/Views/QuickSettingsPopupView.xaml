@@ -20,7 +20,7 @@
                 Background="{DynamicResource BgCardBrush}" 
                 BorderBrush="{DynamicResource BorderDarkBrush}" 
                 BorderThickness="1" 
-                CornerRadius="4" 
+                CornerRadius="{DynamicResource CompactCornerRadius}"
                 Padding="16,14" 
                 Width="340"
                 SnapsToDevicePixels="True" 
@@ -40,7 +40,7 @@
                         <TextBlock Text="{loc:Loc Settings_SpeedLimit_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{loc:Loc Settings_SpeedLimit_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                     </StackPanel>
-                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="24">
+                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="24">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="40" />
@@ -134,7 +134,7 @@
                                 </Grid>
                             </Border>
 
-                            <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="4" Padding="5,2">
+                            <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="5,2">
                                 <TextBlock Text="MB/s" Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="10" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
@@ -153,7 +153,7 @@
                         <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                     </StackPanel>
-                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="24">
+                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="24">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="34" />
@@ -253,7 +253,7 @@
                         <TextBlock Text="{loc:Loc Settings_Connections_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{loc:Loc Settings_Connections_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                     </StackPanel>
-                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="24">
+                    <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="24">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="34" />

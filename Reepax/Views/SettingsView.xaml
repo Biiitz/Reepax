@@ -25,7 +25,7 @@
 
         <!-- ==================== LEFT CATEGORY SIDEBAR ==================== -->
         <Border Grid.Column="0"
-            Background="{DynamicResource BgHeaderBrush}"
+            Background="{DynamicResource SidebarBrush}"
             BorderBrush="{DynamicResource BorderDarkBrush}"
             BorderThickness="0,0,1,0">
             <!-- Category List -->
@@ -203,13 +203,58 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,16,0">
+                                    <TextBlock Text="{loc:Loc Settings_Theme_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <Border x:Name="ThemeInfoIcon" Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Theme_Description}">
+                                        <Path Style="{StaticResource SettingInfoPathStyle}" />
+                                    </Border>
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}" Padding="3">
+                                    <ListBox x:Name="ThemeSelector" Background="Transparent" BorderThickness="0" Padding="0"
+                                        ItemsSource="{Binding ThemeOptions}" SelectedValuePath="Id" SelectionMode="Single"
+                                        SelectedValue="{Binding SelectedThemeId, Mode=TwoWay}" VerticalAlignment="Center"
+                                        ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <ListBox.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ListBox.ItemsPanel>
+                                        <ListBox.ItemContainerStyle>
+                                            <Style TargetType="ListBoxItem">
+                                                <Setter Property="Padding" Value="0" />
+                                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="ListBoxItem">
+                                                            <ContentPresenter />
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </ListBox.ItemContainerStyle>
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{Binding DisplayName}"
+                                                    IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}"
+                                                    Focusable="False" IsTabStop="False" Margin="0,0,1,0" />
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                            </Grid>
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,3,16,0">
                                     <TextBlock Text="{loc:Loc Settings_Language_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                                     <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_Language_Subtitle}">
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" CornerRadius="7" Padding="3">
+                                <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}" Padding="3">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="SettingsLanguage" Content="{loc:Loc Settings_Language_English}"
                                             IsChecked="{Binding IsEnglishSelected, Mode=TwoWay}"
@@ -226,10 +271,10 @@
                                 </Border>
                             </Grid>
 
-                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" Visibility="{Binding CanCustomizeAccent, Converter={StaticResource BoolToVisConverter}}" />
 
-                            <!-- Akzentfarbe -->
-                            <Grid Margin="0,0,0,8">
+                            <!-- Custom accent controls belong to themes that support them. -->
+                            <Grid Margin="0,0,0,8" Visibility="{Binding CanCustomizeAccent, Converter={StaticResource BoolToVisConverter}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -250,7 +295,7 @@
                                     Cursor="Hand"
                                     ToolTip="{loc:Loc Settings_AccentColor_ToggleTooltip}">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Border Width="16" Height="16" CornerRadius="8" Background="{Binding CurrentAccentBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" Margin="0,0,8,0" />
+                                        <Border Width="16" Height="16" CornerRadius="{DynamicResource SurfaceCornerRadius}" Background="{Binding CurrentAccentBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" Margin="0,0,8,0" />
                                         <TextBlock Text="{Binding CurrentAccentColor}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                         <Path helpers:ControlMotion.IsExpanded="{Binding IsColorPaletteOpen}" Data="M 0 0 L 3.5 3.5 L 7 0 Z" Fill="{DynamicResource TextSecondaryBrush}" Stretch="Uniform" Width="7" Height="4" VerticalAlignment="Center" />
                                     </StackPanel>
@@ -258,7 +303,8 @@
                             </Grid>
 
                             <!-- Expandable Color Palette Panel -->
-                            <helpers:AnimatedExpansionDecorator IsExpanded="{Binding IsColorPaletteOpen}" EnableAnimation="True">
+                            <helpers:AnimatedExpansionDecorator IsExpanded="{Binding IsColorPaletteOpen}" EnableAnimation="True"
+                                Visibility="{Binding CanCustomizeAccent, Converter={StaticResource BoolToVisConverter}}">
                                 <Border x:Name="ColorPaletteContainer" Padding="0,12,0,8">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -268,7 +314,7 @@
 
                                         <!-- Left: 2D Saturation / Value Box + Rainbow Hue Slider -->
                                         <StackPanel Grid.Column="0" Margin="0,0,24,0">
-                                            <Border CornerRadius="6" ClipToBounds="True" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
+                                            <Border CornerRadius="{DynamicResource ControlCornerRadius}" ClipToBounds="True" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1">
                                                 <Grid x:Name="SpectrumBox"
                                                     Width="260"
                                                     Height="150"
@@ -312,7 +358,7 @@
 
                                             <!-- Hue Slider with Rainbow Track -->
                                             <Grid Margin="0,12,0,0">
-                                                <Border Height="12" CornerRadius="6" ClipToBounds="True">
+                                                <Border Height="12" CornerRadius="{DynamicResource ControlCornerRadius}" ClipToBounds="True">
                                                     <Border.Background>
                                                         <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
                                                             <GradientStop Color="#FF0000" Offset="0.0" />
@@ -682,7 +728,7 @@
                                                     <Border Background="{DynamicResource BgCardBrush}"
                                                         BorderBrush="{DynamicResource BorderDarkBrush}"
                                                         BorderThickness="1"
-                                                        CornerRadius="6"
+                                                        CornerRadius="{DynamicResource ControlCornerRadius}"
                                                         Padding="4"
                                                         Width="136"
                                                         SnapsToDevicePixels="True"
@@ -890,7 +936,7 @@
                                                 <Border Background="{DynamicResource BgInputBrush}"
                                                     BorderBrush="{DynamicResource BorderDarkBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="4"
+                                                    CornerRadius="{DynamicResource CompactCornerRadius}"
                                                     Width="46"
                                                     Height="24"
                                                     Margin="10,0,0,0"
@@ -990,7 +1036,7 @@
                                                 <Border Background="{DynamicResource BgCardBrush}"
                                                     BorderBrush="{DynamicResource BorderDarkBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="6"
+                                                    CornerRadius="{DynamicResource ControlCornerRadius}"
                                                     Padding="4"
                                                     Width="136"
                                                     SnapsToDevicePixels="True"
@@ -1099,7 +1145,7 @@
                                             <Border Background="{DynamicResource BgInputBrush}"
                                                 BorderBrush="{DynamicResource BorderDarkBrush}"
                                                 BorderThickness="1"
-                                                CornerRadius="4"
+                                                CornerRadius="{DynamicResource CompactCornerRadius}"
                                                 Width="46"
                                                 Height="24"
                                                 Margin="10,0,0,0"
@@ -1208,7 +1254,7 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="28">
+                                <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="28">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="52" />
@@ -1264,7 +1310,7 @@
                                                 </Button>
                                             </Grid>
                                         </Border>
-                                        <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="4" Padding="8,2">
+                                        <Border Grid.Column="2" Background="{DynamicResource BgCardAltBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1,0,0,0" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="8,2">
                                             <TextBlock Text="MB/s" Foreground="{DynamicResource TextSecondaryBrush}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center" />
                                         </Border>
                                     </Grid>
@@ -1285,7 +1331,7 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="28">
+                                <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="28">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="46" />
@@ -1358,7 +1404,7 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="4" Height="28">
+                                <Border Grid.Column="1" HorizontalAlignment="Right" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="28">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="46" />
@@ -1579,7 +1625,7 @@
                                         Background="{DynamicResource BgInputBrush}"
                                         BorderBrush="{DynamicResource BorderDarkBrush}"
                                         BorderThickness="1"
-                                        CornerRadius="4"
+                                        CornerRadius="{DynamicResource CompactCornerRadius}"
                                         Height="30"
                                         Margin="0,0,6,0">
                                         <Grid>
@@ -1654,7 +1700,7 @@
                                     <Border Background="{DynamicResource BgInputBrush}"
                                         BorderBrush="{DynamicResource BorderDarkBrush}"
                                         BorderThickness="1"
-                                        CornerRadius="4"
+                                        CornerRadius="{DynamicResource CompactCornerRadius}"
                                         ClipToBounds="True"
                                         Margin="0,8,0,0">
                                         <Grid>
@@ -1828,7 +1874,7 @@
                                 <Border Background="{DynamicResource BgCardBrush}"
                                     BorderBrush="{DynamicResource BorderDarkBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="4"
+                                    CornerRadius="{DynamicResource CompactCornerRadius}"
                                     Padding="16,12"
                                     Margin="0,0,0,8">
                                     <Grid>
@@ -1864,7 +1910,7 @@
                                                                         Background="{TemplateBinding Background}"
                                                                         BorderBrush="{TemplateBinding BorderBrush}"
                                                                         BorderThickness="{TemplateBinding BorderThickness}"
-                                                                        CornerRadius="4"
+                                                                        CornerRadius="{DynamicResource CompactCornerRadius}"
                                                                         Padding="{TemplateBinding Padding}">
                                                                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                     </Border>
@@ -1984,7 +2030,7 @@
                     <Border Background="{DynamicResource BgCardBrush}"
                         BorderBrush="{DynamicResource BorderDarkBrush}"
                         BorderThickness="1"
-                        CornerRadius="6"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
                         Padding="20,16"
                         Margin="0,0,0,16">
                         <StackPanel>
@@ -2068,7 +2114,7 @@
                     <Border Background="{DynamicResource BgCardBrush}"
                         BorderBrush="{DynamicResource BorderDarkBrush}"
                         BorderThickness="1"
-                        CornerRadius="6"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
                         Padding="20,16"
                         Margin="0,0,0,16">
                         <StackPanel>
@@ -2147,7 +2193,7 @@
                     <Border Background="{DynamicResource BgCardBrush}"
                         BorderBrush="{DynamicResource BorderDarkBrush}"
                         BorderThickness="1"
-                        CornerRadius="6"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
                         Padding="20,16"
                         Margin="0,0,0,16">
                         <StackPanel>
@@ -2193,7 +2239,7 @@
                                         <Border Background="{DynamicResource BgInputBrush}"
                                             BorderBrush="{DynamicResource BorderDarkBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="6"
+                                            CornerRadius="{DynamicResource ControlCornerRadius}"
                                             Padding="10,8"
                                             Margin="3,3">
                                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -2276,7 +2322,7 @@
                     <Border Background="{DynamicResource BgCardBrush}"
                         BorderBrush="{DynamicResource BorderDarkBrush}"
                         BorderThickness="1"
-                        CornerRadius="6"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
                         Padding="20,16">
                         <Grid>
                             <Grid.RowDefinitions>

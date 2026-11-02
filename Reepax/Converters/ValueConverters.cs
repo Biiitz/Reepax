@@ -103,6 +103,18 @@ public class StatusToBrushConverter : IValueConverter
     {
         if (value is DownloadStatus status)
         {
+            string key = status switch
+            {
+                DownloadStatus.Completed => "StatusCompletedBrush",
+                DownloadStatus.Downloading => "StatusDownloadingBrush",
+                DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or
+                    DownloadStatus.SolvingCaptcha => "StatusAttentionBrush",
+                DownloadStatus.Paused => "StatusPausedBrush",
+                DownloadStatus.Failed => "StatusFailedBrush",
+                DownloadStatus.Queued or DownloadStatus.WaitingForBrowser => "StatusQueuedBrush",
+                _ => "StatusOtherBrush"
+            };
+            if (Application.Current?.TryFindResource(key) is Brush themed) return themed;
             SolidColorBrush brush = status switch
             {
                 DownloadStatus.Completed => new SolidColorBrush(Color.FromRgb(16, 185, 129)),      // Emerald Green

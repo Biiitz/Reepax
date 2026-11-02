@@ -9,6 +9,10 @@ namespace Reepax.Helpers;
 
 public sealed class TechnicalLogo : FrameworkElement
 {
+    public static readonly DependencyProperty ForegroundProperty = DependencyProperty.Register(
+        nameof(Foreground), typeof(Brush), typeof(TechnicalLogo),
+        new FrameworkPropertyMetadata(Brushes.White, FrameworkPropertyMetadataOptions.AffectsRender));
+    public Brush Foreground { get => (Brush)GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
         nameof(IsActive), typeof(bool), typeof(TechnicalLogo), new PropertyMetadata(false, ActiveChanged));
     public static readonly DependencyProperty EnableAnimationProperty = DependencyProperty.Register(
@@ -38,6 +42,7 @@ public sealed class TechnicalLogo : FrameworkElement
 
     public TechnicalLogo()
     {
+        SetResourceReference(ForegroundProperty, "BackdropLogoBrush");
         Focusable = false;
         IsHitTestVisible = false;
         _timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(1000.0 / 60) };
@@ -170,7 +175,7 @@ public sealed class TechnicalLogo : FrameworkElement
         if (intro >= 1)
         {
             context.PushOpacity(opacity);
-            context.DrawImage(_art.Image, _imageBounds);
+            DrawThemedArt(context);
             context.Pop();
         }
         else
@@ -183,7 +188,7 @@ public sealed class TechnicalLogo : FrameworkElement
                 if (reveal <= 0) continue;
                 context.PushOpacity(opacity * reveal);
                 context.PushClip(_introBands[band]);
-                context.DrawImage(_art.Image, _imageBounds);
+                DrawThemedArt(context);
                 context.Pop();
                 context.Pop();
             }
@@ -202,6 +207,14 @@ public sealed class TechnicalLogo : FrameworkElement
         context.Pop();
         context.Pop();
         context.Pop();
+    }
+
+    private void DrawThemedArt(DrawingContext context)
+    {
+        if (Foreground is SolidColorBrush brush && brush.Color == Colors.White)
+            context.DrawImage(_art.Image, _imageBounds);
+        else
+            context.DrawGeometry(Foreground, null, _outline);
     }
 
     private void ArrangeArt(Size size)

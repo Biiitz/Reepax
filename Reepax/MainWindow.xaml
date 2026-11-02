@@ -1,4 +1,4 @@
-<Window x:Class="Reepax.MainWindow"
+<Window FontFamily="{DynamicResource AppFontFamily}" x:Class="Reepax.MainWindow"
         x:Name="RootWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -45,7 +45,7 @@
             <MenuItem x:Name="OpenPackageMenuItem" Tag="OpenPackageMenuItem"
                       Header="{loc:Loc Menu_OpenPackageFolder}" Click="OpenPackageFolder_MenuItem_Click">
                 <MenuItem.Icon>
-                    <Path Data="{StaticResource IconFolderOpen}" Fill="#FFFFFF" Width="14" Height="14" Stretch="Uniform" />
+                    <Path Data="{StaticResource IconFolderOpen}" Fill="{DynamicResource ForegroundIconBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem Header="{loc:Loc Menu_ChangeDownloadPath}" Tag="ChangeDownloadPath"
@@ -128,7 +128,7 @@
             <MenuItem x:Name="CancelExtractionMenuItem" Tag="CancelExtractionMenuItem"
                       Header="{loc:Loc Menu_CancelExtraction}" Click="CancelExtraction_MenuItem_Click">
                 <MenuItem.Icon>
-                    <Path Data="{StaticResource IconClose}" Fill="#EF4444" Width="14" Height="14" Stretch="Uniform" />
+                    <Path Data="{StaticResource IconClose}" Fill="{DynamicResource DangerBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem x:Name="VerifyBinFilesMenuItem" Tag="VerifyBinFilesMenuItem"
@@ -258,7 +258,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
-                        <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -309,7 +309,7 @@
                 <Border x:Name="ItemBorder"
                         Margin="0,1"
                         Padding="0,3"
-                    CornerRadius="4"
+                    CornerRadius="{DynamicResource CompactCornerRadius}"
                     Focusable="True"
                     FocusVisualStyle="{x:Null}"
                     AllowDrop="True"
@@ -400,12 +400,12 @@
                                                     HorizontalAlignment="Center" 
                                                     VerticalAlignment="Center">
                                                 <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <Path x:Name="CheckGlyph" Data="{StaticResource IconCheck}" Fill="#10B981" Width="7.5" Height="7.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="1.0" RenderTransformOrigin="0.5,0.5">
+                                                    <Path x:Name="CheckGlyph" Data="{StaticResource IconCheck}" Fill="{DynamicResource SuccessBrush}" Width="7.5" Height="7.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="1.0" RenderTransformOrigin="0.5,0.5">
                                                         <Path.RenderTransform>
                                                             <ScaleTransform x:Name="CheckGlyphScale" ScaleX="1.0" ScaleY="1.0" />
                                                         </Path.RenderTransform>
                                                     </Path>
-                                                    <Path x:Name="CrossGlyph" Data="{StaticResource IconClose}" Fill="#EF4444" Width="6.5" Height="6.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.0" RenderTransformOrigin="0.5,0.5">
+                                                    <Path x:Name="CrossGlyph" Data="{StaticResource IconClose}" Fill="{DynamicResource DangerBrush}" Width="6.5" Height="6.5" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.0" RenderTransformOrigin="0.5,0.5">
                                                         <Path.RenderTransform>
                                                             <ScaleTransform x:Name="CrossGlyphScale" ScaleX="1.0" ScaleY="1.0" />
                                                         </Path.RenderTransform>
@@ -615,7 +615,7 @@
                           helpers:FadeAnimation.IsShown="{Binding IsSelected}">
 
                         <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
-                        <Border CornerRadius="4"
+                        <Border CornerRadius="{DynamicResource CompactCornerRadius}"
                                 BorderThickness="1.5"
                                 BorderBrush="{DynamicResource AccentBlueBrush}"
                                 Background="{DynamicResource AccentSelectionBgBrush}" />
@@ -644,7 +644,7 @@
                   IsHitTestVisible="False"
                   Panel.ZIndex="100"
                   Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
-                <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
                 <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
             </Grid>
 
@@ -656,7 +656,7 @@
                   IsHitTestVisible="False"
                   Panel.ZIndex="100"
                   Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
-                <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
                 <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
             </Grid>
         </Grid>
@@ -756,7 +756,7 @@
                     <Border x:Name="PackageBorder"
                         Margin="0,1"
                         Padding="0,2"
-                        CornerRadius="4"
+                        CornerRadius="{DynamicResource CompactCornerRadius}"
                         Focusable="True"
                         FocusVisualStyle="{x:Null}"
                         AllowDrop="True"
@@ -780,7 +780,7 @@
                                 </Trigger>
                                 <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
                                     <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
-                                    <Setter Property="Background" Value="#2A3B82F6" />
+                                    <Setter Property="Background" Value="{DynamicResource ActiveSurfaceBrush}" />
                                 </DataTrigger>
                                 <MultiDataTrigger>
                                     <MultiDataTrigger.Conditions>
@@ -863,7 +863,7 @@
                                         <ControlTemplate TargetType="ToggleButton">
                                             <Grid Background="Transparent">
                                                 <!-- Subtle Rounded Hover Background -->
-                                                <Border x:Name="HoverOverlay" Width="{TemplateBinding Width}" Height="{TemplateBinding Height}" CornerRadius="4" 
+                                                <Border x:Name="HoverOverlay" Width="{TemplateBinding Width}" Height="{TemplateBinding Height}" CornerRadius="{DynamicResource CompactCornerRadius}"
                                                         Background="{DynamicResource BgCardAltBrush}" 
                                                         BorderBrush="{DynamicResource BorderDarkBrush}" 
                                                         BorderThickness="1" 
@@ -1021,23 +1021,23 @@
                                                             </Style>
                                                         </TextBlock.Style>
                                                         <TextBlock.Foreground>
-                                                            <SolidColorBrush Color="#9CA3AF" />
+                                                            <SolidColorBrush Color="{DynamicResource StatusNeutralColor}" />
                                                         </TextBlock.Foreground>
                                                     </TextBlock>
                                                     <DataTemplate.Triggers>
                                                         <DataTrigger Binding="{Binding State}" Value="Running">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="#34D399" />
+                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource SuccessBrightBrush}" />
                                                             <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding State}" Value="Transitioning">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="#34D399" />
+                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource SuccessBrightBrush}" />
                                                             <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding State}" Value="Done">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="#10B981" />
+                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding State}" Value="Failed">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="#EF4444" />
+                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                                             <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
                                                         </DataTrigger>
                                                     </DataTemplate.Triggers>
@@ -1164,7 +1164,7 @@
                         <!-- Modern Clean Shine Animation Overlay (App Gray / Luminous Silver-White) -->
                         <Border x:Name="PackageShineOverlay"
                                 Grid.Column="0" Grid.ColumnSpan="13"
-                                CornerRadius="4"
+                                CornerRadius="{DynamicResource CompactCornerRadius}"
                                 IsHitTestVisible="False"
                                 Opacity="0">
                             <Border.Background>
@@ -1186,11 +1186,11 @@
                         <!-- Subtle Soft Dock Highlight Overlay (Only active during snap animation) -->
                         <Border x:Name="PackageDockOverlay"
                                 Grid.Column="0" Grid.ColumnSpan="13"
-                                CornerRadius="4"
+                                CornerRadius="{DynamicResource CompactCornerRadius}"
                                 IsHitTestVisible="False"
                                 Opacity="0"
-                                Background="#1038BDF8"
-                                BorderBrush="#3038BDF8"
+                                Background="{DynamicResource InfoSurfaceBrush}"
+                                BorderBrush="{DynamicResource InfoBorderBrush}"
                                 BorderThickness="1" />
 
                         <!-- Selection Border at Edges with Inner Glow -->
@@ -1204,7 +1204,7 @@
                               helpers:FadeAnimation.IsShown="{Binding IsSelected}">
 
                             <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
-                            <Border CornerRadius="4"
+                            <Border CornerRadius="{DynamicResource CompactCornerRadius}"
                                     BorderThickness="1.5"
                                     BorderBrush="{DynamicResource AccentBlueBrush}"
                                     Background="{DynamicResource AccentSelectionBgBrush}" />
@@ -1237,7 +1237,7 @@
                       IsHitTestVisible="False"
                       Panel.ZIndex="100"
                       Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
-                    <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                    <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
                     <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
                 </Grid>
 
@@ -1476,13 +1476,13 @@
                                     <TextBlock x:Name="BtnText" 
                                                Text="{loc:Loc PostDownload_Btn_Cancel}" 
                                                FontSize="11.5" 
-                                               Foreground="#EF4444" 
+                                               Foreground="{DynamicResource DangerBrush}"
                                                VerticalAlignment="Center" />
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="BtnText" Property="TextDecorations" Value="Underline" />
-                                        <Setter TargetName="BtnText" Property="Foreground" Value="#F87171" />
+                                        <Setter TargetName="BtnText" Property="Foreground" Value="{DynamicResource DangerSoftBrush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -1703,13 +1703,13 @@
                                             <TextBlock x:Name="BtnText" 
                                                        Text="{loc:Loc PostDownload_Btn_Cancel}" 
                                                        FontSize="11.5" 
-                                                       Foreground="#EF4444" 
+                                                       Foreground="{DynamicResource DangerBrush}"
                                                        VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="BtnText" Property="TextDecorations" Value="Underline" />
-                                                <Setter TargetName="BtnText" Property="Foreground" Value="#F87171" />
+                                                <Setter TargetName="BtnText" Property="Foreground" Value="{DynamicResource DangerSoftBrush}" />
                                             </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
@@ -1755,7 +1755,7 @@
                             <Separator Background="{DynamicResource BorderDarkBrush}" />
                             <MenuItem Header="{loc:Loc Col_ResetColumns}" Command="{Binding ResetColumnsCommand}">
                                 <MenuItem.Icon>
-                                    <Path Data="{StaticResource IconClose}" Fill="#EF4444" Width="11" Height="11" Stretch="Uniform" />
+                                    <Path Data="{StaticResource IconClose}" Fill="{DynamicResource DangerBrush}" Width="11" Height="11" Stretch="Uniform" />
                                 </MenuItem.Icon>
                             </MenuItem>
                         </ContextMenu>
@@ -2115,7 +2115,7 @@
                                     <Border x:Name="DraggedHeaderBar" 
                                             Height="34"
                                             Background="{DynamicResource BgCardAltBrush}" 
-                                            BorderBrush="#553B82F6" 
+                                            BorderBrush="{DynamicResource FocusOutlineBrush}"
                                             BorderThickness="1" 
                                             CornerRadius="0"
                                             Opacity="0.95" 
@@ -2176,7 +2176,7 @@
                                       Height="4" VerticalAlignment="Bottom" Margin="0,0,0,-2"
                                       IsHitTestVisible="False" Panel.ZIndex="100"
                                       Visibility="{Binding HasPackageDropAfter, Converter={StaticResource BoolToVisConverter}}">
-                                    <Border Height="4" Background="#3538BDF8" CornerRadius="2" />
+                                    <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
                                     <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
                                 </Grid>
                             </Grid>
@@ -2352,7 +2352,7 @@
                                         Background="{TemplateBinding Background}" 
                                         BorderBrush="{TemplateBinding BorderBrush}" 
                                         BorderThickness="{TemplateBinding BorderThickness}" 
-                                        CornerRadius="4" 
+                                        CornerRadius="{DynamicResource CompactCornerRadius}"
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -2377,7 +2377,7 @@
                     <Border Background="{DynamicResource BgCardAltBrush}" 
                             BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="1" 
-                            CornerRadius="4" 
+                            CornerRadius="{DynamicResource CompactCornerRadius}"
                             Padding="10,0" 
                             Height="28" 
                             VerticalAlignment="Center">
@@ -2386,12 +2386,12 @@
                             <TextBlock Text="{Binding FreeDiskSpaceText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
 
                             <!-- Warning Badge if requirement exceeds free disk space -->
-                            <Border Background="#25EF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="8,0,0,0"
+                            <Border Background="{DynamicResource DangerSurfaceBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="5,1" Margin="8,0,0,0"
                                     Visibility="{Binding IsDiskSpaceWarning, Converter={StaticResource BoolToVisConverter}}"
                                     ToolTip="{Binding DiskSpaceWarningMessage}">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Path Data="{StaticResource IconWarning}" Fill="#EF4444" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,3,0" />
-                                    <TextBlock Text="{loc:Loc StatusBar_DiskSpaceWarning}" FontSize="10" FontWeight="Bold" Foreground="#EF4444" VerticalAlignment="Center" />
+                                    <Path Data="{StaticResource IconWarning}" Fill="{DynamicResource DangerBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,3,0" />
+                                    <TextBlock Text="{loc:Loc StatusBar_DiskSpaceWarning}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource DangerBrush}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -2416,7 +2416,7 @@
                                         Background="{TemplateBinding Background}"
                                         BorderBrush="{TemplateBinding BorderBrush}"
                                         BorderThickness="{TemplateBinding BorderThickness}"
-                                        CornerRadius="4"
+                                        CornerRadius="{DynamicResource CompactCornerRadius}"
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -2455,7 +2455,7 @@
                                         Background="{TemplateBinding Background}" 
                                         BorderBrush="{TemplateBinding BorderBrush}" 
                                         BorderThickness="{TemplateBinding BorderThickness}" 
-                                        CornerRadius="4" 
+                                        CornerRadius="{DynamicResource CompactCornerRadius}"
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
@@ -2498,7 +2498,7 @@
                             Background="{DynamicResource BgCardAltBrush}" 
                             BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="1" 
-                            CornerRadius="4" 
+                            CornerRadius="{DynamicResource CompactCornerRadius}"
                             Height="28" 
                             MinWidth="120"
                             VerticalAlignment="Center">
@@ -2594,7 +2594,7 @@
                                                     Background="{TemplateBinding Background}" 
                                                     BorderBrush="{TemplateBinding BorderBrush}" 
                                                     BorderThickness="{TemplateBinding BorderThickness}" 
-                                                    CornerRadius="4" 
+                                                    CornerRadius="{DynamicResource CompactCornerRadius}"
                                                     Padding="{TemplateBinding Padding}">
                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Border>
@@ -2660,7 +2660,7 @@
                         <Border Background="{DynamicResource BgCardBrush}" 
                                 BorderBrush="{DynamicResource BorderDarkBrush}" 
                                 BorderThickness="1" 
-                                CornerRadius="4" 
+                                CornerRadius="{DynamicResource CompactCornerRadius}"
                                 Padding="4" 
                                 Width="140"
                                 SnapsToDevicePixels="True" 

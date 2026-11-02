@@ -10,6 +10,16 @@ namespace Reepax.Helpers;
 
 public sealed class AsciiHorizonBackground : FrameworkElement
 {
+    public static readonly DependencyProperty GlyphColorProperty = DependencyProperty.Register(
+        nameof(GlyphColor), typeof(Color), typeof(AsciiHorizonBackground), new FrameworkPropertyMetadata(Colors.White,
+            FrameworkPropertyMetadataOptions.AffectsRender, GlyphColorChanged));
+    public Color GlyphColor { get => (Color)GetValue(GlyphColorProperty); set => SetValue(GlyphColorProperty, value); }
+
+    private static void GlyphColorChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
+    {
+        var element = (AsciiHorizonBackground)sender;
+        element._glyphs = new AsciiGlyphAtlas(VisualTreeHelper.GetDpi(element).PixelsPerDip, (Color)args.NewValue);
+    }
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
         nameof(IsActive), typeof(bool), typeof(AsciiHorizonBackground), new PropertyMetadata(false, ActivityChanged));
     public static readonly DependencyProperty EnableAnimationProperty = DependencyProperty.Register(
@@ -43,6 +53,7 @@ public sealed class AsciiHorizonBackground : FrameworkElement
         Focusable = false;
         ClipToBounds = true;
         _glyphs = new AsciiGlyphAtlas(VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        SetResourceReference(GlyphColorProperty, "BackdropGlyphColor");
         _timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMilliseconds(1000.0 / 30) };
         _timer.Tick += (_, _) =>
         {
@@ -157,7 +168,7 @@ public sealed class AsciiHorizonBackground : FrameworkElement
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         base.OnDpiChanged(oldDpi, newDpi);
-        _glyphs = new AsciiGlyphAtlas(newDpi.PixelsPerDip);
+        _glyphs = new AsciiGlyphAtlas(newDpi.PixelsPerDip, GlyphColor);
         InvalidateVisual();
     }
 

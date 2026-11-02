@@ -83,7 +83,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="5">
+                    <Border Background="Transparent" Padding="{TemplateBinding Padding}" CornerRadius="{DynamicResource SubtleCornerRadius}">
                         <ContentPresenter x:Name="SwatchContent" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.8" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -123,7 +123,7 @@
                         Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="6"
+                        CornerRadius="{DynamicResource ControlCornerRadius}"
                         Padding="{TemplateBinding Padding}"
                         SnapsToDevicePixels="True">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
@@ -191,7 +191,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
-                    <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                    <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -218,7 +218,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
-                    <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
+                    <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource ControlCornerRadius}" SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -246,16 +246,16 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Button}">
-                    <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
+                    <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource ControlCornerRadius}" SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#2AEF4444" />
-                            <Setter Property="Foreground" Value="#EF4444" />
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource DangerHoverSurfaceBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#44EF4444" />
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource DangerPressedSurfaceBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -276,7 +276,7 @@
                     <Grid VerticalAlignment="Center">
                         <!-- Background Track Line -->
                         <Border Height="4"
-                            CornerRadius="2"
+                            CornerRadius="{DynamicResource SmallCornerRadius}"
                             Background="{DynamicResource BgInputBrush}"
                             BorderBrush="{DynamicResource BorderDarkBrush}"
                             BorderThickness="1"
@@ -294,7 +294,7 @@
                                             <Setter Property="Template">
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="{x:Type RepeatButton}">
-                                                        <Border Height="4" CornerRadius="2" Background="{TemplateBinding Background}" SnapsToDevicePixels="True" />
+                                                        <Border Height="4" CornerRadius="{DynamicResource SmallCornerRadius}" Background="{TemplateBinding Background}" SnapsToDevicePixels="True" />
                                                     </ControlTemplate>
                                                 </Setter.Value>
                                             </Setter>
@@ -376,7 +376,7 @@
         <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="{DynamicResource SurfaceCornerRadius}" />
         <Setter Property="Padding" Value="20,18" />
         <Setter Property="Margin" Value="0,0,0,16" />
     </Style>
@@ -408,7 +408,7 @@
                 <ControlTemplate TargetType="RadioButton">
                     <Border x:Name="ChoiceSurface" Background="{TemplateBinding Background}"
                         BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
-                        CornerRadius="5" Padding="{TemplateBinding Padding}">
+                        CornerRadius="{DynamicResource SubtleCornerRadius}" Padding="{TemplateBinding Padding}">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                             RecognizesAccessKey="True" TextElement.Foreground="{TemplateBinding Foreground}" />
                     </Border>

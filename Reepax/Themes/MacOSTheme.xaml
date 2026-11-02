@@ -1,0 +1,139 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/Reepax;component/Themes/DarkTheme.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+    <Color x:Key="ChoiceSurfaceColor">#FFFFFF</Color>
+    <SolidColorBrush x:Key="ChoiceSurfaceBrush" Color="{StaticResource ChoiceSurfaceColor}" />
+    <SolidColorBrush x:Key="ChoiceBorderBrush" Color="#D1D1D6" />
+    <SolidColorBrush x:Key="AlertTipBrush" Color="#267D3C" />
+    <SolidColorBrush x:Key="AlertImportantBrush" Color="#7738B6" />
+    <SolidColorBrush x:Key="AlertWarningBrush" Color="#8A5500" />
+    <SolidColorBrush x:Key="AlertCautionBrush" Color="#C9342E" />
+    <SolidColorBrush x:Key="AlertNoteBrush" Color="#0066CC" />
+    <CornerRadius x:Key="CheckBoxCornerRadius">3</CornerRadius>
+    <Thickness x:Key="CheckBoxBorderThickness">1</Thickness>
+    <Color x:Key="ChoiceHoverColor">#E8E8ED</Color>
+    <SolidColorBrush x:Key="ChoiceHoverBrush" Color="{StaticResource ChoiceHoverColor}" />
+    <Color x:Key="ChoiceForegroundColor">#1D1D1F</Color>
+    <SolidColorBrush x:Key="ChoiceForegroundBrush" Color="{StaticResource ChoiceForegroundColor}" />
+    <Color x:Key="TextDisabledColor">#8E8E93</Color>
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource TextDisabledColor}" />
+    <Color x:Key="DisabledSurfaceColor">#E5E5EA</Color>
+    <SolidColorBrush x:Key="DisabledSurfaceBrush" Color="{StaticResource DisabledSurfaceColor}" />
+    <Color x:Key="CheckBorderColor">#8E8E93</Color>
+    <SolidColorBrush x:Key="CheckBorderBrush" Color="{StaticResource CheckBorderColor}" />
+    <Color x:Key="CheckHoverColor">#E9E9ED</Color>
+    <SolidColorBrush x:Key="CheckHoverBrush" Color="{StaticResource CheckHoverColor}" />
+    <Color x:Key="CheckHoverBorderColor">#636366</Color>
+    <SolidColorBrush x:Key="CheckHoverBorderBrush" Color="{StaticResource CheckHoverBorderColor}" />
+    <Color x:Key="CheckDisabledColor">#E5E5EA</Color>
+    <SolidColorBrush x:Key="CheckDisabledBrush" Color="{StaticResource CheckDisabledColor}" />
+    <Color x:Key="CheckDisabledGlyphColor">#8E8E93</Color>
+    <SolidColorBrush x:Key="CheckDisabledGlyphBrush" Color="{StaticResource CheckDisabledGlyphColor}" />
+    <Color x:Key="DangerColor">#C9342E</Color>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <Color x:Key="DangerSoftColor">#B52B25</Color>
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="{StaticResource DangerSoftColor}" />
+    <Color x:Key="DangerHoverColor">#B12A23</Color>
+    <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHoverColor}" />
+    <Color x:Key="DangerPressedColor">#99231E</Color>
+    <SolidColorBrush x:Key="DangerPressedBrush" Color="{StaticResource DangerPressedColor}" />
+    <Color x:Key="DangerDeepColor">#871F1B</Color>
+    <SolidColorBrush x:Key="DangerDeepBrush" Color="{StaticResource DangerDeepColor}" />
+    <Color x:Key="DangerDeepPressedColor">#731A16</Color>
+    <SolidColorBrush x:Key="DangerDeepPressedBrush" Color="{StaticResource DangerDeepPressedColor}" />
+    <Color x:Key="DangerSurfaceColor">#14C9342E</Color>
+    <SolidColorBrush x:Key="DangerSurfaceBrush" Color="{StaticResource DangerSurfaceColor}" />
+    <Color x:Key="DangerHoverSurfaceColor">#1CC9342E</Color>
+    <SolidColorBrush x:Key="DangerHoverSurfaceBrush" Color="{StaticResource DangerHoverSurfaceColor}" />
+    <Color x:Key="DangerPressedSurfaceColor">#2BC9342E</Color>
+    <SolidColorBrush x:Key="DangerPressedSurfaceBrush" Color="{StaticResource DangerPressedSurfaceColor}" />
+    <Color x:Key="CrashDangerSurfaceColor">#15C9342E</Color>
+    <SolidColorBrush x:Key="CrashDangerSurfaceBrush" Color="{StaticResource CrashDangerSurfaceColor}" />
+    <Color x:Key="CrashDangerBorderColor">#6CC9342E</Color>
+    <SolidColorBrush x:Key="CrashDangerBorderBrush" Color="{StaticResource CrashDangerBorderColor}" />
+    <Color x:Key="SuccessColor">#267D3C</Color>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <Color x:Key="SuccessBrightColor">#267D3C</Color>
+    <SolidColorBrush x:Key="SuccessBrightBrush" Color="{StaticResource SuccessBrightColor}" />
+    <Color x:Key="InfoTrackColor">#300066CC</Color>
+    <SolidColorBrush x:Key="InfoTrackBrush" Color="{StaticResource InfoTrackColor}" />
+    <Color x:Key="InfoSurfaceColor">#0D0066CC</Color>
+    <SolidColorBrush x:Key="InfoSurfaceBrush" Color="{StaticResource InfoSurfaceColor}" />
+    <Color x:Key="InfoBorderColor">#300066CC</Color>
+    <SolidColorBrush x:Key="InfoBorderBrush" Color="{StaticResource InfoBorderColor}" />
+    <Color x:Key="ActiveSurfaceColor">#DCE9FF</Color>
+    <SolidColorBrush x:Key="ActiveSurfaceBrush" Color="{StaticResource ActiveSurfaceColor}" />
+    <Color x:Key="FocusOutlineColor">#660066CC</Color>
+    <SolidColorBrush x:Key="FocusOutlineBrush" Color="{StaticResource FocusOutlineColor}" />
+    <Color x:Key="BrowserBlockedBadgeColor">#C9342E</Color>
+    <SolidColorBrush x:Key="BrowserBlockedBadgeBrush" Color="{StaticResource BrowserBlockedBadgeColor}" />
+    <Color x:Key="BrowserSurfaceColor">#FFFFFF</Color>
+    <SolidColorBrush x:Key="BrowserSurfaceBrush" Color="{StaticResource BrowserSurfaceColor}" />
+    <Color x:Key="ForegroundIconColor">#1D1D1F</Color>
+    <SolidColorBrush x:Key="ForegroundIconBrush" Color="{StaticResource ForegroundIconColor}" />
+    <Color x:Key="StatusNeutralColor">#545459</Color>
+    <SolidColorBrush x:Key="StatusNeutralBrush" Color="{StaticResource StatusNeutralColor}" />
+    <CornerRadius x:Key="SmallCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="CompactCornerRadius">7</CornerRadius>
+    <CornerRadius x:Key="SubtleCornerRadius">7</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="RoundedControlCornerRadius">9</CornerRadius>
+    <CornerRadius x:Key="SurfaceCornerRadius">12</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">14</CornerRadius>
+    <CornerRadius x:Key="LargeSurfaceCornerRadius">16</CornerRadius>
+    <FontFamily x:Key="AppFontFamily">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <Color x:Key="BackdropGlyphColor">#586579</Color>
+    <SolidColorBrush x:Key="BackdropLogoBrush" Color="#384154" />
+    <Color x:Key="BgDarkColor">#F5F5F7</Color>
+    <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource BgDarkColor}" />
+    <Color x:Key="BgCardColor">#FFFFFF</Color>
+    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCardColor}" />
+    <Color x:Key="BgCardAltColor">#E9E9ED</Color>
+    <SolidColorBrush x:Key="BgCardAltBrush" Color="{StaticResource BgCardAltColor}" />
+    <Color x:Key="BgInputColor">#F0F0F3</Color>
+    <SolidColorBrush x:Key="BgInputBrush" Color="{StaticResource BgInputColor}" />
+    <Color x:Key="BgHeaderColor">#F1F1F3</Color>
+    <SolidColorBrush x:Key="BgHeaderBrush" Color="{StaticResource BgHeaderColor}" />
+    <Color x:Key="BorderDarkColor">#D1D1D6</Color>
+    <SolidColorBrush x:Key="BorderDarkBrush" Color="{StaticResource BorderDarkColor}" />
+    <Color x:Key="BorderHighlightColor">#0066CC</Color>
+    <SolidColorBrush x:Key="BorderHighlightBrush" Color="{StaticResource BorderHighlightColor}" />
+    <Color x:Key="TextPrimaryColor">#1D1D1F</Color>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
+    <Color x:Key="TextSecondaryColor">#545459</Color>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+    <Color x:Key="TextMutedColor">#6C6C70</Color>
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+    <Color x:Key="AccentBlueColor">#0066CC</Color>
+    <SolidColorBrush x:Key="AccentBlueBrush" Color="{StaticResource AccentBlueColor}" />
+    <Color x:Key="AccentBlueHoverColor">#0054AD</Color>
+    <SolidColorBrush x:Key="AccentBlueHoverBrush" Color="{StaticResource AccentBlueHoverColor}" />
+    <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AccentHoverForegroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AccentGlowBrush1" Color="#300066CC" />
+    <SolidColorBrush x:Key="AccentGlowBrush2" Color="#140066CC" />
+    <SolidColorBrush x:Key="AccentSelectionBgBrush" Color="#DCE9FF" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#8E8E93" />
+    <Color x:Key="GlyphPrimaryColor">#1D1D1F</Color>
+    <SolidColorBrush x:Key="GlyphPrimaryBrush" Color="{StaticResource GlyphPrimaryColor}" />
+    <Color x:Key="SecondaryAccentSurfaceColor">#180066CC</Color>
+    <SolidColorBrush x:Key="SecondaryAccentSurfaceBrush" Color="{StaticResource SecondaryAccentSurfaceColor}" />
+    <Color x:Key="SidebarColor">#ECECEF</Color>
+    <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
+    <Color x:Key="StatusCompletedColor">#267D3C</Color>
+    <SolidColorBrush x:Key="StatusCompletedBrush" Color="{StaticResource StatusCompletedColor}" />
+    <Color x:Key="StatusDownloadingColor">#0066CC</Color>
+    <SolidColorBrush x:Key="StatusDownloadingBrush" Color="{StaticResource StatusDownloadingColor}" />
+    <Color x:Key="StatusAttentionColor">#8A5500</Color>
+    <SolidColorBrush x:Key="StatusAttentionBrush" Color="{StaticResource StatusAttentionColor}" />
+    <Color x:Key="StatusPausedColor">#6C6C70</Color>
+    <SolidColorBrush x:Key="StatusPausedBrush" Color="{StaticResource StatusPausedColor}" />
+    <Color x:Key="StatusFailedColor">#C9342E</Color>
+    <SolidColorBrush x:Key="StatusFailedBrush" Color="{StaticResource StatusFailedColor}" />
+    <Color x:Key="StatusQueuedColor">#545459</Color>
+    <SolidColorBrush x:Key="StatusQueuedBrush" Color="{StaticResource StatusQueuedColor}" />
+    <Color x:Key="StatusOtherColor">#6C6C70</Color>
+    <SolidColorBrush x:Key="StatusOtherBrush" Color="{StaticResource StatusOtherColor}" />
+</ResourceDictionary>

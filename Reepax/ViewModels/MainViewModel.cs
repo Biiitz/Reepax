@@ -513,7 +513,8 @@ public partial class MainViewModel : ObservableObject
             _settingsService.SaveSettings();
         }
 
-        IsDarkMode = true;
+        _selectedThemeId = ThemeCatalog.Resolve(settings.ThemeId).Id;
+        _isDarkMode = ThemeCatalog.Resolve(settings.ThemeId).IsDark;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         StartWithWindows = IsPortableMode ? false : settings.StartWithWindows;
         EnableCompletionNotifications = settings.EnableCompletionNotifications;
@@ -566,6 +567,7 @@ public partial class MainViewModel : ObservableObject
 
         ThemeService.Instance.ThemeChanged += dark =>
         {
+            SynchronizeThemeSelection();
             if (_isDarkMode != dark)
             {
                 _isDarkMode = dark;

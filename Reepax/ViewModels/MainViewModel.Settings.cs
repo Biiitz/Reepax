@@ -510,15 +510,11 @@ public partial class MainViewModel
 
     partial void OnIsDarkModeChanged(bool value)
     {
-        if (!value)
+        if (value != ThemeService.Instance.IsDarkMode)
         {
-            _isDarkMode = true;
+            _isDarkMode = ThemeService.Instance.IsDarkMode;
             OnPropertyChanged(nameof(IsDarkMode));
         }
-        _settingsService.Settings.IsDarkMode = true;
-        _settingsService.Settings.EnableForcedDarkMode = true;
-        _settingsService.SaveSettings();
-        ThemeService.Instance.ApplyTheme(true, save: true);
     }
 
 
@@ -996,6 +992,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void ToggleColorPalette()
     {
+        if (!CanCustomizeAccent) return;
         IsColorPaletteOpen = !IsColorPaletteOpen;
     }
 
@@ -1121,8 +1118,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void ToggleTheme()
     {
-        // Dark mode only - theme cannot be toggled
-        IsDarkMode = true;
+        IsDarkMode = ThemeService.Instance.IsDarkMode;
     }
 
     // =========================================================================

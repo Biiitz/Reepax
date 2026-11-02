@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using Reepax.Services.Storage;
 
 namespace Reepax.Services;
 
-public class ThemeService
+public partial class ThemeService
 {
     private static readonly Lazy<ThemeService> _instance = new(() => new ThemeService());
     public static ThemeService Instance => _instance.Value;
@@ -14,36 +15,33 @@ public class ThemeService
     public event Action<string>? AccentColorChanged;
 
     public const string FixedAccentColorHex = "#3B82F6";
+    private readonly HashSet<object> _themeResourceKeys = new();
+    public ThemeDefinition CurrentTheme { get; private set; } = ThemeCatalog.Resolve(ThemeCatalog.DefaultId);
+    public bool SupportsCustomAccent => CurrentTheme.SupportsCustomAccent;
 
     public bool IsDarkMode
     {
-        get => true;
+        get => CurrentTheme.IsDark;
         set
         {
-            // Dark mode only - cannot be changed
+            // Legacy callers do not select a theme through the dark-mode flag.
         }
     }
 
     private string _currentAccentColorHex = FixedAccentColorHex;
+    private string _customAccentColorHex = FixedAccentColorHex;
     public string CurrentAccentColorHex => _currentAccentColorHex;
 
     public void Initialize()
     {
-        ApplyTheme(true, save: false);
-        string? savedAccent = SettingsService.Instance.Settings.AccentColorHex;
-        if (!string.IsNullOrWhiteSpace(savedAccent) && Helpers.ColorHelper.TryParseHex(savedAccent, out _))
-        {
-            ApplyAccentColor(savedAccent, save: false);
-        }
-        else
-        {
-            ApplyAccentColor(FixedAccentColorHex, save: false);
-        }
+        var saved = SettingsService.Instance.Settings.AccentColorHex;
+        _customAccentColorHex = Helpers.ColorHelper.TryParseHex(saved, out _) ? saved : FixedAccentColorHex;
+        SelectTheme(SettingsService.Instance.Settings.ThemeId, save: false);
     }
 
     public void ToggleTheme()
     {
-        // No-op: only dark mode is available
+        // Theme selection is explicit so future themes do not change this legacy action.
     }
 
     public static System.Windows.Media.Color GetHoverColor(System.Windows.Media.Color color)
@@ -55,6 +53,7 @@ public class ThemeService
 
     public void SetAccentColor(string hexColor, bool save = true, double? hue = null, double? sat = null, double? val = null)
     {
+        if (!SupportsCustomAccent) return;
         if (string.IsNullOrWhiteSpace(hexColor) || !Helpers.ColorHelper.TryParseHex(hexColor, out _))
         {
             hexColor = FixedAccentColorHex;
@@ -83,6 +82,7 @@ public class ThemeService
             }
 
             _currentAccentColorHex = hexColor;
+            _customAccentColorHex = hexColor;
             var hoverColor = GetHoverColor(color);
 
             if (app != null)
@@ -97,6 +97,7 @@ public class ThemeService
                 app.Resources["BorderHighlightColor"] = color;
 
                 app.Resources["AccentBlueBrush"] = accentBrush;
+                app.Resources["ChoiceBorderBrush"] = accentBrush;
                 app.Resources["AccentBlueHoverBrush"] = hoverBrush;
                 var contrastBrush = new System.Windows.Media.SolidColorBrush(Helpers.ColorHelper.GetContrastForeground(color));
                 contrastBrush.Freeze();
@@ -155,64 +156,63 @@ public class ThemeService
         }
     }
 
-    public void ApplyTheme(bool isDark, bool save = true)
+    public void ApplyTheme(bool isDark, bool save = true) => SelectTheme(CurrentTheme.Id, save);
+
+    public void SelectTheme(string? themeId, bool save = true)
     {
         var app = Application.Current;
-        if (!Storage.DownloadPersistenceService.IsTestEnvironment &&
-            app != null && app.Dispatcher != null &&
-            app.Dispatcher.Thread?.IsAlive == true &&
-            !app.Dispatcher.CheckAccess())
+        if (!DownloadPersistenceService.IsTestEnvironment && app?.Dispatcher is { } dispatcher &&
+            dispatcher.Thread.IsAlive && !dispatcher.CheckAccess())
         {
-            app.Dispatcher.Invoke(() => ApplyTheme(isDark, save));
+            dispatcher.Invoke(() => SelectTheme(themeId, save));
             return;
         }
-
-        try
+        var theme = ThemeCatalog.Resolve(themeId);
+        var dictionary = new ResourceDictionary
         {
-            if (app != null)
-            {
-                var themeUri = new Uri("Themes/DarkTheme.xaml", UriKind.Relative);
-                var newDict = new ResourceDictionary { Source = themeUri };
-
-                // Find and replace existing theme dictionary
-                var existingTheme = app.Resources.MergedDictionaries.FirstOrDefault(d => 
-                    d.Source != null && (d.Source.OriginalString.Contains("DarkTheme") || d.Source.OriginalString.Contains("LightTheme")));
-
-                if (existingTheme != null)
-                {
-                    var index = app.Resources.MergedDictionaries.IndexOf(existingTheme);
-                    app.Resources.MergedDictionaries.RemoveAt(index);
-                    app.Resources.MergedDictionaries.Insert(index, newDict);
-                }
-                else
-                {
-                    app.Resources.MergedDictionaries.Add(newDict);
-                }
-
-                // Explicitly update root application resource keys for immediate WPF re-evaluation
-                foreach (var key in newDict.Keys)
-                {
-                    app.Resources[key] = newDict[key];
-                }
-            }
-
-            if (save)
-            {
-                SettingsService.Instance.Settings.IsDarkMode = true;
-                SettingsService.Instance.Settings.EnableForcedDarkMode = true;
-                SettingsService.Instance.SaveSettings();
-            }
-
-            ApplyAccentColor(_currentAccentColorHex, save: false);
-
-            // Update title bars for all open windows
-            UpdateAllOpenWindowsTitleBar(true);
-
-            ThemeChanged?.Invoke(true);
+            Source = new Uri("/Reepax;component/Themes/" + theme.DictionaryPath, UriKind.Relative)
+        };
+        if (app != null)
+        {
+            var existing = app.Resources.MergedDictionaries.FirstOrDefault(candidate =>
+                candidate.Source != null && ThemeCatalog.Themes.Any(definition =>
+                    candidate.Source.OriginalString.EndsWith(definition.DictionaryPath, StringComparison.OrdinalIgnoreCase)));
+            int index = existing == null ? app.Resources.MergedDictionaries.Count : app.Resources.MergedDictionaries.IndexOf(existing);
+            if (existing != null) app.Resources.MergedDictionaries.RemoveAt(index);
+            app.Resources.MergedDictionaries.Insert(index, dictionary);
+            foreach (var key in _themeResourceKeys) app.Resources.Remove(key);
+            _themeResourceKeys.Clear();
+            CopyResources(dictionary, app.Resources);
         }
-        catch (Exception ex)
+        CurrentTheme = theme;
+        var settings = SettingsService.Instance.Settings;
+        if (theme.SupportsCustomAccent)
         {
-            Storage.AppLogger.Error("[ThemeService] Error applying theme", ex);
+            ApplyAccentColor(_customAccentColorHex, save: false);
+        }
+        else
+        {
+            _currentAccentColorHex = theme.AccentColor;
+            AccentColorChanged?.Invoke(_currentAccentColorHex);
+        }
+        if (save)
+        {
+            settings.ThemeId = theme.Id;
+            settings.IsDarkMode = theme.IsDark;
+            SettingsService.Instance.RequestSaveSettings();
+        }
+        UpdateAllOpenWindowsTitleBar(theme.IsDark);
+        RefreshStatusBindings();
+        ThemeChanged?.Invoke(theme.IsDark);
+    }
+
+    private void CopyResources(ResourceDictionary source, ResourceDictionary target)
+    {
+        foreach (var merged in source.MergedDictionaries) CopyResources(merged, target);
+        foreach (var key in source.Keys)
+        {
+            target[key] = source[key];
+            _themeResourceKeys.Add(key);
         }
     }
 
@@ -246,17 +246,17 @@ public class ThemeService
                     }
 
                     // Windows 11 title bar caption and text coloring (0x00BBGGRR format)
-                    int captionColor = isDark ? 0x00161616 : 0x00F9F5F1;
+                    int captionColor = isDark ? 0x00161616 : 0x00F3F1F1;
                     DwmSetWindowAttribute(hwnd, 35, ref captionColor, sizeof(int));
 
-                    int textColor = isDark ? 0x00F6F4F3 : 0x002A170F;
+                    int textColor = isDark ? 0x00F6F4F3 : 0x001F1D1D;
                     DwmSetWindowAttribute(hwnd, 36, ref textColor, sizeof(int));
 
-                    int borderColor = isDark ? 0x002A2A2A : 0x00E5E7EB;
+                    int borderColor = isDark ? 0x002A2A2A : 0x00D6D1D1;
                     DwmSetWindowAttribute(hwnd, 34, ref borderColor, sizeof(int));
 
                     // Windows 11 DWMWA_WINDOW_CORNER_PREFERENCE
-                    int cornerPreference = 0;
+                    int cornerPreference = isDark ? 0 : 2;
                     DwmSetWindowAttribute(hwnd, 33, ref cornerPreference, sizeof(int));
                 }
             }

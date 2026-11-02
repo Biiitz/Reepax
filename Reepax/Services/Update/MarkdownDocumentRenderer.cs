@@ -716,35 +716,35 @@ public static class MarkdownDocumentRenderer
 
     private static Paragraph CreateGitHubAlert(string alertType, string content)
     {
-        Color alertColor;
+        string brushKey;
         string icon;
         string title;
 
         switch (alertType)
         {
             case "TIP":
-                alertColor = Color.FromRgb(34, 197, 94); // Green
+                brushKey = "AlertTipBrush";
                 icon = "💡";
                 title = "Tip";
                 break;
             case "IMPORTANT":
-                alertColor = Color.FromRgb(168, 85, 247); // Purple
+                brushKey = "AlertImportantBrush";
                 icon = "❗";
                 title = "Important";
                 break;
             case "WARNING":
-                alertColor = Color.FromRgb(234, 179, 8); // Yellow / Amber
+                brushKey = "AlertWarningBrush";
                 icon = "⚠️";
                 title = "Warning";
                 break;
             case "CAUTION":
-                alertColor = Color.FromRgb(239, 68, 68); // Red
+                brushKey = "AlertCautionBrush";
                 icon = "🛑";
                 title = "Caution";
                 break;
             case "NOTE":
             default:
-                alertColor = Color.FromRgb(59, 130, 246); // Blue
+                brushKey = "AlertNoteBrush";
                 icon = "ℹ️";
                 title = "Note";
                 break;
@@ -753,14 +753,14 @@ public static class MarkdownDocumentRenderer
         var p = new Paragraph
         {
             BorderThickness = new Thickness(3, 0, 0, 0),
-            BorderBrush = new SolidColorBrush(alertColor),
             Padding = new Thickness(10, 4, 10, 5),
             Margin = new Thickness(0, 4, 0, 6),
             LineHeight = 18
         };
 
-        AppendEmojiAwareRuns(p.Inlines, $"{icon} ", weight: FontWeights.Normal, foreground: new SolidColorBrush(alertColor));
-        AppendEmojiAwareRuns(p.Inlines, $"{title}\n", weight: FontWeights.Bold, foreground: new SolidColorBrush(alertColor));
+        p.SetResourceReference(Block.BorderBrushProperty, brushKey);
+        AppendEmojiAwareRuns(p.Inlines, $"{icon} ", weight: FontWeights.Normal, resourceKey: brushKey);
+        AppendEmojiAwareRuns(p.Inlines, $"{title}\n", weight: FontWeights.Bold, resourceKey: brushKey);
 
         AddFormattedInlines(p.Inlines, content);
         return p;
