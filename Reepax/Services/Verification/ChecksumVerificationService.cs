@@ -1,11 +1,14 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using SharpCompress.Archives;
+using SharpCompress.Common;
+using SharpCompress.Common.Rar;
 using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
@@ -121,8 +124,7 @@ public class ChecksumVerificationService
                     return ChecksumVerificationResult.Success(calculated, algorithm);
                 }
 
-                // 5. If no explicit checksum is available, validate archive internal header & structure integrity
-                // Note: Only validate primary parts (.part1.rar, .001, .zip) since split parts (.part2.rar, .002) do not contain archive headers.
+                // Inspect available headers; continuation parts may not contain archive headers.
                 if (ArchiveExtractionService.Instance.IsArchiveFile(filePath))
                 {
                     if (ArchiveExtractionService.Instance.IsPrimaryArchivePart(filePath))
@@ -135,7 +137,7 @@ public class ChecksumVerificationService
                     }
                 }
 
-                // 6. File is valid! Compute SHA256 for audit logging
+                // A local fingerprint does not prove agreement with an original checksum.
                 cancellationToken.ThrowIfCancellationRequested();
                 var sha256 = cancellationToken.CanBeCanceled
                     ? await CalculateHashAsync(filePath, SHA256.Create(), cancellationToken).ConfigureAwait(false)
@@ -244,14 +246,9 @@ public class ChecksumVerificationService
             if (ext == ".zip")
             {
                 using var zip = ZipFile.OpenRead(filePath);
-                // Enumerate entry headers to ensure central directory is intact
-                var count = zip.Entries.Count;
+                // Enumerate the central directory; empty archives may contain comments or a prefix.
+                _ = zip.Entries.Count;
                 cancellationToken.ThrowIfCancellationRequested();
-                if (count == 0 && new FileInfo(filePath).Length > 100)
-                {
-                    error = Loc.Get("Validation_ZipNoValidEntries");
-                    return false;
-                }
                 return true;
             }
 
@@ -263,13 +260,19 @@ public class ChecksumVerificationService
                 return false;
             }
 
-            // Read entries headers to check for corrupted block structures
+            // Inspect headers without decompressing archive contents.
             try
             {
                 foreach (var entry in archive.Entries)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     _ = entry.Key;
+                    if (archive.Type == ArchiveType.Rar && !entry.IsComplete &&
+                        archive.Volumes.OfType<RarVolume>().Any(volume => volume.IsMultiVolume))
+                    {
+                        // Size needs the final volume, but later headers still need validation.
+                        continue;
+                    }
                     _ = entry.Size;
                 }
             }
@@ -277,13 +280,11 @@ public class ChecksumVerificationService
             {
                 throw;
             }
-            catch (Exception entryEx)
+            catch (SharpCompress.Common.CryptographicException) when (
+                (archive.Type is ArchiveType.Rar or ArchiveType.SevenZip) && archive.ReaderOptions.Password == null)
             {
-                // For multi-volume archives (e.g. .part01.rar), entries span across multiple parts.
-                // As long as not all parts have finished downloading, enumeration is expected to be
-                // incomplete ("ArchiveEntry is incomplete..."). This is NOT evidence of corruption;
-                // definitive verification happens during extraction.
-                AppLogger.Info($"[ChecksumVerifier] Archive entry check skipped for '{Path.GetFileName(filePath)}': {entryEx.Message}");
+                cancellationToken.ThrowIfCancellationRequested();
+                AppLogger.Info("[ChecksumVerifier] Encrypted archive headers require a password; structure check deferred.");
             }
 
             return true;
