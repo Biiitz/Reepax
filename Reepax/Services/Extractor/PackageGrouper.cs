@@ -265,6 +265,7 @@ public static class PackageGrouper
         var package = new DownloadPackage
         {
             Name = safePackageName,
+            IsExpanded = false,
             SaveDirectory = saveDir,
             AutoExtractArchives = autoExtractArchives,
             LowResourceExtraction = lowResourceExtraction ?? false,

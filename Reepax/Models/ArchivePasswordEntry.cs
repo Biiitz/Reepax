@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Serialization;
@@ -38,9 +39,9 @@ public sealed class ArchivePasswordEntry : ObservableObject
     internal static void NormalizeSettings(AppSettings settings)
     {
         settings.ExtractionPasswords = AppSettings.SanitizeExtractionPasswords(settings.ExtractionPasswords);
-        var entries = (settings.ArchivePasswordStatistics ?? new()).Where(entry => entry != null &&
-            !string.IsNullOrEmpty(entry.Password)).GroupBy(entry => entry.Password, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var entries = new Dictionary<string, ArchivePasswordEntry>(StringComparer.Ordinal);
+        foreach (var entry in settings.ArchivePasswordStatistics ?? new())
+            if (entry != null && !string.IsNullOrEmpty(entry.Password)) entries.TryAdd(entry.Password, entry);
         settings.ArchivePasswordStatistics = settings.ExtractionPasswords.Select(password =>
         {
             var entry = entries.GetValueOrDefault(password) ?? new ArchivePasswordEntry { Password = password };

@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Reepax.Helpers;
 using Reepax.Models;
 using Reepax.Services;
 using Reepax.Services.Audio;
@@ -400,10 +401,13 @@ public partial class MainViewModel
     public ObservableCollection<string> ArchivePasswords { get; } = new();
     public ObservableCollection<ArchivePasswordEntry> ArchivePasswordEntries { get; } = new();
     private readonly object _archivePasswordRefreshLock = new();
+    private CoalescedDispatcherRefresh? _archivePasswordRefresh;
 
     private void InitializeArchivePasswords()
     {
         RefreshArchivePasswordEntries();
+        _archivePasswordRefresh = new CoalescedDispatcherRefresh(() => SafeDispatch(RefreshArchivePasswordEntries),
+            () => DownloadPersistenceService.IsTestEnvironment ? null : Application.Current?.Dispatcher);
         ArchivePasswords.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasArchivePasswords));
@@ -415,7 +419,7 @@ public partial class MainViewModel
         handler = (_, _) =>
         {
             if (reference.TryGetTarget(out var viewModel))
-                SafeDispatch(viewModel.RefreshArchivePasswordEntries);
+                viewModel._archivePasswordRefresh!.Request();
             else
                 SettingsService.Instance.ArchivePasswordsChanged -= handler;
         };

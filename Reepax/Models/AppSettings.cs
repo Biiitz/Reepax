@@ -126,12 +126,13 @@ public class AppSettings
         }
 
         var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var pwd in passwords)
         {
             if (string.IsNullOrEmpty(pwd))
                 continue;
 
-            if (!list.Contains(pwd, StringComparer.Ordinal))
+            if (seen.Add(pwd))
             {
                 list.Add(pwd);
             }

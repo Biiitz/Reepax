@@ -26,7 +26,7 @@ public partial class MainWindow : Window
 {
     private ScrollViewer? TreeListScrollViewer => DownloadRowsList?.ScrollViewer;
     private bool _hasInitializedDownloadsTab;
-    private bool _isTabIndicatorInitialized;
+    private bool _hasInitializedMainNavigation;
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
     private bool _isResizingOrMovingViaWin32;
@@ -56,7 +56,7 @@ public partial class MainWindow : Window
         Title = ViewModel.WindowTitle;
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
 
-        Loaded += MainWindow_TabIndicator_Loaded;
+        Loaded += MainWindow_Navigation_Loaded;
         StatusFilterPopup.Opened += (s, e) => _isStatusFilterPopupOpen = true;
 
         // Browser-style navigation
@@ -486,9 +486,6 @@ public partial class MainWindow : Window
     {
         if (sender is not FrameworkElement element) return;
 
-        var transform = (element.RenderTransform as TranslateTransform)
-                     ?? (element.RenderTransform = new TranslateTransform()) as TranslateTransform;
-
         if (element.IsVisible)
         {
             // Skip the initial animation on cold window startup for the default Downloads tab
@@ -499,7 +496,7 @@ public partial class MainWindow : Window
             }
             _hasInitializedDownloadsTab = true;
 
-            AnimateTabIn(element, transform);
+            TabContentTransition.Begin(element);
 
             if (element == DownloadsTabContent)
             {
@@ -514,89 +511,24 @@ public partial class MainWindow : Window
         }
         else
         {
-            ResetTabAnimation(element, transform);
+            TabContentTransition.Reset(element);
         }
     }
 
-    private static void ResetTabAnimation(FrameworkElement element, TranslateTransform? transform)
+    private void MainWindow_Navigation_Loaded(object sender, RoutedEventArgs e)
     {
-        element.BeginAnimation(UIElement.OpacityProperty, null);
-        element.Opacity = 1.0;
-        if (transform != null)
+        if (!_hasInitializedMainNavigation)
         {
-            transform.BeginAnimation(TranslateTransform.YProperty, null);
-            transform.Y = 0.0;
+            ViewModel.PropertyChanged += ViewModel_MainNavigation_PropertyChanged;
+            _hasInitializedMainNavigation = true;
         }
-    }
-
-    private void AnimateTabIn(FrameworkElement element, TranslateTransform? transform)
-    {
-        ResetTabAnimation(element, transform);
-
-        var duration = TimeSpan.FromMilliseconds(240);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        var fadeAnim = new DoubleAnimation
-        {
-            From = 0.0,
-            To = 1.0,
-            Duration = duration,
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.HoldEnd
-        };
-
-        fadeAnim.Completed += (s, e) =>
-        {
-            element.BeginAnimation(UIElement.OpacityProperty, null);
-            element.Opacity = 1.0;
-        };
-
-        element.BeginAnimation(UIElement.OpacityProperty, fadeAnim);
-
-        if (transform != null)
-        {
-            var slideAnim = new DoubleAnimation
-            {
-                From = 20.0,
-                To = 0.0,
-                Duration = duration,
-                EasingFunction = ease,
-                FillBehavior = FillBehavior.HoldEnd
-            };
-
-            slideAnim.Completed += (s, e) =>
-            {
-                transform.BeginAnimation(TranslateTransform.YProperty, null);
-                transform.Y = 0.0;
-            };
-
-            transform.BeginAnimation(TranslateTransform.YProperty, slideAnim);
-        }
-    }
-
-    private void MainWindow_TabIndicator_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (DownloadsTabButton != null)
-            DownloadsTabButton.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
-        if (SettingsTabButton != null)
-            SettingsTabButton.SizeChanged += (_, _) => UpdateSlidingTabIndicator(animate: false);
-
-        if (ViewModel != null)
-            ViewModel.PropertyChanged += ViewModel_TabIndicator_PropertyChanged;
-
-        UpdateSlidingTabIndicator(animate: false);
         UpdateDownloadToolsAvailability();
-        _isTabIndicatorInitialized = true;
     }
 
-    private void ViewModel_TabIndicator_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void ViewModel_MainNavigation_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(ViewModel.SelectedMainTab))
-        {
             UpdateDownloadToolsAvailability();
-            Dispatcher.BeginInvoke(new Action(() => UpdateSlidingTabIndicator(animate: true)),
-                System.Windows.Threading.DispatcherPriority.Loaded);
-        }
     }
 
     private void UpdateDownloadToolsAvailability()
@@ -614,68 +546,6 @@ public partial class MainWindow : Window
 
         SearchFilterBarContainer.IsEnabled = enabled;
         QuickSettingsButton.IsEnabled = enabled;
-    }
-
-    private void UpdateSlidingTabIndicator(bool animate = true)
-    {
-        if (DownloadsTabButton == null || SettingsTabButton == null || 
-            TabIndicatorTransform == null || SlidingTabIndicator == null || 
-            TabStripContainer == null)
-            return;
-
-        var targetButton = ViewModel?.SelectedMainTab == AppMainTab.Settings 
-            ? SettingsTabButton 
-            : DownloadsTabButton;
-
-        double targetWidth = targetButton.ActualWidth;
-        if (targetWidth <= 0)
-        {
-            targetWidth = targetButton.DesiredSize.Width > 0 ? targetButton.DesiredSize.Width : targetButton.MinWidth;
-            if (targetWidth <= 0) targetWidth = 136;
-        }
-
-        Point relativePoint;
-        try
-        {
-            relativePoint = targetButton.TranslatePoint(new Point(0, 0), TabStripContainer);
-        }
-        catch
-        {
-            return;
-        }
-
-        double targetX = relativePoint.X;
-
-        if (!animate || !_isTabIndicatorInitialized)
-        {
-            TabIndicatorTransform.BeginAnimation(TranslateTransform.XProperty, null);
-            TabIndicatorTransform.X = targetX;
-            SlidingTabIndicator.BeginAnimation(FrameworkElement.WidthProperty, null);
-            SlidingTabIndicator.Width = targetWidth;
-            return;
-        }
-
-        var duration = TimeSpan.FromMilliseconds(200);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        var slideAnim = new DoubleAnimation
-        {
-            To = targetX,
-            Duration = duration,
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.HoldEnd
-        };
-
-        var widthAnim = new DoubleAnimation
-        {
-            To = targetWidth,
-            Duration = duration,
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.HoldEnd
-        };
-
-        TabIndicatorTransform.BeginAnimation(TranslateTransform.XProperty, slideAnim);
-        SlidingTabIndicator.BeginAnimation(FrameworkElement.WidthProperty, widthAnim);
     }
 
     private void UpdateWindowStateInMemory()
@@ -3394,16 +3264,6 @@ public partial class MainWindow : Window
             scv.ScrollToVerticalOffset(scv.VerticalOffset - e.Delta);
             e.Handled = true;
         }
-    }
-
-    private void ScrollToTop_Click(object sender, RoutedEventArgs e)
-    {
-        TreeListScrollViewer?.ScrollToTop();
-    }
-
-    private void ScrollToBottom_Click(object sender, RoutedEventArgs e)
-    {
-        TreeListScrollViewer?.ScrollToBottom();
     }
 
     private bool _isResizingColumn;

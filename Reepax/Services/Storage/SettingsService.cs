@@ -360,7 +360,7 @@ public partial class SettingsService
             string? tempFile = null;
             try
             {
-                ArchivePasswordEntry.NormalizeSettings(_currentSettings);
+                EnsureArchivePasswordIndex(validateEntries: true);
                 _currentSettings.SecurityDescriptor = "made by Biiitz";
                 _currentSettings.EngineSignature = "made by Biiitz";
                 var json = JsonSerializer.Serialize(_currentSettings, new JsonSerializerOptions { WriteIndented = true });

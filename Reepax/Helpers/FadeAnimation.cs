@@ -109,11 +109,12 @@ public static class FadeAnimation
         double target = shown ? 1 : 0;
         double current = element.Opacity;
         int version = ++state.Version;
-        element.BeginAnimation(UIElement.OpacityProperty, null);
-        element.SetValue(UIElement.OpacityProperty, target);
-        if (shown || !collapse) element.SetCurrentValue(UIElement.VisibilityProperty, Visibility.Visible);
         double duration = GetDurationMilliseconds(element);
-        if (!animate || !SystemParameters.ClientAreaAnimation || duration == 0 || Math.Abs(current - target) < 0.001)
+        bool transition = animate && SystemParameters.ClientAreaAnimation && duration > 0 && Math.Abs(current - target) >= 0.001;
+        element.BeginAnimation(UIElement.OpacityProperty, null);
+        element.SetValue(UIElement.OpacityProperty, transition ? current : target);
+        if (shown || !collapse) element.SetCurrentValue(UIElement.VisibilityProperty, Visibility.Visible);
+        if (!transition)
         {
             if (!shown && collapse) element.SetCurrentValue(UIElement.VisibilityProperty, Visibility.Collapsed);
             return;
@@ -121,11 +122,12 @@ public static class FadeAnimation
         var animation = new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(duration))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
-            FillBehavior = FillBehavior.Stop
+            FillBehavior = FillBehavior.HoldEnd
         };
         animation.Completed += (_, _) =>
         {
             if (state.Version != version) return;
+            element.SetValue(UIElement.OpacityProperty, target);
             element.BeginAnimation(UIElement.OpacityProperty, null);
             if (!shown && collapse) element.SetCurrentValue(UIElement.VisibilityProperty, Visibility.Collapsed);
         };

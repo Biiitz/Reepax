@@ -32,27 +32,25 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,12">
                 <Grid x:Name="CategoryButtonsContainer">
                     <StackPanel x:Name="CategoryButtonsPanel">
-                        <!-- 1. General -->
                         <Button x:Name="GeneralCategoryButton"
-                            Command="{Binding SelectSettingsCategoryCommand}"
-                            CommandParameter="General">
+                                Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="General"
+                                AutomationProperties.Name="{loc:Loc Settings_Category_General}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
-                                    <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="General">
-                                            <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3" />
-                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="15" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconSliders}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
+                                <Path Data="{StaticResource IconSliders}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
                                             <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
@@ -64,31 +62,29 @@
                                         </Style>
                                     </Path.Style>
                                 </Path>
-                                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_General}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"
+                                           Text="{loc:Loc Settings_Category_General}" />
                             </Grid>
                         </Button>
-
-                        <!-- 2. Downloads & Connections -->
                         <Button x:Name="DownloadsCategoryButton"
-                            Command="{Binding SelectSettingsCategoryCommand}"
-                            CommandParameter="DownloadConnections">
+                                Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="DownloadConnections"
+                                AutomationProperties.Name="{loc:Loc Settings_Category_Downloads}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
-                                    <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="DownloadConnections">
-                                            <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3" />
-                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="15" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconDownload}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
+                                <Path Data="{StaticResource IconDownload}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
                                             <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
@@ -100,31 +96,29 @@
                                         </Style>
                                     </Path.Style>
                                 </Path>
-                                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_Downloads}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"
+                                           Text="{loc:Loc Settings_Category_Downloads}" />
                             </Grid>
                         </Button>
-
-                        <!-- 3. Keyboard Shortcuts -->
                         <Button x:Name="ShortcutsCategoryButton"
-                            Command="{Binding SelectSettingsCategoryCommand}"
-                            CommandParameter="Shortcuts">
+                                Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="Shortcuts"
+                                AutomationProperties.Name="{loc:Loc Settings_Category_Shortcuts}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
-                                    <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="Shortcuts">
-                                            <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3" />
-                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="15" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconKeyboard}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
+                                <Path Data="{StaticResource IconKeyboard}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
                                             <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
@@ -136,31 +130,29 @@
                                         </Style>
                                     </Path.Style>
                                 </Path>
-                                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_Shortcuts}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"
+                                           Text="{loc:Loc Settings_Category_Shortcuts}" />
                             </Grid>
                         </Button>
-
-                        <!-- 4. About -->
                         <Button x:Name="AboutCategoryButton"
-                            Command="{Binding SelectSettingsCategoryCommand}"
-                            CommandParameter="About">
+                                Command="{Binding SelectSettingsCategoryCommand}" CommandParameter="About"
+                                AutomationProperties.Name="{loc:Loc Settings_Category_About}">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource SettingsCategoryButtonStyle}">
-                                    <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="About">
-                                            <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Button.Style>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="3" />
-                                    <ColumnDefinition Width="22" />
+                                    <ColumnDefinition Width="15" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Path Grid.Column="1" Margin="6,0,0,0" Data="{StaticResource IconInfo}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
+                                <Path Data="{StaticResource IconInfo}" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center">
                                     <Path.Style>
                                         <Style TargetType="Path">
                                             <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
@@ -172,27 +164,15 @@
                                         </Style>
                                     </Path.Style>
                                 </Path>
-                                <TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Text="{loc:Loc Settings_Category_About}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center"
+                                           Text="{loc:Loc Settings_Category_About}" />
                             </Grid>
                         </Button>
                     </StackPanel>
-
-                    <!-- Animated Sliding Blue Pill Indicator -->
-                    <Border x:Name="SlidingCategoryIndicator"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
-                        Width="3"
-                        Height="18"
-                        CornerRadius="1.5"
-                        Background="{DynamicResource AccentBlueBrush}"
-                        IsHitTestVisible="False">
-                        <Border.RenderTransform>
-                            <TranslateTransform x:Name="CategoryIndicatorTransform" X="18" Y="10" />
-                        </Border.RenderTransform>
-                        <Border.Effect>
-                            <DropShadowEffect Direction="0" ShadowDepth="0" BlurRadius="6" Color="{DynamicResource AccentBlueColor}" Opacity="0.25" />
-                        </Border.Effect>
-                    </Border>
+                    <helpers:BranchedNavigationRail x:Name="CategoryBranchRail" Width="36" Margin="6,0,0,0"
+                                                    HorizontalAlignment="Left"
+                                                    TrackBrush="{DynamicResource TextMutedBrush}"
+                                                    ActiveBrush="{DynamicResource AccentBlueBrush}" />
                 </Grid>
             </ScrollViewer>
         </Border>
@@ -202,8 +182,7 @@
             Grid.Column="1"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto"
-            Background="{DynamicResource BgDarkBrush}"
-            PreviewMouseWheel="SettingsScrollViewer_PreviewMouseWheel">
+            Background="{DynamicResource BgDarkBrush}">
             <Grid Margin="28,26,28,32" HorizontalAlignment="Stretch">
 
                 <!-- ******************** CATEGORY 1: GENERAL ******************** -->
@@ -1723,7 +1702,7 @@
                                                             <ColumnDefinition Width="65" />
                                                             <ColumnDefinition Width="90" />
                                                             <ColumnDefinition Width="60" />
-                                                            <ColumnDefinition Width="{x:Static SystemParameters.VerticalScrollBarWidth}" />
+                                                            <ColumnDefinition Width="10" />
                                                         </Grid.ColumnDefinitions>
                                                         <TextBlock Grid.ColumnSpan="2" Text="{loc:Loc Settings_ArchivePasswords_Column_Password}" />
                                                         <TextBlock Grid.Column="2" Text="{loc:Loc Settings_ArchivePasswords_Column_Added}" Margin="8,0" />
@@ -1733,7 +1712,7 @@
                                                             ToolTip="{loc:Loc Settings_ArchivePasswords_Success_ToolTip}" />
                                                     </Grid>
                                                 </Border>
-                                                <ScrollViewer Grid.Row="1" MaxHeight="220"
+                                                <ScrollViewer x:Name="ArchivePasswordsScrollViewer" Grid.Row="1" MaxHeight="220" helpers:ModernScrollThumb.Compact="True"
                                                     VerticalScrollBarVisibility="Visible"
                                                     HorizontalScrollBarVisibility="Disabled"
                                                     Focusable="False"

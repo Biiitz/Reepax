@@ -30,7 +30,9 @@ public partial class DialogUiTests
                 Assert.Equal(uiThread, Environment.CurrentManagedThreadId);
                 publications++;
             };
-            Task.Delay(310).GetAwaiter().GetResult();
+            // Wait on the aggregation clock instead of relying on a scheduler delay.
+            long waitStarted = Environment.TickCount64;
+            Assert.True(SpinWait.SpinUntil(() => Environment.TickCount64 - waitStarted >= 310, TimeSpan.FromSeconds(5)));
             try
             {
                 DownloadPersistenceService.IsTestEnvironment = false;

@@ -159,6 +159,7 @@ public class PackageExportImportTests : IDisposable
 
         // Package must be completely fresh
         Assert.NotNull(imported);
+        Assert.False(imported.IsExpanded);
         Assert.NotEqual(original.Id, imported.Id);
         Assert.Equal("Upgraded_Software", imported.Name);
         Assert.True(imported.AutoExtractArchives);
@@ -238,6 +239,7 @@ public class PackageExportImportTests : IDisposable
         Assert.NotNull(imported);
         Assert.Equal(initialCount + 1, vm.Packages.Count);
         Assert.Contains(imported, vm.Packages);
+        Assert.False(imported.IsExpanded);
         Assert.Equal(0, imported.DownloadedBytes);
         Assert.Equal(DownloadStatus.Queued, imported.Status);
         Assert.Contains("Import_ViewModel_Test", vm.StatusSummary);

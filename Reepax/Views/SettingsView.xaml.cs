@@ -22,6 +22,10 @@ public partial class SettingsView : UserControl
         DataContextChanged += SettingsView_DataContextChanged;
         IsVisibleChanged += SettingsView_IsVisibleChanged;
 
+        foreach (var button in new[] { GeneralCategoryButton, DownloadsCategoryButton, ShortcutsCategoryButton, AboutCategoryButton })
+            button.SizeChanged += (_, _) => UpdateCategoryBranches(animate: false);
+        CategoryButtonsContainer.SizeChanged += (_, _) => UpdateCategoryBranches(animate: false);
+
         if (SpectrumBox != null)
         {
             SpectrumBox.SizeChanged += (_, _) => UpdateSpectrumThumbPosition();
@@ -31,32 +35,16 @@ public partial class SettingsView : UserControl
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
 
-    private bool _isCategoryIndicatorInitialized;
-
     private void SettingsView_Loaded(object sender, RoutedEventArgs e)
     {
         HookViewModel();
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
 
-        if (GeneralCategoryButton != null)
-            GeneralCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
-        if (DownloadsCategoryButton != null)
-            DownloadsCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
-        if (ShortcutsCategoryButton != null)
-            ShortcutsCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
-        if (AboutCategoryButton != null)
-            AboutCategoryButton.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
-        if (CategoryButtonsContainer != null)
-            CategoryButtonsContainer.SizeChanged += (_, _) => UpdateSlidingCategoryIndicator(animate: false);
-
         UpdateSpectrumThumbPosition();
 
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            UpdateSlidingCategoryIndicator(animate: false);
-            _isCategoryIndicatorInitialized = true;
-        }), System.Windows.Threading.DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: false)),
+            System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void SettingsView_Unloaded(object sender, RoutedEventArgs e)
@@ -71,7 +59,7 @@ public partial class SettingsView : UserControl
         UpdateErrorSoundVolumeVisibility(animate: false);
 
         UpdateSpectrumThumbPosition();
-        Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: false)),
+        Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: false)),
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
@@ -79,7 +67,7 @@ public partial class SettingsView : UserControl
     {
         if (IsVisible)
         {
-            Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: false)),
+            Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: false)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
     }
@@ -125,72 +113,26 @@ public partial class SettingsView : UserControl
         }
         else if (e.PropertyName == nameof(MainViewModel.SelectedSettingsCategory))
         {
-            Dispatcher.BeginInvoke(new Action(() => UpdateSlidingCategoryIndicator(animate: true)),
+            Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: true)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
     }
 
-    private void UpdateSlidingCategoryIndicator(bool animate = true)
+    private void UpdateCategoryBranches(bool animate = true)
     {
-        if (GeneralCategoryButton == null || DownloadsCategoryButton == null || 
-            ShortcutsCategoryButton == null || AboutCategoryButton == null || 
-            CategoryIndicatorTransform == null || 
-            SlidingCategoryIndicator == null || CategoryButtonsContainer == null)
-            return;
-
-        var category = ViewModel?.SelectedSettingsCategory ?? SettingsCategory.General;
-        Button targetButton = category switch
+        if (!IsLoaded) return;
+        var buttons = new[] { GeneralCategoryButton, DownloadsCategoryButton, ShortcutsCategoryButton, AboutCategoryButton };
+        if (Array.Exists(buttons, button => button.ActualHeight <= 0)) return;
+        var centers = Array.ConvertAll(buttons, button =>
+            button.TranslatePoint(new Point(0, button.ActualHeight / 2), CategoryBranchRail).Y);
+        int selectedIndex = (ViewModel?.SelectedSettingsCategory ?? SettingsCategory.General) switch
         {
-            SettingsCategory.General or SettingsCategory.Notifications => GeneralCategoryButton,
-            SettingsCategory.DownloadConnections => DownloadsCategoryButton,
-            SettingsCategory.Shortcuts => ShortcutsCategoryButton,
-            SettingsCategory.About => AboutCategoryButton,
-            _ => GeneralCategoryButton
+            SettingsCategory.DownloadConnections => 1,
+            SettingsCategory.Shortcuts => 2,
+            SettingsCategory.About => 3,
+            _ => 0
         };
-
-        double targetHeight = targetButton.ActualHeight;
-        if (targetHeight <= 0)
-        {
-            targetButton.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            targetHeight = targetButton.DesiredSize.Height > 0 ? targetButton.DesiredSize.Height : 36.0;
-        }
-
-        Point relativePoint;
-        try
-        {
-            relativePoint = targetButton.TranslatePoint(new Point(0, 0), CategoryButtonsContainer);
-        }
-        catch
-        {
-            return;
-        }
-
-        double pillHeight = 18.0;
-        double targetX = relativePoint.X + 12.0;
-        double targetY = relativePoint.Y + (targetHeight - pillHeight) / 2.0;
-
-        CategoryIndicatorTransform.X = targetX;
-
-        if (!animate || !_isCategoryIndicatorInitialized)
-        {
-            CategoryIndicatorTransform.BeginAnimation(TranslateTransform.YProperty, null);
-            CategoryIndicatorTransform.Y = targetY;
-            SlidingCategoryIndicator.Opacity = 1.0;
-            return;
-        }
-
-        var duration = TimeSpan.FromMilliseconds(130);
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-        var moveAnim = new DoubleAnimation
-        {
-            To = targetY,
-            Duration = duration,
-            EasingFunction = ease,
-            FillBehavior = FillBehavior.HoldEnd
-        };
-
-        CategoryIndicatorTransform.BeginAnimation(TranslateTransform.YProperty, moveAnim);
+        CategoryBranchRail.UpdateBranches(centers, selectedIndex, animate && IsVisible);
     }
 
     private void SpeedLimit_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -215,31 +157,6 @@ public partial class SettingsView : UserControl
         if (e.Delta > 0) ViewModel.IncrementConnections();
         else if (e.Delta < 0) ViewModel.DecrementConnections();
         e.Handled = true;
-    }
-
-    private void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        // Allow child controls with their own wheel handlers (numeric spinner textboxes) to process the event
-        if (e.OriginalSource is DependencyObject dep && FindVisualParent<TextBox>(dep) is { } tb && Equals(tb.Tag, "NumericSpinner"))
-        {
-            return;
-        }
-
-        if (sender is ScrollViewer scv)
-        {
-            scv.ScrollToVerticalOffset(scv.VerticalOffset - (e.Delta * 0.5));
-            e.Handled = true;
-        }
-    }
-
-    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
-    {
-        while (child != null)
-        {
-            if (child is T parent) return parent;
-            child = VisualTreeHelper.GetParent(child);
-        }
-        return null;
     }
 
     private void Category_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)

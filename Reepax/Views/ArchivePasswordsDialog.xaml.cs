@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using Reepax.Helpers;
 using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
@@ -17,6 +18,7 @@ public partial class ArchivePasswordsDialog : Window
     private readonly DownloadPackage _package;
     private readonly ArchiveExtractionService _extractor = ArchiveExtractionService.Instance;
     private readonly CancellationTokenSource _lifetime = new();
+    private readonly CoalescedDispatcherRefresh _passwordRefresh;
     private bool _busy;
     private bool _closed;
     private bool _ready;
@@ -25,6 +27,7 @@ public partial class ArchivePasswordsDialog : Window
     {
         _package = package;
         InitializeComponent();
+        _passwordRefresh = new CoalescedDispatcherRefresh(() => { if (!_busy && !_closed) RefreshRows(); }, () => Dispatcher);
         ArchiveSelector.DisplayMemberPath = nameof(PackageArchivePasswordTarget.DisplayName);
         ArchiveSelector.ItemsSource = _extractor.GetPackageArchivePasswordTargets(package);
         ArchiveSelector.SelectedIndex = 0;
@@ -136,7 +139,7 @@ public partial class ArchivePasswordsDialog : Window
 
     private void Passwords_Changed(object? sender, EventArgs e)
     {
-        if (!_closed) Dispatcher.BeginInvoke(() => { if (!_busy && !_closed) RefreshRows(); });
+        if (!_closed) _passwordRefresh.Request(defer: true);
     }
 
     private void Package_PropertyChanged(object? sender, PropertyChangedEventArgs e)

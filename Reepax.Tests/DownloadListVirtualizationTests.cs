@@ -61,7 +61,7 @@ public class DownloadListVirtualizationTests
         }
     }
 
-    private static (ScrollViewer viewer, ItemsControl list) CreateList(ObservableCollection<DownloadPackage> packages,
+    internal static (ScrollViewer viewer, ItemsControl list) CreateList(ObservableCollection<DownloadPackage> packages,
         bool useRowPresentation = false, bool useFullTemplates = false)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax", "MainWindow.xaml");
@@ -70,7 +70,7 @@ public class DownloadListVirtualizationTests
         var host = new XElement(document.Descendants().Single(e => (string?)e.Attribute(x + "Name") == "DownloadRowsList"));
         var scroll = host.Descendants().Single(e => (string?)e.Attribute(x + "Name") == "PART_ScrollViewer");
         if (!useFullTemplates)
-            scroll.Elements().Where(e => e.Name.LocalName is "ScrollViewer.Template" or "ScrollViewer.Resources").Remove();
+            scroll.Elements().Where(e => e.Name.LocalName is "ScrollViewer.Template" or "ScrollViewer.Resources" or "ScrollViewer.Style").Remove();
         scroll.Attribute("IsEnabled")?.Remove();
         foreach (var name in new[] { "PreviewMouseDown", "PreviewMouseWheel", "DragOver", "DragLeave", "Drop" })
             scroll.Attribute(name)?.Remove();

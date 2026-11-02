@@ -201,6 +201,7 @@ public static class PackageExportImportService
         {
             Id = Guid.NewGuid(),
             Name = pkgName,
+            IsExpanded = false,
             AutoExtractArchives = dto.AutoExtractArchives,
             LowResourceExtraction = dto.LowResourceExtraction,
             DeleteArchiveAfterExtraction = dto.DeleteArchiveAfterExtraction,

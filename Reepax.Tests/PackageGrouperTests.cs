@@ -24,6 +24,7 @@ public class PackageGrouperTests
         var root = Path.Combine(Path.GetTempPath(), "PackageNaming_" + System.Guid.NewGuid().ToString("N"));
         var package = Assert.Single(PackageGrouper.GroupLinksIntoPackages(links, root));
         Assert.Equal(expected, package.Name);
+        Assert.False(package.IsExpanded);
         Assert.Equal(22, package.Items.Count);
         Assert.False(Directory.Exists(root));
     }
