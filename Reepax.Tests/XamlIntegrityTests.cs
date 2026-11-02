@@ -28,7 +28,7 @@ public class XamlIntegrityTests
     }
 
     [Fact]
-    public void ToolbarAnalysis_ShowsSpinnerAtExistingPositionAndStopsWhenHidden()
+    public void ToolbarAnalysis_ShowsPixelLogoAtExistingPosition()
     {
         var xaml = XDocument.Load(Path.Combine(GetReepaxProjectDir(), "MainWindow.xaml"));
         XNamespace names = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -37,17 +37,14 @@ public class XamlIntegrityTests
         Assert.Equal("14,0,0,0", (string?)status.Attribute("Margin"));
         Assert.Equal("{Binding IsBusy}", (string?)status.Attribute(helpers + "FadeAnimation.IsShown"));
         Assert.DoesNotContain(status.Descendants(), element => element.Name.LocalName == "ProgressBar");
-        var spinner = status.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "MetadataAnalysisSpinner");
-        Assert.Equal("{Binding IsAnalyzingMetadata}", (string?)spinner.Attribute(helpers + "FadeAnimation.IsShown"));
-        Assert.Same(spinner, status.Elements().First());
+        var loader = status.Descendants().Single(element => (string?)element.Attribute(names + "Name") == "MetadataAnalysisLoader");
+        Assert.Equal(helpers + "PixelLogoLoader", loader.Name);
+        Assert.Equal("{Binding IsAnalyzingMetadata}", (string?)loader.Attribute(helpers + "FadeAnimation.IsShown"));
+        Assert.Equal("{Binding IsAnalyzingMetadata}", (string?)loader.Attribute("IsActive"));
+        Assert.Same(loader, status.Elements().First());
         var text = Assert.Single(status.Elements().Where(element => element.Name.LocalName == "TextBlock"));
         Assert.Equal("{Binding BusyDisplayMessage}", (string?)text.Attribute("Text"));
-        var trigger = Assert.Single(spinner.Descendants().Where(element => element.Name.LocalName == "Trigger"));
-        Assert.Equal("IsVisible", (string?)trigger.Attribute("Property"));
-        var animation = Assert.Single(trigger.Descendants().Where(element => element.Name.LocalName == "DoubleAnimation"));
-        Assert.Equal("360", (string?)animation.Attribute("To"));
-        Assert.Equal("Forever", (string?)animation.Attribute("RepeatBehavior"));
-        Assert.Contains(trigger.Descendants(), element => element.Name.LocalName == "StopStoryboard");
+        Assert.DoesNotContain(loader.Descendants(), element => element.Name.LocalName == "RotateTransform");
     }
 
     private static string GetReepaxProjectDir()

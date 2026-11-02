@@ -230,7 +230,10 @@ public class DownloadListVirtualizationTests
                 PumpFor(TimeSpan.FromMilliseconds(250));
                 Assert.True(toolbar.IsLoaded);
                 Assert.Equal(1, toolbar.Opacity);
+                var loader = Assert.IsType<PixelLogoLoader>(toolbar.Children[0]);
+                Assert.Equal(SystemParameters.ClientAreaAnimation, loader.IsAnimating);
                 vm.IsAnalyzingMetadata = false;
+                Assert.False(loader.IsAnimating);
                 vm.IsBusy = false;
                 vm.BusyMessage = string.Empty;
                 var text = Assert.IsType<TextBlock>(toolbar.Children[1]);
@@ -242,6 +245,7 @@ public class DownloadListVirtualizationTests
                 PumpFor(TimeSpan.FromMilliseconds(250));
                 Assert.Equal(Visibility.Visible, toolbar.Visibility);
                 Assert.Equal(1, toolbar.Opacity);
+                Assert.Equal(SystemParameters.ClientAreaAnimation, loader.IsAnimating);
                 Assert.Equal("Analyzing metadata (0 of 3)", text.Text);
                 vm.IsAnalyzingMetadata = false;
                 vm.IsBusy = false;
@@ -250,7 +254,8 @@ public class DownloadListVirtualizationTests
                 Assert.Equal(Visibility.Collapsed, toolbar.Visibility);
                 Assert.Equal(0, toolbar.Opacity);
                 Assert.False(toolbar.HasAnimatedProperties);
-                Assert.Equal(Visibility.Collapsed, ((Grid)toolbar.Children[0]).Visibility);
+                Assert.Equal(Visibility.Collapsed, loader.Visibility);
+                Assert.False(loader.IsAnimating);
             }
             finally { source.RootVisual = null; }
         });
