@@ -67,8 +67,8 @@ public partial class App : Application
         bool isRestart = e.Args.Any(a => string.Equals(a, "--restart", StringComparison.OrdinalIgnoreCase));
         if (!SingleInstanceService.Instance.TryAcquireOwnership(isRestart ? 4000 : 0))
         {
-            var argsToSend = e.Args.Length > 0 ? e.Args : new[] { "--activate" };
-            SingleInstanceService.Instance.SendArgsToPrimary(argsToSend);
+            TryForwardLaunchArguments(e.Args, args => SingleInstanceService.Instance.SendArgsToPrimary(args),
+                ShowInstanceHandoffFailure);
             Shutdown();
             return;
         }
@@ -88,27 +88,9 @@ public partial class App : Application
             return;
         }
 
+        _isPrimaryInstance = true;
         // Primary instance: start named pipe server to receive launch parameters from subsequent instances
-        SingleInstanceService.Instance.StartIpcServer(receivedArgs =>
-        {
-            Current?.Dispatcher.BeginInvoke(new Action(async () =>
-            {
-                var mainWin = Current.MainWindow as MainWindow;
-                SingleInstanceService.BringWindowToForeground(mainWin);
-
-                if (mainWin?.DataContext is ViewModels.MainViewModel vm)
-                {
-                    foreach (var arg in receivedArgs)
-                    {
-                        if (PackageExportImportService.IsSupportedPackageFile(arg) &&
-                            System.IO.File.Exists(arg))
-                        {
-                            await PackageExportImportService.ImportAndAddAsync(arg, vm);
-                        }
-                    }
-                }
-            }));
-        });
+        SingleInstanceService.Instance.StartIpcServer(ReceiveInstanceArguments);
 
         // Ensure file association for .repx (and .sdlr) is registered in user context asynchronously (skipped in portable mode to avoid host registry changes)
         if (!SettingsService.IsPortableMode)
@@ -141,6 +123,7 @@ public partial class App : Application
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
         {
             if (MainWindow?.IsLoaded != true) return;
+            ProcessPendingInstanceArguments();
             try
             {
                 Services.Update.AppUpdateService.ConfirmUpdateStartup(AppContext.BaseDirectory, e.Args);
@@ -219,6 +202,11 @@ public partial class App : Application
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
+        if (!_isPrimaryInstance)
+        {
+            base.OnSessionEnding(e);
+            return;
+        }
         if (MainWindow is MainWindow mw)
         {
             mw.ForceExit();
@@ -236,17 +224,13 @@ public partial class App : Application
         base.OnExit(e);
         try
         {
-            SingleInstanceService.Instance.Dispose();
-        }
-        catch { }
-        try
-        {
-            Services.Download.QueueManager.PerformSafeShutdown();
-        }
-        catch { }
-        try
-        {
-            TimeEndPeriod(1);
+            CompleteInstanceExit(_isPrimaryInstance, () =>
+            {
+                try { Services.Download.QueueManager.PerformSafeShutdown(); }
+                catch { }
+                try { TimeEndPeriod(1); }
+                catch { }
+            }, () => SingleInstanceService.Instance.Dispose());
         }
         catch { }
     }

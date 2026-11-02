@@ -22,6 +22,8 @@ public static class Strings_de
         ["Common_SettingsSaved"] = "Einstellungen gespeichert",
         ["Common_Files"] = "Dateien",
         ["Common_Deselected"] = "abgewählt",
+        ["Instance_HandoffFailed_Title"] = "Übergabe nicht bestätigt",
+        ["Instance_HandoffFailed_Message"] = "Die laufende App hat die Übergabe nicht bestätigt. Prüfe sie, bevor du es erneut versuchst. Falls sie noch startet, warte kurz; andernfalls schließe und öffne sie erneut.",
 
         // Toolbar
         ["Toolbar_StartAll_ToolTip"] = "Alle Downloads starten / fortsetzen",

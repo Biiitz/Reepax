@@ -1,9 +1,9 @@
 using System;
-using System.Collections.Generic;
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -22,6 +22,14 @@ public sealed class SingleInstanceService : IDisposable
     private Mutex? _mutex;
     private bool _hasMutexOwnership;
     private CancellationTokenSource? _serverCts;
+    private readonly bool _isolatedIpc;
+    private readonly int _requestTimeoutMs = 1500;
+    private readonly object _serverLock = new();
+    private Task? _serverTask;
+    private bool _disposed;
+    internal const int MaximumMessageBytes = 256 * 1024;
+    private const int MaximumArguments = 8192;
+    internal Task IpcServerCompletion => _serverTask ?? Task.CompletedTask;
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -36,6 +44,16 @@ public sealed class SingleInstanceService : IDisposable
         var safeUser = Environment.UserName.Replace("\\", "_");
         _mutexName = $"Local\\Reepax_SingleInstance_Mutex_{safeUser}";
         _pipeName = $"Reepax_SingleInstance_Pipe_{safeUser}";
+    }
+
+    internal SingleInstanceService(string isolatedPipeName, int requestTimeoutMs) : this()
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(isolatedPipeName);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(requestTimeoutMs);
+        _pipeName = isolatedPipeName;
+        _mutexName = "Local\\" + isolatedPipeName;
+        _requestTimeoutMs = requestTimeoutMs;
+        _isolatedIpc = true;
     }
 
     // Kernel-level namespace security descriptor token
@@ -84,24 +102,31 @@ public sealed class SingleInstanceService : IDisposable
     /// Sends command line arguments to the already running primary instance via named pipe.
     /// </summary>
     public bool SendArgsToPrimary(string[] args, int timeoutMs = 3000)
+        => SendArgsToPrimaryAsync(args, timeoutMs).GetAwaiter().GetResult();
+
+    internal async Task<bool> SendArgsToPrimaryAsync(string[] args, int timeoutMs = 3000)
     {
         try
         {
-            using var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out);
-            client.Connect(timeoutMs);
-            using var writer = new StreamWriter(client, Encoding.UTF8);
-
-            foreach (var arg in args)
-            {
-                writer.WriteLine(arg);
-            }
-
-            writer.Flush();
-            return true;
+            if (timeoutMs <= 0 || !ValidArguments(args)) return false;
+            byte[] payload = JsonSerializer.SerializeToUtf8Bytes(args);
+            if (payload.Length > MaximumMessageBytes) return false;
+            using var deadline = new CancellationTokenSource(timeoutMs);
+            var token = deadline.Token;
+            using var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            await client.ConnectAsync(token).ConfigureAwait(false);
+            byte[] length = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(length, payload.Length);
+            await client.WriteAsync(length, token).ConfigureAwait(false);
+            await client.WriteAsync(payload, token).ConfigureAwait(false);
+            await client.FlushAsync(token).ConfigureAwait(false);
+            byte[] acknowledgement = new byte[1];
+            await client.ReadExactlyAsync(acknowledgement, token).ConfigureAwait(false);
+            return acknowledgement[0] == 1;
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"Could not communicate with primary instance via pipe: {ex.Message}");
+            AppLogger.Warn($"Primary instance handoff failed ({ex.GetType().Name}).");
             return false;
         }
     }
@@ -111,63 +136,84 @@ public sealed class SingleInstanceService : IDisposable
     /// </summary>
     public void StartIpcServer(Action<string[]> onArgsReceived)
     {
-        if (DownloadPersistenceService.IsTestEnvironment)
+        ArgumentNullException.ThrowIfNull(onArgsReceived);
+        if (DownloadPersistenceService.IsTestEnvironment && !_isolatedIpc)
             return;
 
-        _serverCts = new CancellationTokenSource();
-        var token = _serverCts.Token;
-
-        Task.Run(async () =>
+        lock (_serverLock)
         {
-            while (!token.IsCancellationRequested)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_serverTask is { IsCompleted: false }) return;
+            _serverCts = new CancellationTokenSource();
+            var token = _serverCts.Token;
+            _serverTask = Task.Run(() => RunServerAsync(onArgsReceived, token));
+        }
+    }
+
+    private async Task RunServerAsync(Action<string[]> onArgsReceived, CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
             {
-                try
-                {
-                    using var server = new NamedPipeServerStream(
-                        _pipeName,
-                        PipeDirection.In,
-                        NamedPipeServerStream.MaxAllowedServerInstances,
-                        PipeTransmissionMode.Byte,
-                        PipeOptions.Asynchronous);
-
-                    await server.WaitForConnectionAsync(token);
-
-                    var receivedArgs = new List<string>();
-                    using (var reader = new StreamReader(server, Encoding.UTF8))
-                    {
-                        string? line;
-                        while ((line = await reader.ReadLineAsync(token)) != null)
-                        {
-                            if (!string.IsNullOrWhiteSpace(line))
-                            {
-                                receivedArgs.Add(line);
-                            }
-                        }
-                    }
-
-                    if (receivedArgs.Count > 0)
-                    {
-                        onArgsReceived(receivedArgs.ToArray());
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"Named pipe server loop error: {ex.Message}");
-                    try
-                    {
-                        await Task.Delay(500, token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                }
+                using var server = new NamedPipeServerStream(_pipeName, PipeDirection.InOut,
+                    NamedPipeServerStream.MaxAllowedServerInstances, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                await server.WaitForConnectionAsync(token).ConfigureAwait(false);
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                deadline.CancelAfter(_requestTimeoutMs);
+                await ReceiveArgumentsAsync(server, onArgsReceived, deadline.Token).ConfigureAwait(false);
             }
-        }, token);
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"Named pipe request failed ({ex.GetType().Name}).");
+                try { await Task.Delay(100, token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+    }
+
+    private static async Task ReceiveArgumentsAsync(Stream stream, Action<string[]> onArgsReceived, CancellationToken token)
+    {
+        bool accepted = false;
+        try
+        {
+            byte[] length = new byte[sizeof(int)];
+            await stream.ReadExactlyAsync(length, token).ConfigureAwait(false);
+            int size = BinaryPrimitives.ReadInt32LittleEndian(length);
+            if (size <= 0 || size > MaximumMessageBytes) throw new InvalidDataException("Invalid launch message size.");
+            byte[] payload = new byte[size];
+            await stream.ReadExactlyAsync(payload, token).ConfigureAwait(false);
+            var args = JsonSerializer.Deserialize<string[]>(payload);
+            if (!ValidArguments(args)) throw new InvalidDataException("Invalid launch arguments.");
+            token.ThrowIfCancellationRequested();
+            // The callback queues work; it must not perform blocking imports on the pipe server.
+            onArgsReceived(args!);
+            accepted = true;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"Launch message rejected ({ex.GetType().Name}).");
+        }
+        await stream.WriteAsync(new byte[] { accepted ? (byte)1 : (byte)0 }, token).ConfigureAwait(false);
+        await stream.FlushAsync(token).ConfigureAwait(false);
+    }
+
+    private static bool ValidArguments(string[]? args)
+    {
+        if (args is not { Length: > 0 and <= MaximumArguments }) return false;
+        int characters = 0;
+        bool hasValue = false;
+        foreach (var arg in args)
+        {
+            if (arg == null || arg.Length > MaximumMessageBytes || arg.IndexOf('\0') >= 0) return false;
+            characters += arg.Length;
+            if (characters > MaximumMessageBytes) return false;
+            hasValue |= !string.IsNullOrWhiteSpace(arg);
+        }
+        return hasValue;
     }
 
     /// <summary>
@@ -207,9 +253,18 @@ public sealed class SingleInstanceService : IDisposable
 
     public void Dispose()
     {
-        _serverCts?.Cancel();
-        _serverCts?.Dispose();
-        _serverCts = null;
+        lock (_serverLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            var cancellation = _serverCts;
+            _serverCts = null;
+            if (cancellation != null)
+            {
+                cancellation.Cancel();
+                _ = IpcServerCompletion.ContinueWith(_ => cancellation.Dispose(), TaskScheduler.Default);
+            }
+        }
 
         if (_hasMutexOwnership && _mutex != null)
         {

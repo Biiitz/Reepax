@@ -22,6 +22,8 @@ public static class Strings_en
         ["Common_SettingsSaved"] = "Settings Saved",
         ["Common_Files"] = "Files",
         ["Common_Deselected"] = "deselected",
+        ["Instance_HandoffFailed_Title"] = "Request not confirmed",
+        ["Instance_HandoffFailed_Message"] = "The running app did not confirm the request. Check it before trying again. If it is still starting, wait briefly; otherwise close and reopen it.",
 
         // Toolbar
         ["Toolbar_StartAll_ToolTip"] = "Start / Resume all downloads",
