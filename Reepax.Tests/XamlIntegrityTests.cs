@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Reepax.Services.Localization;
@@ -77,12 +78,16 @@ public class XamlIntegrityTests
             if (xamlPath.Contains(@"\bin\") || xamlPath.Contains(@"\obj\"))
                 continue;
 
-            string csPath = Path.ChangeExtension(xamlPath, ".xaml.cs");
-            if (!File.Exists(csPath))
+            var document = XDocument.Load(xamlPath);
+            string? className = (string?)document.Root?.Attribute(XName.Get("Class", "http://schemas.microsoft.com/winfx/2006/xaml"));
+            if (className == null)
                 continue;
 
             string xamlContent = File.ReadAllText(xamlPath);
-            string csContent = File.ReadAllText(csPath);
+            var codeBehind = typeof(App).Assembly.GetType(className);
+            Assert.NotNull(codeBehind);
+            var handlers = codeBehind!.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                .Select(method => method.Name).ToHashSet(StringComparer.Ordinal);
 
             var matches = eventRegex.Matches(xamlContent);
             foreach (Match m in matches)
@@ -90,8 +95,7 @@ public class XamlIntegrityTests
                 string eventName = m.Groups[1].Value;
                 string handlerName = m.Groups[2].Value;
 
-                // Check that handler exists in the code-behind file
-                if (!csContent.Contains(handlerName))
+                if (!handlers.Contains(handlerName))
                 {
                     missingHandlers.Add($"{handlerName} ({eventName}) in {Path.GetFileName(xamlPath)}");
                 }

@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        InitializePackageDoubleClick();
         DownloadRowsList.SelectionPaintRequested += row =>
         {
             if (row.Model is DownloadItem item)
@@ -2466,6 +2467,11 @@ public partial class MainWindow : Window
         var package = GetPackageFromSender(sender);
         if (package == null) return;
         var packages = ViewModel.GetPackagesForContextAction(package);
+        await ShowChangeDownloadPathDialogAsync(packages);
+    }
+
+    private async System.Threading.Tasks.Task ShowChangeDownloadPathDialogAsync(DownloadPackage[] packages)
+    {
         if (!ViewModel.CanChangeDownloadPaths(packages)) return;
         var dialog = new Microsoft.Win32.OpenFolderDialog { Title = Loc.Get("Dialog_SelectDownloadDestination") };
         if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName)) return;
@@ -2476,7 +2482,11 @@ public partial class MainWindow : Window
     {
         var package = GetPackageFromSender(sender);
         if (package == null) return;
+        ShowCreateInstallFolderDialog(package);
+    }
 
+    private void ShowCreateInstallFolderDialog(DownloadPackage package)
+    {
         var dialog = new Microsoft.Win32.OpenFolderDialog
         {
             Title = Loc.Get("Dialog_SelectGameInstallDestinationDirTitle"),
@@ -2791,6 +2801,7 @@ public partial class MainWindow : Window
             ViewModel.SelectPackageFromPointer(pkg, _packageMouseDownWasCtrl, _packageMouseDownWasSelected);
 
             (sender as UIElement)?.Focus();
+            TryHandlePackageDoubleClick(pkg, e);
         }
     }
 

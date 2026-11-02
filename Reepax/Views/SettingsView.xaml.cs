@@ -49,11 +49,13 @@ public partial class SettingsView : UserControl
 
     private void SettingsView_Unloaded(object sender, RoutedEventArgs e)
     {
+        CloseSettingsDropdowns();
         UnhookViewModel();
     }
 
     private void SettingsView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        CloseSettingsDropdowns();
         HookViewModel();
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
@@ -65,6 +67,7 @@ public partial class SettingsView : UserControl
 
     private void SettingsView_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        if (!IsVisible) CloseSettingsDropdowns();
         if (IsVisible)
         {
             Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: false)),
@@ -162,6 +165,7 @@ public partial class SettingsView : UserControl
     private void Category_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (sender is not FrameworkElement element) return;
+        if (element == CategoryGeneral && !element.IsVisible) CloseSettingsDropdowns();
 
         var transform = (element.RenderTransform as TranslateTransform)
                      ?? (element.RenderTransform = new TranslateTransform()) as TranslateTransform;

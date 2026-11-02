@@ -30,6 +30,7 @@ public class AppSettings
     public bool AutoStartDownloads { get; set; } = false;
     public bool EnableAutoHostResolver { get; set; } = false;
     public bool MinimizeToTrayOnClose { get; set; } = false;
+    public PackageDoubleClickAction PackageDoubleClickAction { get; set; } = PackageDoubleClickAction.None;
     public bool StartWithWindows { get; set; } = false;
     public bool EnableCompletionNotifications { get; set; } = false;
     public bool EnableCompletionSound { get; set; } = false;

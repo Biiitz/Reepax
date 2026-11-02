@@ -177,6 +177,21 @@
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     </Style>
 
+    <Style x:Key="SettingsDropdownPopupBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect Direction="270" ShadowDepth="4" BlurRadius="12" Color="Black" Opacity="0.45" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Sound Dropdown Menu Item Style -->
     <Style x:Key="SoundDropdownItemStyle" TargetType="{x:Type Button}">
         <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />

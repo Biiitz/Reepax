@@ -516,6 +516,7 @@ public partial class MainViewModel : ObservableObject
         _selectedThemeId = ThemeCatalog.Resolve(settings.ThemeId).Id;
         _isDarkMode = ThemeCatalog.Resolve(settings.ThemeId).IsDark;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
+        _selectedPackageDoubleClickAction = NormalizePackageDoubleClickAction(settings.PackageDoubleClickAction);
         StartWithWindows = IsPortableMode ? false : settings.StartWithWindows;
         EnableCompletionNotifications = settings.EnableCompletionNotifications;
         EnableCompletionSound = settings.EnableCompletionSound;
@@ -543,6 +544,7 @@ public partial class MainViewModel : ObservableObject
             ShortcutManager.RefreshLocalization();
             OnPropertyChanged(nameof(SelectedStatusFilterText));
             OnPropertyChanged(nameof(ClipboardMonitorTooltip));
+            OnPropertyChanged(nameof(SelectedPackageDoubleClickActionDisplayName));
             OnPropertyChanged(nameof(PostDownloadActionTooltip));
             SafeDispatch(() =>
             {
@@ -3071,7 +3073,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var job in jobs)
             {
                 int offset = completed;
-                var progress = new Progress<MetadataAnalysisProgress>(state =>
+                var progress = new SynchronousMetadataProgress(state =>
                 {
                     if (IsAnalyzingMetadata && version == _metadataAnalysisVersion)
                     {
@@ -3116,6 +3118,12 @@ public partial class MainViewModel : ObservableObject
             }
             finally { _metadataAnalysisGate.Release(); }
         }
+    }
+
+    private sealed class SynchronousMetadataProgress(Action<MetadataAnalysisProgress> report) : IProgress<MetadataAnalysisProgress>
+    {
+        // Finish progress updates before analysis returns and clears its status.
+        public void Report(MetadataAnalysisProgress value) => SafeInvoke(() => report(value));
     }
 
     public void RecalculateGlobalStats()

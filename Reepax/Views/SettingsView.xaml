@@ -4,6 +4,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="clr-namespace:Reepax.ViewModels"
+    xmlns:models="clr-namespace:Reepax.Models"
     xmlns:loc="clr-namespace:Reepax.Converters"
     xmlns:helpers="clr-namespace:Reepax.Helpers"
     mc:Ignorable="d"
@@ -562,6 +563,139 @@
 
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
 
+                            <Grid x:Name="PackageDoubleClickSetting" Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{loc:Loc Settings_PackageDoubleClick_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <Border x:Name="PackageDoubleClickInfo" Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_PackageDoubleClick_Help}">
+                                        <Path Style="{StaticResource SettingInfoPathStyle}" />
+                                    </Border>
+                                </StackPanel>
+                                <Button x:Name="PackageDoubleClickSelector" Grid.Column="1" Width="320"
+                                    Style="{StaticResource SoundDropdownButtonStyle}" VerticalAlignment="Center"
+                                    AutomationProperties.Name="{loc:Loc Settings_PackageDoubleClick_Title}"
+                                    PreviewMouseDown="PackageDoubleClickSelector_PreviewMouseDown" Click="PackageDoubleClickSelector_Click"
+                                    PreviewKeyDown="PackageDoubleClickSelector_PreviewKeyDown" PreviewMouseWheel="PackageDoubleClickSelector_PreviewMouseWheel">
+                                    <Grid HorizontalAlignment="Stretch">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding SelectedPackageDoubleClickActionDisplayName}" FontWeight="SemiBold" FontSize="11.5"
+                                            Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                        <Path Grid.Column="1" helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=PackageDoubleClickPopup}"
+                                            Data="M 0,0 L 3.5,3.5 L 7,0" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5"
+                                            Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                                <Popup x:Name="PackageDoubleClickPopup" Grid.Column="1"
+                                    PlacementTarget="{Binding ElementName=PackageDoubleClickSelector}" Placement="Bottom"
+                                    StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade" VerticalOffset="4"
+                                    Closed="PackageDoubleClickPopup_Closed" PreviewKeyDown="PackageDoubleClickSelector_PreviewKeyDown"
+                                    PreviewMouseWheel="PackageDoubleClickSelector_PreviewMouseWheel">
+                                    <Border Style="{StaticResource SettingsDropdownPopupBorderStyle}" Width="320">
+                                        <StackPanel x:Name="PackageDoubleClickOptions">
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.None}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Settings_PackageDoubleClick_Off}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.None}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.ChangeDownloadPath}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Menu_ChangeDownloadPath}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.ChangeDownloadPath}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.CreateInstallFolder}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Menu_CreateGameInstallFolder}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.CreateInstallFolder}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.EditPackage}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Menu_EditPackage}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.EditPackage}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.AddLinks}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Menu_AddLinksToPackage}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.AddLinks}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.ExportPackage}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Menu_ExportPackage}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.ExportPackage}}" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
+                                                CommandParameter="{x:Static models:PackageDoubleClickAction.TogglePause}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{loc:Loc Settings_PackageDoubleClick_TogglePause}" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
+                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.TogglePause}}" />
+                                                </Grid>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
+
                             <!-- Start with Windows -->
                             <Grid Margin="0,0,0,8" Opacity="{Binding IsStartWithWindowsEnabled, Converter={StaticResource BoolToOpacityConverter}}">
                                 <Grid.ColumnDefinitions>
@@ -725,17 +859,7 @@
                                                     Closed="CompletionSoundPopup_Closed"
                                                     PreviewKeyDown="CompletionSound_PreviewKeyDown"
                                                     PreviewMouseWheel="CompletionSound_PreviewMouseWheel">
-                                                    <Border Background="{DynamicResource BgCardBrush}"
-                                                        BorderBrush="{DynamicResource BorderDarkBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="{DynamicResource ControlCornerRadius}"
-                                                        Padding="4"
-                                                        Width="136"
-                                                        SnapsToDevicePixels="True"
-                                                        UseLayoutRounding="True">
-                                                        <Border.Effect>
-                                                            <DropShadowEffect Direction="270" ShadowDepth="4" BlurRadius="12" Color="#000000" Opacity="0.45" />
-                                                        </Border.Effect>
+                                                    <Border Style="{StaticResource SettingsDropdownPopupBorderStyle}" Width="136">
                                                         <StackPanel>
                                                             <!-- Sound 1 -->
                                                             <Button Style="{StaticResource SoundDropdownItemStyle}"
@@ -747,7 +871,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 1" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='1.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -761,7 +885,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 2" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='2.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -775,7 +899,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 3" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='3.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -789,7 +913,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 4" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='4.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -803,7 +927,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 5" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='5.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -817,7 +941,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 6" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='6.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -831,7 +955,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 7" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='7.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -845,7 +969,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 8" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='8.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -859,7 +983,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 9" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='9.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -873,7 +997,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 10" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='10.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -886,7 +1010,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 11" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='11.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -899,7 +1023,7 @@
                                                                         <ColumnDefinition Width="Auto" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Text="Sound 12" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                         Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='12.mp3'}" />
                                                                 </Grid>
                                                             </Button>
@@ -1033,17 +1157,7 @@
                                                 Closed="ErrorSoundPopup_Closed"
                                                 PreviewKeyDown="ErrorSound_PreviewKeyDown"
                                                 PreviewMouseWheel="ErrorSound_PreviewMouseWheel">
-                                                <Border Background="{DynamicResource BgCardBrush}"
-                                                    BorderBrush="{DynamicResource BorderDarkBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="{DynamicResource ControlCornerRadius}"
-                                                    Padding="4"
-                                                    Width="136"
-                                                    SnapsToDevicePixels="True"
-                                                    UseLayoutRounding="True">
-                                                    <Border.Effect>
-                                                        <DropShadowEffect Direction="270" ShadowDepth="4" BlurRadius="12" Color="#000000" Opacity="0.45" />
-                                                    </Border.Effect>
+                                                <Border Style="{StaticResource SettingsDropdownPopupBorderStyle}" Width="136">
                                                     <StackPanel>
                                                         <!-- Sound 1 -->
                                                         <Button Style="{StaticResource SoundDropdownItemStyle}"
@@ -1055,7 +1169,7 @@
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Text="Sound 1" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                     Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='1.mp3'}" />
                                                             </Grid>
                                                         </Button>
@@ -1069,7 +1183,7 @@
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Text="Sound 2" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                     Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='2.mp3'}" />
                                                             </Grid>
                                                         </Button>
@@ -1082,7 +1196,7 @@
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Text="Sound 3" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                     Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='3.mp3'}" />
                                                             </Grid>
                                                         </Button>
@@ -1095,7 +1209,7 @@
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Text="Sound 4" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                     Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='4.mp3'}" />
                                                             </Grid>
                                                         </Button>
@@ -1108,7 +1222,7 @@
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
                                                                 <TextBlock Text="Sound 5" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
                                                                     Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='5.mp3'}" />
                                                             </Grid>
                                                         </Button>
