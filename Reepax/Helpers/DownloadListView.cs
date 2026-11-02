@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
@@ -18,7 +17,7 @@ public sealed partial class DownloadListView : ItemsControl
         nameof(Packages), typeof(IEnumerable<DownloadPackage>), typeof(DownloadListView),
         new PropertyMetadata(null, OnPackagesChanged));
 
-    private readonly ObservableCollection<DownloadListRow> _rows = new();
+    private readonly DownloadRowCollection _rows = new();
     private readonly Dictionary<object, DownloadListRow> _rowCache = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<DownloadPackage> _watchedPackages = new();
     private readonly HashSet<INotifyCollectionChanged> _watchedCollections = new();
@@ -170,27 +169,7 @@ public sealed partial class DownloadListView : ItemsControl
         foreach (var model in _rowCache.Keys.Where(model => !models.Contains(model)).ToArray())
             _rowCache.Remove(model);
 
-        var remaining = next.ToHashSet();
-        for (int i = _rows.Count - 1; i >= 0; i--)
-        {
-            if (!remaining.Contains(_rows[i]))
-            {
-                _rows[i].Index = -1;
-                _rows.RemoveAt(i);
-            }
-        }
-        var existing = _rows.ToHashSet();
-        for (int i = 0; i < next.Count; i++)
-        {
-            var row = next[i];
-            row.Index = i;
-            row.RefreshPresentation();
-            if (i < _rows.Count && ReferenceEquals(_rows[i], row)) continue;
-            if (existing.Contains(row))
-                _rows.Move(_rows.IndexOf(row), i);
-            else
-                _rows.Insert(i, row);
-        }
+        SynchronizeRows(next);
     }
 }
 

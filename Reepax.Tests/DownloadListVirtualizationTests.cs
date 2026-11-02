@@ -22,7 +22,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
-public class DownloadListVirtualizationTests
+public partial class DownloadListVirtualizationTests
 {
     private static void RunInSta(Action action)
     {
