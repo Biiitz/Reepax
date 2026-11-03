@@ -25,37 +25,43 @@ public sealed class IntegrityRetryTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, 0, false)]
-    [InlineData(true, 0, false)]
-    [InlineData(false, 3, false)]
-    [InlineData(true, 3, false)]
-    [InlineData(false, 0, true)]
-    [InlineData(true, 0, true)]
-    public async Task ManualRetry_AfterRejectedDownloadFetchesNewBytesAndCompletes(bool published, int budget, bool restart)
+    [InlineData(false, 0, false, null)]
+    [InlineData(true, 0, false, null)]
+    [InlineData(false, 3, false, null)]
+    [InlineData(true, 3, false, null)]
+    [InlineData(false, 0, true, null)]
+    [InlineData(true, 0, true, null)]
+    [InlineData(false, 3, false, ".part")]
+    [InlineData(false, 3, false, ".part.segments")]
+    [InlineData(true, 3, false, "")]
+    public async Task ManualRetry_AfterRejectedDownloadFetchesNewBytesAndCompletes(bool published, int budget, bool restart, string? lockedSuffix)
     {
         SettingsService.Instance.Settings.MaxAutoRetryOnCorruption = budget;
         byte[] good = Enumerable.Range(0, 2048).Select(index => (byte)(index % 251 + 1)).ToArray();
         byte[] bad = published ? Encoding.UTF8.GetBytes("<!DOCTYPE html><html><body>Access denied</body></html>")
             : Enumerable.Repeat((byte)7, good.Length).ToArray();
-        int requests = 0;
-        using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
-        {
-            Assert.Null(request.Headers.Range);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new ByteArrayContent(++requests == 1 ? bad : good)
-            });
-        }));
+        string checksum = Convert.ToHexString(SHA256.HashData(good));
+        var files = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
+        files["payload.bin"] = bad;
+        await using var source = new PipelineHttpSource(files);
+        using var client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
         var engine = new DownloadEngine(client);
-        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        int successfulVerifications = 0;
+        var queue = new QueueManager(false, async (download, token) =>
+        {
+            var result = await ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(download, token);
+            if (result.IsValid) Interlocked.Increment(ref successfulVerifications);
+            return result;
+        });
         queue.Packages.Clear();
         var item = new DownloadItem
         {
             FileName = "payload.bin", SaveFilePath = Path.Combine(_root, "payload.bin"),
-            DirectDownloadUrl = "https://example.invalid/payload.bin", IsCustomName = true, RetryCount = budget,
-            ExpectedChecksum = published ? null : Convert.ToHexString(SHA256.HashData(good))
+            DirectDownloadUrl = source.Url("payload.bin"), IsCustomName = true, RetryCount = budget,
+            ExpectedChecksum = published ? null : checksum
         };
         Task completion = Task.CompletedTask;
+        Task transfer = Task.CompletedTask;
         int completedEvents = 0;
         engine.DownloadFailed += queue.OnBackgroundDownloadFailed;
         engine.DownloadCompleted += completed =>
@@ -63,61 +69,89 @@ public sealed class IntegrityRetryTests : IDisposable
             completedEvents++;
             completion = queue.HandleDownloadCompleted(completed);
         };
-        await engine.ResumeDownloadAsync(item);
-        await completion.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(DownloadStatus.Failed, item.Status);
-        Assert.Equal(1, requests);
-        Assert.Equal(published, File.Exists(item.SaveFilePath));
-        Assert.NotNull(item.RejectedFiles);
-        if (restart)
+        try
         {
-            var package = new DownloadPackage { Name = "Sample", SaveDirectory = _root, IsCustomName = true, AutoPar2Repair = false };
-            package.Items.Add(item);
-            using var storage = new DownloadPersistenceService(Path.Combine(_root, "downloads.json"));
-            storage.SaveDownloads(new[] { package }, sync: true);
-            item = Assert.Single(Assert.Single(storage.LoadDownloads()).Items);
-            Assert.NotNull(item.RejectedFiles);
-        }
-        int eventsBeforeRetry = completedEvents;
-        queue.RetryItem(item);
-        Assert.Null(item.RejectedFiles);
-        Assert.Equal(0, item.RetryCount);
-        item.DirectDownloadUrl = "https://example.invalid/payload.bin";
-        await engine.ResumeDownloadAsync(item);
-        await completion.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(DownloadStatus.Completed, item.Status);
-        Assert.False(item.IsVerifyingIntegrity);
-        Assert.Equal(2, requests);
-        Assert.Equal(eventsBeforeRetry + 1, completedEvents);
-        Assert.Equal(Convert.ToHexString(SHA256.HashData(good)), item.CalculatedChecksum, ignoreCase: true);
-        Assert.Equal(good, File.ReadAllBytes(item.SaveFilePath!));
-        Assert.False(File.Exists(item.SaveFilePath + ".part"));
-        Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
-        queue.StopQueue();
-    }
-
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void ManualRetry_LockedRejectedDataStaysFailedUntilItCanBeReset(bool published, bool checkpoint)
-    {
-        var (queue, item) = RejectedItem(published);
-        string rejected = item.SaveFilePath + (checkpoint ? ".part.segments" : published ? "" : ".part");
-        using (File.Open(rejected, FileMode.Open, FileAccess.Read, FileShare.Read))
-        {
-            queue.RetryItem(item);
+            transfer = engine.ResumeDownloadAsync(item);
+            await transfer.WaitAsync(TimeSpan.FromSeconds(10));
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(DownloadStatus.Failed, item.Status);
-            Assert.Equal(Loc.Get("Status_IntegrityRetryBlocked"), item.StatusMessage);
+            Assert.False(item.IsVerifyingIntegrity);
+            Assert.Equal(budget, item.RetryCount);
+            Assert.Equal(1, source.Requests["payload.bin"]);
+            Assert.Equal(published ? 1 : 0, completedEvents);
+            Assert.Equal(0, successfulVerifications);
+            Assert.Equal(published, File.Exists(item.SaveFilePath));
+            Assert.Equal(bad, File.ReadAllBytes(item.SaveFilePath + (published ? "" : ".part")));
+            Assert.Null(item.CalculatedChecksum);
             Assert.NotNull(item.RejectedFiles);
-            Assert.Equal(checkpoint ? "checkpoint data" : "rejected data", File.ReadAllText(rejected));
+            Assert.Equal(published, item.RejectedFiles.Published);
+            if (restart)
+            {
+                var package = new DownloadPackage { Name = "Sample", SaveDirectory = _root, IsCustomName = true, AutoPar2Repair = false };
+                package.Items.Add(item);
+                using var storage = new DownloadPersistenceService(Path.Combine(_root, "downloads.json"));
+                storage.SaveDownloads(new[] { package }, sync: true);
+                item = Assert.Single(Assert.Single(storage.LoadDownloads()).Items);
+                Assert.NotNull(item.RejectedFiles);
+            }
+            files["payload.bin"] = good;
+            item.ExpectedChecksum = checksum;
+            if (lockedSuffix != null)
+            {
+                string lockedPath = item.SaveFilePath + lockedSuffix;
+                byte[] lockedBytes = File.ReadAllBytes(lockedPath);
+                byte[]? checkpoint = File.Exists(item.SaveFilePath + ".part.segments")
+                    ? File.ReadAllBytes(item.SaveFilePath + ".part.segments") : null;
+                using (File.Open(lockedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    queue.RetryItem(item);
+                    Assert.Equal(DownloadStatus.Failed, item.Status);
+                    Assert.Equal(Loc.Get("Status_IntegrityRetryBlocked"), item.StatusMessage);
+                    Assert.Equal(budget, item.RetryCount);
+                    Assert.NotNull(item.RejectedFiles);
+                    Assert.False(queue.IsRunning);
+                    Assert.Equal(1, source.Requests["payload.bin"]);
+                    Assert.Equal(0, successfulVerifications);
+                    Assert.Equal(lockedBytes, File.ReadAllBytes(lockedPath));
+                    Assert.Equal(bad, File.ReadAllBytes(item.SaveFilePath + (published ? "" : ".part")));
+                    if (checkpoint != null) Assert.Equal(checkpoint, File.ReadAllBytes(item.SaveFilePath + ".part.segments"));
+                }
+            }
+            int eventsBeforeRetry = completedEvents;
+            queue.RetryItem(item);
+            Assert.Equal(DownloadStatus.Queued, item.Status);
+            Assert.Null(item.RejectedFiles);
+            Assert.Equal(0, item.RetryCount);
+            Assert.Null(item.LastVerificationError);
+            Assert.Null(item.ErrorMessage);
+            Assert.Equal(0, item.DownloadedBytes);
+            Assert.False(File.Exists(item.SaveFilePath));
+            Assert.False(File.Exists(item.SaveFilePath + ".part"));
+            Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
+            item.DirectDownloadUrl = source.Url("payload.bin");
+            transfer = engine.ResumeDownloadAsync(item);
+            await transfer.WaitAsync(TimeSpan.FromSeconds(10));
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(item.IsReadyForPostProcessing);
+            Assert.False(item.IsVerifyingIntegrity);
+            Assert.Equal(2, source.Requests["payload.bin"]);
+            Assert.Equal(eventsBeforeRetry + 1, completedEvents);
+            Assert.Equal(1, successfulVerifications);
+            Assert.Equal(checksum, item.ExpectedChecksum);
+            Assert.Equal(checksum, item.CalculatedChecksum, ignoreCase: true);
+            Assert.Equal(good.Length, item.DownloadedBytes);
+            Assert.Equal(good, File.ReadAllBytes(item.SaveFilePath!));
+            Assert.False(File.Exists(item.SaveFilePath + ".part"));
+            Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
         }
-        queue.RetryItem(item);
-        Assert.Equal(DownloadStatus.Queued, item.Status);
-        Assert.Null(item.RejectedFiles);
-        Assert.False(File.Exists(rejected));
-        Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
-        queue.StopQueue();
+        finally
+        {
+            queue.StopQueue();
+            _ = engine.CancelOrPauseDownload(item.Id);
+            await transfer.WaitAsync(TimeSpan.FromSeconds(10));
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     [Theory]
@@ -197,15 +231,41 @@ public sealed class IntegrityRetryTests : IDisposable
     }
 
     [Fact]
-    public void ManualRetry_BeforePublicationNeverDeletesAnExistingDestination()
+    public async Task ManualRetry_BeforePublicationNeverDeletesAnExistingDestination()
     {
         var (queue, item) = RejectedItem(published: false);
-        File.WriteAllText(item.SaveFilePath!, "unrelated destination");
-        queue.RetryItem(item);
-        Assert.Equal(DownloadStatus.Queued, item.Status);
-        Assert.Null(item.RejectedFiles);
-        Assert.Equal("unrelated destination", File.ReadAllText(item.SaveFilePath!));
-        queue.StopQueue();
+        byte[] good = Enumerable.Range(0, 2048).Select(index => (byte)(index % 251 + 1)).ToArray();
+        byte[] unrelated = Encoding.UTF8.GetBytes("unrelated destination");
+        File.WriteAllBytes(item.SaveFilePath!, unrelated);
+        item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(good));
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = good });
+        using var client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
+        var engine = new DownloadEngine(client);
+        int completed = 0;
+        engine.DownloadCompleted += _ => completed++;
+        engine.DownloadFailed += queue.OnBackgroundDownloadFailed;
+        try
+        {
+            queue.RetryItem(item);
+            Assert.Equal(DownloadStatus.Queued, item.Status);
+            Assert.Null(item.RejectedFiles);
+            Assert.Equal(unrelated, File.ReadAllBytes(item.SaveFilePath!));
+            item.DirectDownloadUrl = source.Url("payload.bin");
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.False(item.IsReadyForPostProcessing);
+            Assert.Equal(1, source.Requests["payload.bin"]);
+            Assert.Equal(0, completed);
+            Assert.Null(item.CalculatedChecksum);
+            Assert.Null(item.RejectedFiles);
+            Assert.Equal(unrelated, File.ReadAllBytes(item.SaveFilePath!));
+            Assert.Equal(good, File.ReadAllBytes(item.SaveFilePath + ".part"));
+        }
+        finally
+        {
+            queue.StopQueue();
+            await engine.PauseAllAsync();
+        }
     }
 
     [Theory]
@@ -236,17 +296,79 @@ public sealed class IntegrityRetryTests : IDisposable
     }
 
     [Fact]
-    public void ManualRetry_OrdinaryPausedDownloadKeepsValidPartAndCheckpoint()
+    public async Task ManualRetry_OrdinaryPausedDownloadKeepsValidPartAndCheckpoint()
     {
-        var (queue, item) = RejectedItem(published: false);
-        item.RejectedFiles = null;
-        item.Status = DownloadStatus.Paused;
-        queue.RetryItem(item);
-        Assert.Equal(DownloadStatus.Queued, item.Status);
-        Assert.Equal("rejected data", File.ReadAllText(item.SaveFilePath + ".part"));
-        Assert.Equal("checkpoint data", File.ReadAllText(item.SaveFilePath + ".part.segments"));
-        Assert.Equal(13, item.DownloadedBytes);
-        queue.StopQueue();
+        byte[] data = Enumerable.Range(0, 2048).Select(index => (byte)(index % 251 + 1)).ToArray();
+        string checksum = Convert.ToHexString(SHA256.HashData(data));
+        using var stream = new ItemRenameDownloadTests.PausingStream(data);
+        int requests = 0;
+        using var handler = new TestMockHttpMessageHandler((request, _) =>
+        {
+            if (++requests == 1)
+            {
+                Assert.Null(request.Headers.Range);
+                var first = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) };
+                first.Content.Headers.ContentLength = data.Length;
+                return Task.FromResult(first);
+            }
+            Assert.Equal(513, request.Headers.Range?.Ranges.Single().From);
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(data[513..]) };
+            response.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(513, data.Length - 1, data.Length);
+            return Task.FromResult(response);
+        });
+        using var client = new HttpClient(handler);
+        var engine = new DownloadEngine(client);
+        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        queue.Packages.Clear();
+        var item = new DownloadItem
+        {
+            FileName = "payload.bin", SaveFilePath = Path.Combine(_root, "payload.bin"),
+            DirectDownloadUrl = "https://example.invalid/payload.bin", IsCustomName = true, ExpectedChecksum = checksum
+        };
+        Task completion = Task.CompletedTask;
+        int completed = 0;
+        engine.DownloadCompleted += download =>
+        {
+            completed++;
+            completion = queue.HandleDownloadCompleted(download);
+        };
+        Task transfer = engine.ResumeDownloadAsync(item);
+        try
+        {
+            await stream.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            _ = engine.CancelOrPauseDownload(item.Id);
+            await transfer.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Null(item.RejectedFiles);
+            Assert.Equal(513, item.DownloadedBytes);
+            byte[] checkpoint = File.ReadAllBytes(item.SaveFilePath + ".part.segments");
+            queue.RetryItem(item);
+            Assert.Equal(DownloadStatus.Queued, item.Status);
+            Assert.Null(item.RejectedFiles);
+            Assert.Equal(data[..513], File.ReadAllBytes(item.SaveFilePath + ".part"));
+            Assert.Equal(checkpoint, File.ReadAllBytes(item.SaveFilePath + ".part.segments"));
+            Assert.Equal(513, item.DownloadedBytes);
+            Assert.Equal(1, requests);
+            item.DirectDownloadUrl = "https://example.invalid/payload.bin";
+            transfer = engine.ResumeDownloadAsync(item);
+            await transfer.WaitAsync(TimeSpan.FromSeconds(10));
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.True(item.IsReadyForPostProcessing);
+            Assert.Equal(2, requests);
+            Assert.Equal(1, completed);
+            Assert.Equal(checksum, item.CalculatedChecksum, ignoreCase: true);
+            Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
+            Assert.False(File.Exists(item.SaveFilePath + ".part"));
+            Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
+        }
+        finally
+        {
+            queue.StopQueue();
+            _ = engine.CancelOrPauseDownload(item.Id);
+            await transfer.WaitAsync(TimeSpan.FromSeconds(10));
+            await completion.WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     [Fact]

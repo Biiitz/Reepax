@@ -160,7 +160,7 @@ public sealed class ItemRenameDownloadTests : IDisposable
             Task.FromResult(respond(request));
     }
 
-    private sealed class PausingStream(byte[] data) : MemoryStream(data, writable: false)
+    internal sealed class PausingStream(byte[] data) : MemoryStream(data, writable: false)
     {
         internal TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

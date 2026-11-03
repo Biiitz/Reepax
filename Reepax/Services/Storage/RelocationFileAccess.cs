@@ -17,6 +17,7 @@ internal static class RelocationFileAccess
     internal sealed class SourceLease(FileStream stream, bool canDelete) : IDisposable
     {
         internal FileStream Stream { get; } = stream;
+        internal bool CanDelete => canDelete;
 
         internal bool TryDelete()
         {

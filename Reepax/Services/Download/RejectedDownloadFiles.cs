@@ -74,7 +74,8 @@ public sealed class RejectedDownloadFiles
         if (IsAbsent(path)) return true;
         if (expected == null) return false;
         var lease = RelocationFileAccess.OpenSource(path);
-        if (ReadIdentity(lease.Stream.SafeFileHandle) != expected)
+        // Reject copy-only leases before deleting any associated file.
+        if (!lease.CanDelete || ReadIdentity(lease.Stream.SafeFileHandle) != expected)
         {
             lease.Dispose();
             return false;
