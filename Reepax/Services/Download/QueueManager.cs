@@ -21,9 +21,23 @@ namespace Reepax.Services.Download;
 
 public partial class QueueManager
 {
-    private static readonly Lazy<QueueManager> _instance = new(() => new QueueManager());
+    private static readonly Lazy<QueueManager> _instance = new(CreateInstance);
     public static QueueManager Instance => _instance.Value;
     public static bool IsInitialized => _instance.IsValueCreated;
+
+    private static QueueManager CreateInstance()
+    {
+        var queue = new QueueManager();
+        SettingsService.Instance.ArchivePasswordsChanged += (_, _) => queue.RetryWaitingArchivePasswords();
+        return queue;
+    }
+
+    private void RetryWaitingArchivePasswords()
+    {
+        if (IsRunning && Packages.Any(package => package.RequiresArchivePassword &&
+            ArchiveExtractionService.Instance.CanRetryPackagePasswords(package)))
+            ProcessQueue();
+    }
 
     private readonly object _lock = new();
     private bool _isRunning;
@@ -76,6 +90,9 @@ public partial class QueueManager
 
     /// <summary>Test hook: overrides the count of active downloads in DownloadEngine.</summary>
     public Func<int>? ActiveDownloadsCountOverride { get; set; }
+
+    internal Func<DownloadPackage, Task<bool>> ExtractPackageAsync { get; set; } =
+        package => Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
 
     private int GetActiveDownloadsCount()
     {
@@ -458,7 +475,7 @@ public partial class QueueManager
                 !Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id) &&
                 Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg))
             {
-                _ = Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(pkg);
+                _ = ExtractPackageAsync(pkg);
             }
         }
     }
@@ -1627,7 +1644,7 @@ public partial class QueueManager
                     bool canExtract = Extractor.ArchiveExtractionService.Instance.CanExtractPackage(package);
                     if (package.AutoExtractArchives && canExtract)
                     {
-                        _ = Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
+                        _ = ExtractPackageAsync(package);
                     }
                     else
                     {

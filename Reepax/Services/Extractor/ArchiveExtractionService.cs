@@ -723,6 +723,10 @@ public partial class ArchiveExtractionService
 
             await package.RefreshVerifyBatFileAsync().ConfigureAwait(false);
 
+            // A saved password may have changed while this attempt was still active.
+            if (package.RequiresArchivePassword && CanRetryPackagePasswords(package))
+                Download.QueueManager.Instance.ProcessQueue();
+
             SystemIntegration.PostDownloadActionService.Instance.Evaluate(Download.QueueManager.Instance.Packages);
         }
         return allSuccess;

@@ -213,7 +213,7 @@ public partial class ArchivePasswordTests : IDisposable
     /// <summary>
     /// Creates a valid PKWARE traditional encrypted ZIP archive for unit testing.
     /// </summary>
-    private static byte[] CreateEncryptedZip(string password, string entryName, string textContent)
+    internal static byte[] CreateEncryptedZip(string password, string entryName, string textContent)
     {
         byte[] contentBytes = System.Text.Encoding.UTF8.GetBytes(textContent);
         byte[] nameBytes = System.Text.Encoding.UTF8.GetBytes(entryName);

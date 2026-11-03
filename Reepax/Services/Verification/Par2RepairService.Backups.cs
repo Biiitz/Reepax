@@ -152,7 +152,7 @@ public partial class Par2RepairService
             return false;
         }
 
-        private static IEnumerable<string> ReadRepairTargets(string par2FilePath, string directory)
+        internal static IEnumerable<string> ReadRepairTargets(string par2FilePath, string directory)
         {
             using var stream = File.OpenRead(par2FilePath);
             var header = new byte[64];

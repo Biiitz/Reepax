@@ -529,6 +529,7 @@ public partial class Par2RepairService
 
         if (verifyResult.Status == Par2VerificationStatus.RepairPossible)
         {
+            InvalidateRepairFingerprints(package, primaryPar2);
             AppLogger.Info($"[Par2RepairService] Paket '{package.Name}': Beschädigte Dateien erkannt, Reparatur möglich. Starte Reparatur mit {verifyResult.AvailableRecoveryBlocks} Paritätsblöcken...");
             statusCallback?.Invoke(Loc.Format("Status_Par2Repairing", "0"));
 
@@ -565,6 +566,31 @@ public partial class Par2RepairService
         AppLogger.Warn($"[Par2RepairService] Paket '{package.Name}': PAR2-Prüfung fehlgeschlagen: {verifyResult.ErrorMessage}");
         statusCallback?.Invoke(Loc.Format("Status_Par2VerifyFailed", verifyResult.ErrorMessage ?? string.Empty));
         return false;
+    }
+
+    private void InvalidateRepairFingerprints(DownloadPackage package, string parityPath)
+    {
+        string directory = Path.GetDirectoryName(Path.GetFullPath(parityPath))!;
+        HashSet<string>? targets = null;
+        try
+        {
+            targets = RepairBackupScope.ReadRepairTargets(parityPath, directory).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OverflowException)
+        {
+            AppLogger.Warn("[Par2RepairService] Repair metadata could not identify cached fingerprints.");
+        }
+        string prefix = Path.TrimEndingDirectorySeparator(directory) + Path.DirectorySeparatorChar;
+        foreach (var item in package.ItemsSnapshot)
+        {
+            if (string.IsNullOrWhiteSpace(item.SaveFilePath) || IsPar2File(item.SaveFilePath)) continue;
+            string path;
+            try { path = Path.GetFullPath(item.SaveFilePath); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { continue; }
+            // Unknown metadata invalidates nearby caches without blocking native repair.
+            if (targets is { Count: > 0 } ? targets.Contains(path) : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                item.CalculatedChecksum = null;
+        }
     }
 
     public static void ParseVerificationOutput(string output, int exitCode, Par2VerifyResult result)
