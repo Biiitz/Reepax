@@ -99,7 +99,7 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void RemovePackage_CancelsDownloadsAndRemovesFromList()
+    public async Task RemovePackage_CancelsDownloadsAndRemovesFromList()
     {
         // Arrange
         var vm = new MainViewModel();
@@ -110,7 +110,7 @@ https://rapidgator.net/file/182937105
         vm.Packages.Add(package);
 
         // Act
-        vm.RemovePackageCommand.Execute(package);
+        await vm.RemovePackageCommand.ExecuteAsync(package);
 
         // Assert
         Assert.Empty(vm.Packages);

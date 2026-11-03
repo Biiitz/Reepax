@@ -135,6 +135,9 @@ public partial class DownloadItem : ObservableObject
     [ObservableProperty]
     private string? _lastVerificationError;
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public Services.Download.RejectedDownloadFiles? RejectedFiles { get; internal set; }
+
     private enum IntegrityVerificationState
     {
         None,
@@ -393,60 +396,6 @@ public partial class DownloadItem : ObservableObject
         OnPropertyChanged(nameof(DurationFormatted));
     }
 #pragma warning restore MVVMTK0034
-
-    public void Rename(string newName, bool isUserAction = true)
-    {
-        if (string.IsNullOrWhiteSpace(newName))
-            return;
-
-        if (isUserAction)
-        {
-            IsCustomName = true;
-        }
-
-        var trimmed = newName.Trim();
-        var oldSavePath = SaveFilePath;
-
-        if (!string.Equals(FileName, trimmed, StringComparison.Ordinal))
-        {
-            FileName = trimmed;
-        }
-        else
-        {
-            UpdateFilePathForFileName(trimmed);
-        }
-
-        var newSavePath = SaveFilePath;
-        if (!string.IsNullOrWhiteSpace(oldSavePath) && !string.IsNullOrWhiteSpace(newSavePath) &&
-            !string.Equals(oldSavePath, newSavePath, StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                if (System.IO.File.Exists(oldSavePath) && !System.IO.File.Exists(newSavePath))
-                {
-                    System.IO.File.Move(oldSavePath, newSavePath);
-                }
-                var oldPart = oldSavePath + ".part";
-                var newPart = newSavePath + ".part";
-                if (System.IO.File.Exists(oldPart) && !System.IO.File.Exists(newPart))
-                {
-                    System.IO.File.Move(oldPart, newPart);
-                }
-                var oldSegments = oldPart + ".segments";
-                var newSegments = newPart + ".segments";
-                if (System.IO.File.Exists(oldSegments) && !System.IO.File.Exists(newSegments))
-                {
-                    System.IO.File.Move(oldSegments, newSegments);
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[DownloadItem] Could not move files during rename: {ex.Message}");
-            }
-        }
-
-        Services.Storage.DownloadPersistenceService.Instance.RequestSave();
-    }
 
     private void UpdateFilePathForFileName(string value)
     {

@@ -151,6 +151,26 @@ internal sealed class PackageDirectoryMoveService
                 if (!CryptographicOperations.FixedTimeEquals(copy.Hash, publishedHash))
                     throw new IOException("The verified destination changed before relocation completed.");
             }
+            var rejectedItems = plan.ItemPaths.Where(entry => entry.Key.RejectedFiles != null).ToArray();
+            if (rejectedItems.Length > 0)
+            {
+                var indices = copies.Select((copy, index) => (copy.RelativePath, index))
+                    .ToDictionary(entry => entry.RelativePath, entry => entry.index, StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in rejectedItems)
+                {
+                    var rejected = entry.Key.RejectedFiles!;
+                    void Rebind(string suffix, bool checkpoint)
+                    {
+                        var relative = Path.GetRelativePath(plan.Target, entry.Value + suffix);
+                        if (indices.TryGetValue(relative, out int index))
+                            rejected.RebindVerifiedCopy(copies[index].Source.Stream.SafeFileHandle,
+                                publishedFiles[index].SafeFileHandle, checkpoint);
+                    }
+                    // Only verified copies of the original rejected objects inherit cleanup permission.
+                    Rebind(rejected.Published ? "" : ".part", checkpoint: false);
+                    if (!rejected.Published) Rebind(".part.segments", checkpoint: true);
+                }
+            }
             bool cleaned = true;
             foreach (var copy in copies) cleaned &= copy.Source.TryDelete();
             foreach (var copy in copies) copy.Source.Dispose();

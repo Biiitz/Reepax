@@ -62,6 +62,24 @@ public class PackagePathOperationGateTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MetadataRename_DoesNotChangeAnActiveOrVerifyingFile(bool verifying)
+    {
+        var item = new DownloadItem
+        {
+            FileName = "download_file", OriginalUrl = "https://example.invalid/data",
+            Status = verifying ? DownloadStatus.Completed : DownloadStatus.Downloading
+        };
+        item.IsVerifyingIntegrity = verifying;
+        using var handler = new MetadataHandler();
+        using var client = new HttpClient(handler);
+        var resolver = new LinkMetadataResolverService(client);
+        Assert.True(await resolver.ResolveItemMetadataAsync(item));
+        Assert.Equal("download_file", item.FileName);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

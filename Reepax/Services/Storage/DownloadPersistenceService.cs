@@ -45,6 +45,7 @@ public class DownloadItemDto
     public string? CalculatedChecksum { get; set; }
     public bool IsCustomName { get; set; }
     public bool IsMetadataResolved { get; set; }
+    public Download.RejectedDownloadFiles? RejectedFiles { get; set; }
 }
 
 public class NextTaskStepDto
@@ -880,6 +881,7 @@ public class DownloadPersistenceService : IDisposable
                         ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
                         ExpectedChecksum = item.ExpectedChecksum,
                         CalculatedChecksum = item.CalculatedChecksum,
+                        RejectedFiles = item.RejectedFiles,
                         IsCustomName = item.IsCustomName,
                         IsMetadataResolved = item.IsMetadataResolved || item.TotalBytes > 0 || item.DownloadedBytes > 0 || itemStatus == DownloadStatus.Completed
                     });
@@ -1559,6 +1561,7 @@ public class DownloadPersistenceService : IDisposable
                             ProgressPercentage = itemDto.ProgressPercentage,
                             ExpectedChecksum = itemDto.ExpectedChecksum,
                             CalculatedChecksum = itemDto.CalculatedChecksum,
+                            RejectedFiles = itemDto.RejectedFiles,
                             IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
                         };
 
@@ -1851,6 +1854,7 @@ public class DownloadPersistenceService : IDisposable
                             ElapsedDurationMs = itemDto.ElapsedDurationMs,
                             ExpectedChecksum = itemDto.ExpectedChecksum,
                             CalculatedChecksum = itemDto.CalculatedChecksum,
+                            RejectedFiles = itemDto.RejectedFiles,
                             IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
                         };
 

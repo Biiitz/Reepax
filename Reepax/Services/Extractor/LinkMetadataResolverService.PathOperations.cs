@@ -17,7 +17,7 @@ public partial class LinkMetadataResolverService
             SafeInvoke(() =>
             {
                 pending = item.IsRemovalPending;
-                if (!item.IsUnavailableForProcessing && !item.IsCustomName)
+                if (!item.IsFileRenameBusy && !item.IsCustomName)
                     item.Rename(name, isUserAction: false);
             });
             if (!pending)

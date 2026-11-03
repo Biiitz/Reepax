@@ -390,6 +390,8 @@ public partial class QueueManager
                 // 1. Ensure active downloads do not exceed limit (e.g. after reducing the limit)
                 EnforceMaxConcurrentDownloads();
 
+                PrepareQueuedRejectedDownloads();
+
                 // 2. Scenario A: start waiting direct downloads
                 StartWaitingDirectDownloads();
 
@@ -1157,6 +1159,9 @@ public partial class QueueManager
         if (item == null || item.IsUnavailableForProcessing || !item.IsEnabled || item.Status == DownloadStatus.Completed)
             return false;
 
+        if (item.IsVerifyingIntegrity || !PrepareRejectedDownload(item))
+            return false;
+
         item.IsTrickling = false;
 
         bool wasBrowserClosed = item.StatusMessage == Loc.Get("Status_BrowserWindowClosed") ||
@@ -1218,7 +1223,11 @@ public partial class QueueManager
 
     public void RetryItem(DownloadItem? item)
     {
-        if (item == null || item.IsUnavailableForProcessing || item.Status == DownloadStatus.Completed)
+        if (item == null || item.IsUnavailableForProcessing || item.IsVerifyingIntegrity ||
+            item.Status == DownloadStatus.Completed || IsItemActive(item) || DownloadEngine.Instance.IsDownloading(item.Id))
+            return;
+
+        if (!PrepareRejectedDownload(item))
             return;
 
         // Ensure item and parent package are enabled
@@ -1233,6 +1242,9 @@ public partial class QueueManager
         item.DirectDownloadUrl = null;
         item.ErrorMessage = null;
         item.IsTrickling = false;
+        item.RetryCount = 0;
+        item.LastVerificationError = null;
+        item.FastHostResolveFailed = false;
 
         SafeInvoke(() =>
         {
@@ -1537,30 +1549,16 @@ public partial class QueueManager
                     });
 
                     ProcessQueue();
+                    var rejectedFiles = RejectedDownloadFiles.Capture(item.SaveFilePath, published: true);
                     verification = await _verifyCompletion(item, cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!verification.IsValid)
                     {
+                        item.RejectedFiles = rejectedFiles;
                         var maxRetries = SettingsService.Instance.Settings.MaxAutoRetryOnCorruption;
-                        if (item.RetryCount < maxRetries)
+                        if (item.RetryCount < maxRetries && PrepareRejectedDownload(item))
                         {
-                            AppLogger.Warn($"[QueueManager] Prüfsummenfehler bei '{item.FileName}': {verification.ErrorMessage}. Lösche beschädigte Datei und reihe Part erneut ein (Versuch {item.RetryCount + 1}/{maxRetries}).");
-
-                            // Clean up corrupt file from disk
-                            if (!string.IsNullOrWhiteSpace(item.SaveFilePath) && File.Exists(item.SaveFilePath))
-                            {
-                                Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(item.SaveFilePath);
-                            }
-                            var tempFile = item.SaveFilePath + ".part";
-                            if (File.Exists(tempFile))
-                            {
-                                Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(tempFile);
-                            }
-                            var segFile = item.SaveFilePath + ".part.segments";
-                            if (File.Exists(segFile))
-                            {
-                                Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(segFile);
-                            }
+                            AppLogger.Warn("[QueueManager] Rejected download data was reset for an automatic retry.");
 
                             await ApplyCompletionUpdateAsync(() =>
                             {
@@ -1590,7 +1588,8 @@ public partial class QueueManager
                                 cancellationToken.ThrowIfCancellationRequested();
                                 item.LastVerificationError = verification.ErrorMessage;
                                 item.Status = DownloadStatus.Failed;
-                                item.StatusMessage = Loc.Format("Status_ChecksumError", verification.ErrorMessage ?? string.Empty);
+                                item.StatusMessage = item.RetryCount < maxRetries ? Loc.Get("Status_IntegrityRetryBlocked")
+                                    : Loc.Format("Status_ChecksumError", verification.ErrorMessage ?? string.Empty);
                                 item.CurrentSlot = null;
                                 item.IsVerifyingIntegrity = false;
                             });
@@ -1688,14 +1687,9 @@ public partial class QueueManager
             return;
         if (ex is DownloadIntegrityException)
         {
+            item.RejectedFiles ??= RejectedDownloadFiles.Capture(item.SaveFilePath, published: false);
             int maxRetries = SettingsService.Instance.Settings.MaxAutoRetryOnCorruption;
-            bool retry = item.RetryCount < maxRetries;
-            if (retry && !string.IsNullOrWhiteSpace(item.SaveFilePath))
-            {
-                // The destination may still contain the user's original file.
-                retry = Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(item.SaveFilePath + ".part") &&
-                    Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(item.SaveFilePath + ".part.segments");
-            }
+            bool retry = item.RetryCount < maxRetries && PrepareRejectedDownload(item);
             SafeInvoke(() =>
             {
                 if (item.IsUnavailableForProcessing) return;
@@ -1710,7 +1704,8 @@ public partial class QueueManager
                     item.ProgressPercentage = 0;
                     item.StatusMessage = Loc.Format("Status_RetryingAfterChecksumError", item.RetryCount, maxRetries);
                 }
-                else item.StatusMessage = Loc.Format("Status_ChecksumError", ex.Message);
+                else item.StatusMessage = item.RetryCount < maxRetries ? Loc.Get("Status_IntegrityRetryBlocked")
+                    : Loc.Format("Status_ChecksumError", ex.Message);
             });
             ProcessQueue();
             return;

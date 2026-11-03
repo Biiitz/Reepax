@@ -38,8 +38,17 @@ public partial class MainViewModel
     {
         RunWhenCleanupPathsAvailable(() =>
         {
-            if (Packages.Any(package => package.Items.Contains(item)))
-                item.Rename(name, isUserAction: true);
+            var package = Packages.FirstOrDefault(package => package.Items.Contains(item));
+            if (package == null)
+                return;
+            bool busy = item.IsFileRenameBusy || package.IsExtracting ||
+                Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(package.Id) ||
+                Services.Verification.Par2RepairService.Instance.GetActiveRepairs().ContainsKey(package.Id) ||
+                package.NextTaskSteps.Any(step => step.State is NextTaskStepState.Running or NextTaskStepState.Transitioning);
+            if (!busy && item.Rename(name, isUserAction: true))
+                return;
+            StatusSummary = Services.Localization.Loc.Get(busy ? "Status_ItemRenameBusy" : "Status_ItemRenameFailed");
+            RenameFailureNotification(StatusSummary);
         });
     }
 

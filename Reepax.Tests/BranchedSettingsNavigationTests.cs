@@ -60,7 +60,7 @@ public partial class DialogUiTests
                     var peer = new ButtonAutomationPeer(button);
                     Assert.Equal(Loc.Get(key), peer.GetName());
                     ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
-                    PumpAscii(TimeSpan.FromMilliseconds(260));
+                    WaitForSettingsBranch(rail, button, index);
                     Assert.Equal(category, model.SelectedSettingsCategory);
                     Assert.Equal(index, rail.ActiveIndex);
                     Assert.Equal(button.TranslatePoint(new Point(0, button.ActualHeight / 2), rail).Y, rail.CurrentCenter);
@@ -73,14 +73,14 @@ public partial class DialogUiTests
                     Assert.True(label.ActualWidth + 1 >= text.WidthIncludingTrailingWhitespace, "The category label must fit without clipping.");
                 }
                 model.SelectedSettingsCategory = SettingsCategory.Notifications;
-                PumpAscii(TimeSpan.FromMilliseconds(260));
+                WaitForSettingsBranch(rail, (Button)view.FindName("GeneralCategoryButton"), 0);
                 Assert.Equal(0, rail.ActiveIndex);
                 view.Visibility = Visibility.Collapsed;
                 model.SelectedSettingsCategory = SettingsCategory.Shortcuts;
                 PumpAscii(TimeSpan.FromMilliseconds(30));
                 Assert.False(rail.HasAnimatedProperties);
                 view.Visibility = Visibility.Visible;
-                PumpAscii(TimeSpan.FromMilliseconds(30));
+                WaitForSettingsBranch(rail, (Button)view.FindName("ShortcutsCategoryButton"), 2);
                 Assert.Equal(2, rail.ActiveIndex);
                 Assert.Equal(110, rail.CurrentCenter);
                 Assert.Equal(20, rail.BranchReach);
@@ -93,6 +93,17 @@ public partial class DialogUiTests
                 Application.Current.Resources.MergedDictionaries.Remove(resources);
             }
         }));
+    }
+
+    private static void WaitForSettingsBranch(BranchedNavigationRail rail, Button button, int index)
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        bool Settled() => rail.ActiveIndex == index && !rail.HasAnimatedProperties && rail.BranchReach == 20 &&
+            rail.CurrentCenter == button.TranslatePoint(new Point(0, button.ActualHeight / 2), rail).Y;
+        // Offscreen render clocks may start after the dispatcher processes the selection.
+        while (!Settled() && timer.Elapsed < TimeSpan.FromSeconds(5))
+            PumpAscii(TimeSpan.FromMilliseconds(20));
+        Assert.True(Settled(), "The navigation branch must finish at the selected category.");
     }
 
     [Fact]

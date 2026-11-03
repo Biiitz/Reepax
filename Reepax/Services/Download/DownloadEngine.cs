@@ -292,6 +292,8 @@ public partial class DownloadEngine
             // Ensure package name is updated if item already has a meaningful name
             using (await PackagePathOperationGate.Instance.EnterAsync(cancellationToken))
             {
+                if (item.RejectedFiles != null && !item.RejectedFiles.TryReset(item))
+                    throw new IOException(Loc.Get("Status_IntegrityRetryBlocked"));
                 SafeInvoke(() =>
                 {
                     var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
@@ -1455,12 +1457,17 @@ public partial class DownloadEngine
         cancellationToken.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(item.ExpectedChecksum))
         {
+            var rejectedFiles = RejectedDownloadFiles.Capture(item.SaveFilePath ?? finalFilePath, published: false);
             try
             {
                 await Reepax.Services.Verification.ChecksumVerificationService.Instance.VerifyExpectedChecksumAsync(
                     tempFilePath, item.ExpectedChecksum, cancellationToken).ConfigureAwait(false);
             }
-            catch (InvalidDataException ex) { throw new DownloadIntegrityException(ex.Message, ex); }
+            catch (InvalidDataException ex)
+            {
+                item.RejectedFiles = rejectedFiles;
+                throw new DownloadIntegrityException(ex.Message, ex);
+            }
         }
         cancellationToken.ThrowIfCancellationRequested();
         var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
