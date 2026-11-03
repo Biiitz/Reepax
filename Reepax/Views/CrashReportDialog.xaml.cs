@@ -38,7 +38,7 @@ public partial class CrashReportDialog : Window
                 ? "Ein unerwarteter Ausnahmefehler ist aufgetreten."
                 : "An unexpected exception has occurred.");
 
-        ErrorMessageTextBlock.Text = $"{ex.GetType().Name}: {ex.Message}";
+        ErrorMessageTextBlock.Text = DiagnosticPrivacy.Sanitize($"{ex.GetType().Name}: {ex.Message}");
 
         if (result.LoggingDisabled)
         {
@@ -48,7 +48,7 @@ public partial class CrashReportDialog : Window
         }
         else if (!result.Success)
         {
-            var warnText = Loc.Format("Crash_SaveFailedWarning", result.ErrorMessage ?? "Unknown IO error");
+            var warnText = DiagnosticPrivacy.Sanitize(Loc.Format("Crash_SaveFailedWarning", result.ErrorMessage ?? "Unknown IO error"));
             LogPathTextBox.Text = warnText;
             OpenFolderButton.IsEnabled = false;
             CopyPathButton.IsEnabled = false;
@@ -141,16 +141,19 @@ public partial class CrashReportDialog : Window
             string title = isCritical
                 ? Loc.Get("Crash_CriticalErrorTitle")
                 : Loc.Get("Crash_UnexpectedErrorTitle");
-            string pathInfo = result.LoggingDisabled
-                ? Loc.Get("Crash_LoggingDisabled")
-                : (result.Success ? result.PrimaryLogPath : "Failed to write to disk");
-            string msgPattern = isCritical
-                ? Loc.Get("Crash_CriticalErrorMessage")
-                : Loc.Get("Crash_UnexpectedErrorMessage");
-            string message = Loc.Format(msgPattern, ex.Message, pathInfo);
+            string message = BuildFallbackMessage(ex, result, isCritical);
 
             MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
         catch { }
+    }
+
+    internal static string BuildFallbackMessage(Exception ex, CrashLogResult result, bool isCritical)
+    {
+        string pathInfo = result.LoggingDisabled
+            ? Loc.Get("Crash_LoggingDisabled")
+            : (result.Success ? result.PrimaryLogPath : "Failed to write to disk");
+        string messageKey = isCritical ? "Crash_CriticalErrorMessage" : "Crash_UnexpectedErrorMessage";
+        return DiagnosticPrivacy.Sanitize(Loc.Format(messageKey, ex.Message, pathInfo));
     }
 }

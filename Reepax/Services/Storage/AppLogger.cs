@@ -151,7 +151,7 @@ public static class AppLogger
     {
         if (ex == null)
         {
-            return $"[{timestamp}] [{level}] {message}{Environment.NewLine}";
+            return DiagnosticPrivacy.Sanitize($"[{timestamp}] [{level}] {message}{Environment.NewLine}");
         }
 
         var sb = new StringBuilder();
@@ -169,7 +169,7 @@ public static class AppLogger
                 sb.Append($"{ex.InnerException.StackTrace}{Environment.NewLine}");
             }
         }
-        return sb.ToString();
+        return DiagnosticPrivacy.Sanitize(sb.ToString());
     }
 
     private static async Task WriteWithRetryAsync(string filePath, string content, int maxRetries = 4)

@@ -58,15 +58,6 @@ public static class CrashLogService
             result.ErrorMessage = "Logging is disabled in application settings.";
             result.PrimaryLogPath = string.Empty;
 
-            try
-            {
-                AppLogger.Log($"[CRASH] [{source}] {ex.Message}", "CRITICAL", ex);
-            }
-            catch
-            {
-                // Logging must never crash the crash handler
-            }
-
             return result;
         }
 
@@ -165,6 +156,7 @@ public static class CrashLogService
     {
         try
         {
+            content = DiagnosticPrivacy.Sanitize(content);
             var dir = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
@@ -221,7 +213,7 @@ public static class CrashLogService
 
         sb.AppendLine("================================================================================");
         sb.AppendLine();
-        return sb.ToString();
+        return DiagnosticPrivacy.Sanitize(sb.ToString());
     }
 
     private static string GetAppVersion()

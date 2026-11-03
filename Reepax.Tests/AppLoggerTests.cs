@@ -173,4 +173,61 @@ public class AppLoggerTests : IDisposable
         AppLogger.Flush();
         Assert.True(File.Exists(logFile));
     }
+
+    [Theory]
+    [InlineData("https://files.example.test/TestPathSecret/archive.bin", "TestPathSecret")]
+    [InlineData("https://files.example.test/archive.bin?token=TestQuerySecret", "TestQuerySecret")]
+    [InlineData("https://files.example.test/archive.bin#TestFragmentSecret", "TestFragmentSecret")]
+    [InlineData("https://TestAccount:TestCredentialSecret@files.example.test/archive.bin", "TestAccount|TestCredentialSecret")]
+    [InlineData("file:///Z:/Private/TestFileUriSecret/archive.bin", "TestFileUriSecret")]
+    [InlineData("File 'Z:\\Private\\TestPathSecret\\part 01.bin' failed: code=5", "TestPathSecret")]
+    [InlineData("Open Z:\\Private\\TestUnquotedSecret\\archive.bin", "TestUnquotedSecret")]
+    [InlineData("File '\\\\server.example.test\\share\\TestShareSecret\\part 01.bin' failed", "server.example.test|TestShareSecret")]
+    [InlineData("Read '/home/example/TestUnixSecret/archive.bin' failed", "TestUnixSecret")]
+    [InlineData("{\"url\":\"https:\\/\\/files.example.test\\/TestEscapedSecret\\/archive.bin\"}", "TestEscapedSecret")]
+    public void AppLogger_RedactsSensitiveLocationsBeforeWriting(string message, string sensitiveValues)
+    {
+        AppLogger.Info("Probe failed status=403 " + message);
+        AppLogger.Flush();
+
+        string content = File.ReadAllText(AppLogger.GetCurrentLogFilePath());
+        Assert.Contains("[INFO] Probe failed status=403", content);
+        foreach (string value in sensitiveValues.Split('|'))
+            Assert.DoesNotContain(value, content);
+    }
+
+    [Fact]
+    public void AppLogger_RedactsExceptionMessagesAndStackLocations()
+    {
+        var inner = new IOException("Read 'Z:\\Private\\TestInnerSecret\\part 01.bin' failed: code=5");
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo.SetRemoteStackTrace(inner,
+            "   at Example.Component.Read() in Z:\\Private\\TestStackSecret\\Component.cs:line 42");
+        var outer = new InvalidOperationException("Request https://files.example.test/archive?token=TestOuterSecret failed", inner);
+        AppLogger.Error("Transfer failed status=403", outer);
+        AppLogger.Flush();
+
+        string content = File.ReadAllText(AppLogger.GetCurrentLogFilePath());
+        Assert.Contains("System.InvalidOperationException", content);
+        Assert.Contains("System.IO.IOException", content);
+        Assert.Contains("Example.Component.Read()", content);
+        Assert.Contains(":line 42", content);
+        Assert.Contains("code=5", content);
+        Assert.DoesNotContain("TestInnerSecret", content);
+        Assert.DoesNotContain("TestStackSecret", content);
+        Assert.DoesNotContain("TestOuterSecret", content);
+    }
+
+    [Fact]
+    public void AppLogger_FallbackFileContainsOnlyRedactedDiagnostics()
+    {
+        Directory.CreateDirectory(_testLogsDirectory);
+        using var locked = new FileStream(AppLogger.GetCurrentLogFilePath(), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
+        AppLogger.Error("Request https://files.example.test/TestFallbackSecret/archive.bin failed status=403");
+        AppLogger.Flush();
+
+        string fallback = Assert.Single(Directory.GetFiles(_testLogsDirectory, "reepax_fallback_*.log"));
+        string content = File.ReadAllText(fallback);
+        Assert.Contains("status=403", content);
+        Assert.DoesNotContain("TestFallbackSecret", content);
+    }
 }

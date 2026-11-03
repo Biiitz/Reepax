@@ -78,6 +78,53 @@ public class CrashLogServiceTests : IDisposable
     }
 
     [Fact]
+    public void CrashReport_RedactsLocationsAndNestedExceptionsWhileRetainingDiagnosticDetails()
+    {
+        var inner = new IOException("Read 'Z:\\Private\\TestInnerSecret\\part 01.bin' failed: code=5");
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo.SetRemoteStackTrace(inner,
+            "   at Example.Component.Read() in Z:\\Private\\TestStackSecret\\Component.cs:line 42");
+        var exception = new InvalidOperationException("Request https://files.example.test/archive?token=TestCrashSecret failed", inner);
+        string report = CrashLogService.FormatCrashReport("ExampleSource", exception);
+
+        Assert.Contains("App Version:", report);
+        Assert.Contains("Runtime:", report);
+        Assert.Contains("Source:       ExampleSource", report);
+        Assert.Contains("System.InvalidOperationException", report);
+        Assert.Contains("System.IO.IOException", report);
+        Assert.Contains("Example.Component.Read()", report);
+        Assert.Contains(":line 42", report);
+        Assert.Contains("code=5", report);
+        Assert.DoesNotContain("TestInnerSecret", report);
+        Assert.DoesNotContain("TestStackSecret", report);
+        Assert.DoesNotContain("TestCrashSecret", report);
+        Assert.DoesNotContain(SettingsService.AppDataDirectory, report);
+        Assert.DoesNotContain(AppContext.BaseDirectory, report);
+
+        var result = CrashLogService.LogCrash("ExampleSource", exception);
+        Assert.True(result.Success);
+        foreach (string path in result.SavedPaths)
+        {
+            string saved = File.ReadAllText(path);
+            Assert.DoesNotContain("TestCrashSecret", saved);
+            Assert.DoesNotContain("TestInnerSecret", saved);
+            Assert.DoesNotContain("TestStackSecret", saved);
+            Assert.DoesNotContain(SettingsService.AppDataDirectory, saved);
+            Assert.Contains("Example.Component.Read()", saved);
+        }
+    }
+
+    [Fact]
+    public void TryWriteCrashLog_RedactsDirectContentWithoutChangingItsDestination()
+    {
+        string path = Path.Combine(_testTempDir, "direct-crash.log");
+        Assert.True(CrashLogService.TryWriteCrashLog(path,
+            "Source: ExampleSource; https://files.example.test/TestDirectSecret/archive.bin"));
+        string content = File.ReadAllText(path);
+        Assert.Contains("ExampleSource", content);
+        Assert.DoesNotContain("TestDirectSecret", content);
+    }
+
+    [Fact]
     public void LogCrash_WhenLoggingDisabled_DoesNotWriteToDisk()
     {
         try
@@ -117,6 +164,28 @@ public class CrashLogServiceTests : IDisposable
 
         Assert.False(Directory.Exists(dummyLogDir), "Logs directory must be removed by CleanupLogFiles().");
         Assert.False(File.Exists(dummyCrashLog), "crash.log must be removed by CleanupLogFiles().");
+    }
+
+    [Fact]
+    public void LogCrash_WhenDisabled_DoesNotForwardTheReportToAnEnabledLogger()
+    {
+        bool previousLoggerState = AppLogger.IsLoggingEnabled;
+        try
+        {
+            SettingsService.Instance.Settings.EnableFileLogging = false;
+            AppLogger.IsLoggingEnabled = true;
+            var result = CrashLogService.LogCrash("ExampleSource", new IOException("Example failure"));
+            AppLogger.Flush();
+
+            Assert.True(result.LoggingDisabled);
+            Assert.Empty(result.SavedPaths);
+            Assert.Empty(Directory.GetFiles(_testTempDir, "*", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            AppLogger.IsLoggingEnabled = previousLoggerState;
+            SettingsService.Instance.Settings.EnableFileLogging = true;
+        }
     }
 
     [Fact]

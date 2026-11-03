@@ -1338,23 +1338,28 @@ public partial class MainViewModel
     {
         try
         {
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("### Reepax Diagnostic Information");
-            sb.AppendLine($"- App Version: {AppVersion}");
-            sb.AppendLine($"- OS: {OperatingSystemInfo}");
-            sb.AppendLine($"- Architecture: {ArchitectureInfo}");
-            sb.AppendLine($"- .NET Runtime: {DotNetRuntimeInfo}");
-            sb.AppendLine($"- Native Engine: reepax_adblock.dll (Rust x86_64)");
-            sb.AppendLine($"- Archive Engine: SharpCompress & par2 (Parchive 2.0)");
-            sb.AppendLine($"- AppData Path: {AppDataFolderPath}");
-            sb.AppendLine($"- Logs Path: {LogsFolderPath}");
-            sb.AppendLine($"- Language: {LocalizationService.Instance.CurrentLanguage}");
-            SafeSetClipboardText(sb.ToString(), Loc.Get("About_DiagnosticCopied"));
+            SafeSetClipboardText(BuildSystemDiagnosticInfo(), Loc.Get("About_DiagnosticCopied"));
         }
         catch (Exception ex)
         {
             AppLogger.Warn($"[MainViewModel] Fehler beim Kopieren der Diagnose-Infos: {ex.Message}");
         }
+    }
+
+    internal string BuildSystemDiagnosticInfo()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("### Reepax Diagnostic Information");
+        sb.AppendLine($"- App Version: {AppVersion}");
+        sb.AppendLine($"- OS: {OperatingSystemInfo}");
+        sb.AppendLine($"- Architecture: {ArchitectureInfo}");
+        sb.AppendLine($"- .NET Runtime: {DotNetRuntimeInfo}");
+        sb.AppendLine("- Native Engine: reepax_adblock.dll (Rust x86_64)");
+        sb.AppendLine("- Archive Engine: SharpCompress & par2 (Parchive 2.0)");
+        sb.AppendLine($"- AppData Path: {AppDataFolderPath}");
+        sb.AppendLine($"- Logs Path: {LogsFolderPath}");
+        sb.AppendLine($"- Language: {LocalizationService.Instance.CurrentLanguage}");
+        return DiagnosticPrivacy.Sanitize(sb.ToString());
     }
 
     private static void OpenBrowserUrl(string url)
