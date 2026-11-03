@@ -58,12 +58,22 @@ public class SecureStorageTests
         Assert.Null(SecureAppDataStorage.DecryptString(null!));
     }
 
-    [Fact]
-    public void SecureAppDataStorage_TamperedCiphertext_ThrowsException()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void SecureAppDataStorage_TamperedCiphertext_ThrowsException(int position)
     {
-        var tampered = SecureAppDataStorage.HeaderPrefix + "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo="; // valid base64, but invalid DPAPI blob
+        const string text = "{\"value\":\"example-private-value\"}";
+        string encrypted = SecureAppDataStorage.EncryptString(text);
+        byte[] blob = Convert.FromBase64String(encrypted[SecureAppDataStorage.HeaderPrefix.Length..]);
+        int offset = position == 0 ? 0 : position == 1 ? blob.Length / 2 : blob.Length - 1;
+        blob[offset] ^= 0x40;
+        string tampered = SecureAppDataStorage.HeaderPrefix + Convert.ToBase64String(blob);
 
-        Assert.ThrowsAny<CryptographicException>(() => SecureAppDataStorage.DecryptString(tampered));
+        var error = Assert.ThrowsAny<CryptographicException>(() => SecureAppDataStorage.DecryptString(tampered));
+        Assert.DoesNotContain("example-private-value", error.ToString());
+        Assert.Equal(text, SecureAppDataStorage.DecryptString(encrypted));
     }
 
     [Fact]

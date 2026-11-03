@@ -1204,15 +1204,7 @@ public class DownloadPersistenceService : IDisposable
                     catch { }
                 }
 
-                if (File.Exists(_downloadsFilePath))
-                {
-                    try
-                    {
-                        var bakFile = _downloadsFilePath + ".bak";
-                        File.Copy(_downloadsFilePath, bakFile, overwrite: true);
-                    }
-                    catch { }
-                }
+                ProtectedStorageBackup.Update<List<DownloadPackageDto>>(_downloadsFilePath, _jsonOptions);
 
                 var encryptedData = SecureAppDataStorage.EncryptString(json);
                 tempFile = _downloadsFilePath + ".tmp";
@@ -1311,15 +1303,7 @@ public class DownloadPersistenceService : IDisposable
                     catch { }
                 }
 
-                if (File.Exists(_historyFilePath))
-                {
-                    try
-                    {
-                        var bakFile = _historyFilePath + ".bak";
-                        File.Copy(_historyFilePath, bakFile, overwrite: true);
-                    }
-                    catch { }
-                }
+                ProtectedStorageBackup.Update<List<DownloadPackageDto>>(_historyFilePath, _jsonOptions);
 
                 var encryptedData = SecureAppDataStorage.EncryptString(json);
                 tempFile = _historyFilePath + ".tmp";

@@ -294,23 +294,8 @@ public partial class SettingsService
                 tempFile = _settingsFilePath + ".tmp";
                 File.WriteAllText(tempFile, encrypted);
 
-                // Atomic write: write to temp file then replace/move to destination and preserve backup
-                if (File.Exists(_settingsFilePath))
-                {
-                    try
-                    {
-                        File.Replace(tempFile, _settingsFilePath, _backupFilePath);
-                    }
-                    catch
-                    {
-                        try { File.Copy(_settingsFilePath, _backupFilePath, overwrite: true); } catch { }
-                        File.Move(tempFile, _settingsFilePath, overwrite: true);
-                    }
-                }
-                else
-                {
-                    File.Move(tempFile, _settingsFilePath, overwrite: true);
-                }
+                ProtectedStorageBackup.Update<AppSettings>(_settingsFilePath);
+                File.Move(tempFile, _settingsFilePath, overwrite: true);
 
                 _hasSettingsLoadFailed = false;
             }
