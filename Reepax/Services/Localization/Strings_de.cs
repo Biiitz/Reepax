@@ -253,7 +253,6 @@ public static class Strings_de
         ["Menu_RetryArchiveCleanup"] = "Archivbereinigung wiederholen",
         ["Status_CleanupBusy"] = "Ein anderer Vorgang verwendet die ausgewählten Dateien. Bitte später erneut versuchen.",
         ["Status_BrowserStopFailed"] = "Der Browser-Download konnte nicht gestoppt werden. Bitte erneut versuchen.",
-        ["Busy_RemovingDownloads"] = "Downloads werden geprüft oder entfernt…",
         ["Status_ResolvingDirectLink"] = "Löse Direct-Link im Hintergrund auf",
         ["Status_BrowserWindowWaiting"] = "Browser-Fenster {0} (Warte auf Download)",
         ["Status_BrowserWindowClosed"] = "Browser-Fenster geschlossen",

@@ -106,11 +106,11 @@ public partial class ThemeService
                 hoverContrastBrush.Freeze();
                 app.Resources["AccentHoverForegroundBrush"] = hoverContrastBrush;
                 app.Resources["BorderHighlightBrush"] = accentBrush;
-                var glowBrush1 = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(55, color.R, color.G, color.B));
+                var glowBrush1 = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(44, color.R, color.G, color.B));
                 glowBrush1.Freeze();
                 app.Resources["AccentGlowBrush1"] = glowBrush1;
 
-                var glowBrush2 = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(28, color.R, color.G, color.B));
+                var glowBrush2 = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(20, color.R, color.G, color.B));
                 glowBrush2.Freeze();
                 app.Resources["AccentGlowBrush2"] = glowBrush2;
 
@@ -120,9 +120,9 @@ public partial class ThemeService
                     EndPoint = new System.Windows.Point(0, 1)
                 };
                 selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(77, color.R, color.G, color.B), 0.0));
-                selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(30, color.R, color.G, color.B), 0.3));
-                selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(24, color.R, color.G, color.B), 0.5));
-                selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(30, color.R, color.G, color.B), 0.7));
+                selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(23, color.R, color.G, color.B), 0.3));
+                selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(16, color.R, color.G, color.B), 0.5));
+                selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(23, color.R, color.G, color.B), 0.7));
                 selectionBg.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(77, color.R, color.G, color.B), 1.0));
                 selectionBg.Freeze();
                 app.Resources["AccentSelectionBgBrush"] = selectionBg;

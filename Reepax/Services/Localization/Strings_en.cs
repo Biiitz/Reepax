@@ -253,7 +253,6 @@ public static class Strings_en
         ["Menu_RetryArchiveCleanup"] = "Retry archive cleanup",
         ["Status_CleanupBusy"] = "Another operation is using the selected files. Please try again later.",
         ["Status_BrowserStopFailed"] = "The browser download could not be stopped. Please try again.",
-        ["Busy_RemovingDownloads"] = "Preparing or removing downloads…",
         ["Status_ResolvingDirectLink"] = "Resolving direct link in background",
         ["Status_BrowserWindowWaiting"] = "Browser window {0} (Waiting for download)",
         ["Status_BrowserWindowClosed"] = "Browser window closed",

@@ -112,9 +112,9 @@
     <SolidColorBrush x:Key="AccentBlueHoverBrush" Color="{StaticResource AccentBlueHoverColor}" />
     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="AccentHoverForegroundBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="AccentGlowBrush1" Color="#300066CC" />
-    <SolidColorBrush x:Key="AccentGlowBrush2" Color="#140066CC" />
-    <SolidColorBrush x:Key="AccentSelectionBgBrush" Color="#DCE9FF" />
+    <SolidColorBrush x:Key="AccentGlowBrush1" Color="#260066CC" />
+    <SolidColorBrush x:Key="AccentGlowBrush2" Color="#0F0066CC" />
+    <SolidColorBrush x:Key="AccentSelectionBgBrush" Color="#E2EDFF" />
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="#8E8E93" />
     <Color x:Key="GlyphPrimaryColor">#1D1D1F</Color>
     <SolidColorBrush x:Key="GlyphPrimaryBrush" Color="{StaticResource GlyphPrimaryColor}" />

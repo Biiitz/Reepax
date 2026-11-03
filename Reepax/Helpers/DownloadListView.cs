@@ -193,6 +193,7 @@ public sealed class DownloadListRow : ObservableObject
     public DownloadPackage Package { get; internal set; }
     public bool IsFile => Model is DownloadItem;
     public bool IsClippedFile => IsFile && Package.IsClipped;
+    public bool IsLastFile => IsFile && Package.Items.Count > 0 && ReferenceEquals(Package.Items[^1], Model);
     public bool HasPackageDropAfter => EndingPackages.Any(package => package.IsDropAfter);
     internal List<DownloadPackage> EndingPackages { get; } = new();
 
@@ -205,6 +206,7 @@ public sealed class DownloadListRow : ObservableObject
     internal void RefreshPresentation()
     {
         OnPropertyChanged(nameof(IsClippedFile));
+        OnPropertyChanged(nameof(IsLastFile));
         OnPropertyChanged(nameof(HasPackageDropAfter));
     }
 }

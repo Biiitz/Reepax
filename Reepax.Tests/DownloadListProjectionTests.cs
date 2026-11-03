@@ -234,6 +234,84 @@ public partial class DownloadListVirtualizationTests
         });
     }
 
+    [Fact]
+    public void FileBranches_StayAlignedAndEndAtTheLastFileAfterReorderAndRecycling()
+    {
+        RunInSta(() =>
+        {
+            var package = CreateProjectionPackage(3);
+            var child = CreateProjectionPackage(2);
+            child.ParentPackageId = package.Id;
+            package.ClippedPackages.Add(child);
+            var (viewer, list) = CreateList(new ObservableCollection<DownloadPackage> { package }, useFullTemplates: true);
+            using var source = new HwndSource(new HwndSourceParameters("FileBranchViewportProbe")
+            {
+                Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                WindowStyle = unchecked((int)0x80000000)
+            });
+            try
+            {
+                source.RootVisual = list;
+                Layout(list);
+                void CheckVisibleRows()
+                {
+                    int checkedFiles = 0;
+                    foreach (var row in list.Items.Cast<DownloadListRow>())
+                    {
+                        var container = list.ItemContainerGenerator.ContainerFromIndex(row.Index);
+                        if (container == null) continue;
+                        var presenter = FindVisual<ContentPresenter>(container)!;
+                        var selector = (DownloadRowTemplateSelector)presenter.ContentTemplateSelector;
+                        var template = row.IsFile ? selector.ItemTemplate! : selector.PackageTemplate!;
+                        var border = Assert.IsType<Border>(template.FindName(row.IsFile ? "ItemBorder" : "PackageBorder", presenter));
+                        Assert.Equal(new CornerRadius(0), border.CornerRadius);
+                        var selection = Assert.IsType<Grid>(template.FindName(row.IsFile ? "ItemSelectionBorder" : "PackageSelectionBorder", presenter));
+                        Assert.All(selection.Children.OfType<Border>(), edge => Assert.Equal(new CornerRadius(0), edge.CornerRadius));
+                        if (row.Model is not DownloadItem item) continue;
+                        var connector = Assert.IsType<Grid>(template.FindName("ItemTreeConnector", presenter));
+                        var continuation = Assert.IsType<Border>(template.FindName("ItemTreeContinuation", presenter));
+                        var branch = Assert.IsType<Border>(template.FindName("ItemTreeBranch", presenter));
+                        var icon = Assert.IsType<Image>(template.FindName("ItemFileIcon", presenter));
+                        Assert.Equal(ReferenceEquals(row.Package.Items[^1], item) ? Visibility.Hidden : Visibility.Visible,
+                            continuation.Visibility);
+                        var branchCenter = branch.TranslatePoint(new Point(0, branch.ActualHeight / 2), border);
+                        var iconCenter = icon.TranslatePoint(new Point(0, icon.ActualHeight / 2), border);
+                        Assert.InRange(Math.Abs(branchCenter.Y - iconCenter.Y), 0, 1);
+                        Assert.True(connector.TranslatePoint(new Point(connector.ActualWidth, 0), border).X < iconCenter.X);
+                        checkedFiles++;
+                    }
+                    Assert.True(checkedFiles > 0);
+                }
+                CheckVisibleRows();
+                package.Items.Move(2, 0);
+                Layout(list);
+                CheckVisibleRows();
+                package.Items.RemoveAt(2);
+                Layout(list);
+                CheckVisibleRows();
+                package.AddItems(Enumerable.Range(0, 80).Select(index => new DownloadItem { FileName = $"file-{index}.bin" }));
+                Layout(list);
+                viewer.ScrollToEnd();
+                Layout(list);
+                CheckVisibleRows();
+                viewer.ScrollToTop();
+                Layout(list);
+                CheckVisibleRows();
+                package.IsExpanded = false;
+                Layout(list);
+                CheckVisibleRows();
+                package.IsExpanded = true;
+                Layout(list);
+                CheckVisibleRows();
+            }
+            finally
+            {
+                source.RootVisual = null;
+                ((DownloadListView)list).Packages = null;
+            }
+        });
+    }
+
     private static DownloadPackage CreateProjectionPackage(int files)
     {
         var package = new DownloadPackage { IsExpanded = true, AutoPar2Repair = false };

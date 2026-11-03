@@ -309,7 +309,7 @@
                 <Border x:Name="ItemBorder"
                         Margin="0,1"
                         Padding="0,3"
-                    CornerRadius="{DynamicResource CompactCornerRadius}"
+                    CornerRadius="0"
                     Focusable="True"
                     FocusVisualStyle="{x:Null}"
                     AllowDrop="True"
@@ -367,7 +367,7 @@
                     <Border Grid.Column="{Binding DataContext.ColIndexName, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="{Binding DataContext.ShowDividerName, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="6,0"
                             Visibility="{Binding DataContext.ShowColName, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Stretch">
                             <StackPanel.Style>
                                 <Style TargetType="StackPanel">
                                     <Setter Property="Margin" Value="0" />
@@ -428,20 +428,35 @@
                                 </ToggleButton.Template>
                             </ToggleButton>
 
-                            <!-- Tree Connecting Line -->
-                            <Path Data="M 2,-14 L 2,6 Q 2,14 10,14 L 18,14" 
-                                  Stroke="{DynamicResource TextSecondaryBrush}" 
-                                  StrokeThickness="1.5" 
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  StrokeLineJoin="Round"
-                                  Opacity="0.55"
-                                  Width="18" Height="28" 
-                                  Margin="0,-6,6,-4" 
-                                  VerticalAlignment="Center" />
+                            <!-- End the branch at the final visible file without crossing its icon. -->
+                            <Grid x:Name="ItemTreeConnector" Width="18" MinHeight="18" Margin="0,-5,6,-5"
+                                  VerticalAlignment="Stretch" IsHitTestVisible="False" Opacity="0.6"
+                                  SnapsToDevicePixels="True" UseLayoutRounding="True">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Border Width="1" HorizontalAlignment="Left" Margin="9,0,0,0"
+                                        Background="{DynamicResource TextSecondaryBrush}" />
+                                <Border x:Name="ItemTreeContinuation" Grid.Row="1" Width="1" HorizontalAlignment="Left" Margin="9,0,0,0"
+                                        Background="{DynamicResource TextSecondaryBrush}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Content.IsLastFile, RelativeSource={RelativeSource AncestorType=ContentPresenter, AncestorLevel=2}}" Value="True">
+                                                    <Setter Property="Visibility" Value="Hidden" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                </Border>
+                                <Border x:Name="ItemTreeBranch" Grid.RowSpan="2" Height="1" Width="9"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Background="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
 
                             <!-- Windows System Shell Icon for this File (.zip, .rar, .7z, .mp4, etc.) -->
-                            <Image Source="{Binding FileName, Converter={StaticResource FileIconConverter}}" 
+                            <Image x:Name="ItemFileIcon" Source="{Binding FileName, Converter={StaticResource FileIconConverter}}"
                                    Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" 
                                    RenderOptions.BitmapScalingMode="HighQuality" />
 
@@ -607,7 +622,7 @@
                     <!-- Selection Border at Edges with Inner Glow -->
                     <Grid x:Name="ItemSelectionBorder"
                           Grid.Column="0" Grid.ColumnSpan="20"
-                          Margin="0,-3"
+                          Margin="0,-3.5"
                           SnapsToDevicePixels="True"
                           IsHitTestVisible="False"
                           helpers:FadeAnimation.CollapseWhenHidden="False"
@@ -615,20 +630,20 @@
                           helpers:FadeAnimation.IsShown="{Binding IsSelected}">
 
                         <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
-                        <Border CornerRadius="{DynamicResource CompactCornerRadius}"
-                                BorderThickness="1.5"
+                        <Border CornerRadius="0"
+                                BorderThickness="1.5,2,1.5,2"
                                 BorderBrush="{DynamicResource AccentBlueBrush}"
                                 Background="{DynamicResource AccentSelectionBgBrush}" />
 
                         <!-- Inner Glow Layer 1 -->
                         <Border Margin="1"
-                                CornerRadius="3.2"
+                                CornerRadius="0"
                                 BorderThickness="1"
                                 BorderBrush="{DynamicResource AccentGlowBrush1}" />
 
                         <!-- Inner Glow Layer 2 -->
                         <Border Margin="2"
-                                CornerRadius="2.4"
+                                CornerRadius="0"
                                 BorderThickness="1"
                                 BorderBrush="{DynamicResource AccentGlowBrush2}" />
                     </Grid>
@@ -756,7 +771,7 @@
                     <Border x:Name="PackageBorder"
                         Margin="0,1"
                         Padding="0,2"
-                        CornerRadius="{DynamicResource CompactCornerRadius}"
+                        CornerRadius="0"
                         Focusable="True"
                         FocusVisualStyle="{x:Null}"
                         AllowDrop="True"
@@ -827,16 +842,13 @@
                                     </Style>
                                 </StackPanel.Style>
 
-                                <!-- Tree connector branch: vertical down and curving right (Only visible for clipped sub-packages) -->
-                                <Path Data="M 4,-14 L 4,6 Q 4,14 12,14 L 18,14" 
+                                <!-- Attached packages use the same square branch geometry. -->
+                                <Path Data="M 2,0 L 2,8 L 14,8"
                                       Stroke="{DynamicResource TextSecondaryBrush}" 
-                                      StrokeThickness="1.5" 
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      StrokeLineJoin="Round"
-                                      Opacity="0.55"
-                                      Width="18" Height="28" 
-                                      Margin="0,-6,4,-4" 
+                                      StrokeThickness="1"
+                                      Opacity="0.6"
+                                      Width="14" Height="16"
+                                      Margin="0,0,6,0"
                                       VerticalAlignment="Center"
                                       Visibility="{Binding IsClipped, Converter={StaticResource BoolToVisConverter}}" />
 
@@ -1164,7 +1176,7 @@
                         <!-- Modern Clean Shine Animation Overlay (App Gray / Luminous Silver-White) -->
                         <Border x:Name="PackageShineOverlay"
                                 Grid.Column="0" Grid.ColumnSpan="13"
-                                CornerRadius="{DynamicResource CompactCornerRadius}"
+                                CornerRadius="0"
                                 IsHitTestVisible="False"
                                 Opacity="0">
                             <Border.Background>
@@ -1186,7 +1198,7 @@
                         <!-- Subtle Soft Dock Highlight Overlay (Only active during snap animation) -->
                         <Border x:Name="PackageDockOverlay"
                                 Grid.Column="0" Grid.ColumnSpan="13"
-                                CornerRadius="{DynamicResource CompactCornerRadius}"
+                                CornerRadius="0"
                                 IsHitTestVisible="False"
                                 Opacity="0"
                                 Background="{DynamicResource InfoSurfaceBrush}"
@@ -1196,7 +1208,7 @@
                         <!-- Selection Border at Edges with Inner Glow -->
                         <Grid x:Name="PackageSelectionBorder"
                               Grid.Column="0" Grid.ColumnSpan="20"
-                              Margin="0,-2"
+                              Margin="0,-2.5"
                               SnapsToDevicePixels="True"
                               IsHitTestVisible="False"
                               helpers:FadeAnimation.CollapseWhenHidden="False"
@@ -1204,20 +1216,20 @@
                               helpers:FadeAnimation.IsShown="{Binding IsSelected}">
 
                             <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
-                            <Border CornerRadius="{DynamicResource CompactCornerRadius}"
-                                    BorderThickness="1.5"
+                            <Border CornerRadius="0"
+                                    BorderThickness="1.5,2,1.5,2"
                                     BorderBrush="{DynamicResource AccentBlueBrush}"
                                     Background="{DynamicResource AccentSelectionBgBrush}" />
 
                             <!-- Inner Glow Layer 1 -->
                             <Border Margin="1"
-                                    CornerRadius="3.2"
+                                    CornerRadius="0"
                                     BorderThickness="1"
                                     BorderBrush="{DynamicResource AccentGlowBrush1}" />
 
                             <!-- Inner Glow Layer 2 -->
                             <Border Margin="2"
-                                    CornerRadius="2.4"
+                                    CornerRadius="0"
                                     BorderThickness="1"
                                     BorderBrush="{DynamicResource AccentGlowBrush2}" />
                         </Grid>
@@ -1514,8 +1526,6 @@
                     <DockPanel LastChildFill="False">
                         <!-- Left: Download Queue Action Buttons & Busy Progress Indicator -->
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Stretch">
-                            <TextBlock Text="{loc:Loc Busy_RemovingDownloads}" Margin="12,0" VerticalAlignment="Center"
-                                       Visibility="{Binding IsRemovalInProgress, Converter={StaticResource BoolToVisConverter}}" />
                             <!-- Download Queue Action Buttons -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Stretch" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}">
                                 <!-- Start All Downloads Button -->
