@@ -7,8 +7,10 @@ internal static class DiagnosticPrivacy
 {
     private const RegexOptions Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled;
     private static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(100);
+    private const string LocationStart = "(?:(?:https?|ftps?|wss?|file|blob|data):|[a-z]:[\\\\/]+|[\\\\/]{2}|/[^/\\s\"'<>]+/)";
     private static readonly Regex QuotedLocation = new(
-        "(?<quote>[\"'])(?<location>(?:(?:https?|ftps?|wss?|file|blob|data):|[a-z]:[\\\\/]+|[\\\\/]{2}|/[^/\\s\"'<>]+/)[^\\r\\n]*)\\k<quote>",
+        // Keep internal apostrophes, but never absorb the next quoted absolute location.
+        "(?<quote>[\"'])(?<location>" + LocationStart + "(?:(?![\"']" + LocationStart + ")[^\\r\\n])*)\\k<quote>(?!" + LocationStart + ")",
         Options, MatchTimeout);
     private static readonly Regex Url = new(
         "\\b(?:https?|ftps?|wss?|file|blob|data):[^\\s<>]+", Options, MatchTimeout);

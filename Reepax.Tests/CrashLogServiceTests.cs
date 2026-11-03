@@ -80,10 +80,7 @@ public class CrashLogServiceTests : IDisposable
     [Fact]
     public void CrashReport_RedactsLocationsAndNestedExceptionsWhileRetainingDiagnosticDetails()
     {
-        var inner = new IOException("Read 'Z:\\Private\\TestInnerSecret\\part 01.bin' failed: code=5");
-        System.Runtime.ExceptionServices.ExceptionDispatchInfo.SetRemoteStackTrace(inner,
-            "   at Example.Component.Read() in Z:\\Private\\TestStackSecret\\Component.cs:line 42");
-        var exception = new InvalidOperationException("Request https://files.example.test/archive?token=TestCrashSecret failed", inner);
+        var exception = DiagnosticPrivacyTests.CreateSensitiveException();
         string report = CrashLogService.FormatCrashReport("ExampleSource", exception);
 
         Assert.Contains("App Version:", report);
@@ -94,9 +91,7 @@ public class CrashLogServiceTests : IDisposable
         Assert.Contains("Example.Component.Read()", report);
         Assert.Contains(":line 42", report);
         Assert.Contains("code=5", report);
-        Assert.DoesNotContain("TestInnerSecret", report);
-        Assert.DoesNotContain("TestStackSecret", report);
-        Assert.DoesNotContain("TestCrashSecret", report);
+        DiagnosticPrivacyTests.AssertSensitiveDataRemoved(report);
         Assert.DoesNotContain(SettingsService.AppDataDirectory, report);
         Assert.DoesNotContain(AppContext.BaseDirectory, report);
 
@@ -105,9 +100,9 @@ public class CrashLogServiceTests : IDisposable
         foreach (string path in result.SavedPaths)
         {
             string saved = File.ReadAllText(path);
-            Assert.DoesNotContain("TestCrashSecret", saved);
-            Assert.DoesNotContain("TestInnerSecret", saved);
-            Assert.DoesNotContain("TestStackSecret", saved);
+            DiagnosticPrivacyTests.AssertSensitiveDataRemoved(saved);
+            Assert.Contains("System.InvalidOperationException", saved);
+            Assert.Contains("System.IO.IOException", saved);
             Assert.DoesNotContain(SettingsService.AppDataDirectory, saved);
             Assert.Contains("Example.Component.Read()", saved);
         }
@@ -125,13 +120,47 @@ public class CrashLogServiceTests : IDisposable
     }
 
     [Fact]
+    public void LogCrash_WhenPrimaryTargetsAreBlocked_WritesOnlyRedactedEmergencyReport()
+    {
+        string? previousTemp = Environment.GetEnvironmentVariable("TEMP");
+        string? previousTmp = Environment.GetEnvironmentVariable("TMP");
+        string temporary = Path.Combine(_testTempDir, "fallback");
+        Directory.CreateDirectory(temporary);
+        try
+        {
+            Environment.SetEnvironmentVariable("TEMP", temporary);
+            Environment.SetEnvironmentVariable("TMP", temporary);
+            Assert.Equal(Path.TrimEndingDirectorySeparator(temporary), Path.TrimEndingDirectorySeparator(Path.GetTempPath()));
+            Assert.StartsWith(_testTempDir, SettingsService.LogsDirectory, StringComparison.OrdinalIgnoreCase);
+            File.WriteAllText(SettingsService.LogsDirectory, "blocked directory");
+            Directory.CreateDirectory(Path.Combine(_testTempDir, "crash.log"));
+            var result = CrashLogService.LogCrash("ExampleSource", DiagnosticPrivacyTests.CreateSensitiveException());
+            Assert.True(result.Success);
+            string path = Assert.Single(result.SavedPaths);
+            Assert.Equal(Path.Combine(temporary, "Reepax", "crash.log"), path);
+            string text = File.ReadAllText(path);
+            DiagnosticPrivacyTests.AssertSensitiveDataRemoved(text);
+            Assert.Contains("System.InvalidOperationException", text);
+            Assert.Contains("System.IO.IOException", text);
+            Assert.Contains("Example.Component.Read()", text);
+            Assert.Contains(":line 42", text);
+        }
+        finally
+        {
+            AppLogger.Flush();
+            Environment.SetEnvironmentVariable("TEMP", previousTemp);
+            Environment.SetEnvironmentVariable("TMP", previousTmp);
+        }
+    }
+
+    [Fact]
     public void LogCrash_WhenLoggingDisabled_DoesNotWriteToDisk()
     {
         try
         {
             SettingsService.Instance.Settings.EnableFileLogging = false;
 
-            var ex = new Exception("Simulated crash with logging disabled");
+            var ex = DiagnosticPrivacyTests.CreateSensitiveException();
             var result = CrashLogService.LogCrash("DisabledLoggingTest", ex, forceWrite: false);
 
             Assert.False(result.Success);
@@ -140,6 +169,7 @@ public class CrashLogServiceTests : IDisposable
 
             var expectedLog = Path.Combine(SettingsService.AppDataDirectory, "crash.log");
             Assert.False(File.Exists(expectedLog), "Crash log file must not be created on disk when logging is disabled.");
+            Assert.Empty(Directory.GetFiles(_testTempDir, "*", SearchOption.AllDirectories));
         }
         finally
         {
@@ -174,7 +204,7 @@ public class CrashLogServiceTests : IDisposable
         {
             SettingsService.Instance.Settings.EnableFileLogging = false;
             AppLogger.IsLoggingEnabled = true;
-            var result = CrashLogService.LogCrash("ExampleSource", new IOException("Example failure"));
+            var result = CrashLogService.LogCrash("ExampleSource", DiagnosticPrivacyTests.CreateSensitiveException());
             AppLogger.Flush();
 
             Assert.True(result.LoggingDisabled);

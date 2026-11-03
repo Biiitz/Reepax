@@ -141,7 +141,7 @@ public class AppLoggerTests : IDisposable
 
             AppLogger.Info("This message should not be logged");
             AppLogger.Warn("Nor should this warning");
-            AppLogger.Error("Nor this error");
+            AppLogger.Error(DiagnosticPrivacyTests.SensitiveMessage, DiagnosticPrivacyTests.CreateSensitiveException());
             AppLogger.Flush();
 
             Assert.False(Directory.Exists(_testLogsDirectory));
@@ -199,10 +199,7 @@ public class AppLoggerTests : IDisposable
     [Fact]
     public void AppLogger_RedactsExceptionMessagesAndStackLocations()
     {
-        var inner = new IOException("Read 'Z:\\Private\\TestInnerSecret\\part 01.bin' failed: code=5");
-        System.Runtime.ExceptionServices.ExceptionDispatchInfo.SetRemoteStackTrace(inner,
-            "   at Example.Component.Read() in Z:\\Private\\TestStackSecret\\Component.cs:line 42");
-        var outer = new InvalidOperationException("Request https://files.example.test/archive?token=TestOuterSecret failed", inner);
+        var outer = DiagnosticPrivacyTests.CreateSensitiveException();
         AppLogger.Error("Transfer failed status=403", outer);
         AppLogger.Flush();
 
@@ -212,9 +209,7 @@ public class AppLoggerTests : IDisposable
         Assert.Contains("Example.Component.Read()", content);
         Assert.Contains(":line 42", content);
         Assert.Contains("code=5", content);
-        Assert.DoesNotContain("TestInnerSecret", content);
-        Assert.DoesNotContain("TestStackSecret", content);
-        Assert.DoesNotContain("TestOuterSecret", content);
+        DiagnosticPrivacyTests.AssertSensitiveDataRemoved(content);
     }
 
     [Fact]
@@ -222,12 +217,15 @@ public class AppLoggerTests : IDisposable
     {
         Directory.CreateDirectory(_testLogsDirectory);
         using var locked = new FileStream(AppLogger.GetCurrentLogFilePath(), FileMode.Create, FileAccess.ReadWrite, FileShare.None);
-        AppLogger.Error("Request https://files.example.test/TestFallbackSecret/archive.bin failed status=403");
+        AppLogger.Error(DiagnosticPrivacyTests.SensitiveMessage, DiagnosticPrivacyTests.CreateSensitiveException());
         AppLogger.Flush();
 
         string fallback = Assert.Single(Directory.GetFiles(_testLogsDirectory, "reepax_fallback_*.log"));
         string content = File.ReadAllText(fallback);
-        Assert.Contains("status=403", content);
-        Assert.DoesNotContain("TestFallbackSecret", content);
+        DiagnosticPrivacyTests.AssertSensitiveDataRemoved(content);
+        Assert.Contains("System.InvalidOperationException", content);
+        Assert.Contains("System.IO.IOException", content);
+        Assert.Contains("Example.Component.Read()", content);
+        Assert.Contains(":line 42", content);
     }
 }

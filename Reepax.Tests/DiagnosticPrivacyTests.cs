@@ -1,9 +1,31 @@
+using System.IO;
 using Reepax.Services.Storage;
 
 namespace Reepax.Tests;
 
 public class DiagnosticPrivacyTests
 {
+    internal const string SensitiveMessage = "Read 'Z:\\Users\\TestProfileSecret\\part 01.bin' failed: code=5; " +
+        "request 'https://TestAccountSecret:TestCredentialSecret@files.example.test:8443/TestResourceSecret/archive.bin?token=TestQuerySecret#TestFragmentSecret' failed: status=403; retry=2";
+
+    internal static Exception CreateSensitiveException()
+    {
+        var inner = new IOException(SensitiveMessage);
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo.SetRemoteStackTrace(inner,
+            "   at Example.Component.Read() in Z:\\Users\\TestStackSecret\\Component.cs:line 42");
+        return new InvalidOperationException(SensitiveMessage, inner);
+    }
+
+    internal static void AssertSensitiveDataRemoved(string text)
+    {
+        foreach (string marker in new[] { "TestProfileSecret", "TestAccountSecret", "TestCredentialSecret", "TestResourceSecret", "TestQuerySecret", "TestFragmentSecret", "TestStackSecret" })
+            Assert.DoesNotContain(marker, text);
+        Assert.Contains("https files.example.test:8443", text);
+        Assert.Contains("status=403", text);
+        Assert.Contains("code=5", text);
+        Assert.Contains("retry=2", text);
+    }
+
     [Theory]
     [InlineData("Request https://files.example.test/path?token=prefix'TestApostropheSecret", "TestApostropheSecret")]
     [InlineData("Request https://files.example.test/path?token=prefix\"TestQuoteSecret", "TestQuoteSecret")]

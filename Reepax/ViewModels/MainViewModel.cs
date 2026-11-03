@@ -1307,12 +1307,14 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    internal Action<string> ClipboardTextWriter { get; set; } = Clipboard.SetText;
+
     private void SafeSetClipboardText(string text, string successMessage)
     {
         try
         {
             ClipboardMonitorService.RegisterInternalCopy(text);
-            Clipboard.SetText(text);
+            ClipboardTextWriter(text);
             StatusSummary = successMessage;
         }
         catch (Exception ex)

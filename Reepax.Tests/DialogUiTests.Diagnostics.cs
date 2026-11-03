@@ -11,25 +11,27 @@ namespace Reepax.Tests;
 
 public partial class DialogUiTests
 {
-    [Fact]
-    public void CrashDialog_RedactsExceptionDetailsAndRetainsExplicitLogLocationActions()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CrashDialog_RedactsExceptionDetailsAndRetainsExplicitLogLocationActions(bool saveFailed)
     {
         RunInSta(() =>
         {
             var shutdownMode = Application.Current.ShutdownMode;
             Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             const string path = "Z:\\Example\\TestLocation\\crash.log";
-            var dialog = new CrashReportDialog(new InvalidOperationException(
-                "Request https://files.example.test/TestDialogSecret/archive failed status=403"),
-                new CrashLogResult { Success = true, PrimaryLogPath = path });
+            var dialog = new CrashReportDialog(DiagnosticPrivacyTests.CreateSensitiveException(),
+                new CrashLogResult { Success = !saveFailed, PrimaryLogPath = path, ErrorMessage = DiagnosticPrivacyTests.SensitiveMessage });
             try
             {
                 Assert.Contains("InvalidOperationException", dialog.ErrorMessageTextBlock.Text);
                 Assert.Contains("status=403", dialog.ErrorMessageTextBlock.Text);
-                Assert.DoesNotContain("TestDialogSecret", dialog.ErrorMessageTextBlock.Text);
-                Assert.Equal(path, dialog.LogPathTextBox.Text);
-                Assert.True(dialog.OpenFolderButton.IsEnabled);
-                Assert.True(dialog.CopyPathButton.IsEnabled);
+                DiagnosticPrivacyTests.AssertSensitiveDataRemoved(dialog.ErrorMessageTextBlock.Text);
+                if (saveFailed) DiagnosticPrivacyTests.AssertSensitiveDataRemoved(dialog.LogPathTextBox.Text);
+                else Assert.Equal(path, dialog.LogPathTextBox.Text);
+                Assert.Equal(!saveFailed, dialog.OpenFolderButton.IsEnabled);
+                Assert.Equal(!saveFailed, dialog.CopyPathButton.IsEnabled);
             }
             finally
             {
@@ -50,7 +52,7 @@ public partial class DialogUiTests
         try
         {
             LocalizationService.Instance.CurrentLanguage = language;
-            var error = new IOException("Request https://files.example.test/archive?token=TestFallbackSecret failed status=403");
+            var error = DiagnosticPrivacyTests.CreateSensitiveException();
             foreach (var result in new[]
             {
                 new CrashLogResult { Success = true, PrimaryLogPath = "Z:\\Example\\TestLocationSecret\\crash.log" },
@@ -60,7 +62,7 @@ public partial class DialogUiTests
             {
                 string message = CrashReportDialog.BuildFallbackMessage(error, result, critical);
                 Assert.Contains("status=403", message);
-                Assert.DoesNotContain("TestFallbackSecret", message);
+                DiagnosticPrivacyTests.AssertSensitiveDataRemoved(message);
                 Assert.DoesNotContain("TestLocationSecret", message);
                 Assert.DoesNotContain("{0}", message);
                 Assert.DoesNotContain("{1}", message);
@@ -77,12 +79,19 @@ public partial class DialogUiTests
     {
         var viewModel = new MainViewModel();
         string? previous = SettingsService.AppDataDirectoryOverride;
+        var previousWriter = viewModel.ClipboardTextWriter;
+        string? copied = null;
+        int copies = 0;
         try
         {
             string data = Path.Combine(Path.GetTempPath(), "TestDiagnosticLocation");
             SettingsService.AppDataDirectoryOverride = data;
-            string text = viewModel.BuildSystemDiagnosticInfo();
+            viewModel.ClipboardTextWriter = value => { copied = value; copies++; };
+            viewModel.CopySystemDiagnosticInfoCommand.Execute(null);
+            string text = Assert.IsType<string>(copied);
 
+            Assert.Equal(1, copies);
+            Assert.Equal(Loc.Get("About_DiagnosticCopied"), viewModel.StatusSummary);
             Assert.Contains(viewModel.AppVersion, text);
             Assert.Contains(viewModel.ArchitectureInfo, text);
             Assert.Contains(viewModel.DotNetRuntimeInfo, text);
@@ -96,6 +105,7 @@ public partial class DialogUiTests
         finally
         {
             SettingsService.AppDataDirectoryOverride = previous;
+            viewModel.ClipboardTextWriter = previousWriter;
         }
     }
 }
