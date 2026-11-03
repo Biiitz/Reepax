@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
 
@@ -16,6 +17,7 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource ArchiveRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal ConcurrentDictionary<string, int> Requests { get; } = new();
+    internal ConcurrentQueue<(string File, long? Start)> Ranges { get; } = new();
 
     internal PipelineHttpSource(IReadOnlyDictionary<string, byte[]> files)
     {
@@ -51,15 +53,30 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
                 using var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
                 string[] request = (await reader.ReadLineAsync(_stop.Token) ?? "").Split(' ');
                 if (request.Length < 2) throw new InvalidDataException("Invalid local HTTP request.");
+                string? requestedRange = null;
                 for (int index = 0; index < 128; index++)
                 {
                     string? header = await reader.ReadLineAsync(_stop.Token);
                     if (string.IsNullOrEmpty(header)) break;
+                    if (header.StartsWith("Range:", StringComparison.OrdinalIgnoreCase)) requestedRange = header[6..].Trim();
                 }
                 string name = Uri.UnescapeDataString(request[1].TrimStart('/'));
                 if (!_files.TryGetValue(name, out var body)) throw new InvalidDataException("Unexpected local HTTP target.");
                 Requests.AddOrUpdate(name, 1, (_, count) => count + 1);
-                string headers = $"HTTP/1.1 200 OK\r\nContent-Length: {body.Length}\r\nContent-Type: application/octet-stream\r\nETag: \"fixture-v1\"\r\nConnection: close\r\n\r\n";
+                long first = 0, last = body.Length - 1;
+                if (requestedRange != null)
+                {
+                    if (!RangeHeaderValue.TryParse(requestedRange, out var parsed) || parsed.Ranges.Count != 1)
+                        throw new InvalidDataException("Invalid local HTTP range.");
+                    var range = parsed.Ranges.Single();
+                    first = range.From ?? throw new InvalidDataException("A range start is required.");
+                    last = range.To ?? last;
+                    if (first < 0 || first > last || last >= body.Length) throw new InvalidDataException("Invalid local HTTP range bounds.");
+                }
+                Ranges.Enqueue((name, requestedRange == null ? null : first));
+                string status = requestedRange == null ? "200 OK" : "206 Partial Content";
+                string contentRange = requestedRange == null ? "" : $"Content-Range: bytes {first}-{last}/{body.Length}\r\n";
+                string headers = $"HTTP/1.1 {status}\r\nContent-Length: {last - first + 1}\r\n{contentRange}Content-Type: application/octet-stream\r\nETag: \"fixture-v1\"\r\nConnection: close\r\n\r\n";
                 await stream.WriteAsync(Encoding.ASCII.GetBytes(headers), _stop.Token);
                 await stream.FlushAsync(_stop.Token);
                 if (request[0] == "HEAD") return;
@@ -68,11 +85,12 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
                     ArchiveRequested.TrySetResult();
                     await _release.Task.WaitAsync(_stop.Token);
                 }
-                await stream.WriteAsync(body, _stop.Token);
+                await stream.WriteAsync(body.AsMemory((int)first, (int)(last - first + 1)), _stop.Token);
                 await stream.FlushAsync(_stop.Token);
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
             catch (IOException) when (_stop.IsCancellationRequested) { }
+            catch (IOException ex) when (ex.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.ConnectionAborted }) { }
         }
     }
 

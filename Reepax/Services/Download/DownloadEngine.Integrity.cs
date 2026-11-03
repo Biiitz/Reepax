@@ -17,6 +17,8 @@ namespace Reepax.Services.Download;
 
 public partial class DownloadEngine
 {
+    internal static Action<string>? CheckpointPublished { get; set; }
+
     private sealed class RepresentationChangedException : IOException
     {
         internal RepresentationChangedException() : base("The remote file version changed.") { }
@@ -209,6 +211,7 @@ public partial class DownloadEngine
             }
             if (File.Exists(path)) File.Replace(stagingPath, path, null);
             else File.Move(stagingPath, path);
+            CheckpointPublished?.Invoke(path);
         }
         catch when (!required) { }
         finally { try { File.Delete(stagingPath); } catch when (!required) { } }

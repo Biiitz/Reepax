@@ -9,8 +9,12 @@ using System.Threading;
 
 namespace Reepax.Services.Extractor;
 
+internal enum ExtractionPublicationBoundary { BeforeOriginalMove, OriginalMoved, ReplacementMoved, CommitDecided }
+
 internal sealed class ExtractionRecoveryJournal : IDisposable
 {
+    internal static Action<string, ExtractionPublicationBoundary>? PublicationCheckpoint { get; set; }
+
     private const string JournalName = "publication.json";
     private readonly string _root;
     private readonly string _target;
@@ -96,10 +100,13 @@ internal sealed class ExtractionRecoveryJournal : IDisposable
             {
                 if (!Matches(target, entry.OriginalHash, token)) throw new IOException("An extraction destination changed before publication.");
                 Directory.CreateDirectory(Path.Combine(_root, "backup"));
+                PublicationCheckpoint?.Invoke(target, ExtractionPublicationBoundary.BeforeOriginalMove);
                 File.Move(target, Backup(i));
+                PublicationCheckpoint?.Invoke(target, ExtractionPublicationBoundary.OriginalMoved);
             }
             // The complete plan is durable before the first destination changes.
             File.Move(source, target);
+            PublicationCheckpoint?.Invoke(target, ExtractionPublicationBoundary.ReplacementMoved);
         }
     }
 
@@ -112,6 +119,7 @@ internal sealed class ExtractionRecoveryJournal : IDisposable
         {
             foreach (var journal in journals) { journal._state.Members = members; journal.Save(); }
             WriteDecision(members[0]);
+            PublicationCheckpoint?.Invoke(journals[0]._target, ExtractionPublicationBoundary.CommitDecided);
             foreach (var journal in journals) { journal._state.Committed = true; journal.Save(); }
         }
         catch
