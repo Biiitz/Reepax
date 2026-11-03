@@ -7,19 +7,17 @@ namespace Reepax.Tests;
 
 /// <summary>
 /// Unit and integration tests for CrashLogService verifying crash reporting,
-/// disk flushing, multi-path resolution in installed and portable modes,
+/// disk flushing and application data path resolution,
 /// host system isolation, setting enforcement, and nested exception formatting.
 /// </summary>
 public class CrashLogServiceTests : IDisposable
 {
-    private readonly bool? _originalPortableOverride;
     private readonly string? _originalAppDataOverride;
     private readonly bool _originalFileLogging;
     private readonly string _testTempDir;
 
     public CrashLogServiceTests()
     {
-        _originalPortableOverride = SettingsService.PortableModeOverride;
         _originalAppDataOverride = SettingsService.AppDataDirectoryOverride;
         _originalFileLogging = SettingsService.Instance.Settings.EnableFileLogging;
 
@@ -31,19 +29,8 @@ public class CrashLogServiceTests : IDisposable
 
     public void Dispose()
     {
-        SettingsService.PortableModeOverride = _originalPortableOverride;
         SettingsService.AppDataDirectoryOverride = _originalAppDataOverride;
         SettingsService.Instance.Settings.EnableFileLogging = _originalFileLogging;
-
-        try
-        {
-            var baseDirLog = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
-            if (File.Exists(baseDirLog))
-            {
-                File.Delete(baseDirLog);
-            }
-        }
-        catch { }
 
         try
         {
@@ -73,76 +60,21 @@ public class CrashLogServiceTests : IDisposable
     }
 
     [Fact]
-    public void LogCrash_InInstalledMode_WritesToAppDataAndLogsDirectory()
+    public void LogCrash_WritesOnlyToAppDataAndLogsDirectory()
     {
-        try
-        {
-            SettingsService.PortableModeOverride = false;
-            Assert.False(SettingsService.IsPortableMode);
+        var result = CrashLogService.LogCrash("StorageTest", new Exception("Simulated failure"));
+        string appDataLog = Path.Combine(SettingsService.AppDataDirectory, "crash.log");
+        string logsLog = Path.Combine(SettingsService.LogsDirectory, "crash.log");
 
-            var ex = new Exception("Simulated installed mode crash exception");
-            var result = CrashLogService.LogCrash("InstalledModeTest", ex);
-
-            Assert.True(result.Success, "CrashLogService should succeed writing in installed mode.");
-            Assert.False(string.IsNullOrEmpty(result.PrimaryLogPath));
-            Assert.True(File.Exists(result.PrimaryLogPath), $"Primary crash log must exist at: {result.PrimaryLogPath}");
-
-            var expectedAppDataCrashLog = Path.Combine(SettingsService.AppDataDirectory, "crash.log");
-            Assert.True(File.Exists(expectedAppDataCrashLog), $"Crash log must exist in AppDataDirectory: {expectedAppDataCrashLog}");
-
-            var expectedLogsCrashLog = Path.Combine(SettingsService.LogsDirectory, "crash.log");
-            Assert.True(File.Exists(expectedLogsCrashLog), $"Crash log must exist in LogsDirectory: {expectedLogsCrashLog}");
-
-            var content = File.ReadAllText(result.PrimaryLogPath);
-            Assert.Contains("Simulated installed mode crash exception", content);
-            Assert.Contains("InstalledModeTest", content);
-
-            // Ensure test wrote exclusively inside isolated test directory
-            Assert.StartsWith(_testTempDir, result.PrimaryLogPath, StringComparison.OrdinalIgnoreCase);
-        }
-        finally
-        {
-            SettingsService.PortableModeOverride = _originalPortableOverride;
-        }
-    }
-
-    [Fact]
-    public void LogCrash_InPortableMode_WritesToPortableDataAndIsolatesHost()
-    {
-        try
-        {
-            SettingsService.PortableModeOverride = true;
-            Assert.True(SettingsService.IsPortableMode);
-
-            var ex = new Exception("Simulated portable mode crash exception");
-            var result = CrashLogService.LogCrash("PortableModeTest", ex);
-
-            Assert.True(result.Success, "CrashLogService should succeed writing in portable mode.");
-
-            // 1. Portable data directory
-            var portableAppDataLog = Path.Combine(SettingsService.AppDataDirectory, "crash.log");
-            Assert.True(File.Exists(portableAppDataLog), $"Crash log must exist in portable AppData: {portableAppDataLog}");
-
-            // 2. Portable logs directory
-            var portableLogsLog = Path.Combine(SettingsService.LogsDirectory, "crash.log");
-            Assert.True(File.Exists(portableLogsLog), $"Crash log must exist in portable Logs: {portableLogsLog}");
-
-            // 3. Base directory (root of portable distribution)
-            var baseDirLog = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "crash.log");
-            Assert.True(File.Exists(baseDirLog), $"Crash log must exist in BaseDirectory: {baseDirLog}");
-
-            // 4. Host %LOCALAPPDATA% must NOT be touched in portable mode (complete host isolation)
-            var hostAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax", "crash.log");
-            Assert.DoesNotContain(result.SavedPaths, p => p.Equals(hostAppData, StringComparison.OrdinalIgnoreCase));
-
-            var content = File.ReadAllText(portableAppDataLog);
-            Assert.Contains("Simulated portable mode crash exception", content);
-            Assert.Contains("Portable:     True", content);
-        }
-        finally
-        {
-            SettingsService.PortableModeOverride = _originalPortableOverride;
-        }
+        Assert.True(result.Success);
+        Assert.True(File.Exists(appDataLog));
+        Assert.True(File.Exists(logsLog));
+        Assert.Equal(2, result.SavedPaths.Count);
+        Assert.Contains(appDataLog, result.SavedPaths);
+        Assert.Contains(logsLog, result.SavedPaths);
+        Assert.All(result.SavedPaths, path => Assert.StartsWith(_testTempDir, path, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("Simulated failure", File.ReadAllText(result.PrimaryLogPath));
+        Assert.Contains("StorageTest", File.ReadAllText(result.PrimaryLogPath));
     }
 
     [Fact]

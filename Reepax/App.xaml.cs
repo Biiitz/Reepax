@@ -92,18 +92,15 @@ public partial class App : Application
         // Primary instance: start named pipe server to receive launch parameters from subsequent instances
         SingleInstanceService.Instance.StartIpcServer(ReceiveInstanceArguments);
 
-        // Ensure file association for .repx (and .sdlr) is registered in user context asynchronously (skipped in portable mode to avoid host registry changes)
-        if (!SettingsService.IsPortableMode)
+        // Register file associations without blocking startup.
+        System.Threading.Tasks.Task.Run(() =>
         {
-            System.Threading.Tasks.Task.Run(() =>
+            try
             {
-                try
-                {
-                    FileAssociationService.EnsureAssociationRegistered();
-                }
-                catch { }
-            });
-        }
+                FileAssociationService.EnsureAssociationRegistered();
+            }
+            catch { }
+        });
 
         base.OnStartup(e);
 

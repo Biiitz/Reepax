@@ -82,16 +82,6 @@ jobs:
           }
           $version = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path 'dist/Reepax/Reepax.exe')).ProductVersion.Split('+')[0]
           if ($version -ne $env:APP_VERSION) { throw 'Published binary has an unexpected version.' }
-      - name: Package portable application
-        run: |
-          Set-Content dist/Reepax/portable.txt 'Portable Mode'
-          Compress-Archive -Path dist/Reepax/* -DestinationPath dist/portable.zip -CompressionLevel Optimal
-          Expand-Archive dist/portable.zip dist/verify
-          foreach ($file in Get-ChildItem dist/Reepax -File -Recurse) {
-            $relative = [IO.Path]::GetRelativePath((Resolve-Path dist/Reepax), $file.FullName)
-            if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path dist/verify $relative)).Hash) { throw 'Portable archive verification failed.' }
-          }
-          Remove-Item -LiteralPath dist/Reepax/portable.txt
       - name: Install packaging compiler
         run: |
           choco install innosetup -y --no-progress
@@ -108,17 +98,13 @@ jobs:
           ./.github/scripts/Test-Installer.ps1 -Compiler $compiler -Version $env:APP_VERSION -TemporaryRoot $env:RUNNER_TEMP
       - name: Generate checksums
         run: |
-          $lines = foreach ($name in @('setup.exe', 'portable.zip')) {
-            $hash = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $name"
-          }
-          $lines | Set-Content dist/SHA256SUMS.txt -Encoding utf8NoBOM
+          $hash = (Get-FileHash -LiteralPath dist/setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  setup.exe" | Set-Content dist/SHA256SUMS.txt -Encoding utf8NoBOM
       - uses: actions/upload-artifact@v4
         with:
           name: release-files
           path: |
             dist/setup.exe
-            dist/portable.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
 
@@ -148,13 +134,13 @@ jobs:
             gh release create $env:RELEASE_TAG --draft --verify-tag --generate-notes --title $env:RELEASE_TAG
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          gh release upload $env:RELEASE_TAG dist/setup.exe dist/portable.zip dist/SHA256SUMS.txt --clobber
+          gh release upload $env:RELEASE_TAG dist/setup.exe dist/SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $json = gh api "repos/$env:GH_REPO/releases/tags/$env:RELEASE_TAG"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $release = $json | ConvertFrom-Json
           if (-not $release.draft -or $release.prerelease) { throw 'Unexpected release state.' }
-          foreach ($name in @('setup.exe', 'portable.zip', 'SHA256SUMS.txt')) {
+          foreach ($name in @('setup.exe', 'SHA256SUMS.txt')) {
             $assets = @($release.assets | Where-Object name -CEQ $name)
             if ($assets.Count -ne 1 -or $assets[0].state -ne 'uploaded' -or $assets[0].size -ne (Get-Item "dist/$name").Length) { throw 'Uploaded release is incomplete.' }
             $hash = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()

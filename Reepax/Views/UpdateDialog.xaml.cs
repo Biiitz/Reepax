@@ -232,13 +232,6 @@ public partial class UpdateDialog : Window
             var downloadedFile = await AppUpdateService.Instance.DownloadUpdateAsync(_updateInfo, progress, _downloadCts.Token);
 
             workspace = System.IO.Path.GetDirectoryName(downloadedFile);
-            string targetUpdatePath = downloadedFile;
-            if (SettingsService.IsPortableMode)
-            {
-                UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_Preparing");
-                UpdateProgressBar.IsIndeterminate = true;
-                targetUpdatePath = await AppUpdateService.Instance.PreparePortableUpdateAsync(downloadedFile, _downloadCts.Token);
-            }
 
             UpdateProgressBar.IsIndeterminate = false;
             UpdateProgressBar.Value = 100;
@@ -252,7 +245,7 @@ public partial class UpdateDialog : Window
             _downloadCts.Token.ThrowIfCancellationRequested();
             _isApplying = true;
             LaterButton.IsEnabled = false;
-            bool applied = await Task.Run(() => AppUpdateService.ApplyUpdate(targetUpdatePath, SettingsService.IsPortableMode, verifiedHash, _updateInfo.NewVersion));
+            bool applied = await Task.Run(() => AppUpdateService.ApplyUpdate(downloadedFile, verifiedHash, _updateInfo.NewVersion));
             if (!applied) throw new InvalidOperationException(Loc.Get("UpdateDialog_Status_StartFailed"));
         }
         catch (OperationCanceledException)

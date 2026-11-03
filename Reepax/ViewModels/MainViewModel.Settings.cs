@@ -533,20 +533,9 @@ public partial class MainViewModel
 
     partial void OnStartWithWindowsChanged(bool value)
     {
-        if (IsPortableMode)
-        {
-            _startWithWindows = false;
-            _settingsService.Settings.StartWithWindows = false;
-            _settingsService.SaveSettings();
-            return;
-        }
-
         _settingsService.Settings.StartWithWindows = value;
         _settingsService.SaveSettings();
-        if (!IsPortableMode)
-        {
-            WindowsStartupService.SetAutostart(value);
-        }
+        WindowsStartupService.SetAutostart(value);
     }
 
     [ObservableProperty]
@@ -1421,7 +1410,6 @@ public partial class MainViewModel
     [RelayCommand]
     public void ToggleStartWithWindows()
     {
-        if (IsPortableMode) return;
         StartWithWindows = !StartWithWindows;
     }
 

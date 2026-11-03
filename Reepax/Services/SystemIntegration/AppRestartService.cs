@@ -109,7 +109,7 @@ public static class AppRestartService
             return;
         }
 
-        // 5. Preserve existing arguments (e.g. --portable) and append --restart flag
+        // Preserve existing arguments and append the restart flag.
         var cmdArgs = Environment.GetCommandLineArgs();
         var psi = new ProcessStartInfo
         {

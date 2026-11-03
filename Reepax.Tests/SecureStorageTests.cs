@@ -217,96 +217,9 @@ public class SecureStorageTests
     }
 
     [Fact]
-    public void SecureAppDataStorage_Portable_EncryptAndDecrypt_Roundtrip()
-    {
-        var originalOverride = SettingsService.PortableModeOverride;
-        try
-        {
-            SettingsService.PortableModeOverride = true;
-            var originalText = "{\"Host\":\"reepax.portable.net\",\"ApiKey\":\"PortableKey_999\"}";
-
-            var encrypted = SecureAppDataStorage.EncryptString(originalText);
-
-            Assert.NotNull(encrypted);
-            Assert.StartsWith(SecureAppDataStorage.PortableHeaderPrefix, encrypted);
-            Assert.NotEqual(originalText, encrypted);
-            Assert.DoesNotContain("PortableKey_999", encrypted);
-
-            var decrypted = SecureAppDataStorage.DecryptString(encrypted);
-            Assert.Equal(originalText, decrypted);
-        }
-        finally
-        {
-            SettingsService.PortableModeOverride = originalOverride;
-        }
-    }
-
-    [Fact]
-    public void SecureAppDataStorage_Portable_AlreadyEncrypted_DoesNotDoubleEncrypt()
-    {
-        var originalOverride = SettingsService.PortableModeOverride;
-        try
-        {
-            SettingsService.PortableModeOverride = true;
-            var text = "{\"Portable\":\"Value\"}";
-            var encrypted1 = SecureAppDataStorage.EncryptString(text);
-            var encrypted2 = SecureAppDataStorage.EncryptString(encrypted1);
-
-            Assert.Equal(encrypted1, encrypted2);
-            Assert.Equal(text, SecureAppDataStorage.DecryptString(encrypted2));
-        }
-        finally
-        {
-            SettingsService.PortableModeOverride = originalOverride;
-        }
-    }
-
-    [Fact]
-    public void SecureAppDataStorage_Portable_DecryptedAcrossModes()
-    {
-        var originalOverride = SettingsService.PortableModeOverride;
-        try
-        {
-            // Encrypted in portable mode
-            SettingsService.PortableModeOverride = true;
-            var secret = "{\"SecretCrossMachineData\":42}";
-            var encrypted = SecureAppDataStorage.EncryptString(secret);
-            Assert.StartsWith(SecureAppDataStorage.PortableHeaderPrefix, encrypted);
-
-            // Decrypted in installed mode (simulating portable data opened anywhere)
-            SettingsService.PortableModeOverride = false;
-            var decrypted = SecureAppDataStorage.DecryptString(encrypted);
-            Assert.Equal(secret, decrypted);
-        }
-        finally
-        {
-            SettingsService.PortableModeOverride = originalOverride;
-        }
-    }
-
-    [Fact]
-    public void SecureAppDataStorage_Portable_TamperedCiphertext_ThrowsException()
-    {
-        // Invalid base64 in portable payload
-        var tampered1 = SecureAppDataStorage.PortableHeaderPrefix + "NotValidBase64@@@";
-        Assert.ThrowsAny<CryptographicException>(() => SecureAppDataStorage.DecryptString(tampered1));
-
-        // Too short payload (< 16 bytes for IV)
-        var tooShort = SecureAppDataStorage.PortableHeaderPrefix + Convert.ToBase64String(new byte[] { 1, 2, 3 });
-        Assert.ThrowsAny<CryptographicException>(() => SecureAppDataStorage.DecryptString(tooShort));
-
-        // Corrupted ciphertext bytes with valid IV length
-        var corrupted = new byte[32];
-        new Random(42).NextBytes(corrupted);
-        var tampered2 = SecureAppDataStorage.PortableHeaderPrefix + Convert.ToBase64String(corrupted);
-        Assert.ThrowsAny<CryptographicException>(() => SecureAppDataStorage.DecryptString(tampered2));
-    }
-
-    [Fact]
-    public void SecureAppDataStorage_IsEncrypted_DetectsBothPrefixes()
+    public void SecureAppDataStorage_IsEncrypted_DetectsSupportedHeader()
     {
         Assert.True(SecureAppDataStorage.IsEncrypted(SecureAppDataStorage.HeaderPrefix + "someBase64"));
-        Assert.True(SecureAppDataStorage.IsEncrypted(SecureAppDataStorage.PortableHeaderPrefix + "someBase64"));
         Assert.False(SecureAppDataStorage.IsEncrypted("{\"plain\":\"json\"}"));
         Assert.False(SecureAppDataStorage.IsEncrypted(null));
         Assert.False(SecureAppDataStorage.IsEncrypted(""));
@@ -323,83 +236,52 @@ public class SecureStorageTests
     }
 
     [Fact]
-    public void SettingsService_PortableMode_SavesWithPortableHeader()
+    public void SecureAppDataStorage_UnsupportedProtectedFormat_IsNeverTreatedAsPlaintext()
     {
-        var originalOverride = SettingsService.PortableModeOverride;
-        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PortableSettingsTest_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(testDir);
-        var settingsFile = Path.Combine(testDir, "settings.json");
+        const string content = "RPX_UNKNOWN_V1:AAECAwQF";
+        Assert.False(SecureAppDataStorage.IsEncrypted(content));
+        Assert.Throws<CryptographicException>(() => SecureAppDataStorage.DecryptString(content));
+        Assert.Throws<CryptographicException>(() => SecureAppDataStorage.EncryptString(content));
+    }
 
+    [Fact]
+    public void SettingsService_UnreadableProtectedData_IsNotOverwritten()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "StorageCase_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "settings.json");
+        const string content = "RPX_UNKNOWN_V1:AAECAwQF";
+        File.WriteAllText(path, content);
         try
         {
-            SettingsService.PortableModeOverride = true;
-
-            var service = new SettingsService(settingsFile);
-            service.Settings.MaxConcurrentBackgroundDownloads = 12;
-            service.Settings.DefaultDownloadDirectory = "E:\\PortableDownloads";
+            var service = new SettingsService(path);
+            Assert.True(service.HasSettingsLoadFailed);
+            service.Settings.Language = "de";
             service.SaveSettings();
-
-            Assert.True(File.Exists(settingsFile));
-            var rawContent = File.ReadAllText(settingsFile);
-            Assert.StartsWith(SecureAppDataStorage.PortableHeaderPrefix, rawContent);
-            Assert.DoesNotContain("PortableDownloads", rawContent);
-
-            var reloadedService = new SettingsService(settingsFile);
-            Assert.Equal(12, reloadedService.Settings.MaxConcurrentBackgroundDownloads);
-            Assert.Equal("E:\\PortableDownloads", reloadedService.Settings.DefaultDownloadDirectory);
+            Assert.Equal(content, File.ReadAllText(path));
         }
         finally
         {
-            SettingsService.PortableModeOverride = originalOverride;
-            try { Directory.Delete(testDir, true); } catch { }
+            Directory.Delete(directory, true);
         }
     }
 
     [Fact]
-    public void DownloadPersistenceService_PortableMode_SavesWithPortableHeader()
+    public void ApplicationDirectories_DefaultToCurrentUsersLocalAppData()
     {
-        var originalOverride = SettingsService.PortableModeOverride;
-        var testDir = Path.Combine(Path.GetTempPath(), "Reepax_PortableDownloadsTest_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(testDir);
-        var downloadsFile = Path.Combine(testDir, "downloads.json");
-
+        string? previous = SettingsService.AppDataDirectoryOverride;
         try
         {
-            SettingsService.PortableModeOverride = true;
-
-            var persistence = new DownloadPersistenceService(downloadsFile);
-            var package = new DownloadPackage
-            {
-                Id = Guid.NewGuid(),
-                Name = "PortableUSBPackage",
-                SaveDirectory = "E:\\Downloads"
-            };
-            package.Items.Add(new DownloadItem
-            {
-                Id = Guid.NewGuid(),
-                FileName = "portable_file.zip",
-                OriginalUrl = "https://example.com/portable_file.zip",
-                Status = DownloadStatus.Queued
-            });
-
-            var packages = new System.Collections.ObjectModel.ObservableCollection<DownloadPackage> { package };
-            persistence.SaveDownloads(packages);
-
-            Assert.True(File.Exists(downloadsFile));
-            var rawContent = File.ReadAllText(downloadsFile);
-            Assert.StartsWith(SecureAppDataStorage.PortableHeaderPrefix, rawContent);
-            Assert.DoesNotContain("PortableUSBPackage", rawContent);
-
-            var reloaded = persistence.LoadDownloads();
-            Assert.Single(reloaded);
-            Assert.Equal("PortableUSBPackage", reloaded[0].Name);
-            Assert.Single(reloaded[0].Items);
-            Assert.Equal("https://example.com/portable_file.zip", reloaded[0].Items[0].OriginalUrl);
+            SettingsService.AppDataDirectoryOverride = null;
+            string expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax");
+            Assert.Equal(expected, SettingsService.AppDataDirectory);
+            Assert.Equal(Path.Combine(expected, "Icons"), SettingsService.IconsDirectory);
+            Assert.Equal(Path.Combine(expected, "WebView2"), SettingsService.WebView2Directory);
+            Assert.Equal(Path.Combine(expected, "Extensions"), Reepax.Services.Browser.BrowserExtensionService.ExtensionsDirectory);
         }
         finally
         {
-            SettingsService.PortableModeOverride = originalOverride;
-            try { Directory.Delete(testDir, true); } catch { }
+            SettingsService.AppDataDirectoryOverride = previous;
         }
     }
 }

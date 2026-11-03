@@ -1548,61 +1548,26 @@ https://rapidgator.net/file/202/archive.part2.rar
     }
 
     [Fact]
-    public void PortableMode_DisablesStartWithWindows()
+    public void StartWithWindows_ToggleAndDirectChangePersistTheSelectedState()
     {
-        var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;
+        var settings = Reepax.Services.Storage.SettingsService.Instance.Settings;
+        bool previous = settings.StartWithWindows;
+        var vm = new MainViewModel();
         try
         {
-            Reepax.Services.Storage.SettingsService.PortableModeOverride = true;
-            var vm = new MainViewModel();
-
-            Assert.True(vm.IsPortableMode);
-            Assert.False(vm.IsStartWithWindowsEnabled);
-            Assert.False(vm.StartWithWindows);
-
-            // Toggling should have no effect in portable mode
+            vm.StartWithWindows = false;
+            vm.ToggleStartWithWindows();
+            Assert.True(vm.StartWithWindows);
+            Assert.True(settings.StartWithWindows);
             vm.ToggleStartWithWindows();
             Assert.False(vm.StartWithWindows);
-
-            // Directly attempting to set property should remain false
+            Assert.False(settings.StartWithWindows);
             vm.StartWithWindows = true;
-            Assert.False(vm.StartWithWindows);
+            Assert.True(settings.StartWithWindows);
         }
         finally
         {
-            Reepax.Services.Storage.SettingsService.PortableModeOverride = prevOverride;
-        }
-    }
-
-    [Fact]
-    public void WindowsStartupService_SetAutostart_ReturnsFalseInPortableMode()
-    {
-        var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;
-        try
-        {
-            Reepax.Services.Storage.SettingsService.PortableModeOverride = true;
-            bool result = Reepax.Services.SystemIntegration.WindowsStartupService.SetAutostart(true);
-            Assert.False(result);
-        }
-        finally
-        {
-            Reepax.Services.Storage.SettingsService.PortableModeOverride = prevOverride;
-        }
-    }
-
-    [Fact]
-    public void FileAssociationService_EnsureAssociationRegistered_NoOpInPortableMode()
-    {
-        var prevOverride = Reepax.Services.Storage.SettingsService.PortableModeOverride;
-        try
-        {
-            Reepax.Services.Storage.SettingsService.PortableModeOverride = true;
-            // Must execute without exception and do nothing
-            Reepax.Services.SystemIntegration.FileAssociationService.EnsureAssociationRegistered();
-        }
-        finally
-        {
-            Reepax.Services.Storage.SettingsService.PortableModeOverride = prevOverride;
+            vm.StartWithWindows = previous;
         }
     }
 }

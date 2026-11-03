@@ -139,8 +139,6 @@ public partial class MainViewModel : ObservableObject
     public string ArchitectureInfo => System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString();
     public string AppDataFolderPath => SettingsService.AppDataDirectory;
     public string LogsFolderPath => SettingsService.LogsDirectory;
-    public bool IsPortableMode => SettingsService.IsPortableMode;
-    public bool IsStartWithWindowsEnabled => !IsPortableMode;
 
     [ObservableProperty]
     private AppMainTab _selectedMainTab = AppMainTab.Downloads;
@@ -517,7 +515,7 @@ public partial class MainViewModel : ObservableObject
         _isDarkMode = ThemeCatalog.Resolve(settings.ThemeId).IsDark;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         _selectedPackageDoubleClickAction = NormalizePackageDoubleClickAction(settings.PackageDoubleClickAction);
-        StartWithWindows = IsPortableMode ? false : settings.StartWithWindows;
+        StartWithWindows = settings.StartWithWindows;
         EnableCompletionNotifications = settings.EnableCompletionNotifications;
         EnableCompletionSound = settings.EnableCompletionSound;
         CompletionSoundTrigger = settings.CompletionSoundTrigger;

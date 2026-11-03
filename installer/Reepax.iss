@@ -55,7 +55,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "..\dist\Reepax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,portable.txt,Data"
+Source: "..\dist\Reepax\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,Data"
 #ifndef UpdateSmokeTest
 Source: "..\dist\Reepax\runtimes\win-x64\native\par2.exe"; DestDir: "{localappdata}\{#MyAppName}"; DestName: "par2.exe"; Flags: ignoreversion
 

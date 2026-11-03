@@ -1,9 +1,7 @@
 using System.IO;
-using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
@@ -175,80 +173,5 @@ public partial class AppUpdateService
         try { Directory.Delete(full, true); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-    }
-
-    public async Task<string> PreparePortableUpdateAsync(string zipFilePath, CancellationToken cancellationToken = default)
-    {
-        var extractDir = Path.Combine(Path.GetDirectoryName(zipFilePath)!, "extracted");
-        if (Directory.Exists(extractDir)) throw new IOException("The update has already been extracted.");
-        Directory.CreateDirectory(extractDir);
-        try
-        {
-            await Task.Run(() =>
-            {
-                using var archive = ZipFile.OpenRead(zipFilePath);
-                long expandedSize = 0;
-                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var entry in archive.Entries)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    string name = entry.FullName.Replace('/', '\\');
-                    if (name.EndsWith('\\')) continue;
-                    ValidateRelativeUpdatePath(name);
-                    if (!names.Add(name)) throw new InvalidDataException("Duplicate archive entry.");
-                    expandedSize = checked(expandedSize + entry.Length);
-                    if (expandedSize > 4L * 1024 * 1024 * 1024) throw new InvalidDataException("Update archive is too large.");
-                }
-                foreach (var required in RequiredPortableFiles)
-                    if (!names.Contains(required)) throw new InvalidDataException("The update archive is incomplete.");
-                if (new DriveInfo(Path.GetPathRoot(extractDir)!).AvailableFreeSpace < expandedSize * 2 + 104857600)
-                    throw new IOException("Insufficient space to prepare the update.");
-                var hashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var entry in archive.Entries)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    string name = entry.FullName.Replace('/', '\\');
-                    if (name.EndsWith('\\') || IsPreservedPath(name)) continue;
-                    string target = Path.Combine(extractDir, name);
-                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                    using var input = entry.Open();
-                    using (var output = new FileStream(target, FileMode.CreateNew))
-                    {
-                        var buffer = new byte[81920];
-                        int count;
-                        while ((count = input.Read(buffer)) != 0)
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            output.Write(buffer, 0, count);
-                        }
-                    }
-                    using var file = File.OpenRead(target);
-                    hashes.Add(name, Convert.ToHexString(SHA256.HashData(file)).ToLowerInvariant());
-                }
-                File.WriteAllText(Path.Combine(Path.GetDirectoryName(extractDir)!, "manifest.json"), JsonSerializer.Serialize(hashes));
-            }, cancellationToken);
-            return extractDir;
-        }
-        catch
-        {
-            Directory.Delete(extractDir, true);
-            throw;
-        }
-    }
-
-    internal static readonly string[] RequiredPortableFiles =
-        ["Reepax.exe", "Reepax.dll", "Reepax.deps.json", "Reepax.runtimeconfig.json", "runtimes\\win-x64\\native\\WebView2Loader.dll",
-         "runtimes\\win-x64\\native\\reepax_adblock.dll", "runtimes\\win-x64\\native\\par2.exe"];
-
-    internal static bool IsPreservedPath(string name) => name.Split('\\')[0].Equals("Data", StringComparison.OrdinalIgnoreCase) ||
-        name.Equals("portable.txt", StringComparison.OrdinalIgnoreCase);
-
-    internal static void ValidateRelativeUpdatePath(string name)
-    {
-        if (Path.IsPathRooted(name) || name.Split('\\').Any(p => p is ".." or "." or "" ||
-            p.EndsWith('.') || p.EndsWith(' ') || p.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-            Regex.IsMatch(p, "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|$)", RegexOptions.IgnoreCase)) ||
-            name.Split('\\')[0].Equals(".reepax-update", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Unsafe update archive path.");
     }
 }

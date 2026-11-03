@@ -13,57 +13,18 @@ namespace Reepax.Tests;
 public class AppUpdateServiceTests
 {
     [Fact]
-    public void UpdateInfo_DirectAssetSelection_PrefersSetupForInstalledMode()
+    public void UpdateInfo_DirectAssetSelection_UsesInstaller()
     {
         var info = new UpdateInfo
         {
-            SetupAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/setup.exe",
-            SetupAssetSize = 1000,
-            PortableZipAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/portable.zip",
-            PortableZipAssetSize = 2000
+            SetupAssetUrl = UpdateReliabilityTests.AssetUrl("setup.exe"),
+            SetupAssetSize = 1000
         };
 
-        bool originalPortable = SettingsService.IsPortableMode;
-        try
-        {
-            SettingsService.IsPortableMode = false;
-
-            Assert.True(info.HasDirectAsset);
-            Assert.Equal("https://github.com/Biiitz/Reepax/releases/download/v26.10.4/setup.exe", info.TargetDownloadUrl);
-            Assert.Equal(1000, info.TargetDownloadSize);
-            Assert.Equal("setup.exe", info.TargetFileName);
-        }
-        finally
-        {
-            SettingsService.IsPortableMode = originalPortable;
-        }
-    }
-
-    [Fact]
-    public void UpdateInfo_DirectAssetSelection_PrefersZipForPortableMode()
-    {
-        var info = new UpdateInfo
-        {
-            SetupAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/setup.exe",
-            SetupAssetSize = 1000,
-            PortableZipAssetUrl = "https://github.com/Biiitz/Reepax/releases/download/v26.10.4/portable.zip",
-            PortableZipAssetSize = 2000
-        };
-
-        bool originalPortable = SettingsService.IsPortableMode;
-        try
-        {
-            SettingsService.IsPortableMode = true;
-
-            Assert.True(info.HasDirectAsset);
-            Assert.Equal("https://github.com/Biiitz/Reepax/releases/download/v26.10.4/portable.zip", info.TargetDownloadUrl);
-            Assert.Equal(2000, info.TargetDownloadSize);
-            Assert.Equal("portable.zip", info.TargetFileName);
-        }
-        finally
-        {
-            SettingsService.IsPortableMode = originalPortable;
-        }
+        Assert.True(info.HasDirectAsset);
+        Assert.Equal(UpdateReliabilityTests.AssetUrl("setup.exe"), info.TargetDownloadUrl);
+        Assert.Equal(1000, info.TargetDownloadSize);
+        Assert.Equal("setup.exe", info.TargetFileName);
     }
 
     [Fact]
@@ -91,21 +52,6 @@ public class AppUpdateServiceTests
     }
 
     [Fact]
-    public void GeneratePortableUpdateScript_ContainsCopyLogicAndRestart()
-    {
-        string script = AppUpdateService.GeneratePortableUpdateScript(
-            5678,
-            @"C:\Temp\extracted",
-            @"C:\ReepaxPortable",
-            @"C:\ReepaxPortable\Reepax.exe");
-
-        Assert.Contains("Copy-Item", script);
-        Assert.Contains("--restart", script);
-        Assert.Contains("$procId = 5678", script);
-        Assert.Contains("Wait-Process -Id $procId", script);
-    }
-
-    [Fact]
     public void GenerateScripts_ProperlyEscapesSingleQuotesInPaths()
     {
         string pathWithQuote = @"C:\Tools\User's Folder\Reepax.exe";
@@ -119,21 +65,18 @@ public class AppUpdateServiceTests
     public void ApplyUpdate_InvokesOverrideInTestEnvironment()
     {
         string? capturedPath = null;
-        bool? capturedIsPortable = null;
 
-        AppUpdateService.ApplyUpdateActionOverride = (path, isPortable) =>
+        AppUpdateService.ApplyUpdateActionOverride = path =>
         {
             capturedPath = path;
-            capturedIsPortable = isPortable;
         };
 
         try
         {
-            bool success = AppUpdateService.ApplyUpdate(@"C:\Test\fake_update.exe", isPortable: false);
+            bool success = AppUpdateService.ApplyUpdate(@"C:\Test\fake_update.exe");
 
             Assert.True(success);
             Assert.Equal(@"C:\Test\fake_update.exe", capturedPath);
-            Assert.False(capturedIsPortable);
         }
         finally
         {
@@ -161,7 +104,6 @@ public class AppUpdateServiceTests
     [InlineData("UpdateDialog_Button_Later")]
     [InlineData("UpdateDialog_Status_Starting")]
     [InlineData("UpdateDialog_Status_Progress")]
-    [InlineData("UpdateDialog_Status_Preparing")]
     [InlineData("UpdateDialog_Status_ReadyRestarting")]
     [InlineData("UpdateDialog_Status_Verifying")]
     [InlineData("UpdateDialog_Status_Failed")]
@@ -185,14 +127,14 @@ public class AppUpdateServiceTests
         string sampleShaFile = @"
 # Comments should be ignored
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  setup.exe
-2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae *portable.zip
+2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae *payload.bin
 SHA256 (archive.zip) = fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9
 custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ";
         var parsed = AppUpdateService.ParseSha256Checksums(sampleShaFile);
 
         Assert.Equal("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", parsed["setup.exe"]);
-        Assert.Equal("2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae", parsed["portable.zip"]);
+        Assert.Equal("2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae", parsed["payload.bin"]);
         Assert.Equal("fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9", parsed["archive.zip"]);
         Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", parsed["custom.exe"]);
     }
@@ -221,7 +163,6 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         };
 
         updateInfo.SetExpectedSha256("setup.exe", new string('0', 64));
-        SettingsService.IsPortableMode = false;
 
         await Assert.ThrowsAsync<InvalidDataException>(async () =>
         {
@@ -253,7 +194,6 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         };
         updateInfo.SetExpectedSha256("setup.exe", "0000000000000000000000000000000000000000000000000000000000000000"); // Wrong hash
 
-        SettingsService.IsPortableMode = false;
 
         var ex = await Assert.ThrowsAsync<InvalidDataException>(async () =>
         {
@@ -290,7 +230,6 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         };
         updateInfo.SetExpectedSha256("setup.exe", expectedHash);
 
-        SettingsService.IsPortableMode = false;
 
         var path = await service.DownloadUpdateAsync(updateInfo);
 

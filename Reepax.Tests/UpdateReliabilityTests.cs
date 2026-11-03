@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -14,14 +13,12 @@ namespace Reepax.Tests;
 public sealed class UpdateReliabilityTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "UpdateCase_" + Guid.NewGuid().ToString("N"));
-    private readonly bool _portable = SettingsService.IsPortableMode;
     private readonly string? _data = SettingsService.AppDataDirectoryOverride;
 
     public UpdateReliabilityTests()
     {
         Directory.CreateDirectory(_root);
         SettingsService.AppDataDirectoryOverride = Path.Combine(_root, "Data");
-        SettingsService.IsPortableMode = false;
     }
 
     internal static string AssetUrl(string name) => "https://github.com/" +
@@ -53,14 +50,29 @@ public sealed class UpdateReliabilityTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void AssetSelection_NeverSubstitutesTheOtherInstallationType(bool portable)
+    public async Task Check_SelectsOnlyTheInstallerAndRequiresItsChecksumFile(bool includeInstaller)
     {
-        SettingsService.IsPortableMode = portable;
-        var info = portable ? new UpdateInfo { SetupAssetUrl = AssetUrl("setup.exe"), SetupAssetSize = 10 }
-            : new UpdateInfo { PortableZipAssetUrl = AssetUrl("portable.zip"), PortableZipAssetSize = 20 };
-        Assert.Null(info.TargetDownloadUrl);
-        Assert.Equal(0, info.TargetDownloadSize);
-        Assert.False(info.HasDirectAsset);
+        var assets = new List<object>
+        {
+            new { name = "archive.zip", browser_download_url = AssetUrl("archive.zip"), size = 20, digest = "unsupported" },
+            new { name = "SHA256SUMS.txt", browser_download_url = AssetUrl("SHA256SUMS.txt"), size = 100, digest = (string?)null }
+        };
+        if (includeInstaller)
+            assets.Add(new { name = "setup.exe", browser_download_url = AssetUrl("setup.exe"), size = 10, digest = "sha256:" + new string('a', 64) });
+        string release = JsonSerializer.Serialize(new { tag_name = "v26.10.5", assets });
+        using var client = new HttpClient(new Handler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(release) })));
+        var service = new AppUpdateService(client, client);
+
+        var info = await service.CheckForUpdatesAsync("26.10.4");
+
+        Assert.NotNull(info);
+        Assert.Equal("setup.exe", info.TargetFileName);
+        Assert.Equal(includeInstaller, info.HasDirectAsset);
+        Assert.Equal(includeInstaller ? AssetUrl("setup.exe") : null, info.TargetDownloadUrl);
+        Assert.Equal(includeInstaller ? 10 : 0, info.TargetDownloadSize);
+        Assert.Equal(includeInstaller ? UpdateCheckStatus.Available : UpdateCheckStatus.Incomplete, service.LastCheckStatus);
+        Assert.Equal(includeInstaller ? 1 : 0, info.ExpectedSha256Hashes.Count);
     }
 
     [Theory]
@@ -176,97 +188,6 @@ public sealed class UpdateReliabilityTests : IDisposable
         Assert.Equal(UpdateCheckStatus.UpToDate, service.LastCheckStatus);
     }
 
-    private string CreateArchive(string? extra = null, bool complete = true)
-    {
-        string path = Path.Combine(_root, "portable.zip");
-        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
-        foreach (string name in complete ? AppUpdateService.RequiredPortableFiles : ["Reepax.exe"])
-        {
-            using var writer = new StreamWriter(archive.CreateEntry(name.Replace('\\', '/')).Open());
-            writer.Write("payload");
-        }
-        if (extra != null)
-        {
-            using var writer = new StreamWriter(archive.CreateEntry(extra).Open());
-            writer.Write("untrusted");
-        }
-        return path;
-    }
-
-    [Theory]
-    [InlineData("../escape.txt")]
-    [InlineData("payload.dll:stream")]
-    [InlineData("folder./payload.dll")]
-    [InlineData(".reepax-update/journal.json")]
-    public async Task Prepare_RejectsUnsafeArchivePaths(string name)
-    {
-        await Assert.ThrowsAsync<InvalidDataException>(() => new AppUpdateService().PreparePortableUpdateAsync(CreateArchive(name)));
-        Assert.False(Directory.Exists(Path.Combine(_root, "extracted")));
-    }
-
-    [Fact]
-    public async Task Prepare_RejectsIncompleteArchive() =>
-        await Assert.ThrowsAsync<InvalidDataException>(() => new AppUpdateService().PreparePortableUpdateAsync(CreateArchive(complete: false)));
-
-    [Fact]
-    public async Task Prepare_PreservesUserDataAndBuildsFileManifest()
-    {
-        string extracted = await new AppUpdateService().PreparePortableUpdateAsync(CreateArchive("Data/settings.json"));
-        Assert.False(Directory.Exists(Path.Combine(extracted, "Data")));
-        Assert.True(File.Exists(Path.Combine(_root, "manifest.json")));
-        Assert.True(File.Exists(Path.Combine(extracted, "Reepax.dll")));
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void Startup_ConfirmsOnlyTheExpectedVersionAndSession(bool matching)
-    {
-        string directory = Path.Combine(_root, ".reepax-update");
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, "journal.json"), JsonSerializer.Serialize(new
-        {
-            Phase = "awaiting", Session = "test-session", Version = matching ? AppUpdateService.AppCurrentVersion : "0.0.0"
-        }));
-        AppUpdateService.ConfirmUpdateStartup(_root, ["--update-session=test-session"]);
-        Assert.Equal(matching, File.Exists(Path.Combine(directory, "startup.ready")));
-        if (matching) Assert.False(AppUpdateService.HandleInterruptedUpdate(_root, ["--update-session=test-session"]));
-    }
-
-    [Fact]
-    public async Task PortableScript_RejectsTamperedStagingBeforeModifyingApplication()
-    {
-        var (source, target) = CreatePayload();
-        File.WriteAllText(Path.Combine(source, "module.dll"), "changed after verification");
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(true) + "$owned = $false");
-        Assert.Equal(1, await RunScript(script));
-        Assert.Equal("original", File.ReadAllText(Path.Combine(target, "module.dll")));
-        Assert.False(File.Exists(Path.Combine(target, "Reepax.exe")));
-    }
-
-    private (string Source, string Target) CreatePayload()
-    {
-        string source = Path.Combine(_root, "stage's [payload]");
-        string target = Path.Combine(_root, "application's [directory]");
-        Directory.CreateDirectory(source);
-        Directory.CreateDirectory(target);
-        File.Copy(Path.Combine(AppContext.BaseDirectory, "Reepax.exe"), Path.Combine(source, "Reepax.exe"));
-        File.WriteAllText(Path.Combine(source, "module.dll"), "new");
-        File.WriteAllText(Path.Combine(source, "added.dll"), "added");
-        File.WriteAllText(Path.Combine(target, "module.dll"), "original");
-        Directory.CreateDirectory(Path.Combine(target, "Data"));
-        File.WriteAllText(Path.Combine(target, "Data", "settings.json"), "private");
-        var hashes = Directory.GetFiles(source).ToDictionary(p => Path.GetFileName(p)!, p => Hash(File.ReadAllBytes(p)));
-        File.WriteAllText(Path.Combine(_root, "manifest.json"), JsonSerializer.Serialize(hashes));
-        File.WriteAllText(Path.Combine(_root, "helper.approved"), "approved");
-        return (source, target);
-    }
-
-    private static string FakeLaunch(bool confirm) => "\nfunction Start-Process { param($FilePath, $WorkingDirectory, $ArgumentList, [switch]$PassThru)\n" +
-        (confirm ? "if ($state.Phase -eq 'awaiting') { Set-Content -LiteralPath (Join-Path $stateDir 'startup.ready') -Value $state.Session }\n" : "") +
-        "return [pscustomobject]@{ HasExited = $true; ExitCode = 0 }\n}\n";
-
     private async Task<int> RunScript(string script, params string[] args)
     {
         string path = Path.Combine(_root, "run.ps1");
@@ -312,57 +233,6 @@ public sealed class UpdateReliabilityTests : IDisposable
         {
             Environment.SetEnvironmentVariable("PSModulePath", previous);
         }
-    }
-
-    [Fact]
-    public async Task PortableScript_ActuallyCopiesVerifiesAndConfirmsStartup()
-    {
-        var (source, target) = CreatePayload();
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(true) + "$owned = $false");
-        Assert.Equal(0, await RunScript(script));
-        Assert.Equal("new", File.ReadAllText(Path.Combine(target, "module.dll")));
-        Assert.Equal("private", File.ReadAllText(Path.Combine(target, "Data", "settings.json")));
-        Assert.False(Directory.Exists(Path.Combine(target, ".reepax-update")));
-    }
-
-    [Fact]
-    public async Task PortableScript_LockedFileRollsBackAndKeepsUserData()
-    {
-        var (source, target) = CreatePayload();
-        using var locked = new FileStream(Path.Combine(target, "module.dll"), FileMode.Open, FileAccess.Read, FileShare.Read);
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(true) + "$owned = $false");
-        Assert.Equal(1, await RunScript(script));
-        Assert.Equal("original", File.ReadAllText(Path.Combine(target, "module.dll")));
-        Assert.False(File.Exists(Path.Combine(target, "Reepax.exe")));
-        Assert.False(File.Exists(Path.Combine(target, "added.dll")));
-        Assert.Equal("private", File.ReadAllText(Path.Combine(target, "Data", "settings.json")));
-    }
-
-    [Fact]
-    public async Task PortableScript_FailedStartupRestoresOriginalFiles()
-    {
-        var (source, target) = CreatePayload();
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(false) + "$owned = $false");
-        Assert.Equal(1, await RunScript(script));
-        Assert.Equal("original", File.ReadAllText(Path.Combine(target, "module.dll")));
-        Assert.False(File.Exists(Path.Combine(target, "added.dll")));
-    }
-
-    [Fact]
-    public async Task PortableScript_InterruptedExchangeCanBeRecoveredFromJournal()
-    {
-        var (source, target) = CreatePayload();
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(false) + "$owned = $false");
-        script = script.Replace("Install-File $path $target $file.Hash", "Install-File $path $target $file.Hash\nStop-Process -Id $PID -Force");
-        Assert.NotEqual(0, await RunScript(script));
-        string recovery = File.ReadAllText(Path.Combine(target, ".reepax-update", "recover.ps1"));
-        Assert.Equal(0, await RunScript(recovery, "-Recover", "-RecoveryProcessId", "0"));
-        Assert.Equal("original", File.ReadAllText(Path.Combine(target, "module.dll")));
-        Assert.False(File.Exists(Path.Combine(target, "Reepax.exe")));
     }
 
     [Theory]
@@ -496,62 +366,6 @@ public sealed class UpdateReliabilityTests : IDisposable
     }
 
     [Fact]
-    public async Task PortableScript_RollbackRestoresOtherFilesDespiteOneLockedDestination()
-    {
-        var (source, target) = CreatePayload();
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(false) + "$owned = $false");
-        script = script.Replace("$state.Phase = 'awaiting'", """
-            $lockedPath = Join-Path $dest 'module.dll'
-            $lock = [IO.File]::Open($lockedPath, 'Open', 'Read', 'Read')
-            $state.Phase = 'awaiting'
-            """);
-        Assert.Equal(1, await RunScript(script));
-        Assert.False(File.Exists(Path.Combine(target, "Reepax.exe")));
-        Assert.False(File.Exists(Path.Combine(target, "added.dll")));
-        Assert.True(Directory.Exists(Path.Combine(target, ".reepax-update", "backup")));
-        string recovery = File.ReadAllText(Path.Combine(target, ".reepax-update", "recover.ps1"));
-        Assert.Equal(0, await RunScript(recovery, "-Recover", "-RecoveryProcessId", "0"));
-        Assert.Equal("original", File.ReadAllText(Path.Combine(target, "module.dll")));
-    }
-
-    [Fact]
-    public async Task PortableScript_WriteFailureDoesNotLeavePartiallyOverwrittenFiles()
-    {
-        var (source, target) = CreatePayload();
-        string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-        script = script.Replace("$owned = $false", FakeLaunch(true) + "$owned = $false");
-        script = script.Replace("[IO.File]::Copy($path, $pending, $false)", """
-            if ($path.StartsWith($source) -and $path.EndsWith('module.dll')) {
-                [IO.File]::WriteAllText($pending, 'incomplete')
-                throw [IO.IOException]::new('Simulated storage write failure.')
-            }
-            [IO.File]::Copy($path, $pending, $false)
-            """);
-        Assert.Equal(1, await RunScript(script));
-        Assert.Equal("original", File.ReadAllText(Path.Combine(target, "module.dll")));
-        Assert.False(File.Exists(Path.Combine(target, "Reepax.exe")));
-        Assert.False(File.Exists(Path.Combine(target, ".reepax-update", "pending.bin")));
-    }
-
-    [Fact]
-    public async Task PortableScript_ReadOnlyDestinationPreservesTheOriginalPayload()
-    {
-        var (source, target) = CreatePayload();
-        string protectedFile = Path.Combine(target, "module.dll");
-        File.SetAttributes(protectedFile, FileAttributes.ReadOnly);
-        try
-        {
-            string script = AppUpdateService.GeneratePortableUpdateScript(0, source, target, Path.Combine(target, "Reepax.exe"));
-            script = script.Replace("$owned = $false", FakeLaunch(true) + "$owned = $false");
-            Assert.Equal(1, await RunScript(script));
-            Assert.Equal("original", File.ReadAllText(protectedFile));
-            Assert.False(File.Exists(Path.Combine(target, "added.dll")));
-        }
-        finally { File.SetAttributes(protectedFile, FileAttributes.Normal); }
-    }
-
-    [Fact]
     public async Task WorkspaceCleanup_RemovesOnlyTheOwnedUpdateSession()
     {
         string owned = Path.Combine(Path.GetTempPath(), "Reepax", "Update", Guid.NewGuid().ToString("N"));
@@ -572,7 +386,6 @@ public sealed class UpdateReliabilityTests : IDisposable
 
     public void Dispose()
     {
-        SettingsService.IsPortableMode = _portable;
         SettingsService.AppDataDirectoryOverride = _data;
         foreach (string file in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories))
             File.SetAttributes(file, File.GetAttributes(file) & ~FileAttributes.ReadOnly);

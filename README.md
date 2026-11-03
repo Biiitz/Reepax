@@ -67,10 +67,7 @@
 
 Get the latest build from the **[Releases](https://github.com/Biiitz/Reepax/releases)** page:
 
-| Edition | Description | Download |
-| :--- | :--- | :--- |
-| **Installer** | Standard Windows setup with Start Menu entries, desktop shortcut, and `.repx` associations. | [**setup.exe**](https://github.com/Biiitz/Reepax/releases) |
-| **Portable** | Self-contained zero-install archive—extract anywhere and run immediately. | [**portable.zip**](https://github.com/Biiitz/Reepax/releases) |
+Download and run [**setup.exe**](https://github.com/Biiitz/Reepax/releases/latest/download/setup.exe). The installer adds Start Menu entries, an optional desktop shortcut, and `.repx` file associations.
 
 ---
 

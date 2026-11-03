@@ -30,8 +30,6 @@ public class UpdateInfo
     public string? ReleaseTag { get; set; }
     public string? SetupAssetUrl { get; set; }
     public long SetupAssetSize { get; set; }
-    public string? PortableZipAssetUrl { get; set; }
-    public long PortableZipAssetSize { get; set; }
 
     public string? Sha256ChecksumAssetUrl { get; set; }
     public Dictionary<string, string> ExpectedSha256Hashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -39,15 +37,11 @@ public class UpdateInfo
 
     public bool HasDirectAsset => !string.IsNullOrEmpty(TargetDownloadUrl);
 
-    public string? TargetDownloadUrl => SettingsService.IsPortableMode
-        ? PortableZipAssetUrl
-        : SetupAssetUrl;
+    public string? TargetDownloadUrl => SetupAssetUrl;
 
-    public long TargetDownloadSize => SettingsService.IsPortableMode
-        ? PortableZipAssetSize
-        : SetupAssetSize;
+    public long TargetDownloadSize => SetupAssetSize;
 
-    public string TargetFileName => SettingsService.IsPortableMode ? "portable.zip" : "setup.exe";
+    public string TargetFileName => "setup.exe";
 
     public string? GetExpectedSha256(string fileName)
     {
@@ -75,7 +69,7 @@ public partial class AppUpdateService
     private readonly HttpClient _httpClient;
     private readonly HttpClient _downloadHttpClient;
 
-    public static Action<string, bool>? ApplyUpdateActionOverride { get; set; }
+    public static Action<string>? ApplyUpdateActionOverride { get; set; }
 
     public AppUpdateService(HttpClient? httpClient = null, HttpClient? downloadHttpClient = null)
     {
@@ -344,8 +338,6 @@ public partial class AppUpdateService
             var expectedHashes = ParseSha256Checksums(body);
             string? setupUrl = null;
             long setupSize = 0;
-            string? portableUrl = null;
-            long portableSize = 0;
             string? checksumUrl = null;
 
             if (root.TryGetProperty("assets", out var assetsProp) && assetsProp.ValueKind == JsonValueKind.Array)
@@ -360,7 +352,7 @@ public partial class AppUpdateService
                         continue;
 
                     if (!IsReleaseAssetUrl(downloadUrl, tagName, assetName)) continue;
-                    if (assetName is "setup.exe" or "portable.zip" && asset.TryGetProperty("digest", out var digestProperty) &&
+                    if (assetName == "setup.exe" && asset.TryGetProperty("digest", out var digestProperty) &&
                         digestProperty.ValueKind == JsonValueKind.String)
                     {
                         string digest = digestProperty.GetString()!;
@@ -373,12 +365,6 @@ public partial class AppUpdateService
                         if (setupUrl != null) throw new InvalidDataException("Duplicate update asset.");
                         setupUrl = downloadUrl;
                         setupSize = size;
-                    }
-                    else if (assetName.Equals("portable.zip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (portableUrl != null) throw new InvalidDataException("Duplicate update asset.");
-                        portableUrl = downloadUrl;
-                        portableSize = size;
                     }
                     else if (assetName.Equals("SHA256SUMS.txt", StringComparison.Ordinal))
                     {
@@ -399,8 +385,6 @@ public partial class AppUpdateService
                 ReleaseTag = tagName,
                 SetupAssetUrl = setupUrl,
                 SetupAssetSize = setupSize,
-                PortableZipAssetUrl = portableUrl,
-                PortableZipAssetSize = portableSize,
                 Sha256ChecksumAssetUrl = checksumUrl,
                 ExpectedSha256Hashes = expectedHashes
             };

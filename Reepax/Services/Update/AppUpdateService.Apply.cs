@@ -13,36 +13,27 @@ public partial class AppUpdateService
     private static int _applying;
     internal static readonly SemaphoreSlim OperationGate = new(1, 1);
 
-    public static bool ApplyUpdate(string updatePath, bool isPortable, string? expectedSha256 = null, string? expectedVersion = null)
+    public static bool ApplyUpdate(string updatePath, string? expectedSha256 = null, string? expectedVersion = null)
     {
         if (DownloadPersistenceService.IsTestEnvironment && ApplyUpdateActionOverride != null)
         {
-            ApplyUpdateActionOverride(updatePath, isPortable);
+            ApplyUpdateActionOverride(updatePath);
             return true;
         }
         if (Interlocked.CompareExchange(ref _applying, 1, 0) != 0) return false;
         try
         {
             string exe = Environment.ProcessPath ?? throw new IOException("Application executable is unavailable.");
-            string directory = AppContext.BaseDirectory;
             string session = Path.GetDirectoryName(updatePath)!;
-            if (isPortable)
+            if (expectedSha256 == null) throw new InvalidDataException("The update is not verified.");
+            if (expectedVersion == null || !TryParseAppVersion(expectedVersion, out _, out _, out _, out _))
+                throw new InvalidDataException("The expected update version is required.");
+            using (var stream = File.OpenRead(updatePath))
             {
-                if (!Directory.Exists(updatePath) || !File.Exists(Path.Combine(session, "manifest.json")))
-                    throw new InvalidDataException("The prepared update is incomplete.");
-            }
-            else
-            {
-                if (expectedSha256 == null) throw new InvalidDataException("The update is not verified.");
-                if (expectedVersion == null || !TryParseAppVersion(expectedVersion, out _, out _, out _, out _))
-                    throw new InvalidDataException("The expected update version is required.");
-                using var stream = File.OpenRead(updatePath);
                 if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("The update changed after verification.");
             }
-            string script = isPortable
-                ? GeneratePortableUpdateScript(Environment.ProcessId, updatePath, directory, exe)
-                : GenerateInstallerUpdateScript(Environment.ProcessId, updatePath, exe, expectedSha256, expectedVersion);
+            string script = GenerateInstallerUpdateScript(Environment.ProcessId, updatePath, exe, expectedSha256, expectedVersion);
             string scriptPath = Path.Combine(session, "apply_update.ps1");
             File.WriteAllText(scriptPath, script, new UTF8Encoding(true));
             foreach (string flag in new[] { "helper.ready", "helper.approved", "helper.cancel" })
@@ -99,51 +90,17 @@ public partial class AppUpdateService
     private static string ScriptHeader(int procId, string source, string targetExe)
     {
         string result = Path.Combine(SettingsService.AppDataDirectory, "update-result.json");
-        string args = SettingsService.IsPortableMode ? "--portable --restart" : "--restart";
-        return $"param([int]$RecoveryProcessId = -1, [switch]$Recover)\n$ErrorActionPreference = 'Stop'\n" +
+        return "$ErrorActionPreference = 'Stop'\n" +
             $"$procId = {procId}\n$source = {QuoteScript(source)}\n$exe = {QuoteScript(targetExe)}\n" +
-            $"$resultPath = {QuoteScript(result)}\n$restartArgs = {QuoteScript(args)}\n" + ReadScript("UpdateWorkspace");
+            $"$resultPath = {QuoteScript(result)}\n$restartArgs = '--restart'\n" + ReadScript("UpdateWorkspace");
     }
-
-    public static string GeneratePortableUpdateScript(int procId, string sourceDir, string targetDir, string targetExe) =>
-        ScriptHeader(procId, sourceDir, targetExe) + $"$dest = {QuoteScript(targetDir)}\n" + ReadScript("PortableUpdate");
 
     public static string GenerateInstallerUpdateScript(int procId, string setupPath, string targetExe, string? expectedSha256 = null,
         string? expectedVersion = null) => ScriptHeader(procId, setupPath, targetExe) +
         $"$expectedHash = {QuoteScript(expectedSha256 ?? "")}\n$expectedVersion = {QuoteScript(expectedVersion ?? AppCurrentVersion)}\n" +
         ReadScript("InstallerUpdate");
 
-    internal static string UpdateMutexName(string directory) => "Local\\ReepaxUpdate_" +
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(directory).TrimEnd('\\').ToUpperInvariant())));
-
     internal static bool HandleInterruptedUpdate(string directory, string[] args)
-    {
-        if (IsInstallerUpdateRunning(directory, args)) return true;
-        string stateDir = Path.Combine(directory, ".reepax-update");
-        string journal = Path.Combine(stateDir, "journal.json");
-        if (!File.Exists(journal)) return false;
-        using var state = JsonDocument.Parse(File.ReadAllText(journal));
-        string phase = state.RootElement.GetProperty("Phase").GetString()!;
-        if (phase is "confirmed" or "restored") return false;
-        string session = state.RootElement.GetProperty("Session").GetString()!;
-        string version = state.RootElement.GetProperty("Version").GetString()!;
-        if (phase == "awaiting" && args.Contains("--update-session=" + session) && AppCurrentVersion == version)
-            return false;
-        using var mutex = new Mutex(false, UpdateMutexName(directory));
-        bool acquired;
-        try { acquired = mutex.WaitOne(0); }
-        catch (AbandonedMutexException) { acquired = true; }
-        if (!acquired) return true;
-        mutex.ReleaseMutex();
-        string recovery = Path.Combine(stateDir, "recover.ps1");
-        if (!File.Exists(recovery) || (File.GetAttributes(stateDir) & FileAttributes.ReparsePoint) != 0)
-            throw new IOException("Update recovery files are unavailable.");
-        using var helper = StartUpdateHelper(recovery, "-RecoveryProcessId", Environment.ProcessId.ToString(), "-Recover");
-        if (helper == null) throw new IOException("Update recovery could not be started.");
-        return true;
-    }
-
-    private static bool IsInstallerUpdateRunning(string directory, string[] args)
     {
         string request = Path.Combine(SettingsService.AppDataDirectory, "update-startup.json");
         if (!File.Exists(request)) return false;
@@ -167,20 +124,6 @@ public partial class AppUpdateService
     }
 
     internal static void ConfirmUpdateStartup(string directory, string[] args)
-    {
-        ConfirmInstallerStartup(directory, args);
-        string stateDir = Path.Combine(directory, ".reepax-update");
-        string journal = Path.Combine(stateDir, "journal.json");
-        if (!File.Exists(journal)) return;
-        using var state = JsonDocument.Parse(File.ReadAllText(journal));
-        string session = state.RootElement.GetProperty("Session").GetString()!;
-        if (state.RootElement.GetProperty("Phase").GetString() == "awaiting" &&
-            state.RootElement.GetProperty("Version").GetString() == AppCurrentVersion &&
-            args.Contains("--update-session=" + session))
-            File.WriteAllText(Path.Combine(stateDir, "startup.ready"), session);
-    }
-
-    private static void ConfirmInstallerStartup(string directory, string[] args)
     {
         string request = Path.Combine(SettingsService.AppDataDirectory, "update-startup.json");
         if (!File.Exists(request)) return;

@@ -1071,8 +1071,8 @@ public class QueueManagerTests
             queueManager.StartQueue();
             Assert.Equal(DownloadStatus.Queued, item2.Status);
 
-            // Simulate completion of item1
-            DownloadEngine.Instance.TriggerDownloadCompletedForTesting(item1);
+            // Isolate completion from other managers subscribed by earlier tests.
+            await queueManager.HandleDownloadCompleted(item1);
 
             var completedTask = await Task.WhenAny(item2AssignedWhileExtractingTcs.Task, Task.Delay(3000));
             Assert.Same(item2AssignedWhileExtractingTcs.Task, completedTask);

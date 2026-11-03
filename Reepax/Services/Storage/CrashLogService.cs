@@ -20,7 +20,7 @@ public class CrashLogResult
 
 /// <summary>
 /// Resilient service for recording fatal and unhandled exceptions to disk across multiple locations
-/// (including Windows AppData and portable mode directories) with immediate disk flushing.
+/// in the application data directories with immediate disk flushing.
 /// </summary>
 public static class CrashLogService
 {
@@ -118,7 +118,7 @@ public static class CrashLogService
     }
 
     /// <summary>
-    /// Resolves target file paths for crash logging based on current environment and portable mode.
+    /// Resolves crash log paths within the current application data directories.
     /// </summary>
     public static List<string> ResolveTargetPaths()
     {
@@ -133,7 +133,7 @@ public static class CrashLogService
             }
         }
 
-        // 1. Logs Directory (e.g. %LOCALAPPDATA%\Reepax\logs\crash.log or BaseDir\Data\logs\crash.log)
+        // Use the configured log directory first.
         try
         {
             var logsDir = SettingsService.LogsDirectory;
@@ -144,7 +144,7 @@ public static class CrashLogService
         }
         catch { }
 
-        // 2. Active AppData Directory (e.g. %LOCALAPPDATA%\Reepax\crash.log or BaseDir\Data\crash.log)
+        // Retain a second copy in the application data directory.
         try
         {
             var appDataDir = SettingsService.AppDataDirectory;
@@ -154,21 +154,6 @@ public static class CrashLogService
             }
         }
         catch { }
-
-        // 3. Portable mode targets (strictly isolated to the portable base directory)
-        if (SettingsService.IsPortableMode)
-        {
-            // Base directory (next to executable) for direct visibility
-            try
-            {
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                if (!string.IsNullOrEmpty(baseDir))
-                {
-                    AddIfValid(Path.Combine(baseDir, "crash.log"));
-                }
-            }
-            catch { }
-        }
 
         return paths;
     }
@@ -215,7 +200,6 @@ public static class CrashLogService
         sb.AppendLine($"App Version:  {GetAppVersion()}");
         sb.AppendLine($"OS Version:   {Environment.OSVersion} ({(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")})");
         sb.AppendLine($"Runtime:      .NET {Environment.Version}");
-        sb.AppendLine($"Portable:     {SettingsService.IsPortableMode}");
         sb.AppendLine($"Base Dir:     {AppDomain.CurrentDomain.BaseDirectory}");
         sb.AppendLine($"AppData Dir:  {SettingsService.AppDataDirectory}");
         sb.AppendLine("--------------------------------------------------------------------------------");

@@ -10,74 +10,14 @@ public partial class SettingsService
     private static readonly Lazy<SettingsService> _instance = new(() => new SettingsService());
     public static SettingsService Instance => _instance.Value;
 
-    public static bool? PortableModeOverride { get; set; }
-
-    public static bool IsPortableMode
-    {
-        get => PortableModeOverride ?? DetectPortableMode();
-        set => PortableModeOverride = value;
-    }
-
     public static string? AppDataDirectoryOverride { get; set; }
 
-    public static string AppDataDirectory => AppDataDirectoryOverride ?? (IsPortableMode
-        ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data")
-        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax"));
+    public static string AppDataDirectory => AppDataDirectoryOverride ??
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Reepax");
 
     public static string LogsDirectory => AppLogger.LogsDirectory;
     public static string IconsDirectory => Path.Combine(AppDataDirectory, "Icons");
     public static string WebView2Directory => Path.Combine(AppDataDirectory, "WebView2");
-
-    public static bool DetectPortableMode(string? baseDirectory = null)
-    {
-        if (baseDirectory == null && DownloadPersistenceService.IsTestEnvironment)
-        {
-            return false;
-        }
-
-        try
-        {
-            // 1. Command-line args for --portable
-            if (baseDirectory == null)
-            {
-                var args = Environment.GetCommandLineArgs();
-                if (args != null)
-                {
-                    for (int i = 0; i < args.Length; i++)
-                    {
-                        if (string.Equals(args[i], "--portable", StringComparison.OrdinalIgnoreCase))
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            // 2. Presence of portable.txt OR .portable OR portable.dat in AppDomain.CurrentDomain.BaseDirectory
-            var baseDir = baseDirectory ?? AppDomain.CurrentDomain.BaseDirectory;
-            if (!string.IsNullOrEmpty(baseDir))
-            {
-                if (File.Exists(Path.Combine(baseDir, "portable.txt")) ||
-                    File.Exists(Path.Combine(baseDir, ".portable")) ||
-                    File.Exists(Path.Combine(baseDir, "portable.dat")))
-                {
-                    return true;
-                }
-
-                // 3. Presence of an existing Data directory in AppDomain.CurrentDomain.BaseDirectory
-                if (Directory.Exists(Path.Combine(baseDir, "Data")))
-                {
-                    return true;
-                }
-            }
-        }
-        catch
-        {
-            // Fallback if environment or security permissions prevent inspection
-        }
-
-        return false;
-    }
 
     private readonly string _settingsFilePath;
     private readonly string _backupFilePath;
@@ -96,18 +36,6 @@ public partial class SettingsService
     public SettingsService(string? customSettingsFilePath = null)
     {
         _settingsDebounceTimer = new System.Threading.Timer(OnSettingsDebounceTimerElapsed, null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
-        if (IsPortableMode)
-        {
-            try
-            {
-                Directory.CreateDirectory(AppDataDirectory);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Error("Fehler beim Erstellen des Datenordners im Portabel-Modus", ex);
-            }
-        }
-
         if (!string.IsNullOrWhiteSpace(customSettingsFilePath))
         {
             _settingsFilePath = customSettingsFilePath;
@@ -124,10 +52,7 @@ public partial class SettingsService
             _isCustomPath = false;
             try
             {
-                if (!IsPortableMode)
-                {
-                    MigrateFromRoamingIfNeeded();
-                }
+                MigrateFromRoamingIfNeeded();
 
                 Directory.CreateDirectory(AppDataDirectory);
                 Directory.CreateDirectory(IconsDirectory);
@@ -146,11 +71,6 @@ public partial class SettingsService
             }
             _settingsFilePath = Path.Combine(AppDataDirectory, "settings.json");
             _backupFilePath = Path.Combine(AppDataDirectory, "settings.json.bak");
-        }
-
-        if (!_isCustomPath)
-        {
-            MigratePortableSettingsIfNeeded();
         }
 
         LoadSettings();
@@ -455,9 +375,6 @@ public partial class SettingsService
 
     private static void MigrateFromRoamingIfNeeded()
     {
-        if (IsPortableMode)
-            return;
-
         var roamingDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Reepax"
@@ -559,45 +476,6 @@ public partial class SettingsService
         {
             AppLogger.Debug($"[SettingsService] Roaming migration note: {ex.Message}");
             return false;
-        }
-    }
-
-    private void MigratePortableSettingsIfNeeded()
-    {
-        if (!IsPortableMode || DownloadPersistenceService.IsTestEnvironment)
-            return;
-
-        try
-        {
-            if (File.Exists(_settingsFilePath))
-                return;
-
-            var localAppDataDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Reepax"
-            );
-
-            if (!Directory.Exists(localAppDataDir))
-                return;
-
-            string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json" };
-            foreach (var file in filesToMigrate)
-            {
-                var src = Path.Combine(localAppDataDir, file);
-                var dest = Path.Combine(AppDataDirectory, file);
-                if (File.Exists(src) && !File.Exists(dest))
-                {
-                    try
-                    {
-                        File.Copy(src, dest, overwrite: false);
-                    }
-                    catch { }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[SettingsService] Fehler beim Migrieren bestehender Einstellungen in Portabel-Modus: {ex.Message}");
         }
     }
 
