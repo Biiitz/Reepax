@@ -13,15 +13,18 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly ConcurrentBag<Task> _connections = new();
     private readonly IReadOnlyDictionary<string, byte[]> _files;
+    private readonly Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? _writeBody;
     private readonly Task _accept;
     private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource ArchiveRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal ConcurrentDictionary<string, int> Requests { get; } = new();
     internal ConcurrentQueue<(string File, long? Start)> Ranges { get; } = new();
 
-    internal PipelineHttpSource(IReadOnlyDictionary<string, byte[]> files)
+    internal PipelineHttpSource(IReadOnlyDictionary<string, byte[]> files,
+        Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? writeBody = null)
     {
         _files = files;
+        _writeBody = writeBody;
         _listener.Start();
         _accept = AcceptAsync();
     }
@@ -85,7 +88,9 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
                     ArchiveRequested.TrySetResult();
                     await _release.Task.WaitAsync(_stop.Token);
                 }
-                await stream.WriteAsync(body.AsMemory((int)first, (int)(last - first + 1)), _stop.Token);
+                var content = body.AsMemory((int)first, (int)(last - first + 1));
+                if (_writeBody != null) await _writeBody(name, first, stream, content, _stop.Token);
+                else await stream.WriteAsync(content, _stop.Token);
                 await stream.FlushAsync(_stop.Token);
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }

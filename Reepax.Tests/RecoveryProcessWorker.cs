@@ -19,6 +19,8 @@ internal static class RecoveryProcessWorker
     private static async Task<int> Main(string[] args)
     {
         if (args.Length == 0) return 0;
+        if (args.Length == 4 && args[0] == "--load-worker")
+            return ConcurrentLoadWorker.Run(args[1], int.Parse(args[2]), int.Parse(args[3]));
         if (args.Length != 7 || args[0] != "--recovery-worker") return 2;
         try
         {
