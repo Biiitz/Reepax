@@ -136,9 +136,12 @@ jobs:
           }
           gh release upload $env:RELEASE_TAG dist/setup.exe dist/SHA256SUMS.txt --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $json = gh api "repos/$env:GH_REPO/releases/tags/$env:RELEASE_TAG"
+          # Draft releases are available through the release list, not the published-tag endpoint.
+          $json = gh api "repos/$env:GH_REPO/releases?per_page=100"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $release = $json | ConvertFrom-Json
+          $matchingReleases = @(($json | ConvertFrom-Json) | Where-Object tag_name -CEQ $env:RELEASE_TAG)
+          if ($matchingReleases.Count -ne 1) { throw 'The release draft could not be resolved uniquely.' }
+          $release = $matchingReleases[0]
           if (-not $release.draft -or $release.prerelease) { throw 'Unexpected release state.' }
           foreach ($name in @('setup.exe', 'SHA256SUMS.txt')) {
             $assets = @($release.assets | Where-Object name -CEQ $name)
