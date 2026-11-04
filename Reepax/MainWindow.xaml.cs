@@ -121,6 +121,7 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        HideTitleBarIcon();
 
         ThemeService.Instance.Initialize();
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
@@ -796,6 +797,48 @@ public partial class MainWindow : Window
         Activate();
         ShowAddLinksDialog(prefill);
     }
+
+    private void HideTitleBarIcon()
+    {
+        const int GwlExStyle = -20;
+        const int WsExDlgModalFrame = 0x00000001;
+        const int WmSetIcon = 0x0080;
+        const uint SwpNoSize = 0x0001;
+        const uint SwpNoMove = 0x0002;
+        const uint SwpNoZOrder = 0x0004;
+        const uint SwpNoActivate = 0x0010;
+        const uint SwpFrameChanged = 0x0020;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        int extendedStyle = GetWindowLong(hwnd, GwlExStyle);
+        Marshal.SetLastPInvokeError(0);
+        if (SetWindowLong(hwnd, GwlExStyle, extendedStyle | WsExDlgModalFrame) == 0 &&
+            Marshal.GetLastPInvokeError() != 0)
+        {
+            AppLogger.Warn("[MainWindow] Hiding the title bar icon failed.");
+            return;
+        }
+
+        // Clear both window icons to prevent the caption from falling back to the large icon.
+        SendMessage(hwnd, WmSetIcon, IntPtr.Zero, IntPtr.Zero);
+        SendMessage(hwnd, WmSetIcon, new IntPtr(1), IntPtr.Zero);
+        SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y,
+        int width, int height, uint flags);
 
     private void UpdateTitleBarTheme(bool isDark)
     {
