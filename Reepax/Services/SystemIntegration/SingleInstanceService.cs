@@ -114,7 +114,19 @@ public sealed class SingleInstanceService : IDisposable
             using var deadline = new CancellationTokenSource(timeoutMs);
             var token = deadline.Token;
             using var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-            await client.ConnectAsync(token).ConfigureAwait(false);
+            while (!client.IsConnected)
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    // Long ConnectAsync waits occupy the workers needed by the local server.
+                    client.Connect(timeout: 1);
+                }
+                catch (TimeoutException)
+                {
+                    await Task.Delay(20, token).ConfigureAwait(false);
+                }
+            }
             byte[] length = new byte[sizeof(int)];
             BinaryPrimitives.WriteInt32LittleEndian(length, payload.Length);
             await client.WriteAsync(length, token).ConfigureAwait(false);

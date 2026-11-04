@@ -78,6 +78,34 @@ public sealed class SingleInstanceIpcTests : IAsyncLifetime
         Assert.Equal(expected.OrderBy(arg => arg, StringComparer.Ordinal), received.OrderBy(arg => arg, StringComparer.Ordinal));
     }
 
+    [Theory]
+    [InlineData(8)]
+    [InlineData(24)]
+    public async Task ConcurrentLaunches_WithLimitedWorkerThreads_AreEachAcceptedExactlyOnce(int count)
+    {
+        var start = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
+            RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        foreach (string argument in new[] { typeof(SingleInstanceIpcTests).Assembly.Location, "--ipc-contention-worker", count.ToString(System.Globalization.CultureInfo.InvariantCulture) })
+            start.ArgumentList.Add(argument);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("The isolated IPC worker did not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.True(process.ExitCode == 0, "IPC worker failed: " + await error + await output);
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.WhenAll(output, error);
+        }
+    }
+
     [Fact]
     public async Task CompleteFrame_IsAcknowledgedWithoutWaitingForTheClientToClose()
     {

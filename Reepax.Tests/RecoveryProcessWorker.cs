@@ -20,6 +20,8 @@ internal static class RecoveryProcessWorker
     private static async Task<int> Main(string[] args)
     {
         if (args.Length == 0) return 0;
+        if (args.Length == 2 && args[0] == "--ipc-contention-worker")
+            return await SingleInstanceIpcConcurrencyWorker.RunAsync(int.Parse(args[1]));
         if (args.Length == 3 && args[0] == "--window-flow-worker")
             return WindowDownloadFlowWorker.Run(args[1], args[2]);
         if (args.Length == 4 && args[0] == "--load-worker")
