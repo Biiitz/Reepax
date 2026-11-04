@@ -31,6 +31,7 @@ public class DownloadItemDto
     public DownloadStatus Status { get; set; }
     public string StatusMessage { get; set; } = string.Empty;
     public string? ErrorMessage { get; set; }
+    public DownloadFailure? FailureDetails { get; set; }
     public string? SaveFilePath { get; set; }
     public string? Cookies { get; set; }
     public DownloadCookieContext? CookieContext { get; set; }
@@ -869,6 +870,7 @@ public class DownloadPersistenceService : IDisposable
                         Status = itemStatus,
                         StatusMessage = itemStatusMsg,
                         ErrorMessage = item.ErrorMessage,
+                        FailureDetails = item.FailureDetails,
                         SaveFilePath = item.SaveFilePath,
                         Cookies = item.Cookies,
                         CookieContext = item.GetCookieContext(),
@@ -1549,6 +1551,7 @@ public class DownloadPersistenceService : IDisposable
                             IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
                         };
 
+                        item.RestoreDownloadFailure(itemDto.FailureDetails);
                         items.Add(item);
                     }
                 }
@@ -1901,6 +1904,7 @@ public class DownloadPersistenceService : IDisposable
                         item.SpeedBytesPerSecond = 0;
                         item.RemainingSeconds = 0;
 
+                        item.RestoreDownloadFailure(itemDto.FailureDetails);
                         items.Add(item);
                     }
                 }

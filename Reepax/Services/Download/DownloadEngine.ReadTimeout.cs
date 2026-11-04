@@ -53,18 +53,33 @@ public partial class DownloadEngine
         private readonly CancellationToken _downloadToken;
         private readonly CancellationTokenSource _readCancellation;
         private readonly CancellationTokenRegistration _abortRegistration;
+        private readonly BrowserPauseState? _browserPause;
+        private readonly object _timerGate = new();
+        private bool _readPending;
+        private bool _disposed;
 
-        internal NetworkReadTimeoutStream(Stream inner, TimeSpan timeout, CancellationToken downloadToken)
+        internal NetworkReadTimeoutStream(Stream inner, TimeSpan timeout, CancellationToken downloadToken, BrowserPauseState? browserPause = null)
         {
             _inner = inner;
             _timeout = timeout;
             _downloadToken = downloadToken;
             _readCancellation = CancellationTokenSource.CreateLinkedTokenSource(downloadToken);
+            _browserPause = browserPause;
+            if (_browserPause != null) _browserPause.Changed += UpdateReadTimer;
             // Closing the response also aborts reads that ignore cancellation tokens.
             _abortRegistration = _readCancellation.Token.Register(() =>
             {
                 try { _inner.Dispose(); } catch { }
             });
+        }
+
+        private void UpdateReadTimer()
+        {
+            lock (_timerGate)
+            {
+                if (!_disposed)
+                    _readCancellation.CancelAfter(_readPending && _browserPause?.IsPaused != true ? _timeout : Timeout.InfiniteTimeSpan);
+            }
         }
 
         public override bool CanRead => _inner.CanRead;
@@ -90,7 +105,8 @@ public partial class DownloadEngine
                 _readCancellation.Token.ThrowIfCancellationRequested();
                 var read = _inner.ReadAsync(buffer, _readCancellation.Token);
                 // Arm one reusable timer only while an actual network read is pending.
-                if (!read.IsCompleted) _readCancellation.CancelAfter(_timeout);
+                lock (_timerGate) _readPending = !read.IsCompleted;
+                UpdateReadTimer();
                 // Finish the cancelled read before its pooled buffer can be reused.
                 int count = await read.ConfigureAwait(false);
                 _readCancellation.Token.ThrowIfCancellationRequested();
@@ -104,7 +120,8 @@ public partial class DownloadEngine
             }
             finally
             {
-                _readCancellation.CancelAfter(Timeout.InfiniteTimeSpan);
+                lock (_timerGate) _readPending = false;
+                UpdateReadTimer();
             }
         }
 
@@ -112,6 +129,8 @@ public partial class DownloadEngine
         {
             if (disposing)
             {
+                if (_browserPause != null) _browserPause.Changed -= UpdateReadTimer;
+                lock (_timerGate) _disposed = true;
                 _abortRegistration.Dispose();
                 _readCancellation.Dispose();
                 _inner.Dispose();

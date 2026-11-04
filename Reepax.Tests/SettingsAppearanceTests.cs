@@ -78,9 +78,9 @@ public partial class DialogUiTests
                 var view = new SettingsView { DataContext = vm };
                 host = new Window { Content = view, Width = 900, Height = 680 };
                 RenderSettings(view, "General");
-                var languageButtons = Descendants<RadioButton>(view).Where(button => button.GroupName == "SettingsLanguage").ToArray();
-                Assert.Equal(2, languageButtons.Length);
-                Assert.All(languageButtons, button => Assert.Null(button.FocusVisualStyle));
+                var languageSelector = Assert.IsType<SingleChoiceDropdown>(view.FindName("LanguageSelector"));
+                Assert.Equal(2, languageSelector.Options.Count);
+                Assert.Null(languageSelector.FocusVisualStyle);
                 var expanders = Descendants<AnimatedExpansionDecorator>(view).ToArray();
                 Assert.Equal(2, expanders.Length);
                 Assert.All(expanders, expander => Assert.True(expander.EnableAnimation));
@@ -91,9 +91,9 @@ public partial class DialogUiTests
                 RenderSettings(view, "PaletteExpanded");
                 Assert.True(expanders[0].IsExpanded);
                 vm.ToggleColorPaletteCommand.Execute(null);
-                languageButtons[1].SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+                languageSelector.SetCurrentValue(SingleChoiceDropdown.SelectedValueProperty, "de");
                 Assert.Equal("de", vm.SelectedLanguage);
-                languageButtons[0].SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+                languageSelector.SetCurrentValue(SingleChoiceDropdown.SelectedValueProperty, "en");
                 Assert.Equal("en", vm.SelectedLanguage);
                 foreach (SettingsCategory category in Enum.GetValues<SettingsCategory>().Where(category => category.ToString() is "General" or "DownloadConnections" or "Shortcuts" or "About"))
                 {
@@ -112,11 +112,12 @@ public partial class DialogUiTests
                 ThemeService.Instance.SetAccentColor("#FFFFFF", save: false);
                 vm.SelectedSettingsCategory = SettingsCategory.General;
                 RenderSettings(view, "GeneralWhite");
-                var selected = languageButtons.Single(button => button.IsChecked == true);
-                var surface = Assert.IsType<Border>(selected.Template.FindName("ChoiceSurface", selected));
-                Assert.Equal(Colors.White, Assert.IsType<SolidColorBrush>(surface.Background).Color);
-                Assert.All(Descendants<RadioButton>(view).Where(button => button.IsChecked == true && button.Style == view.FindResource("LanguageChoiceStyle")),
-                    button => Assert.Equal(Colors.Black, Assert.IsType<SolidColorBrush>(button.Foreground).Color));
+                Assert.Equal("en", languageSelector.SelectedValue);
+                languageSelector.DropdownPopup.IsOpen = true;
+                PumpSettingsAnimations();
+                Assert.All(Descendants<System.Windows.Shapes.Path>(languageSelector.DropdownPopup.Child),
+                    glyph => Assert.Equal(Application.Current.FindResource("TextPrimaryBrush"), glyph.Fill));
+                languageSelector.CloseDropdown();
             }
             finally
             {

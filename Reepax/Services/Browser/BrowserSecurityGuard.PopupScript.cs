@@ -18,6 +18,24 @@ public static partial class BrowserSecurityGuard
             let forwardingClick = false;
             let overlayStyle = null;
 
+            function keepFormInDocument(form, submitter) {
+                if (!(form instanceof HTMLFormElement)) return;
+                const target = submitter?.getAttribute('formtarget') ?? form.getAttribute('target') ??
+                    document.querySelector('base[target]')?.getAttribute('target') ?? '';
+                if (!target || ['_self', '_parent', '_top'].includes(target.toLowerCase())) return;
+                if (target.toLowerCase() !== '_blank' && Array.from(window.frames).includes(window.frames[target])) return;
+                // Preserve the original method and body when popups are routed into this window.
+                form.target = '_self';
+                if (submitter?.hasAttribute('formtarget')) submitter.setAttribute('formtarget', '_self');
+            }
+
+            const originalSubmit = HTMLFormElement.prototype.submit;
+            HTMLFormElement.prototype.submit = function () {
+                keepFormInDocument(this, null);
+                return Reflect.apply(originalSubmit, this, arguments);
+            };
+            originalAdd.call(document, 'submit', event => keepFormInDocument(event.target, event.submitter), true);
+
             function recoverCoveredControl(event) {
                 if (!event?.isTrusted || !(event.target instanceof Element) || event.target.closest(controls) ||
                     !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) return;

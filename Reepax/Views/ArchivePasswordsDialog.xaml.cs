@@ -30,14 +30,14 @@ public partial class ArchivePasswordsDialog : Window
         _passwordRefresh = new CoalescedDispatcherRefresh(() => { if (!_busy && !_closed) RefreshRows(); }, () => Dispatcher);
         ArchiveSelector.DisplayMemberPath = nameof(PackageArchivePasswordTarget.DisplayName);
         ArchiveSelector.ItemsSource = _extractor.GetPackageArchivePasswordTargets(package);
-        ArchiveSelector.SelectedIndex = 0;
+        ArchiveSelector.SelectedValue = ArchiveSelector.ItemsSource.Cast<PackageArchivePasswordTarget>().FirstOrDefault();
         package.PropertyChanged += Package_PropertyChanged;
         SettingsService.Instance.ArchivePasswordsChanged += Passwords_Changed;
         Loaded += (_, _) => PasswordInput.Focus();
         RefreshRows();
     }
 
-    private string? ArchiveName => (ArchiveSelector.SelectedItem as PackageArchivePasswordTarget)?.Key;
+    private string? ArchiveName => (ArchiveSelector.SelectedValue as PackageArchivePasswordTarget)?.Key;
     private string Input => ShowPasswords.IsChecked == true ? PasswordReveal.Text : PasswordInput.Password;
 
     private void RefreshRows()
@@ -127,7 +127,7 @@ public partial class ArchivePasswordsDialog : Window
 
     private void PasswordInput_Changed(object sender, RoutedEventArgs e) => UpdateButtons();
     private void PasswordReveal_Changed(object sender, TextChangedEventArgs e) => UpdateButtons();
-    private void ArchiveSelector_SelectionChanged(object sender, SelectionChangedEventArgs e) => RefreshRows();
+    private void ArchiveSelector_SelectionChanged(object? sender, EventArgs e) => RefreshRows();
 
     private void CandidateList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

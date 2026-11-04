@@ -7,6 +7,7 @@ using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
 
 namespace Reepax.Tests;
@@ -19,6 +20,8 @@ internal static class RecoveryProcessWorker
     private static async Task<int> Main(string[] args)
     {
         if (args.Length == 0) return 0;
+        if (args.Length == 3 && args[0] == "--window-flow-worker")
+            return WindowDownloadFlowWorker.Run(args[1], args[2]);
         if (args.Length == 4 && args[0] == "--load-worker")
             return ConcurrentLoadWorker.Run(args[1], int.Parse(args[2]), int.Parse(args[3]));
         if (args.Length != 7 || args[0] != "--recovery-worker") return 2;
@@ -51,7 +54,9 @@ internal static class RecoveryProcessWorker
                 throw new IOException("The parent disconnected without terminating the recovery worker.");
             }
             int connections = int.Parse(args[6], System.Globalization.CultureInfo.InvariantCulture);
-            if (args[3] == "download-crash") await DownloadAsync(root, args[5], connections, true, Stop);
+            if (args[3] == "browser-save") await BrowserRestartWorker.SaveAsync(root, args[5], Report);
+            else if (args[3] == "browser-recover") await DownloadAsync(root, args[5], connections, false, Report, browserResume: true);
+            else if (args[3] == "download-crash") await DownloadAsync(root, args[5], connections, true, Stop);
             else if (args[3] == "download-recover") await DownloadAsync(root, args[5], connections, false, Report);
             else if (args[3] == "archive-crash") await ExtractAsync(root, args[5], args[4], Stop);
             else if (args[3] == "archive-recover") RecoverArchive(root, Report);
@@ -91,7 +96,7 @@ internal static class RecoveryProcessWorker
             package.HasCompletedNotified, item.DownloadedBytes, item.CalculatedChecksum, resumedFrom);
     }
 
-    private static async Task DownloadAsync(string root, string url, int connections, bool interrupt, Action<RecoveryProcessReport> report)
+    private static async Task DownloadAsync(string root, string url, int connections, bool interrupt, Action<RecoveryProcessReport> report, bool browserResume = false)
     {
         using var storage = new DownloadPersistenceService(Path.Combine(root, "downloads.json"));
         var package = interrupt ? CreatePackage(root, url, "download.bin", false) : storage.LoadDownloads().Single();
@@ -100,14 +105,21 @@ internal static class RecoveryProcessWorker
         if (!interrupt && item.Status != DownloadStatus.Completed &&
             (item.Status != DownloadStatus.Paused || item.IsReadyForPostProcessing || resumedFrom <= 0))
             throw new InvalidDataException("An interrupted download was not restored as resumable work.");
-        using var client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false });
-        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = connections };
-        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        using var client = HttpUserAgentService.CreateHttpClient(TimeSpan.FromHours(6), HttpContentType.BinaryOrAny,
+            automaticDecompression: false, scopedCookies: true);
+        var engine = browserResume ? DownloadEngine.Instance : new DownloadEngine(client);
+        engine.MaxConnectionsPerDownload = connections;
+        var queue = browserResume ? QueueManager.Instance : new QueueManager(subscribeToDownloadEvents: false);
+        var forbiddenBrowser = new BrowserRestartWorker.NoBrowserHost();
+        if (browserResume) queue.BrowserHost = forbiddenBrowser;
         queue.Packages.Clear();
         queue.Packages.Add(package);
         Task completion = Task.CompletedTask;
-        engine.DownloadCompleted += download => completion = queue.HandleDownloadCompleted(download);
-        engine.DownloadFailed += queue.OnBackgroundDownloadFailed;
+        if (!browserResume)
+        {
+            engine.DownloadCompleted += download => completion = queue.HandleDownloadCompleted(download);
+            engine.DownloadFailed += queue.OnBackgroundDownloadFailed;
+        }
         if (interrupt)
         {
             storage.SaveDownloads(new[] { package }, sync: true);
@@ -123,13 +135,23 @@ internal static class RecoveryProcessWorker
         }
         if (item.Status != DownloadStatus.Completed)
         {
-            await engine.ResumeDownloadAsync(item);
+            if (browserResume)
+            {
+                queue.ResumeItem(item);
+                var transfer = engine.GetDownloadTask(item.Id);
+                if (transfer != null) await transfer;
+                else if (item.Status != DownloadStatus.Completed) throw new InvalidOperationException("Resume did not start the saved download.");
+                await BrowserHandoffFixture.UntilAsync(() => item.Status == DownloadStatus.Failed ||
+                    (item.Status == DownloadStatus.Completed && !item.IsVerifyingIntegrity && package.HasCompletedNotified));
+            }
+            else await engine.ResumeDownloadAsync(item);
             await completion;
         }
         if (interrupt) throw new InvalidOperationException("Download finished before the requested crash boundary.");
         var verification = await ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(item);
         if (!verification.IsValid || item.Status != DownloadStatus.Completed || !item.IsReadyForPostProcessing)
-            throw new InvalidDataException("Recovered download did not pass its completion checks.");
+            throw new InvalidDataException($"Recovered download did not pass its completion checks: {item.Status}, {item.FailureDetails?.Kind}, {item.DownloadedBytes}/{item.TotalBytes}, ready={item.IsReadyForPostProcessing}, valid={verification.IsValid}.");
+        if (browserResume && forbiddenBrowser.Requested) throw new InvalidOperationException("Resume tried to open a browser window.");
         storage.SaveDownloads(new[] { package }, sync: true);
         report(State(package, "recovered", resumedFrom));
         queue.StopQueue();

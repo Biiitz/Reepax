@@ -245,34 +245,7 @@
         </Style>
 
         <!-- Filter Dropdown Menu Item Style -->
-        <Style x:Key="FilterDropdownItemStyle" TargetType="{x:Type Button}">
-            <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Margin" Value="0,1" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type Button}">
-                        <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="itemBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="itemBorder" Property="Background" Value="{DynamicResource BgInputBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+
         <!-- ================= SHARED DOWNLOAD ITEM TEMPLATE ================= -->
         <DataTemplate x:Key="DownloadItemTemplate" DataType="{x:Type models:DownloadItem}">
             <DataTemplate.Resources>
@@ -553,7 +526,7 @@
                     </Border>
 
                     <!-- 7: Status Badge -->
-                    <Border Grid.Column="{Binding DataContext.ColIndexStatus, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
+                    <Border Style="{StaticResource DownloadStatusCellStyle}" Grid.Column="{Binding DataContext.ColIndexStatus, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}"
                             BorderThickness="{Binding DataContext.ShowDividerStatus, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="6,0"
                             Visibility="{Binding DataContext.ShowColStatus, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
                         <Grid VerticalAlignment="Center">
@@ -1107,7 +1080,7 @@
                         </Border>
 
                         <!-- 7: Package Status Badge -->
-                        <Border Grid.Column="{Binding DataContext.ColIndexStatus, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
+                        <Border Style="{StaticResource DownloadStatusCellStyle}" Grid.Column="{Binding DataContext.ColIndexStatus, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}"
                                 BorderThickness="{Binding DataContext.ShowDividerStatus, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="6,0"
                                 Visibility="{Binding DataContext.ShowColStatus, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
                             <Grid VerticalAlignment="Center">
@@ -1604,51 +1577,27 @@
                                 </Button>
 
                                 <!-- Post-Download Action Quick-Button (Auto-Shutdown / Sleep / Exit App) -->
-                                <Button x:Name="PostDownloadActionButton"
-                                        Click="PostDownloadActionButton_Click"
-                                        Style="{DynamicResource ToolbarSquareButtonStyle}"
-                                        ToolTip="{Binding PostDownloadActionTooltip}">
-                                    <Button.ContextMenu>
-                                        <ContextMenu>
-                                            <MenuItem Header="{loc:Loc PostDownload_Action_None}"
-                                                      IsCheckable="True"
-                                                      IsChecked="{Binding IsNoneActionSelected}"
-                                                      Command="{Binding SetPostDownloadActionCommand}"
-                                                      CommandParameter="None" />
-                                            <MenuItem Header="{loc:Loc PostDownload_Action_Shutdown}"
-                                                      IsCheckable="True"
-                                                      IsChecked="{Binding IsShutdownActionSelected}"
-                                                      Command="{Binding SetPostDownloadActionCommand}"
-                                                      CommandParameter="Shutdown" />
-                                            <MenuItem Header="{loc:Loc PostDownload_Action_Sleep}"
-                                                      IsCheckable="True"
-                                                      IsChecked="{Binding IsSleepActionSelected}"
-                                                      Command="{Binding SetPostDownloadActionCommand}"
-                                                      CommandParameter="Sleep" />
-                                            <MenuItem Header="{loc:Loc PostDownload_Action_ExitApp}"
-                                                      IsCheckable="True"
-                                                      IsChecked="{Binding IsExitAppActionSelected}"
-                                                      Command="{Binding SetPostDownloadActionCommand}"
-                                                      CommandParameter="ExitApp" />
-                                        </ContextMenu>
-                                    </Button.ContextMenu>
-                                    <Path Data="{StaticResource IconPower}"
-                                          Width="13" Height="13"
-                                          Stretch="Uniform"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center">
-                                        <Path.Style>
-                                            <Style TargetType="Path">
-                                                <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsPostDownloadActionActive}" Value="True">
-                                                        <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Path.Style>
-                                    </Path>
-                                </Button>
+                                <helpers:SingleChoiceDropdown x:Name="PostDownloadActionButton" SelectedValue="{Binding CurrentPostDownloadAction, Mode=TwoWay}"
+                                    Style="{DynamicResource ToolbarSquareButtonStyle}" ToolTip="{Binding PostDownloadActionTooltip}">
+                                    <helpers:SingleChoiceDropdown.Content>
+                                        <Path Data="{StaticResource IconPower}" Width="13" Height="13" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Path.Style>
+                                                <Style TargetType="Path">
+                                                    <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPostDownloadActionActive}" Value="True">
+                                                            <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Path.Style>
+                                        </Path>
+                                    </helpers:SingleChoiceDropdown.Content>
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.None}" Text="{loc:Loc PostDownload_Action_None}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.Shutdown}" Text="{loc:Loc PostDownload_Action_Shutdown}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.Sleep}" Text="{loc:Loc PostDownload_Action_Sleep}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.ExitApp}" Text="{loc:Loc PostDownload_Action_ExitApp}" />
+                                </helpers:SingleChoiceDropdown>
                             </StackPanel>
 
                             <!-- Metadata analysis progress and operation status -->
@@ -1723,14 +1672,14 @@
                 <Border Grid.Row="0" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="0,0" ClipToBounds="True" PreviewMouseWheel="TreeList_PreviewMouseWheel">
                     <Border.ContextMenu>
                         <ContextMenu x:Name="ColumnHeaderContextMenu">
-                            <MenuItem Header="{loc:Loc Col_Name}" IsCheckable="True" IsChecked="{Binding ShowColName, Mode=TwoWay}" StaysOpenOnClick="True" />
+                            <MenuItem Header="{loc:Loc Col_Name}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Hoster}" IsCheckable="True" IsChecked="{Binding ShowColHoster, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_SavePath}" IsCheckable="True" IsChecked="{Binding ShowColSavePath, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Size}" IsCheckable="True" IsChecked="{Binding ShowColSize, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Progress}" IsCheckable="True" IsChecked="{Binding ShowColProgress, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Speed}" IsCheckable="True" IsChecked="{Binding ShowColSpeed, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Eta}" IsCheckable="True" IsChecked="{Binding ShowColEta, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Status}" IsCheckable="True" IsChecked="{Binding ShowColStatus, Mode=TwoWay}" StaysOpenOnClick="True" />
+                            <MenuItem Header="{loc:Loc Col_Status}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_Duration}" IsCheckable="True" IsChecked="{Binding ShowColDuration, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_AddedDate}" IsCheckable="True" IsChecked="{Binding ShowColAddedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
                             <MenuItem Header="{loc:Loc Col_CompletedDate}" IsCheckable="True" IsChecked="{Binding ShowColCompletedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
@@ -2343,7 +2292,6 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
                                     </Trigger>
                                     <Trigger Property="IsPressed" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
@@ -2405,13 +2353,8 @@
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
-                                    </Trigger>
                                     <Trigger Property="IsPressed" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -2444,13 +2387,8 @@
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
-                                    </Trigger>
                                     <Trigger Property="IsPressed" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -2555,183 +2493,51 @@
                     </Border>
 
                     <!-- Compact Status Filter Button -->
-                    <Button Grid.Column="1"
-                            x:Name="StatusFilterButton" 
-                            Height="28"
-                            Padding="10,0" 
-                            Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
-                            Margin="8,0,0,0"
-                            Cursor="Hand"
-                            SnapsToDevicePixels="True"
-                            PreviewMouseDown="StatusFilterButton_PreviewMouseDown"
-                            PreviewMouseUp="StatusFilterButton_PreviewMouseUp"
-                            Click="StatusFilterButton_Click">
-                        <Button.Style>
+                    <helpers:SingleChoiceDropdown x:Name="StatusFilterButton" SelectedValue="{Binding SelectedStatusFilter, Mode=TwoWay}"
+                        Grid.Column="1" PopupPlacement="Top" PopupVerticalOffset="-10" Height="28" Padding="10,0" Background="{DynamicResource BgCardAltBrush}"
+                        BorderThickness="1" Margin="8,0,0,0" Cursor="Hand" SnapsToDevicePixels="True">
+                        <helpers:SingleChoiceDropdown.Style>
                             <Style TargetType="Button">
+                                <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
                                 <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Border" 
-                                                    Background="{TemplateBinding Background}" 
-                                                    BorderBrush="{TemplateBinding BorderBrush}" 
-                                                    BorderThickness="{TemplateBinding BorderThickness}" 
-                                                    CornerRadius="{DynamicResource CompactCornerRadius}"
-                                                    Padding="{TemplateBinding Padding}">
+                                            <Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="{TemplateBinding Padding}">
                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
-                                                </Trigger>
-                                                <Trigger Property="IsPressed" Value="True">
-                                                    <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource BorderHighlightBrush}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Setter.Value>
                                 </Setter>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsStatusFilterActive}" Value="True">
-                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
                             </Style>
-                        </Button.Style>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Data="{StaticResource IconFilter}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0">
-                                <Path.Style>
-                                    <Style TargetType="Path">
-                                        <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                        </helpers:SingleChoiceDropdown.Style>
+                        <helpers:SingleChoiceDropdown.Content>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel">
+                                        <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsStatusFilterActive}" Value="True">
-                                                <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentBlueBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </Path.Style>
-                            </Path>
-                            <TextBlock Text="{Binding SelectedStatusFilterText}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsStatusFilterActive}" Value="True">
-                                                <Setter Property="Foreground" Value="{DynamicResource AccentBlueBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <Path helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=StatusFilterPopup}" Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Popup for Status Filter -->
-                    <Popup Grid.Column="1"
-                           x:Name="StatusFilterPopup"
-                           PlacementTarget="{Binding ElementName=StatusFilterButton}"
-                           Placement="Top"
-                           StaysOpen="False"
-                           AllowsTransparency="True"
-                           PopupAnimation="Fade"
-                           VerticalOffset="-12"
-                           Closed="StatusFilterPopup_Closed">
-                        <Border Background="{DynamicResource BgCardBrush}" 
-                                BorderBrush="{DynamicResource BorderDarkBrush}" 
-                                BorderThickness="1" 
-                                CornerRadius="{DynamicResource CompactCornerRadius}"
-                                Padding="4" 
-                                Width="140"
-                                SnapsToDevicePixels="True" 
-                                UseLayoutRounding="True">
-                            <StackPanel>
-                                <!-- All -->
-                                <Button Style="{StaticResource FilterDropdownItemStyle}"
-                                        Click="StatusFilterOption_Click"
-                                        Command="{Binding SetStatusFilterCommand}"
-                                        CommandParameter="All">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{loc:Loc Filter_All}" FontSize="11.5" VerticalAlignment="Center" />
-                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='All'}" />
-                                    </Grid>
-                                </Button>
-
-                                <!-- Running -->
-                                <Button Style="{StaticResource FilterDropdownItemStyle}"
-                                        Click="StatusFilterOption_Click"
-                                        Command="{Binding SetStatusFilterCommand}"
-                                        CommandParameter="Running">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{loc:Loc Filter_Running}" FontSize="11.5" VerticalAlignment="Center" />
-                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Running'}" />
-                                    </Grid>
-                                </Button>
-
-                                <!-- Paused -->
-                                <Button Style="{StaticResource FilterDropdownItemStyle}"
-                                        Click="StatusFilterOption_Click"
-                                        Command="{Binding SetStatusFilterCommand}"
-                                        CommandParameter="Paused">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{loc:Loc Filter_Paused}" FontSize="11.5" VerticalAlignment="Center" />
-                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Paused'}" />
-                                    </Grid>
-                                </Button>
-
-                                <!-- Completed -->
-                                <Button Style="{StaticResource FilterDropdownItemStyle}"
-                                        Click="StatusFilterOption_Click"
-                                        Command="{Binding SetStatusFilterCommand}"
-                                        CommandParameter="Completed">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{loc:Loc Filter_Completed}" FontSize="11.5" VerticalAlignment="Center" />
-                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Completed'}" />
-                                    </Grid>
-                                </Button>
-
-                                <!-- Failed -->
-                                <Button Style="{StaticResource FilterDropdownItemStyle}"
-                                        Click="StatusFilterOption_Click"
-                                        Command="{Binding SetStatusFilterCommand}"
-                                        CommandParameter="Failed">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{loc:Loc Filter_Failed}" FontSize="11.5" VerticalAlignment="Center" />
-                                        <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                              Visibility="{Binding SelectedStatusFilter, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='Failed'}" />
-                                    </Grid>
-                                </Button>
+                                </StackPanel.Style>
+                                <Path Data="{StaticResource IconFilter}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0"
+                                    Fill="{Binding Path=(TextElement.Foreground), RelativeSource={RelativeSource AncestorType=StackPanel}}" />
+                                <TextBlock Text="{Binding SelectedStatusFilterText}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Path helpers:ControlMotion.IsExpanded="{Binding IsDropdownOpen, RelativeSource={RelativeSource AncestorType=helpers:SingleChoiceDropdown}}"
+                                    Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4"
+                                    Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0" />
                             </StackPanel>
-                        </Border>
-                    </Popup>
+                        </helpers:SingleChoiceDropdown.Content>
+                                    <helpers:ChoiceOption Value="{x:Static models:DownloadStatusFilter.All}" Text="{loc:Loc Filter_All}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:DownloadStatusFilter.Running}" Text="{loc:Loc Filter_Running}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:DownloadStatusFilter.Paused}" Text="{loc:Loc Filter_Paused}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:DownloadStatusFilter.Completed}" Text="{loc:Loc Filter_Completed}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:DownloadStatusFilter.Failed}" Text="{loc:Loc Filter_Failed}" />
+                                </helpers:SingleChoiceDropdown>
                 </Grid>
             </Grid>
         </Border>

@@ -1,3 +1,5 @@
+using Reepax.Helpers;
+using Reepax.Models;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -19,7 +21,8 @@ public partial class DialogUiTests
             EnsureSettingsTheme();
             var vm = new MainViewModel();
             var previous = (vm.SelectedLanguage, vm.EnableCompletionSound, vm.EnableErrorSound,
-                vm.CompletionSoundVolume, vm.ErrorSoundVolume, vm.IsCompletionSoundEntirePackage);
+                vm.CompletionSoundVolume, vm.ErrorSoundVolume, vm.IsCompletionSoundEntirePackage,
+                vm.SelectedCompletionSound, vm.SelectedErrorSound);
             var shutdownMode = Application.Current.ShutdownMode;
             Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var view = new SettingsView { DataContext = vm };
@@ -28,6 +31,8 @@ public partial class DialogUiTests
             try
             {
                 vm.SelectedLanguage = language;
+                vm.SelectedCompletionSound = vm.SelectedErrorSound = "1.mp3";
+                vm.IsCompletionSoundEntirePackage = true;
                 vm.EnableCompletionSound = vm.EnableErrorSound = true;
                 vm.CompletionSoundVolume = 37;
                 vm.ErrorSoundVolume = 33;
@@ -47,8 +52,8 @@ public partial class DialogUiTests
                 sliders[1].SetCurrentValue(RangeBase.ValueProperty, 28.0);
                 Assert.Equal(42, vm.CompletionSoundVolume);
                 Assert.Equal(28, vm.ErrorSoundVolume);
-                var trigger = Descendants<RadioButton>(view).Last(button => button.GroupName == "CompletionSoundTriggerGroup");
-                trigger.SetCurrentValue(ToggleButton.IsCheckedProperty, true);
+                var trigger = (SingleChoiceDropdown)view.FindName("CompletionSoundTriggerSelector");
+                trigger.SetCurrentValue(SingleChoiceDropdown.SelectedValueProperty, CompletionSoundTrigger.IndividualFiles);
                 Assert.True(vm.IsCompletionSoundIndividualFiles);
                 host.Width = 1280;
                 RenderSettings(view, "SoundSettingsWide", width: 1280);
@@ -76,6 +81,8 @@ public partial class DialogUiTests
                 vm.CompletionSoundVolume = previous.CompletionSoundVolume;
                 vm.ErrorSoundVolume = previous.ErrorSoundVolume;
                 vm.IsCompletionSoundEntirePackage = previous.IsCompletionSoundEntirePackage;
+                vm.SelectedCompletionSound = previous.SelectedCompletionSound;
+                vm.SelectedErrorSound = previous.SelectedErrorSound;
                 Application.Current.ShutdownMode = shutdownMode;
             }
         });

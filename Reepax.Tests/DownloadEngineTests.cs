@@ -1176,7 +1176,9 @@ public class DownloadEngineTests
             var ex = tcs.Task.Result;
             Assert.IsType<IOException>(ex);
             Assert.Equal(DownloadStatus.Failed, item.Status);
-            Assert.Contains("interrupted", item.ErrorMessage);
+            Assert.Contains("interrupted", ex.Message);
+            Assert.Equal(DownloadFailureKind.Unknown, item.FailureDetails?.Kind);
+            Assert.Equal(Reepax.Services.Localization.Loc.Get("DownloadFailure_Unknown"), item.ErrorMessage);
             Assert.False(File.Exists(destinationFile)); // Should not rename truncated part to final file
             Assert.True(File.Exists(destinationFile + ".part")); // .part is preserved for resumption
         }
@@ -2574,7 +2576,9 @@ public class DownloadEngineTests
             Assert.Same(peerSegmentCancelled.Task, peerCancelledTask);
 
             Assert.Equal(DownloadStatus.Failed, item.Status);
-            Assert.Contains("Simulated network drop on chunk 0", item.ErrorMessage);
+            Assert.Contains("Simulated network drop on chunk 0", failedTcs.Task.Result.Message);
+            Assert.Equal(DownloadFailureKind.Http, item.FailureDetails?.Kind);
+            Assert.DoesNotContain("Simulated network drop", item.ErrorMessage);
 
             var partFile = destinationFile + ".part";
             Assert.True(File.Exists(partFile));

@@ -1,3 +1,4 @@
+using Reepax.Helpers;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -41,12 +42,12 @@ public partial class DialogUiTests
                 var view = new SettingsView { DataContext = model };
                 host.Content = view;
                 RenderSettings(view, "Theme-Default", 1000);
-                var selector = Assert.IsType<ListBox>(view.FindName("ThemeSelector"));
-                Assert.Equal(2, selector.Items.Count);
-                Assert.Equal(new Thickness(0), selector.BorderThickness);
+                var selector = Assert.IsType<SingleChoiceDropdown>(view.FindName("ThemeSelector"));
+                Assert.Equal(2, selector.ItemsSource!.Cast<object>().Count());
+                Assert.Equal(((Button)view.FindName("PackageDoubleClickSelector")).BorderThickness, selector.BorderThickness);
                 var info = Assert.IsType<Border>(view.FindName("ThemeInfoIcon"));
                 Assert.Equal(Loc.Get("Settings_Theme_Description"), info.ToolTip);
-                selector.SetCurrentValue(ListBox.SelectedValueProperty, ThemeCatalog.MacOSId);
+                selector.SetCurrentValue(SingleChoiceDropdown.SelectedValueProperty, ThemeCatalog.MacOSId);
                 RenderSettings(view, "Theme-MacOS", 1000);
                 Assert.Equal(ThemeCatalog.MacOSId, model.SelectedThemeId);
                 Assert.Equal(ThemeCatalog.MacOSId, settings.ThemeId);
@@ -66,9 +67,7 @@ public partial class DialogUiTests
                 Assert.True(model.IsColorPaletteOpen);
                 Assert.Equal((Color)ColorConverter.ConvertFromString("#F5F5F7"), Assert.IsType<SolidColorBrush>(view.Background).Color);
                 Assert.Equal((Color)ColorConverter.ConvertFromString("#1D1D1F"), Assert.IsType<SolidColorBrush>(view.Foreground).Color);
-                var darkChoice = Descendants<RadioButton>(selector).Single(button =>
-                    button.DataContext is ThemeDefinition definition && definition.Id == ThemeCatalog.DefaultId);
-                darkChoice.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, true);
+                selector.SetCurrentValue(SingleChoiceDropdown.SelectedValueProperty, ThemeCatalog.DefaultId);
                 RenderSettings(view, "Theme-DefaultRestored", 1000);
                 Assert.Equal(ThemeCatalog.DefaultId, model.SelectedThemeId);
                 Assert.False(model.IsColorPaletteOpen);

@@ -97,6 +97,45 @@ public class QueueManagerTests
         return PackageGrouper.GroupLinksIntoPackages(links, Path.Combine(Path.GetTempPath(), "ReepaxTests"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BrowserFailure_UsesLocalizedSafeDetailsAndReleasesTheWindow(bool nativeDownload)
+    {
+        string language = LocalizationService.Instance.CurrentLanguage;
+        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        var host = new FakeBrowserWindowHost();
+        queue.BrowserHost = host;
+        var package = new DownloadPackage { Name = "Example package", AutoResolveHostLinks = false };
+        var item = new DownloadItem { FileName = "payload.bin", OriginalUrl = "https://download.example.test/page" };
+        package.AddItems([item]);
+        queue.Packages.Add(package);
+        try
+        {
+            LocalizationService.Instance.CurrentLanguage = "en";
+            queue.StartQueue();
+            Assert.Single(host.Windows);
+            Assert.Equal(item, queue.GetWindowItem(1));
+            if (nativeDownload)
+                await queue.OnBrowserNativeDownloadCompletedAsync(1, false, "Zugriff verweigert: private-test-token", null);
+            else
+                queue.OnWindowNavigationFailed(1, "Verbindung fehlgeschlagen: private-test-token");
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.Equal(nativeDownload ? DownloadFailureKind.Unknown : DownloadFailureKind.Http, item.FailureDetails?.Kind);
+            Assert.Equal(item.FailureDetails?.Message, item.StatusMessage);
+            Assert.DoesNotContain("private-test-token", item.StatusMessage);
+            Assert.DoesNotContain("private-test-token", item.ErrorMessage);
+            Assert.Empty(host.Windows);
+            Assert.Equal(1, host.TotalWindowsOpened);
+            Assert.False(package.HasCompletedNotified);
+        }
+        finally
+        {
+            queue.StopQueue();
+            LocalizationService.Instance.CurrentLanguage = language;
+        }
+    }
+
     [Fact]
     public void ProcessQueue_AssignsBrowserWindowsUpToMaxConcurrentLimit()
     {

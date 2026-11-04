@@ -177,6 +177,15 @@ public sealed class BrowserPopupInteractionTests : IClassFixture<BrowserScriptTe
     [InlineData("https://page.example.test/item", "https://page.example.test/next", false, false)]
     [InlineData("https://page.example.test/item", "https://cdn.example.test/prepare", true, false)]
     [InlineData("https://page.example.test/item", "https://files.unrelated.test/archive.zip", true, false)]
+    [InlineData("https://page.example.test/item", "https://unknown.unrelated.test/next?file=setup.zip", true, true)]
+    [InlineData("https://page.example.test/item", "https://unknown.unrelated.test/next#setup.rar", true, true)]
     public void PopupPolicy_PreservesDownloadRoutesWithoutAllowingUnknownThirdParties(string source, string target, bool userInitiated, bool blocked)
         => Assert.Equal(blocked, BrowserSecurityGuard.ShouldBlockPopup(source, target, userInitiated));
+
+    [Theory]
+    [InlineData("https://unknown.unrelated.test/next?file=setup.zip", true)]
+    [InlineData("https://unknown.unrelated.test/next#setup.rar", true)]
+    [InlineData("https://files.unrelated.test/archive.zip?token=example#details", false)]
+    public void RedirectPolicy_UsesTheDownloadPathRatherThanNamesInsideParameters(string target, bool blocked)
+        => Assert.Equal(blocked, BrowserSecurityGuard.ShouldBlockRedirect("https://page.example.test/item", target, false));
 }

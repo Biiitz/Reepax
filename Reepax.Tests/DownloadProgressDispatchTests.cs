@@ -14,6 +14,30 @@ namespace Reepax.Tests;
 
 public partial class DialogUiTests
 {
+    [Fact]
+    public void DownloadProgress_EndedFailureCallbackCannotUndoALaterPause()
+    {
+        RunInSta(() =>
+        {
+            using var transfer = new ProgressTransfer(1);
+            transfer.Start();
+            PumpProgressUntil(transfer.Controls[0].Started.Task);
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Assert.True(transfer.Controls[0].Blocked.Task.Wait(TimeSpan.FromSeconds(10)));
+            transfer.Controls[0].Fail = true;
+            transfer.Controls[0].Release.TrySetResult();
+            Assert.True(Task.WhenAll(transfer.Downloads).Wait(TimeSpan.FromSeconds(10)));
+            var item = transfer.Items[0];
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            item.Status = DownloadStatus.Paused;
+            item.StatusMessage = "Paused";
+            Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Equal("Paused", item.StatusMessage);
+            Assert.False(transfer.Engine.IsDownloading(item.Id));
+        });
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(4)]

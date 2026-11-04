@@ -15,8 +15,7 @@ public partial class QueueManager
                 if (item.RejectedFiles == null || item.RejectedFiles.TryReset(item)) return true;
         }
         item.Status = DownloadStatus.Failed;
-        item.StatusMessage = Loc.Get("Status_IntegrityRetryBlocked");
-        item.ErrorMessage = item.StatusMessage;
+        item.SetDownloadFailure(new DownloadFailure { RetryBlocked = true });
         item.IsVerifyingIntegrity = false;
         DownloadPersistenceService.Instance.RequestSave();
         return false;

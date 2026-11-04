@@ -312,8 +312,13 @@ public partial class QueueManager
             catch { }
         }
 
-        CloseAllBrowserWindows();
-        DownloadEngine.Instance.PauseAll(waitForCompletion: isExiting, timeoutMs: 3000);
+        if (!isExiting)
+        {
+            foreach (var item in Packages.ToArray().SelectMany(package => package.ItemsSnapshot))
+                _ = DownloadEngine.Instance.PauseBrowserResponseAsync(item);
+        }
+        CloseAllBrowserWindows(preserveBrowserResponses: !isExiting);
+        DownloadEngine.Instance.PauseAll(waitForCompletion: isExiting, timeoutMs: 3000, preserveBrowserResponses: !isExiting);
 
         var packageSnapshot = Packages.ToArray();
         foreach (var pkg in packageSnapshot)
@@ -408,6 +413,7 @@ public partial class QueueManager
                 EnforceMaxConcurrentDownloads();
 
                 PrepareQueuedRejectedDownloads();
+                ResumeWaitingBrowserResponses();
 
                 // 2. Scenario A: start waiting direct downloads
                 StartWaitingDirectDownloads();
@@ -629,6 +635,7 @@ public partial class QueueManager
             item.CurrentSlot = null;
         });
 
+        if (DownloadEngine.Instance.PauseBrowserResponseAsync(item) != null) return;
         if (DownloadEngine.Instance.IsDownloading(item.Id))
         {
             var pauseTask = DownloadEngine.Instance.CancelOrPauseDownload(item.Id, waitForCompletion: false, demotingToQueued: true);
@@ -738,7 +745,7 @@ public partial class QueueManager
         // Browser windows share the same concurrency budget as active downloads:
         // "Concurrent Downloads" applies to running downloads + waiting browser windows combined.
         // Otherwise windows would open for links whose downloads would have to wait anyway.
-        while (host.ActiveWindowCount + GetActiveDownloadsCount() < MaxConcurrentDownloads)
+        while (GetBrowserSlotCount() + GetActiveDownloadsCount() < MaxConcurrentDownloads)
         {
             var next = FindNextBrowserItem();
             if (next == null)
@@ -801,7 +808,8 @@ public partial class QueueManager
                 // Item needs browser loading if it is queued and has no direct download URL yet,
                 // or if its direct URL is a blob: URL (which only exists in browser memory and cannot be fetched via HttpClient).
                 bool isBlob = item.DirectDownloadUrl?.StartsWith("blob:", StringComparison.OrdinalIgnoreCase) == true;
-                if (item.Status == DownloadStatus.Queued && (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) || isBlob))
+                if (item.Status == DownloadStatus.Queued && !DownloadEngine.Instance.IsDownloading(item.Id) &&
+                    (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) || isBlob))
                 {
                     if (isBlob)
                     {
@@ -919,8 +927,7 @@ public partial class QueueManager
     public void PauseAll() => PauseAllTrickle();
 
     /// <summary>
-    /// "Pause All": active downloads are stopped (engine cancellation,
-    /// resumable via .part/.part.segments); waiting items are paused.
+    /// Pauses browser responses in place and stops other transfers with resumable partial files.
     /// Queue will not start new downloads; open browser windows (captchas) remain untouched.
     /// </summary>
     public void PauseAllTrickle()
@@ -938,9 +945,8 @@ public partial class QueueManager
             {
                 if (item.Status == DownloadStatus.Downloading)
                 {
-                    // Pause: engine cancels the download and persists progress
                     item.IsTrickling = false;
-                    _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+                    _ = DownloadEngine.Instance.PauseBrowserResponseAsync(item) ?? DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
                     SafeInvoke(() =>
                     {
                         item.Status = DownloadStatus.Paused;
@@ -1011,7 +1017,7 @@ public partial class QueueManager
             SafeInvoke(() =>
             {
                 item.Status = DownloadStatus.Failed;
-                item.StatusMessage = Loc.Format("Status_LoadingError", errorMessage);
+                item.SetDownloadFailure(new DownloadFailure { Kind = DownloadFailureKind.Http });
                 item.CurrentSlot = null;
             });
         }
@@ -1103,8 +1109,19 @@ public partial class QueueManager
         }
     }
 
-    private void CloseAllBrowserWindows()
+    private void CloseAllBrowserWindows(bool preserveBrowserResponses = false)
     {
+        if (preserveBrowserResponses)
+        {
+            int[] close;
+            lock (_lock)
+            {
+                close = _windowItems.Where(pair => !DownloadEngine.Instance.HasBrowserResponse(pair.Value.Id)).Select(pair => pair.Key).ToArray();
+                foreach (int id in close) _windowItems.Remove(id);
+            }
+            foreach (int id in close) CloseBrowserWindow(id);
+            return;
+        }
         lock (_lock)
         {
             _windowItems.Clear();
@@ -1120,18 +1137,29 @@ public partial class QueueManager
     // ==================== Pause / Resume ====================
 
     /// <summary>
-    /// Pauses an item with a stop: active download is cancelled via engine
-    /// (CancellationToken); .part/.part.segments are preserved for resume.
-    /// <paramref name="hardStop"/> exists for backwards compatibility.
+    /// Pauses browser responses in place; other downloads retain their resumable partial files.
+    /// A hard stop also closes the original browser response.
     /// </summary>
     public void PauseItem(DownloadItem? item, bool hardStop = false)
     {
         if (item == null || item.Status == DownloadStatus.Completed)
             return;
 
-        _ = hardStop;
-
         item.IsTrickling = false;
+        if (!hardStop && DownloadEngine.Instance.PauseBrowserResponseAsync(item) != null)
+        {
+            SafeInvoke(() =>
+            {
+                item.Status = DownloadStatus.Paused;
+                item.StatusMessage = Loc.Get("Status_Paused");
+                item.SpeedBytesPerSecond = 0;
+                item.RemainingSeconds = 0;
+                item.CurrentSlot = null;
+                Packages.FirstOrDefault(package => package.Id == item.PackageId || package.Items.Contains(item))?.RecalculateAggregates();
+            });
+            ProcessQueue();
+            return;
+        }
         var pauseTask = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
 
         int? windowIdToClose = null;
@@ -1179,6 +1207,7 @@ public partial class QueueManager
         if (item.IsVerifyingIntegrity || !PrepareRejectedDownload(item))
             return false;
 
+        item.ClearDownloadFailure();
         item.IsTrickling = false;
 
         bool wasBrowserClosed = item.StatusMessage == Loc.Get("Status_BrowserWindowClosed") ||
@@ -1188,7 +1217,7 @@ public partial class QueueManager
         if (wasBrowserClosed)
         {
             item.DirectDownloadUrl = null;
-            item.ErrorMessage = null;
+            item.ClearDownloadFailure();
         }
 
         // Ensure queue is running so resuming an item actually processes
@@ -1198,6 +1227,14 @@ public partial class QueueManager
             {
                 IsRunning = true;
             }
+        }
+
+        if (DownloadEngine.Instance.HasBrowserResponse(item.Id))
+        {
+            item.Status = DownloadStatus.Queued;
+            item.StatusMessage = Loc.Get("Status_Queued");
+            if (triggerProcessQueue) ProcessQueue();
+            return true;
         }
 
         if (!string.IsNullOrWhiteSpace(item.DirectDownloadUrl) &&
@@ -1257,7 +1294,7 @@ public partial class QueueManager
 
         // Clear any stale direct URL or error state
         item.DirectDownloadUrl = null;
-        item.ErrorMessage = null;
+        item.ClearDownloadFailure();
         item.IsTrickling = false;
         item.RetryCount = 0;
         item.LastVerificationError = null;
@@ -1337,7 +1374,7 @@ public partial class QueueManager
             foreach (var item in itemsToPause)
             {
                 var entry = _windowItems.FirstOrDefault(kv => ReferenceEquals(kv.Value, item));
-                if (entry.Value != null)
+                if (entry.Value != null && !DownloadEngine.Instance.HasBrowserResponse(item.Id))
                 {
                     _windowItems.Remove(entry.Key);
                     windowIdsToClose.Add(entry.Key);
@@ -1369,7 +1406,7 @@ public partial class QueueManager
 
         foreach (var item in itemsToPause)
         {
-            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+            _ = DownloadEngine.Instance.PauseBrowserResponseAsync(item) ?? DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
         }
 
         Storage.DownloadPersistenceService.Instance.SaveDownloads(Packages);
@@ -1519,7 +1556,7 @@ public partial class QueueManager
                 if (item.IsUnavailableForProcessing)
                     return;
                 item.Status = DownloadStatus.Failed;
-                item.StatusMessage = Loc.Format("Status_BrowserDownloadFailed", error ?? string.Empty);
+                item.SetDownloadFailure(new DownloadFailure());
                 item.SpeedBytesPerSecond = 0;
                 item.RemainingSeconds = 0;
                 item.CurrentSlot = null;
@@ -1589,7 +1626,13 @@ public partial class QueueManager
                                 item.DirectDownloadUrl = null;
                                 item.FastHostResolveFailed = false;
                                 item.Status = DownloadStatus.Queued;
-                                item.StatusMessage = Loc.Format("Status_RetryingAfterChecksumError", item.RetryCount, maxRetries);
+                                item.SetDownloadFailure(new DownloadFailure
+                                {
+                                    Kind = verification.FailureDetails?.Kind ?? DownloadFailureKind.Unknown,
+                                    ExpectedBytes = verification.FailureDetails?.ExpectedBytes ?? 0,
+                                    ActualBytes = verification.FailureDetails?.ActualBytes ?? 0,
+                                    RetryAttempt = item.RetryCount, RetryLimit = maxRetries
+                                });
                                 item.CurrentSlot = null;
                                 item.IsVerifyingIntegrity = false;
                             });
@@ -1605,8 +1648,9 @@ public partial class QueueManager
                                 cancellationToken.ThrowIfCancellationRequested();
                                 item.LastVerificationError = verification.ErrorMessage;
                                 item.Status = DownloadStatus.Failed;
-                                item.StatusMessage = item.RetryCount < maxRetries ? Loc.Get("Status_IntegrityRetryBlocked")
-                                    : Loc.Format("Status_ChecksumError", verification.ErrorMessage ?? string.Empty);
+                                var failure = verification.FailureDetails ?? new DownloadFailure();
+                                failure.RetryBlocked = item.RetryCount < maxRetries;
+                                item.SetDownloadFailure(failure);
                                 item.CurrentSlot = null;
                                 item.IsVerifyingIntegrity = false;
                             });
@@ -1666,9 +1710,8 @@ public partial class QueueManager
                     {
                         if (cancellationToken.IsCancellationRequested)
                             return;
-                        item.LastVerificationError = ex.Message;
                         item.Status = DownloadStatus.Failed;
-                        item.StatusMessage = Loc.Format("Status_ChecksumError", ex.Message);
+                        item.SetDownloadFailure(DownloadFailure.FromException(ex));
                         item.CurrentSlot = null;
                         item.IsVerifyingIntegrity = false;
                     });
@@ -1710,7 +1753,6 @@ public partial class QueueManager
             SafeInvoke(() =>
             {
                 if (item.IsUnavailableForProcessing) return;
-                item.LastVerificationError = ex.Message;
                 item.Status = retry ? DownloadStatus.Queued : DownloadStatus.Failed;
                 item.CurrentSlot = null;
                 item.IsVerifyingIntegrity = false;
@@ -1719,10 +1761,17 @@ public partial class QueueManager
                     item.RetryCount++;
                     item.DownloadedBytes = 0;
                     item.ProgressPercentage = 0;
-                    item.StatusMessage = Loc.Format("Status_RetryingAfterChecksumError", item.RetryCount, maxRetries);
+                    var failure = DownloadFailure.FromException(ex);
+                    failure.RetryAttempt = item.RetryCount;
+                    failure.RetryLimit = maxRetries;
+                    item.SetDownloadFailure(failure);
                 }
-                else item.StatusMessage = item.RetryCount < maxRetries ? Loc.Get("Status_IntegrityRetryBlocked")
-                    : Loc.Format("Status_ChecksumError", ex.Message);
+                else
+                {
+                    var failure = DownloadFailure.FromException(ex);
+                    failure.RetryBlocked = item.RetryCount < maxRetries;
+                    item.SetDownloadFailure(failure);
+                }
             });
             ProcessQueue();
             return;
@@ -1760,7 +1809,7 @@ public partial class QueueManager
             if (item.IsUnavailableForProcessing)
                 return;
             item.Status = DownloadStatus.Failed;
-            item.StatusMessage = Loc.Format("Status_ErrorPrefix", ex.Message);
+            item.SetDownloadFailure(DownloadFailure.FromException(ex));
             item.SpeedBytesPerSecond = 0;
             item.RemainingSeconds = 0;
             item.CurrentSlot = null;

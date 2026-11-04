@@ -404,7 +404,9 @@ public class ChecksumVerificationTests : IDisposable
             Assert.Equal(DownloadStatus.Failed, item.Status);
             Assert.False(item.IsVerifyingIntegrity);
             Assert.False(ArchiveExtractionService.Instance.CanExtractPackage(package));
-            Assert.Equal("Verification update failed", item.LastVerificationError);
+            Assert.Equal(DownloadFailureKind.Unknown, item.FailureDetails?.Kind);
+            Assert.Equal(Loc.Get("DownloadFailure_Unknown"), item.LastVerificationError);
+            Assert.DoesNotContain("Verification update failed", item.StatusMessage);
         }
         finally
         {

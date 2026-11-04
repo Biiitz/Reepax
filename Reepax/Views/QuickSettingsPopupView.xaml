@@ -5,18 +5,18 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:Reepax.ViewModels"
              xmlns:loc="clr-namespace:Reepax.Converters"
+             xmlns:helpers="clr-namespace:Reepax.Helpers"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
              Width="0" Height="0" Focusable="False">
     <Popup x:Name="PopupRoot"
-           Placement="Top"
+           Placement="Top" helpers:PopupLayout.AlignRight="True"
            StaysOpen="False"
            AllowsTransparency="True"
            PopupAnimation="Fade"
-           VerticalOffset="-13"
-           HorizontalOffset="-304"
+           VerticalOffset="-10"
            Closed="PopupRoot_Closed">
-        <Border x:Name="PopupContent"
+        <Border x:Name="PopupContent" Style="{DynamicResource PopupSurfaceStyle}"
                 Background="{DynamicResource BgCardBrush}" 
                 BorderBrush="{DynamicResource BorderDarkBrush}" 
                 BorderThickness="1" 
@@ -25,12 +25,15 @@
                 Width="340"
                 SnapsToDevicePixels="True" 
                 UseLayoutRounding="True">
+            <Border.Resources>
+                <Style TargetType="Button" BasedOn="{StaticResource PopupButtonStyle}" />
+            </Border.Resources>
             <StackPanel>
                 <!-- Title -->
                 <TextBlock Text="{loc:Loc QuickSettings_Title}" FontWeight="Bold" FontSize="12.5" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,10" />
                 <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,0,0,10" />
 
-                <!-- 1. Geschwindigkeitsbegrenzung (MB/s) -->
+                <!-- 1. (MB/s) -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -344,7 +347,7 @@
                 <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,2,0,10" />
 
                 <!-- Open all settings button -->
-                <Button Style="{DynamicResource ModernButtonStyle}"
+                <Button Style="{DynamicResource PopupButtonStyle}"
                         Click="OpenAllSettings_Click"
                         Padding="10,6"
                         HorizontalAlignment="Stretch">

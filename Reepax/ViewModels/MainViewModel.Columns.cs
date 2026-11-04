@@ -86,11 +86,17 @@ public partial class MainViewModel
     // TreeListView Column Visibility
     // =========================================================================
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthName))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColName = true;
+    public bool ShowColName
+    {
+        get => true;
+        set
+        {
+            // Normalize older layouts without hiding the identity of a download.
+            if (_settingsService.Settings.ShowColName) return;
+            _settingsService.Settings.ShowColName = true;
+            _settingsService.SaveSettings();
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthHoster))]
@@ -128,11 +134,17 @@ public partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
     private bool _showColEta = true;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ActualColWidthStatus))]
-    [NotifyPropertyChangedFor(nameof(TotalVisibleColumnsWidth))]
-    [NotifyPropertyChangedFor(nameof(TotalContentMinWidth))]
-    private bool _showColStatus = true;
+    public bool ShowColStatus
+    {
+        get => true;
+        set
+        {
+            // Normalize older layouts without allowing the mandatory column to disappear.
+            if (_settingsService.Settings.ShowColStatus) return;
+            _settingsService.Settings.ShowColStatus = true;
+            _settingsService.SaveSettings();
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActualColWidthDuration))]
@@ -503,14 +515,12 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(TotalContentMinWidth));
     }
 
-    partial void OnShowColNameChanged(bool value) { _settingsService.Settings.ShowColName = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColHosterChanged(bool value) { _settingsService.Settings.ShowColHoster = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColSavePathChanged(bool value) { _settingsService.Settings.ShowColSavePath = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColSizeChanged(bool value) { _settingsService.Settings.ShowColSize = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColProgressChanged(bool value) { _settingsService.Settings.ShowColProgress = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColSpeedChanged(bool value) { _settingsService.Settings.ShowColSpeed = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColEtaChanged(bool value) { _settingsService.Settings.ShowColEta = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
-    partial void OnShowColStatusChanged(bool value) { _settingsService.Settings.ShowColStatus = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColDurationChanged(bool value) { _settingsService.Settings.ShowColDuration = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColAddedDateChanged(bool value) { _settingsService.Settings.ShowColAddedDate = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }
     partial void OnShowColCompletedDateChanged(bool value) { _settingsService.Settings.ShowColCompletedDate = value; _settingsService.SaveSettings(); NotifyDividerChanges(); ColumnLayoutChanged?.Invoke(this, EventArgs.Empty); }

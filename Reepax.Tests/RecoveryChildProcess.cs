@@ -12,6 +12,7 @@ internal sealed class RecoveryChildProcess : IAsyncDisposable
     private readonly Process _process;
     private readonly Task<string> _output;
     private readonly Task<string> _error;
+    private StreamReader? _reader;
 
     internal RecoveryChildProcess(string root, string mode, string boundary, string url, int connections)
     {
@@ -36,9 +37,9 @@ internal sealed class RecoveryChildProcess : IAsyncDisposable
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
         try
         {
-            await _pipe.WaitForConnectionAsync(timeout.Token);
-            using var reader = new StreamReader(_pipe, leaveOpen: true);
-            string line = await reader.ReadLineAsync(timeout.Token) ?? throw new IOException("Recovery worker disconnected before reporting its state.");
+            if (!_pipe.IsConnected) await _pipe.WaitForConnectionAsync(timeout.Token);
+            _reader ??= new StreamReader(_pipe, leaveOpen: true);
+            string line = await _reader.ReadLineAsync(timeout.Token) ?? throw new IOException("Recovery worker disconnected before reporting its state.");
             var report = JsonSerializer.Deserialize<RecoveryProcessReport>(line) ?? throw new IOException("Recovery worker returned no state.");
             Assert.Equal(_process.Id, report.ProcessId);
             Assert.NotEqual(Environment.ProcessId, report.ProcessId);
@@ -46,6 +47,8 @@ internal sealed class RecoveryChildProcess : IAsyncDisposable
         }
         catch (Exception ex)
         {
+            try { await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (TimeoutException) { }
             await KillIfRunningAsync();
             throw new InvalidOperationException("Recovery worker failed: " + await _error + await _output, ex);
         }
@@ -82,6 +85,7 @@ internal sealed class RecoveryChildProcess : IAsyncDisposable
         }
         finally
         {
+            _reader?.Dispose();
             _pipe.Dispose();
             _process.Dispose();
         }

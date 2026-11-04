@@ -117,21 +117,8 @@ public partial class QuickSettingsPopupView : UserControl
         if (target != null)
         {
             PopupRoot.PlacementTarget = target;
-            if (target.ActualWidth > 0)
-            {
-                PopupRoot.HorizontalOffset = target.ActualWidth - 352;
-            }
-            else
-            {
-                PopupRoot.HorizontalOffset = -304;
-            }
-        }
-        else
-        {
-            PopupRoot.HorizontalOffset = -304;
         }
 
-        PopupRoot.VerticalOffset = -13;
         SyncDataContext(target?.DataContext ?? DataContext);
         IsOpen = !IsOpen;
     }

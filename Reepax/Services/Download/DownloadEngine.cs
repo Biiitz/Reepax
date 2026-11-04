@@ -29,7 +29,7 @@ public partial class DownloadEngine
     private readonly ConcurrentDictionary<Guid, bool> _demotedToQueuedItems = new();
     private readonly BandwidthThrottler _throttler = new();
 
-    public int ActiveDownloadsCount => _activeDownloads.Count;
+    public int ActiveDownloadsCount => _activeDownloads.Values.Count(active => active.BrowserPause?.IsPaused != true);
     public bool IsDownloading(Guid itemId) => _activeDownloads.ContainsKey(itemId);
     public long CurrentSpeedLimit => _throttler.MaxBytesPerSecond;
 
@@ -41,6 +41,7 @@ public partial class DownloadEngine
                 .Remove(new(item.Id, entry)))
         {
             UiState(item).Stop(token);
+            entry.BrowserPause?.Resume();
             _demotedToQueuedItems.TryRemove(item.Id, out _);
             try { entry.Cts.Dispose(); } catch { }
             entry.Tcs.TrySetResult(true);
@@ -173,7 +174,7 @@ public partial class DownloadEngine
                 return;
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_Connecting");
-            item.ErrorMessage = null;
+            item.ClearDownloadFailure();
         });
 
         var downloadTask = Task.Run(async () =>
@@ -188,12 +189,12 @@ public partial class DownloadEngine
                 UiState(item).Stop(token);
                 item.RecordSessionDuration();
                 item.Status = DownloadStatus.Failed;
-                item.ErrorMessage = ex.Message;
+                item.SetDownloadFailure(DownloadFailure.FromException(ex));
                 PublishDownloadState(item, token, () =>
                 {
                     item.Status = DownloadStatus.Failed;
                     item.StatusMessage = Loc.Get("Status_ErrorStarting");
-                    item.ErrorMessage = ex.Message;
+                    item.SetDownloadFailure(DownloadFailure.FromException(ex));
                 }, allowEnded: true);
                 CompleteAndRemoveActiveDownload(item, token);
                 DownloadFailed?.Invoke(item, ex);
@@ -238,7 +239,7 @@ public partial class DownloadEngine
                 return;
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_ResumingDownload");
-            item.ErrorMessage = null;
+            item.ClearDownloadFailure();
         });
 
         var downloadTask = Task.Run(async () =>
@@ -253,12 +254,12 @@ public partial class DownloadEngine
                 UiState(item).Stop(token);
                 item.RecordSessionDuration();
                 item.Status = DownloadStatus.Failed;
-                item.ErrorMessage = ex.Message;
+                item.SetDownloadFailure(DownloadFailure.FromException(ex));
                 PublishDownloadState(item, token, () =>
                 {
                     item.Status = DownloadStatus.Failed;
                     item.StatusMessage = Loc.Get("Status_ErrorResuming");
-                    item.ErrorMessage = ex.Message;
+                    item.SetDownloadFailure(DownloadFailure.FromException(ex));
                 }, allowEnded: true);
                 CompleteAndRemoveActiveDownload(item, token);
                 DownloadFailed?.Invoke(item, ex);
@@ -293,7 +294,7 @@ public partial class DownloadEngine
             using (await PackagePathOperationGate.Instance.EnterAsync(cancellationToken))
             {
                 if (item.RejectedFiles != null && !item.RejectedFiles.TryReset(item))
-                    throw new IOException(Loc.Get("Status_IntegrityRetryBlocked"));
+                    throw new DownloadRetryBlockedException();
                 SafeInvoke(() =>
                 {
                     var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
@@ -472,12 +473,12 @@ public partial class DownloadEngine
             UiState(item).Stop(cancellationToken);
             item.RecordSessionDuration();
             item.Status = DownloadStatus.Failed;
-            item.ErrorMessage = ex.Message;
+            item.SetDownloadFailure(DownloadFailure.FromException(ex));
             PublishDownloadState(item, cancellationToken, () =>
             {
                 item.Status = DownloadStatus.Failed;
                 item.StatusMessage = Loc.Get("Status_Failed");
-                item.ErrorMessage = ex.Message;
+                item.SetDownloadFailure(DownloadFailure.FromException(ex));
                 item.SpeedBytesPerSecond = 0;
                 item.RemainingSeconds = 0;
             }, allowEnded: true);
@@ -1189,7 +1190,10 @@ public partial class DownloadEngine
         CancellationToken cancellationToken,
         long initialDownloadedBytes = 0,
         byte[]? buffer = null,
-        SegmentFileState? checkpoint = null)
+        SegmentFileState? checkpoint = null,
+        string? sourceKey = null,
+        bool requireNewPartial = false,
+        BrowserPauseState? browserPause = null)
     {
         bool encoded = HasEncodedContent(response);
         if (response.StatusCode == HttpStatusCode.PartialContent)
@@ -1281,7 +1285,7 @@ public partial class DownloadEngine
 
         try
         {
-            using var networkStream = new NetworkReadTimeoutStream(await response.Content.ReadAsStreamAsync(cancellationToken), NetworkReadTimeout, cancellationToken);
+            using var networkStream = new NetworkReadTimeoutStream(await response.Content.ReadAsStreamAsync(cancellationToken), NetworkReadTimeout, cancellationToken, browserPause);
             using var contentStream = await DecodeContentAsync(networkStream, response, cancellationToken);
             string checkpointPath = tempFilePath + ".segments";
             if (initialDownloadedBytes == 0)
@@ -1295,7 +1299,7 @@ public partial class DownloadEngine
                     checkpoint.Segments[0].LocalHashes = new();
                     checkpoint.IsSequential = true;
                     checkpoint.EntityTag = entityTag;
-                    checkpoint.SourceKey = GetSourceKey(item);
+                    checkpoint.SourceKey = sourceKey ?? GetSourceKey(item);
                     SaveSegmentState(checkpointPath, checkpoint, required: true);
                 }
             }
@@ -1307,9 +1311,9 @@ public partial class DownloadEngine
             }
             var fileStreamOptions = new FileStreamOptions
             {
-                Mode = initialDownloadedBytes > 0 ? FileMode.Open : FileMode.Create,
+                Mode = requireNewPartial ? FileMode.CreateNew : initialDownloadedBytes > 0 ? FileMode.Open : FileMode.Create,
                 Access = FileAccess.ReadWrite,
-                Share = FileShare.Read,
+                Share = browserPause == null ? FileShare.Read : FileShare.Read | FileShare.Delete,
                 BufferSize = bufferSize,
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             };
@@ -1335,6 +1339,31 @@ public partial class DownloadEngine
             var lastUiUpdateTime = Stopwatch.GetTimestamp();
             var lastCheckpoint = lastUiUpdateTime;
 
+            async Task WaitForResumeAsync()
+            {
+                if (browserPause == null) return;
+                bool wasPaused = browserPause.IsPaused;
+                string previousPath = tempFilePath;
+                await browserPause.WaitAsync(cancellationToken, () =>
+                {
+                    item.DownloadedBytes = currentDownloaded;
+                    if (checkpoint != null)
+                    {
+                        checkpoint.Segments[0].Done = currentDownloaded;
+                        SaveSegmentState(checkpointPath, checkpoint, dataFile: fileStream);
+                    }
+                });
+                if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+                {
+                    finalFilePath = item.SaveFilePath;
+                    tempFilePath = finalFilePath + ".part";
+                    checkpointPath = tempFilePath + ".segments";
+                }
+                if ((wasPaused || previousPath != tempFilePath) && !RejectedDownloadFiles.MatchesOpenFile(tempFilePath, fileStream.SafeFileHandle))
+                    throw new IOException("The partial download was replaced while its transfer was paused.");
+                if (wasPaused) speedTracker = new RollingSpeedTracker(currentDownloaded);
+            }
+
             // Dedicated throttler for "Paused" trickle mode (500 KB/s per download)
             var trickleThrottler = new BandwidthThrottler { MaxBytesPerSecond = 500 * 1024 };
 
@@ -1343,6 +1372,7 @@ public partial class DownloadEngine
                 int effectiveReadSize = buffer != null ? buffer.Length : bufferSize;
                 while (true)
                 {
+                    await WaitForResumeAsync();
                     bool applyTrickle = item.IsTrickling;
                     int toRead = _throttler.GetOptimalReadChunkSize(effectiveReadSize, applyTrickle ? 500 * 1024 : 0, 1);
                     await _throttler.AcquireReadQuotaAsync(toRead, cancellationToken);
@@ -1372,6 +1402,7 @@ public partial class DownloadEngine
                         }
                     }
 
+                    await WaitForResumeAsync();
                     if (bytesRead <= 0)
                     {
                         break;
@@ -1405,8 +1436,16 @@ public partial class DownloadEngine
             }
             finally
             {
+                if (browserPause != null && !string.IsNullOrWhiteSpace(item.SaveFilePath))
+                {
+                    finalFilePath = item.SaveFilePath;
+                    tempFilePath = finalFilePath + ".part";
+                    checkpointPath = tempFilePath + ".segments";
+                }
                 if (checkpoint != null)
                 {
+                    if (browserPause != null && !RejectedDownloadFiles.MatchesOpenFile(tempFilePath, fileStream.SafeFileHandle))
+                        throw new IOException("The partial download no longer belongs to this transfer.");
                     checkpoint.Segments[0].Done = currentDownloaded;
                     SaveSegmentState(checkpointPath, checkpoint, dataFile: fileStream);
                 }
@@ -1434,8 +1473,17 @@ public partial class DownloadEngine
                     $"Download was interrupted: Only {currentDownloaded} of {totalBytes} bytes were transferred.");
             }
 
+            if (sourceKey != null && (currentDownloaded == 0 ||
+                Verification.ChecksumVerificationService.Instance.IsHtmlErrorPage(tempFilePath, finalFilePath)))
+            {
+                item.RejectedFiles = RejectedDownloadFiles.Capture(item.SaveFilePath ?? finalFilePath, published: false);
+                var failure = new DownloadFailure { Kind = currentDownloaded == 0 ? DownloadFailureKind.EmptyFile : DownloadFailureKind.HtmlResponse };
+                throw new DownloadIntegrityException(failure.Message, new InvalidDataException("The browser response is not the requested payload."), failure.Kind);
+            }
+
+            if (browserPause != null) await browserPause.WaitAsync(cancellationToken);
             // Download completed, atomically rename temp file to final destination
-            await FinalizeCompletedPartFileAsync(item, tempFilePath, finalFilePath, currentDownloaded, totalBytes, cancellationToken);
+            await FinalizeCompletedPartFileAsync(item, tempFilePath, finalFilePath, currentDownloaded, totalBytes, cancellationToken, browserPause);
         }
         finally
         {
@@ -1452,9 +1500,15 @@ public partial class DownloadEngine
         string finalFilePath,
         long currentDownloaded,
         long totalBytes,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BrowserPauseState? browserPause = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (browserPause != null)
+        {
+            await browserPause.WaitAsync(cancellationToken);
+            tempFilePath = (item.SaveFilePath ?? finalFilePath) + ".part";
+        }
         if (!string.IsNullOrWhiteSpace(item.ExpectedChecksum))
         {
             var rejectedFiles = RejectedDownloadFiles.Capture(item.SaveFilePath ?? finalFilePath, published: false);
@@ -1469,6 +1523,7 @@ public partial class DownloadEngine
                 throw new DownloadIntegrityException(ex.Message, ex);
             }
         }
+        if (browserPause != null) await browserPause.WaitAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         var actualFinalPath = !string.IsNullOrWhiteSpace(item.SaveFilePath) ? item.SaveFilePath : finalFilePath;
         var targetDir = Path.GetDirectoryName(actualFinalPath);
@@ -1484,7 +1539,7 @@ public partial class DownloadEngine
         }
         catch (IOException) when (Path.Exists(actualFinalPath))
         {
-            throw new IOException(Loc.Get("Error_DownloadDestinationExists"));
+            throw new DownloadDestinationExistsException();
         }
         string checkpointPath = tempFilePath + ".segments";
         if (File.Exists(checkpointPath)) Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(checkpointPath);
@@ -1585,9 +1640,9 @@ public partial class DownloadEngine
         return null;
     }
 
-    public void PauseAll(bool waitForCompletion = false, int timeoutMs = 3000)
+    public void PauseAll(bool waitForCompletion = false, int timeoutMs = 3000, bool preserveBrowserResponses = false)
     {
-        var entries = _activeDownloads.Values.ToArray();
+        var entries = _activeDownloads.Values.Where(active => !preserveBrowserResponses || active.BrowserPause == null).ToArray();
         foreach (var entry in entries)
         {
             try { entry.Cts.Cancel(); } catch { }

@@ -14,7 +14,7 @@ public partial class DownloadItem
     internal bool IsFileRenameBusy => IsUnavailableForProcessing || IsVerifyingIntegrity ||
         Status is DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or
             DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha or DownloadStatus.WaitingForBrowser ||
-        DownloadEngine.Instance.IsDownloading(Id);
+        (DownloadEngine.Instance.IsDownloading(Id) && !DownloadEngine.Instance.IsBrowserResponsePaused(Id));
 
     public bool Rename(string newName, bool isUserAction = true)
     {

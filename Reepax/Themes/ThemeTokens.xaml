@@ -103,4 +103,18 @@
     <SolidColorBrush x:Key="StatusQueuedBrush" Color="{StaticResource StatusQueuedColor}" />
     <Color x:Key="StatusOtherColor">#A0A0A0</Color>
     <SolidColorBrush x:Key="StatusOtherBrush" Color="{StaticResource StatusOtherColor}" />
+    <Style x:Key="PopupSurfaceStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <Setter Property="Padding" Value="4" />
+        <!-- Keep the shadow inside the transparent popup window instead of clipping it at the corners. -->
+        <Setter Property="Margin" Value="8" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="Effect">
+            <Setter.Value><DropShadowEffect BlurRadius="10" ShadowDepth="2" Color="Black" Opacity="0.35" /></Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>

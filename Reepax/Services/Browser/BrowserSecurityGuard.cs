@@ -190,37 +190,30 @@ public static partial class BrowserSecurityGuard
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     /// <summary>
-    /// Checks whether a URL resembles a direct download link.
+    /// Checks whether a URL resembles a direct download link, including query hints.
     /// </summary>
     public static bool IsDirectDownloadUrl(string? url)
     {
-        if (string.IsNullOrWhiteSpace(url))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return false;
 
-        try
-        {
-            var uri = new Uri(url);
-            var path = uri.AbsolutePath;
+        return HasDirectDownloadPath(url) || _directDownloadRegex.IsMatch(uri.ToString());
+    }
 
-            if (_directDownloadRegex.IsMatch(path))
-                return true;
+    internal static bool HasDirectDownloadPath(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return false;
 
-            var fullUrl = uri.ToString();
-            if (_directDownloadRegex.IsMatch(fullUrl))
-                return true;
-
-            if (path.Contains("/dl/", StringComparison.OrdinalIgnoreCase) ||
-                path.Contains("/download/", StringComparison.OrdinalIgnoreCase) ||
-                path.EndsWith("/download", StringComparison.OrdinalIgnoreCase) ||
-                path.Contains("/getfile/", StringComparison.OrdinalIgnoreCase) ||
-                path.Contains("/d/", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        catch { }
-
-        return false;
+        // Query and fragment names must not grant cross-site navigation permission.
+        var path = uri.AbsolutePath;
+        return _directDownloadRegex.IsMatch(path) ||
+            path.Contains("/dl/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/download/", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith("/download", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/getfile/", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains("/d/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static readonly HashSet<string> _knownSafeAndHosterDomains = new(StringComparer.OrdinalIgnoreCase)
@@ -377,7 +370,7 @@ public static partial class BrowserSecurityGuard
             return false;
 
         // 1. Never block CAPTCHAs or direct file downloads
-        if (IsWhitelisted(targetUrl) || IsDirectDownloadUrl(targetUrl))
+        if (IsWhitelisted(targetUrl) || HasDirectDownloadPath(targetUrl))
             return false;
 
         // 2. ALWAYS block known ad, tracker, and redirector networks via native Rust engine
@@ -437,7 +430,7 @@ public static partial class BrowserSecurityGuard
             return false;
         if (AdBlockRustEngine.Instance.ShouldBlock(targetUrl) || HasDeceptiveRedirectTarget(targetUrl))
             return true;
-        if (IsDirectDownloadUrl(targetUrl) || IsWhitelisted(targetUrl))
+        if (HasDirectDownloadPath(targetUrl) || IsWhitelisted(targetUrl))
             return false;
         if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var target))
             return true;

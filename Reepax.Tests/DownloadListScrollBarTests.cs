@@ -194,7 +194,7 @@ public class DownloadListScrollBarTests
         var vm = new MainViewModel();
         vm.ResetColumnsCommand.Execute(null);
 
-        // Make only Name and Progress visible, all columns to the right hidden
+        // Keep Name, Progress and the mandatory Status column visible.
         vm.ShowColName = true;
         vm.ShowColHoster = false;
         vm.ShowColSavePath = false;
@@ -457,12 +457,12 @@ public class DownloadListScrollBarTests
         Assert.Equal(1030.0, vm.TotalVisibleColumnsWidth);
         Assert.Contains(nameof(MainViewModel.TotalVisibleColumnsWidth), propertyChangedList);
 
-        // Act: Hide ColName (220px)
+        // Attempts to hide the mandatory name column preserve the layout.
         propertyChangedList.Clear();
         vm.ShowColName = false;
 
-        Assert.Equal(810.0, vm.TotalVisibleColumnsWidth);
-        Assert.Contains(nameof(MainViewModel.TotalVisibleColumnsWidth), propertyChangedList);
+        Assert.Equal(1030.0, vm.TotalVisibleColumnsWidth);
+        Assert.True(vm.ShowColName);
 
         // Act: Reset columns
         propertyChangedList.Clear();
@@ -520,7 +520,7 @@ public class DownloadListScrollBarTests
 
             var configurations = new[]
             {
-                new { Name = "1 Column", Setup = (Action)(() =>
+                new { Name = "2 Columns", Setup = (Action)(() =>
                 {
                     vm.ShowColName = true;
                     vm.ShowColHoster = false;
@@ -910,7 +910,7 @@ public class DownloadListScrollBarTests
         vm.ShowColStatus = true;
         Assert.Equal("Status", MainWindow.GetLastVisibleColumn(vm));
 
-        // Hide all except Name -> Name is last
+        // The mandatory Status column remains last after hiding optional columns.
         vm.ShowColHoster = false;
         vm.ShowColSavePath = false;
         vm.ShowColSize = false;
@@ -918,7 +918,7 @@ public class DownloadListScrollBarTests
         vm.ShowColSpeed = false;
         vm.ShowColEta = false;
         vm.ShowColStatus = false;
-        Assert.Equal("Name", MainWindow.GetLastVisibleColumn(vm));
+        Assert.Equal("Status", MainWindow.GetLastVisibleColumn(vm));
     }
 
     [Fact]

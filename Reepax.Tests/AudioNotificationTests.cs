@@ -209,9 +209,9 @@ public class AudioNotificationTests
     }
 
     [Theory]
-    [InlineData("sounds_done", "CompletionSoundOption_Click")]
-    [InlineData("sounds_error", "ErrorSoundOption_Click")]
-    public void SoundCatalog_MatchesBundledAssetsMenusAndPersistedSettings(string folder, string clickHandler)
+    [InlineData("sounds_done", "CompletionSoundButton")]
+    [InlineData("sounds_error", "ErrorSoundButton")]
+    public void SoundCatalog_MatchesBundledAssetsMenusAndPersistedSettings(string folder, string selectorName)
     {
         bool completion = folder == "sounds_done";
         var catalog = completion ? AppSettings.ValidCompletionSounds : AppSettings.ValidErrorSounds;
@@ -219,8 +219,14 @@ public class AudioNotificationTests
         var files = Directory.GetFiles(Path.Combine(project, "Assets", folder), "*.mp3").Select(Path.GetFileName).ToArray();
         Assert.Equal(catalog.OrderBy(name => name, StringComparer.Ordinal), files.OrderBy(name => name, StringComparer.Ordinal));
         var view = XDocument.Load(Path.Combine(project, "Views", "SettingsView.xaml"));
-        var options = view.Descendants().Where(element => element.Name.LocalName == "Button" &&
-            (string?)element.Attribute("Click") == clickHandler).Select(element => (string?)element.Attribute("CommandParameter"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var selector = Assert.Single(view.Descendants().Where(element => element.Name.LocalName == "SingleChoiceDropdown" &&
+            (string?)element.Attribute(xaml + "Name") == selectorName));
+        string prefix = completion ? "Completion" : "Error";
+        Assert.Equal("{Binding Selected" + prefix + "Sound, Mode=TwoWay}", (string?)selector.Attribute("SelectedValue"));
+        Assert.Equal(prefix + "Sound_SelectionCommitted", (string?)selector.Attribute("SelectionCommitted"));
+        var options = selector.Elements().Where(element => element.Name.LocalName == "ChoiceOption")
+            .Select(element => (string?)element.Attribute("Value"));
         Assert.Equal(catalog, options);
         foreach (var sound in catalog)
         {

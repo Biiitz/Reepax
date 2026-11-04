@@ -1,3 +1,5 @@
+using System.Windows.Media;
+using Reepax.Helpers;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -163,16 +165,16 @@ public partial class DialogUiTests
                 {
                     ThemeService.Instance.SelectTheme(theme, save: false);
                     RenderSettings(view, $"PackageDoubleClick-{language}-{theme}", 1000);
-                    var selector = Assert.IsType<Button>(view.FindName("PackageDoubleClickSelector"));
-                    var popup = Assert.IsType<Popup>(view.FindName("PackageDoubleClickPopup"));
+                    var selector = Assert.IsType<SingleChoiceDropdown>(view.FindName("PackageDoubleClickSelector"));
+                    var popup = ((SingleChoiceDropdown)view.FindName("PackageDoubleClickSelector")).DropdownPopup;
                     popup.IsOpen = true;
                     PumpSettingsAnimations();
                     var options = Descendants<Button>(popup.Child).ToArray();
                     Assert.Equal(7, options.Length);
                     Assert.Equal(Enum.GetValues<PackageDoubleClickAction>(), options.Select(item => (PackageDoubleClickAction)item.CommandParameter));
-                    Assert.Same(((Button)view.FindName("CompletionSoundButton")).Style, selector.Style);
-                    Assert.Same(((Border)((Popup)view.FindName("CompletionSoundPopup")).Child).Style, ((Border)popup.Child).Style);
-                    Assert.Equal(((Popup)view.FindName("CompletionSoundPopup")).PopupAnimation, popup.PopupAnimation);
+                    Assert.Equal(((Button)view.FindName("CompletionSoundButton")).Height, selector.Height);
+                    Assert.Equal(((SolidColorBrush)((Border)((SingleChoiceDropdown)view.FindName("CompletionSoundButton")).DropdownPopup.Child).Background).Color, ((SolidColorBrush)((Border)popup.Child).Background).Color);
+                    Assert.Equal(((SingleChoiceDropdown)view.FindName("CompletionSoundButton")).DropdownPopup.PopupAnimation, popup.PopupAnimation);
                     var info = Assert.IsType<Border>(view.FindName("PackageDoubleClickInfo"));
                     Assert.Equal(Loc.Get("Settings_PackageDoubleClick_Help"), info.ToolTip);
                     Assert.Contains(options.SelectMany(Descendants<TextBlock>), text => text.Text == (language == "de" ? "Aus" : "Off"));
@@ -188,7 +190,7 @@ public partial class DialogUiTests
             finally
             {
                 host.Content = null;
-                ((Popup)view.FindName("PackageDoubleClickPopup")).IsOpen = false;
+                ((SingleChoiceDropdown)view.FindName("PackageDoubleClickSelector")).DropdownPopup.IsOpen = false;
                 host.Close();
                 settings.PackageDoubleClickAction = previousAction;
                 LocalizationService.Instance.CurrentLanguage = previousLanguage;

@@ -436,9 +436,9 @@ https://rapidgator.net/file/182937105
         Assert.False(vm.ShowDividerActions);
         Assert.True(vm.ShowDividerStatus);
 
-        // Turn off Status: Eta is rightmost and retains its divider and resize gripper
+        // Status remains visible even when an older customization tries to hide it.
         vm.ShowColStatus = false;
-        Assert.False(vm.ShowDividerStatus);
+        Assert.True(vm.ShowDividerStatus);
         Assert.True(vm.ShowDividerEta);
 
         // Enable Checksum: both Eta and Checksum have dividers

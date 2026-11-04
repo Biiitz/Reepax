@@ -17,10 +17,10 @@ namespace Reepax.Tests;
 public partial class DialogUiTests
 {
     [Theory]
-    [InlineData("CompletionSoundPopup", "Hide")]
-    [InlineData("ErrorSoundPopup", "Unload")]
-    [InlineData("PackageDoubleClickPopup", "Context")]
-    [InlineData("PackageDoubleClickPopup", "Category")]
+    [InlineData("CompletionSoundButton", "Hide")]
+    [InlineData("ErrorSoundButton", "Unload")]
+    [InlineData("PackageDoubleClickSelector", "Context")]
+    [InlineData("PackageDoubleClickSelector", "Category")]
     public void SettingsDropdown_LeavingTheContextClosesItsOpenPopup(string popupName, string exit)
     {
         RunInSta(() =>
@@ -34,7 +34,7 @@ public partial class DialogUiTests
             var view = new SettingsView { DataContext = model };
             var host = new Window { Content = view, Width = 1000, Height = 720,
                 Left = -10000, Top = -10000, ShowInTaskbar = false, ShowActivated = false };
-            var popup = (Popup)view.FindName(popupName);
+            var popup = ((SingleChoiceDropdown)view.FindName(popupName)).DropdownPopup;
             try
             {
                 host.Show();
@@ -66,7 +66,7 @@ public partial class DialogUiTests
     [Theory]
     [InlineData(ThemeCatalog.DefaultId)]
     [InlineData(ThemeCatalog.MacOSId)]
-    public void SettingsDropdown_ActionUsesSoundChromeAndSupportsKeyboardAndWheel(string theme)
+    public void SettingsDropdown_UsesSoundChromeAndRequiresConfirmedSelection(string theme)
     {
         RunInSta(() =>
         {
@@ -81,7 +81,7 @@ public partial class DialogUiTests
             var view = new SettingsView { DataContext = model };
             var host = new Window { Content = view, Width = 1000, Height = 720,
                 Left = -10000, Top = -10000, ShowInTaskbar = false, ShowActivated = false };
-            var popup = (Popup)view.FindName("PackageDoubleClickPopup");
+            var popup = ((SingleChoiceDropdown)view.FindName("PackageDoubleClickSelector")).DropdownPopup;
             try
             {
                 host.Show();
@@ -112,7 +112,7 @@ public partial class DialogUiTests
                     { RoutedEvent = Keyboard.PreviewKeyDownEvent });
                 }
                 Key(System.Windows.Input.Key.Down);
-                Assert.Equal(PackageDoubleClickAction.ChangeDownloadPath, model.SelectedPackageDoubleClickAction);
+                Assert.Equal(PackageDoubleClickAction.None, model.SelectedPackageDoubleClickAction);
                 Key(System.Windows.Input.Key.Up);
                 Assert.Equal(PackageDoubleClickAction.None, model.SelectedPackageDoubleClickAction);
                 Key(System.Windows.Input.Key.Escape);
@@ -120,13 +120,13 @@ public partial class DialogUiTests
                 Assert.False(ControlMotion.GetIsExpanded(arrow));
                 selector.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
                 { RoutedEvent = Mouse.PreviewMouseWheelEvent });
-                Assert.Equal(PackageDoubleClickAction.ChangeDownloadPath, model.SelectedPackageDoubleClickAction);
+                Assert.Equal(PackageDoubleClickAction.None, model.SelectedPackageDoubleClickAction);
                 selector.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, 120)
                 { RoutedEvent = Mouse.PreviewMouseWheelEvent });
                 Assert.Equal(PackageDoubleClickAction.None, model.SelectedPackageDoubleClickAction);
-                foreach (string soundPopupName in new[] { "CompletionSoundPopup", "ErrorSoundPopup" })
+                foreach (string soundPopupName in new[] { "CompletionSoundButton", "ErrorSoundButton" })
                 {
-                    var soundPopup = (Popup)view.FindName(soundPopupName);
+                    var soundPopup = ((SingleChoiceDropdown)view.FindName(soundPopupName)).DropdownPopup;
                     soundPopup.IsOpen = true;
                     PumpSettingsAnimations(40);
                     var soundChrome = (Border)soundPopup.Child;

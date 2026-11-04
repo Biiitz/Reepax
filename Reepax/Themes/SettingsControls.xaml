@@ -2,6 +2,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:loc="clr-namespace:Reepax.Converters"
     xmlns:helpers="clr-namespace:Reepax.Helpers">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/Reepax;component/Themes/ChoiceControls.xaml" />
+    </ResourceDictionary.MergedDictionaries>
     <loc:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisConverter" />
 
     <!-- Setting Explanation Info ("i") Icon Styles -->
@@ -152,69 +155,10 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource BgInputBrush}" />
-                            <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
                             <Setter TargetName="ChevronIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- Modern Sound Selector Dropdown Button Style -->
-    <Style x:Key="SoundDropdownButtonStyle" TargetType="{x:Type Button}" BasedOn="{StaticResource ModernButtonStyle}">
-        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
-        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="Height" Value="32" />
-        <Setter Property="MinWidth" Value="112" />
-        <Setter Property="Padding" Value="10,0" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-    </Style>
-
-    <Style x:Key="SettingsDropdownPopupBorderStyle" TargetType="Border">
-        <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
-        <Setter Property="Padding" Value="4" />
-        <Setter Property="SnapsToDevicePixels" Value="True" />
-        <Setter Property="UseLayoutRounding" Value="True" />
-        <Setter Property="Effect">
-            <Setter.Value>
-                <DropShadowEffect Direction="270" ShadowDepth="4" BlurRadius="12" Color="Black" Opacity="0.45" />
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <!-- Sound Dropdown Menu Item Style -->
-    <Style x:Key="SoundDropdownItemStyle" TargetType="{x:Type Button}">
-        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Padding" Value="10,6" />
-        <Setter Property="Margin" Value="0,1" />
-        <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="{x:Type Button}">
-                    <Border x:Name="itemBorder" Background="{TemplateBinding Background}" CornerRadius="{DynamicResource ControlCornerRadius}" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="itemBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="itemBorder" Property="Background" Value="{DynamicResource BgInputBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -437,7 +381,7 @@
                             <Setter TargetName="ChoiceSurface" Property="Background" Value="{DynamicResource AccentBlueBrush}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="ChoiceSurface" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                            <Setter TargetName="ChoiceSurface" Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="ChoiceSurface" Property="Opacity" Value="0.45" />

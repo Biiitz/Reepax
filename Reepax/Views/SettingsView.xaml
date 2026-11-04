@@ -210,38 +210,9 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}" Padding="3">
-                                    <ListBox x:Name="ThemeSelector" Background="Transparent" BorderThickness="0" Padding="0"
-                                        ItemsSource="{Binding ThemeOptions}" SelectedValuePath="Id" SelectionMode="Single"
-                                        SelectedValue="{Binding SelectedThemeId, Mode=TwoWay}" VerticalAlignment="Center"
-                                        ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <ListBox.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" />
-                                            </ItemsPanelTemplate>
-                                        </ListBox.ItemsPanel>
-                                        <ListBox.ItemContainerStyle>
-                                            <Style TargetType="ListBoxItem">
-                                                <Setter Property="Padding" Value="0" />
-                                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-                                                <Setter Property="Template">
-                                                    <Setter.Value>
-                                                        <ControlTemplate TargetType="ListBoxItem">
-                                                            <ContentPresenter />
-                                                        </ControlTemplate>
-                                                    </Setter.Value>
-                                                </Setter>
-                                            </Style>
-                                        </ListBox.ItemContainerStyle>
-                                        <ListBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{Binding DisplayName}"
-                                                    IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}, Mode=TwoWay}"
-                                                    Focusable="False" IsTabStop="False" Margin="0,0,1,0" />
-                                            </DataTemplate>
-                                        </ListBox.ItemTemplate>
-                                    </ListBox>
-                                </Border>
+                                <helpers:SingleChoiceDropdown x:Name="ThemeSelector" Grid.Column="1"
+                                    ItemsSource="{Binding ThemeOptions}" DisplayMemberPath="DisplayName" SelectedValuePath="Id"
+                                    SelectedValue="{Binding SelectedThemeId, Mode=TwoWay}" AutomationProperties.Name="{loc:Loc Settings_Theme_Title}" />
                             </Grid>
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
                             <Grid Margin="0,0,0,8">
@@ -255,21 +226,10 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}" Padding="3">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="SettingsLanguage" Content="{loc:Loc Settings_Language_English}"
-                                            IsChecked="{Binding IsEnglishSelected, Mode=TwoWay}"
-                                            FontWeight="SemiBold"
-                                            FontSize="12"
-                                            Margin="0,0,3,0"
-                                            Cursor="Hand" />
-                                        <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="SettingsLanguage" Content="{loc:Loc Settings_Language_German}"
-                                            IsChecked="{Binding IsGermanSelected, Mode=TwoWay}"
-                                            FontWeight="SemiBold"
-                                            FontSize="12"
-                                            Cursor="Hand" />
-                                    </StackPanel>
-                                </Border>
+                                <helpers:SingleChoiceDropdown x:Name="LanguageSelector" SelectedValue="{Binding SelectedLanguage, Mode=TwoWay}" Grid.Column="1" AutomationProperties.Name="{loc:Loc Settings_Language_Title}">
+                                    <helpers:ChoiceOption Value="en" Text="{loc:Loc Settings_Language_English}" />
+                                    <helpers:ChoiceOption Value="de" Text="{loc:Loc Settings_Language_German}" />
+                                </helpers:SingleChoiceDropdown>
                             </Grid>
 
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" Visibility="{Binding CanCustomizeAccent, Converter={StaticResource BoolToVisConverter}}" />
@@ -530,35 +490,12 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </Grid>
-                                <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{loc:Loc PostDownload_Action_None}"
-                                        IsChecked="{Binding IsNoneActionSelected, Mode=TwoWay}"
-                                        GroupName="PostDownloadActionGroup"
-                                        FontWeight="SemiBold"
-                                        FontSize="12"
-                                        Margin="0,0,12,0"
-                                        Cursor="Hand" />
-                                    <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{loc:Loc PostDownload_Action_Shutdown}"
-                                        IsChecked="{Binding IsShutdownActionSelected, Mode=TwoWay}"
-                                        GroupName="PostDownloadActionGroup"
-                                        FontWeight="SemiBold"
-                                        FontSize="12"
-                                        Margin="0,0,12,0"
-                                        Cursor="Hand" />
-                                    <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{loc:Loc PostDownload_Action_Sleep}"
-                                        IsChecked="{Binding IsSleepActionSelected, Mode=TwoWay}"
-                                        GroupName="PostDownloadActionGroup"
-                                        FontWeight="SemiBold"
-                                        FontSize="12"
-                                        Margin="0,0,12,0"
-                                        Cursor="Hand" />
-                                    <RadioButton Style="{StaticResource LanguageChoiceStyle}" Content="{loc:Loc PostDownload_Action_ExitApp}"
-                                        IsChecked="{Binding IsExitAppActionSelected, Mode=TwoWay}"
-                                        GroupName="PostDownloadActionGroup"
-                                        FontWeight="SemiBold"
-                                        FontSize="12"
-                                        Cursor="Hand" />
-                                </WrapPanel>
+                                <helpers:SingleChoiceDropdown x:Name="PostDownloadActionSelector" SelectedValue="{Binding CurrentPostDownloadAction, Mode=TwoWay}" Grid.Column="1" AutomationProperties.Name="{loc:Loc Settings_PostDownload_Title}">
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.None}" Text="{loc:Loc PostDownload_Action_None}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.Shutdown}" Text="{loc:Loc PostDownload_Action_Shutdown}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.Sleep}" Text="{loc:Loc PostDownload_Action_Sleep}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.ExitApp}" Text="{loc:Loc PostDownload_Action_ExitApp}" />
+                                </helpers:SingleChoiceDropdown>
                             </Grid>
 
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
@@ -574,124 +511,15 @@
                                         <Path Style="{StaticResource SettingInfoPathStyle}" />
                                     </Border>
                                 </StackPanel>
-                                <Button x:Name="PackageDoubleClickSelector" Grid.Column="1" Width="320"
-                                    Style="{StaticResource SoundDropdownButtonStyle}" VerticalAlignment="Center"
-                                    AutomationProperties.Name="{loc:Loc Settings_PackageDoubleClick_Title}"
-                                    PreviewMouseDown="PackageDoubleClickSelector_PreviewMouseDown" Click="PackageDoubleClickSelector_Click"
-                                    PreviewKeyDown="PackageDoubleClickSelector_PreviewKeyDown" PreviewMouseWheel="PackageDoubleClickSelector_PreviewMouseWheel">
-                                    <Grid HorizontalAlignment="Stretch">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding SelectedPackageDoubleClickActionDisplayName}" FontWeight="SemiBold" FontSize="11.5"
-                                            Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,10,0" />
-                                        <Path Grid.Column="1" helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=PackageDoubleClickPopup}"
-                                            Data="M 0,0 L 3.5,3.5 L 7,0" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5"
-                                            Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" />
-                                    </Grid>
-                                </Button>
-                                <Popup x:Name="PackageDoubleClickPopup" Grid.Column="1"
-                                    PlacementTarget="{Binding ElementName=PackageDoubleClickSelector}" Placement="Bottom"
-                                    StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade" VerticalOffset="4"
-                                    Closed="PackageDoubleClickPopup_Closed" PreviewKeyDown="PackageDoubleClickSelector_PreviewKeyDown"
-                                    PreviewMouseWheel="PackageDoubleClickSelector_PreviewMouseWheel">
-                                    <Border Style="{StaticResource SettingsDropdownPopupBorderStyle}" Width="320">
-                                        <StackPanel x:Name="PackageDoubleClickOptions">
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.None}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Settings_PackageDoubleClick_Off}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.None}}" />
-                                                </Grid>
-                                            </Button>
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.ChangeDownloadPath}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Menu_ChangeDownloadPath}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.ChangeDownloadPath}}" />
-                                                </Grid>
-                                            </Button>
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.CreateInstallFolder}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Menu_CreateGameInstallFolder}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.CreateInstallFolder}}" />
-                                                </Grid>
-                                            </Button>
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.EditPackage}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Menu_EditPackage}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.EditPackage}}" />
-                                                </Grid>
-                                            </Button>
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.AddLinks}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Menu_AddLinksToPackage}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.AddLinks}}" />
-                                                </Grid>
-                                            </Button>
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.ExportPackage}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Menu_ExportPackage}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.ExportPackage}}" />
-                                                </Grid>
-                                            </Button>
-                                            <Button Style="{StaticResource SoundDropdownItemStyle}" Click="PackageDoubleClickOption_Click"
-                                                CommandParameter="{x:Static models:PackageDoubleClickAction.TogglePause}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{loc:Loc Settings_PackageDoubleClick_TogglePause}" FontSize="11.5" VerticalAlignment="Center" />
-                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}"
-                                                        Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding SelectedPackageDoubleClickAction, Converter={StaticResource EqualsToVisConverter}, ConverterParameter={x:Static models:PackageDoubleClickAction.TogglePause}}" />
-                                                </Grid>
-                                            </Button>
-                                        </StackPanel>
-                                    </Border>
-                                </Popup>
+                                <helpers:SingleChoiceDropdown x:Name="PackageDoubleClickSelector" SelectedValue="{Binding SelectedPackageDoubleClickAction, Mode=TwoWay}" Grid.Column="1" AutomationProperties.Name="{loc:Loc Settings_PackageDoubleClick_Title}">
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.None}" Text="{loc:Loc Settings_PackageDoubleClick_Off}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.ChangeDownloadPath}" Text="{loc:Loc Menu_ChangeDownloadPath}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.CreateInstallFolder}" Text="{loc:Loc Menu_CreateGameInstallFolder}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.EditPackage}" Text="{loc:Loc Menu_EditPackage}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.AddLinks}" Text="{loc:Loc Menu_AddLinksToPackage}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.ExportPackage}" Text="{loc:Loc Menu_ExportPackage}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:PackageDoubleClickAction.TogglePause}" Text="{loc:Loc Settings_PackageDoubleClick_TogglePause}" />
+                                </helpers:SingleChoiceDropdown>
                             </Grid>
 
                             <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
@@ -790,21 +618,10 @@
                                         </WrapPanel.RenderTransform>
 
                                         <!-- Completion scope -->
-                                        <StackPanel Margin="0,0,20,0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="CompletionSoundTriggerGroup"
-                                                Content="{loc:Loc Settings_Sound_Trigger_EntirePackage}"
-                                                IsChecked="{Binding IsCompletionSoundEntirePackage, Mode=TwoWay}"
-                                                FontWeight="SemiBold"
-                                                FontSize="11.5"
-                                                Margin="0,0,14,0"
-                                                Cursor="Hand" />
-                                            <RadioButton Style="{StaticResource LanguageChoiceStyle}" GroupName="CompletionSoundTriggerGroup"
-                                                Content="{loc:Loc Settings_Sound_Trigger_IndividualFiles}"
-                                                IsChecked="{Binding IsCompletionSoundIndividualFiles, Mode=TwoWay}"
-                                                FontWeight="SemiBold"
-                                                FontSize="11.5"
-                                                Cursor="Hand" />
-                                        </StackPanel>
+                                        <helpers:SingleChoiceDropdown x:Name="CompletionSoundTriggerSelector" SelectedValue="{Binding CompletionSoundTrigger, Mode=TwoWay}" Margin="0,0,20,0" AutomationProperties.Name="{loc:Loc Settings_Sound_Completion_Title}">
+                                    <helpers:ChoiceOption Value="{x:Static models:CompletionSoundTrigger.EntirePackage}" Text="{loc:Loc Settings_Sound_Trigger_EntirePackage}" />
+                                    <helpers:ChoiceOption Value="{x:Static models:CompletionSoundTrigger.IndividualFiles}" Text="{loc:Loc Settings_Sound_Trigger_IndividualFiles}" />
+                                </helpers:SingleChoiceDropdown>
 
                                         <!-- Top Sub-Row: Sound Selector & Volume Slider -->
                                         <Grid>
@@ -816,218 +633,20 @@
 
                                             <!-- Left: Sound Selector Dropdown & Popup -->
                                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Button x:Name="CompletionSoundButton"
-                                                    Style="{StaticResource SoundDropdownButtonStyle}"
-                                                    IsEnabled="{Binding EnableCompletionSound}"
-                                                    PreviewMouseDown="CompletionSoundButton_PreviewMouseDown"
-                                                    Click="CompletionSoundButton_Click"
-                                                    PreviewKeyDown="CompletionSound_PreviewKeyDown"
-                                                    PreviewMouseWheel="CompletionSound_PreviewMouseWheel"
-                                                    VerticalAlignment="Center">
-                                                    <Grid HorizontalAlignment="Stretch">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Text="{Binding SelectedCompletionSoundDisplayName}"
-                                                            FontWeight="SemiBold"
-                                                            FontSize="11.5"
-                                                            Foreground="{DynamicResource TextPrimaryBrush}"
-                                                            VerticalAlignment="Center"
-                                                            Margin="0,0,10,0" />
-                                                        <Path Grid.Column="1" helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=CompletionSoundPopup}"
-                                                            Data="M 0,0 L 3.5,3.5 L 7,0"
-                                                            Stroke="{DynamicResource TextSecondaryBrush}"
-                                                            StrokeThickness="1.5"
-                                                            Width="7"
-                                                            Height="4"
-                                                            Stretch="Uniform"
-                                                            VerticalAlignment="Center" />
-                                                    </Grid>
-                                                </Button>
-
-                                                <!-- Popup for Completion Sound Selection -->
-                                                <Popup x:Name="CompletionSoundPopup"
-                                                    PlacementTarget="{Binding ElementName=CompletionSoundButton}"
-                                                    Placement="Bottom"
-                                                    StaysOpen="False"
-                                                    AllowsTransparency="True"
-                                                    PopupAnimation="Fade"
-                                                    VerticalOffset="4"
-                                                    Closed="CompletionSoundPopup_Closed"
-                                                    PreviewKeyDown="CompletionSound_PreviewKeyDown"
-                                                    PreviewMouseWheel="CompletionSound_PreviewMouseWheel">
-                                                    <Border Style="{StaticResource SettingsDropdownPopupBorderStyle}" Width="136">
-                                                        <StackPanel>
-                                                            <!-- Sound 1 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="1.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 1" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='1.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 2 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="2.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 2" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='2.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 3 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="3.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 3" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='3.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 4 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="4.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 4" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='4.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 5 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="5.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 5" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='5.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 6 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="6.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 6" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='6.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 7 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="7.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 7" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='7.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 8 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="8.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 8" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='8.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 9 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="9.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 9" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='9.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <!-- Sound 10 -->
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="10.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 10" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='10.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="11.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 11" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='11.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                            <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                                Click="CompletionSoundOption_Click"
-                                                                CommandParameter="12.mp3">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Text="Sound 12" FontSize="11.5" VerticalAlignment="Center" />
-                                                                    <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                        Visibility="{Binding SelectedCompletionSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='12.mp3'}" />
-                                                                </Grid>
-                                                            </Button>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </Popup>
+                                                <helpers:SingleChoiceDropdown x:Name="CompletionSoundButton" SelectedValue="{Binding SelectedCompletionSound, Mode=TwoWay}" IsEnabled="{Binding EnableCompletionSound}" SelectionCommitted="CompletionSound_SelectionCommitted">
+                                    <helpers:ChoiceOption Value="1.mp3" Text="Sound 1" />
+                                    <helpers:ChoiceOption Value="2.mp3" Text="Sound 2" />
+                                    <helpers:ChoiceOption Value="3.mp3" Text="Sound 3" />
+                                    <helpers:ChoiceOption Value="4.mp3" Text="Sound 4" />
+                                    <helpers:ChoiceOption Value="5.mp3" Text="Sound 5" />
+                                    <helpers:ChoiceOption Value="6.mp3" Text="Sound 6" />
+                                    <helpers:ChoiceOption Value="7.mp3" Text="Sound 7" />
+                                    <helpers:ChoiceOption Value="8.mp3" Text="Sound 8" />
+                                    <helpers:ChoiceOption Value="9.mp3" Text="Sound 9" />
+                                    <helpers:ChoiceOption Value="10.mp3" Text="Sound 10" />
+                                    <helpers:ChoiceOption Value="11.mp3" Text="Sound 11" />
+                                    <helpers:ChoiceOption Value="12.mp3" Text="Sound 12" />
+                                </helpers:SingleChoiceDropdown>
                                             </StackPanel>
 
                                             <!-- Right: Volume Control with Speaker Icon, Slider & Percentage Badge -->
@@ -1114,119 +733,13 @@
 
                                         <!-- Left: Sound Selector Dropdown & Popup -->
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Button x:Name="ErrorSoundButton"
-                                                Style="{StaticResource SoundDropdownButtonStyle}"
-                                                IsEnabled="{Binding EnableErrorSound}"
-                                                PreviewMouseDown="ErrorSoundButton_PreviewMouseDown"
-                                                Click="ErrorSoundButton_Click"
-                                                PreviewKeyDown="ErrorSound_PreviewKeyDown"
-                                                PreviewMouseWheel="ErrorSound_PreviewMouseWheel"
-                                                VerticalAlignment="Center">
-                                                <Grid HorizontalAlignment="Stretch">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding SelectedErrorSoundDisplayName}"
-                                                        FontWeight="SemiBold"
-                                                        FontSize="11.5"
-                                                        Foreground="{DynamicResource TextPrimaryBrush}"
-                                                        VerticalAlignment="Center"
-                                                        Margin="0,0,10,0" />
-                                                    <Path Grid.Column="1" helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=ErrorSoundPopup}"
-                                                        Data="M 0,0 L 3.5,3.5 L 7,0"
-                                                        Stroke="{DynamicResource TextSecondaryBrush}"
-                                                        StrokeThickness="1.5"
-                                                        Width="7"
-                                                        Height="4"
-                                                        Stretch="Uniform"
-                                                        VerticalAlignment="Center" />
-                                                </Grid>
-                                            </Button>
-
-                                            <!-- Popup for Error Sound Selection -->
-                                            <Popup x:Name="ErrorSoundPopup"
-                                                PlacementTarget="{Binding ElementName=ErrorSoundButton}"
-                                                Placement="Bottom"
-                                                StaysOpen="False"
-                                                AllowsTransparency="True"
-                                                PopupAnimation="Fade"
-                                                VerticalOffset="4"
-                                                Closed="ErrorSoundPopup_Closed"
-                                                PreviewKeyDown="ErrorSound_PreviewKeyDown"
-                                                PreviewMouseWheel="ErrorSound_PreviewMouseWheel">
-                                                <Border Style="{StaticResource SettingsDropdownPopupBorderStyle}" Width="136">
-                                                    <StackPanel>
-                                                        <!-- Sound 1 -->
-                                                        <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                            Click="ErrorSoundOption_Click"
-                                                            CommandParameter="1.mp3">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Text="Sound 1" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                    Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='1.mp3'}" />
-                                                            </Grid>
-                                                        </Button>
-                                                        <!-- Sound 2 -->
-                                                        <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                            Click="ErrorSoundOption_Click"
-                                                            CommandParameter="2.mp3">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Text="Sound 2" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                    Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='2.mp3'}" />
-                                                            </Grid>
-                                                        </Button>
-                                                        <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                            Click="ErrorSoundOption_Click"
-                                                            CommandParameter="3.mp3">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Text="Sound 3" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                    Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='3.mp3'}" />
-                                                            </Grid>
-                                                        </Button>
-                                                        <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                            Click="ErrorSoundOption_Click"
-                                                            CommandParameter="4.mp3">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Text="Sound 4" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                    Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='4.mp3'}" />
-                                                            </Grid>
-                                                        </Button>
-                                                        <Button Style="{StaticResource SoundDropdownItemStyle}"
-                                                            Click="ErrorSoundOption_Click"
-                                                            CommandParameter="5.mp3">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="Auto" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Text="Sound 5" FontSize="11.5" VerticalAlignment="Center" />
-                                                                <Path Grid.Column="1" Data="{StaticResource IconCheck}" Fill="{DynamicResource TextPrimaryBrush}" Width="10" Height="10" Stretch="Uniform" VerticalAlignment="Center" Margin="6,0,0,0"
-                                                                    Visibility="{Binding SelectedErrorSound, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='5.mp3'}" />
-                                                            </Grid>
-                                                        </Button>
-                                                    </StackPanel>
-                                                </Border>
-                                            </Popup>
+                                            <helpers:SingleChoiceDropdown x:Name="ErrorSoundButton" SelectedValue="{Binding SelectedErrorSound, Mode=TwoWay}" IsEnabled="{Binding EnableErrorSound}" SelectionCommitted="ErrorSound_SelectionCommitted">
+                                    <helpers:ChoiceOption Value="1.mp3" Text="Sound 1" />
+                                    <helpers:ChoiceOption Value="2.mp3" Text="Sound 2" />
+                                    <helpers:ChoiceOption Value="3.mp3" Text="Sound 3" />
+                                    <helpers:ChoiceOption Value="4.mp3" Text="Sound 4" />
+                                    <helpers:ChoiceOption Value="5.mp3" Text="Sound 5" />
+                                </helpers:SingleChoiceDropdown>
                                         </StackPanel>
 
                                         <!-- Right: Volume Control with Speaker Icon, Slider & Percentage Badge -->
@@ -2028,11 +1541,10 @@
                                                                     </Border>
                                                                     <ControlTemplate.Triggers>
                                                                         <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                                                                            <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                                                         </Trigger>
                                                                         <DataTrigger Binding="{Binding IsRecording}" Value="True">
                                                                             <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource AccentBlueBrush}" />
-                                                                            <Setter TargetName="BtnBorder" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
                                                                         </DataTrigger>
                                                                     </ControlTemplate.Triggers>
                                                                 </ControlTemplate>

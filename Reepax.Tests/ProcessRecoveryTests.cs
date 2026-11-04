@@ -7,7 +7,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
-public sealed class ProcessRecoveryTests : IDisposable
+public sealed partial class ProcessRecoveryTests : IDisposable
 {
     private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("ProcessRecovery_");
     private static readonly byte[] Unaffected = Encoding.UTF8.GetBytes("independent fixture document");

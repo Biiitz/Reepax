@@ -9,6 +9,8 @@ using Reepax.Models;
 using Reepax.Services.AdBlock;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
+using Reepax.Services.Localization;
+using System.Text.Json;
 
 namespace Reepax.Services.Browser;
 
@@ -20,6 +22,8 @@ public partial class BrowserWindowController : IDisposable
 {
     private readonly int _windowId;
     private readonly WebView2 _webView;
+    private readonly QueueManager _queue;
+    private bool _downloadClaimed;
     private bool _isInitialized;
     private string? _currentNavigatingUrl;
 
@@ -80,15 +84,20 @@ public partial class BrowserWindowController : IDisposable
     private bool _isDisposed;
 
     public BrowserWindowController(int windowId, WebView2 webView)
+        : this(windowId, webView, QueueManager.Instance) { }
+
+    internal BrowserWindowController(int windowId, WebView2 webView, QueueManager queue)
     {
         _windowId = windowId;
         _webView = webView;
+        _queue = queue;
     }
 
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        StopResponseTransfers();
 
         ThemeService.Instance.ThemeChanged -= UpdateTheme;
         if (_webView.CoreWebView2 != null)
@@ -142,79 +151,86 @@ public partial class BrowserWindowController : IDisposable
 
             if (_isDisposed) return;
 
-            // Extract and register real runtime User-Agent for all background HttpClient instances
-            try
-            {
-                var liveUa = await _webView.CoreWebView2.ExecuteScriptAsync("navigator.userAgent");
-                if (!string.IsNullOrWhiteSpace(liveUa))
-                {
-                    SystemIntegration.HttpUserAgentService.UpdateUserAgent(liveUa);
-                }
-            }
-            catch { }
-
-            if (_isDisposed) return;
-
-            // Configure Theme and Background
-            UpdateTheme(ThemeService.Instance.IsDarkMode);
-            ThemeService.Instance.ThemeChanged += UpdateTheme;
-
-            // Configure Settings
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            _webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
-
-            // 1. Network-Level Ad- & Pop-up Blocker Filter
-            _webView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
-            _webView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
-
-            // 1b. Observe 30x redirect chains (cross-domain targets are dynamically blocked)
-            _webView.CoreWebView2.WebResourceResponseReceived += OnWebResourceResponseReceived;
-
-            // 2. Redirect Pop-up Windows & Tabs to the current window (allows download buttons with target="_blank" to work!)
-            _webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
-
-            // 3. Block Deceptive Auto-Redirects to Ad Landers (including unknown cross-domain redirects)
-            _webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
-
-            // 4. Block Third-Party Ad Subframes (while whitelisting CAPTCHAs)
-            _webView.CoreWebView2.FrameNavigationStarting += OnFrameNavigationStarting;
-
-            // 5. Automatically Deny All Push Notification / Permission Traps
-            _webView.CoreWebView2.PermissionRequested += OnPermissionRequested;
-
-            // 6. Inject Stealth Anti-Popup & Anti-Clickjack Shield Script
-            _webView.CoreWebView2.AddHostObjectToScript(PopupGuardHostName,
-                new PopupGuardBridge(TryBlockPopup, ShouldApplyCosmeticFiltering));
-            await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BrowserSecurityGuard.GetAntiPopupScript());
-
-            // 7. Inject Cosmetic Filter CSS
-            var cosmeticScript = $@"
-            (function() {{
-                try {{
-                    if (!window.chrome.webview.hostObjects.sync.{PopupGuardHostName}.ShouldApplyCosmeticFiltering()) return;
-                    const style = document.createElement('style');
-                    style.textContent = `{BrowserSecurityGuard.GetCosmeticFilterCss().Replace("`", "\\`")}`;
-                    document.head ? document.head.appendChild(style) : document.documentElement.appendChild(style);
-                }} catch(e) {{}}
-            }})();";
-            await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(cosmeticScript);
-
-            // 8. Download Interception Engine (Suppresses browser popup & hands off to C# DownloadEngine)
-            _webView.CoreWebView2.DownloadStarting += OnDownloadStarting;
-
-            // 9. Script & DOM extraction communication
-            _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-
-            // Navigation error handling & automated DOM resolution
-            _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-
-            _isInitialized = true;
+            await ConfigureBrowserAsync();
         }
         catch (Exception ex)
         {
             AppLogger.Error($"[Browser Window {_windowId}] Init Error", ex);
         }
+    }
+
+    internal async Task ConfigureBrowserAsync()
+    {
+        if (_isInitialized || _isDisposed || _webView.CoreWebView2 == null) return;
+        // Extract and register real runtime User-Agent for all background HttpClient instances
+        try
+        {
+            var liveUa = await _webView.CoreWebView2.ExecuteScriptAsync("navigator.userAgent");
+            if (!string.IsNullOrWhiteSpace(liveUa))
+            {
+                SystemIntegration.HttpUserAgentService.UpdateUserAgent(liveUa);
+            }
+        }
+        catch { }
+
+        if (_isDisposed) return;
+
+        // Configure Theme and Background
+        UpdateTheme(ThemeService.Instance.IsDarkMode);
+        ThemeService.Instance.ThemeChanged += UpdateTheme;
+
+        // Configure Settings
+        _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+        _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+        _webView.CoreWebView2.Settings.IsWebMessageEnabled = true;
+
+        // 1. Network-Level Ad- & Pop-up Blocker Filter
+        _webView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+        _webView.CoreWebView2.WebResourceRequested += OnWebResourceRequested;
+
+        // 1b. Observe 30x redirect chains (cross-domain targets are dynamically blocked)
+        _webView.CoreWebView2.WebResourceResponseReceived += OnWebResourceResponseReceived;
+
+        // 2. Redirect Pop-up Windows & Tabs to the current window (allows download buttons with target="_blank" to work!)
+        _webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
+
+        // 3. Block Deceptive Auto-Redirects to Ad Landers (including unknown cross-domain redirects)
+        _webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
+
+        // 4. Block Third-Party Ad Subframes (while whitelisting CAPTCHAs)
+        _webView.CoreWebView2.FrameNavigationStarting += OnFrameNavigationStarting;
+
+        // 5. Automatically Deny All Push Notification / Permission Traps
+        _webView.CoreWebView2.PermissionRequested += OnPermissionRequested;
+
+        // 6. Inject Stealth Anti-Popup & Anti-Clickjack Shield Script
+        _webView.CoreWebView2.AddHostObjectToScript(PopupGuardHostName,
+            new PopupGuardBridge(TryBlockPopup, ShouldApplyCosmeticFiltering));
+        await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BrowserSecurityGuard.GetAntiPopupScript());
+
+        // 7. Inject Cosmetic Filter CSS
+        var cosmeticScript = $@"
+        (function() {{
+            try {{
+                if (!window.chrome.webview.hostObjects.sync.{PopupGuardHostName}.ShouldApplyCosmeticFiltering()) return;
+                const style = document.createElement('style');
+                style.textContent = `{BrowserSecurityGuard.GetCosmeticFilterCss().Replace("`", "\\`")}`;
+                document.head ? document.head.appendChild(style) : document.documentElement.appendChild(style);
+            }} catch(e) {{}}
+        }})();";
+        await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(cosmeticScript);
+
+        // 8. Download Interception Engine (Suppresses browser popup & hands off to C# DownloadEngine)
+        _webView.CoreWebView2.DownloadStarting += OnDownloadStarting;
+
+        // 9. Script & DOM extraction communication
+        _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
+        // Navigation error handling & automated DOM resolution
+        _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+
+        await ConfigureResponseTransfersAsync();
+        _isInitialized = true;
     }
 
     private void UpdateTheme(bool isDark)
@@ -357,7 +373,7 @@ public partial class BrowserWindowController : IDisposable
             if (string.IsNullOrEmpty(targetDomain) ||
                 string.Equals(sourceDomain, targetDomain, StringComparison.OrdinalIgnoreCase) ||
                 BrowserSecurityGuard.IsWhitelisted(targetUri.ToString()) ||
-                BrowserSecurityGuard.IsDirectDownloadUrl(targetUri.ToString()) ||
+                BrowserSecurityGuard.HasDirectDownloadPath(targetUri.ToString()) ||
                 BrowserSecurityGuard.IsKnownSafeOrHosterDomain(targetDomain))
                 return;
 
@@ -461,7 +477,7 @@ public partial class BrowserWindowController : IDisposable
         }
     }
 
-    private async void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
         // Suppress opening separate desktop window
         e.Handled = true;
@@ -470,49 +486,15 @@ public partial class BrowserWindowController : IDisposable
         if (string.IsNullOrWhiteSpace(url) || url.StartsWith("about:blank", StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (TryBlockPopup(url, e.IsUserInitiated))
+        if (!IsNavigableAddress(url) || _downloadClaimed || TryBlockPopup(url, e.IsUserInitiated))
             return;
-
-        // 1. Direct download links: Intercept directly into Reepax Queue without navigating main window away!
-        if (BrowserSecurityGuard.IsDirectDownloadUrl(url))
-        {
-            if (url.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
-            {
-                AppLogger.Info($"[Browser Window {_windowId}] Direct blob download intercepted from popup: {url}");
-                _webView.CoreWebView2?.Navigate(url);
-                return;
-            }
-
-            AppLogger.Info($"[Browser Window {_windowId}] Direct download intercepted from popup: {url}");
-            try
-            {
-                var userAgent = !string.IsNullOrWhiteSpace(_webView.CoreWebView2?.Settings?.UserAgent)
-                    ? _webView.CoreWebView2.Settings.UserAgent
-                    : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
-                var referer = _webView.Source?.ToString() ?? _currentTopLevelUrl;
-                var cookieContext = await GetCookiesForUrlAsync(url);
-
-                await QueueManager.Instance.OnDownloadInterceptedAsync(
-                    _windowId,
-                    url,
-                    cookieContext?.GetCookieHeader(),
-                    userAgent,
-                    referer,
-                    null,
-                    cookieContext);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[Browser Window {_windowId}] Error intercepting direct download from popup: {ex.Message}");
-            }
-            return;
-        }
 
         // Execute legitimate popup navigations in the current window
         AppLogger.Info($"[Browser Window {_windowId}] Navigating current window to legitimate popup target: {url}");
         try
         {
-            _webView.CoreWebView2?.Navigate(url);
+            // Keep the document's referrer policy when following an allowed popup link.
+            _ = _webView.CoreWebView2?.ExecuteScriptAsync("location.assign(" + JsonSerializer.Serialize(url) + ")");
         }
         catch (Exception ex)
         {
@@ -522,6 +504,13 @@ public partial class BrowserWindowController : IDisposable
 
     private async void OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
     {
+        if (_isDisposed || _downloadClaimed || _queue.GetWindowItem(_windowId) is not { IsUnavailableForProcessing: false })
+        {
+            e.Cancel = true;
+            e.Handled = true;
+            return;
+        }
+        _downloadClaimed = true;
         try
         {
             var directUrl = e.DownloadOperation.Uri;
@@ -568,7 +557,7 @@ public partial class BrowserWindowController : IDisposable
             AppLogger.Info($"[Browser Window {_windowId}] Intercepted Download! URL: {directUrl}, File: {suggestedFileName}");
 
             // 3. Hand off to QueueManager -> DownloadEngine
-            await QueueManager.Instance.OnDownloadInterceptedAsync(
+            await _queue.OnDownloadInterceptedAsync(
                 _windowId, 
                 directUrl, 
                 cookieContext?.GetCookieHeader(),
@@ -579,6 +568,7 @@ public partial class BrowserWindowController : IDisposable
         }
         catch (Exception ex)
         {
+            if (!_isDisposed && _queue.GetWindowItem(_windowId) != null) _downloadClaimed = false;
             AppLogger.Error($"[Browser Window {_windowId}] Error during download interception", ex);
         }
     }
@@ -589,7 +579,7 @@ public partial class BrowserWindowController : IDisposable
     /// </summary>
     private void HandleBlobDownload(CoreWebView2DownloadStartingEventArgs e, string blobUrl)
     {
-        var item = QueueManager.Instance.GetWindowItem(_windowId);
+        var item = _queue.GetWindowItem(_windowId);
         if (item == null || item.IsUnavailableForProcessing)
         {
             e.Cancel = true;
@@ -622,15 +612,16 @@ public partial class BrowserWindowController : IDisposable
         var lastBytes = 0L;
         var lastTime = DateTime.Now;
 
+        item.ClearDownloadFailure();
         item.Status = DownloadStatus.Downloading;
-        item.StatusMessage = "Wird heruntergeladen...";
+        item.StatusMessage = Loc.Get("Status_Downloading");
         if (!string.IsNullOrWhiteSpace(targetPath))
         {
             if (!item.IsCustomName)
             {
                 item.Rename(Path.GetFileName(targetPath), isUserAction: false);
             }
-            var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
+            var pkg = _queue.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
             if (pkg != null && !pkg.IsCustomName)
             {
                 Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
@@ -673,15 +664,15 @@ public partial class BrowserWindowController : IDisposable
 
                 if (state == CoreWebView2DownloadState.Completed)
                 {
-                    QueueManager.Instance.OnBrowserNativeDownloadCompleted(_windowId, true, null, targetPath);
+                    _queue.OnBrowserNativeDownloadCompleted(_windowId, true, null, targetPath);
                 }
                 else if (nativeSession.StopRequested)
                 {
-                    QueueManager.Instance.OnNativeTransferStopped(_windowId);
+                    _queue.OnNativeTransferStopped(_windowId);
                 }
                 else
                 {
-                    QueueManager.Instance.OnBrowserNativeDownloadCompleted(_windowId, false, op.InterruptReason.ToString(), targetPath);
+                    _queue.OnBrowserNativeDownloadCompleted(_windowId, false, op.InterruptReason.ToString(), targetPath);
                 }
             }
             catch { }
@@ -692,132 +683,60 @@ public partial class BrowserWindowController : IDisposable
         e.Cancel = false;
     }
 
-    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (_isDisposed || _downloadClaimed || !IsCurrentDocument(e.Source)) return;
         try
         {
-            var json = e.WebMessageAsJson;
-            if (string.IsNullOrWhiteSpace(json))
+            using var message = ParseBrowserMessage(e.WebMessageAsJson);
+            if (message?.RootElement is not { ValueKind: JsonValueKind.Object } root ||
+                !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String ||
+                !root.TryGetProperty("url", out var address) || address.ValueKind != JsonValueKind.String)
                 return;
-
-            if (json.Contains("redirect_blocked"))
+            string? url = address.GetString();
+            if (!IsNavigableAddress(url)) return;
+            switch (type.GetString())
             {
-                try
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(json);
-                    var root = doc.RootElement;
-                    var blockedUrl = root.TryGetProperty("url", out var u) ? u.GetString() : null;
-                    var reason = root.TryGetProperty("reason", out var r) ? r.GetString() : "JS";
-                    IncrementBlockedCount(blockedUrl ?? "JS", reason ?? "JS");
-                }
-                catch { }
-            }
-            else if (json.Contains("direct_url"))
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("url", out var urlProp))
-                {
-                    var directUrl = urlProp.GetString();
-                    if (!string.IsNullOrWhiteSpace(directUrl))
-                    {
-                        if (directUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
-                        {
-                            AppLogger.Info($"[Browser Window {_windowId}] Direct blob URL extracted, triggering native download: {directUrl}");
-                            _webView.CoreWebView2?.Navigate(directUrl);
-                            return;
-                        }
-
-                        var userAgent = !string.IsNullOrWhiteSpace(_webView.CoreWebView2.Settings.UserAgent) 
-                            ? _webView.CoreWebView2.Settings.UserAgent 
-                            : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
-                        var referer = _webView.Source?.ToString();
-                        var cookieContext = await GetCookiesForUrlAsync(directUrl);
-
-                        AppLogger.Info($"[Browser Window {_windowId}] Direct URL extracted from page: {directUrl}");
-                        await QueueManager.Instance.OnDownloadInterceptedAsync(
-                            _windowId,
-                            directUrl,
-                            cookieContext?.GetCookieHeader(),
-                            userAgent,
-                            referer,
-                            null,
-                            cookieContext);
-                    }
-                }
-            }
-            else if (json.Contains("\"open_url\""))
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("url", out var urlProp))
-                {
-                    var targetUrl = urlProp.GetString();
-                    if (!string.IsNullOrWhiteSpace(targetUrl))
-                    {
-                        if (BrowserSecurityGuard.IsDirectDownloadUrl(targetUrl))
-                        {
-                            if (targetUrl.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
-                            {
-                                AppLogger.Info($"[Browser Window {_windowId}] Direct blob URL intercepted from open_url, triggering native download: {targetUrl}");
-                                _webView.CoreWebView2?.Navigate(targetUrl);
-                                return;
-                            }
-
-                            AppLogger.Info($"[Browser Window {_windowId}] Direct download intercepted from open_url: {targetUrl}");
-                            var userAgent = !string.IsNullOrWhiteSpace(_webView.CoreWebView2.Settings.UserAgent) 
-                                ? _webView.CoreWebView2.Settings.UserAgent 
-                                : SystemIntegration.HttpUserAgentService.CurrentUserAgent;
-                            var referer = _webView.Source?.ToString();
-                            var cookieContext = await GetCookiesForUrlAsync(targetUrl);
-
-                            await QueueManager.Instance.OnDownloadInterceptedAsync(
-                                _windowId,
-                                targetUrl,
-                                cookieContext?.GetCookieHeader(),
-                                userAgent,
-                                referer,
-                                null,
-                                cookieContext);
-                        }
-                        else
-                        {
-                            var currentUrl = _webView.Source?.ToString() ?? _currentTopLevelUrl;
-                            var currentHost = GetHostFromUrl(currentUrl);
-                            var currentDomain = !string.IsNullOrEmpty(currentHost) ? BrowserSecurityGuard.GetRegistrableDomain(currentHost) : null;
-                            var targetHost = GetHostFromUrl(targetUrl);
-                            var targetDomain = !string.IsNullOrEmpty(targetHost) ? BrowserSecurityGuard.GetRegistrableDomain(targetHost) : null;
-
-                            bool isSameDomain = !string.IsNullOrEmpty(currentDomain) &&
-                                                !string.IsNullOrEmpty(targetDomain) &&
-                                                string.Equals(currentDomain, targetDomain, StringComparison.OrdinalIgnoreCase);
-
-                            bool isSafeHoster = BrowserSecurityGuard.IsKnownSafeOrHosterDomain(targetDomain) ||
-                                                BrowserSecurityGuard.IsKnownSafeOrHosterDomain(targetHost);
-
-                            bool isWhitelisted = BrowserSecurityGuard.IsWhitelisted(targetUrl);
-                            bool isPortal = BrowserSecurityGuard.IsSearchEngineOrPortal(currentDomain);
-
-                            bool isAllowed = (isSameDomain || isSafeHoster || isWhitelisted || isPortal) &&
-                                             !AdBlockRustEngine.Instance.ShouldBlock(targetUrl) &&
-                                             !BrowserSecurityGuard.HasDeceptiveRedirectTarget(targetUrl);
-
-                            if (isAllowed)
-                            {
-                                AppLogger.Info($"[Browser Window {_windowId}] Navigating current window from open_url message: {targetUrl}");
-                                _webView.CoreWebView2?.Navigate(targetUrl);
-                            }
-                            else
-                            {
-                                IncrementBlockedCount(targetUrl, "open_url_blocked");
-                            }
-                        }
-                    }
-                }
+                case "redirect_blocked":
+                    IncrementBlockedCount(url!, "Script");
+                    break;
+                case "direct_url" when ShouldAutomaticallyResolve():
+                case "open_url":
+                    if (!string.Equals(url, _webView.CoreWebView2.Source, StringComparison.Ordinal) && !TryBlockPopup(url!, false))
+                        _ = _webView.CoreWebView2.ExecuteScriptAsync("location.assign(" + JsonSerializer.Serialize(url) + ")");
+                    break;
             }
         }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[Browser Window {_windowId}] WebMessage process error: {ex.Message}");
-        }
+        catch (JsonException) { }
+        catch (ArgumentException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    internal static JsonDocument? ParseBrowserMessage(string json)
+    {
+        if (json.Length > 32768) return null;
+        var message = JsonDocument.Parse(json);
+        if (message.RootElement.ValueKind != JsonValueKind.String) return message;
+        string? nested = message.RootElement.GetString();
+        message.Dispose();
+        return string.IsNullOrWhiteSpace(nested) ? null : JsonDocument.Parse(nested);
+    }
+
+    private bool IsCurrentDocument(string source)
+        => Uri.TryCreate(source, UriKind.Absolute, out var sender) &&
+           Uri.TryCreate(_webView.CoreWebView2?.Source, UriKind.Absolute, out var current) &&
+           Uri.Compare(sender, current, UriComponents.SchemeAndServer | UriComponents.PathAndQuery,
+               UriFormat.SafeUnescaped, StringComparison.Ordinal) == 0;
+
+    private static bool IsNavigableAddress(string? address)
+        => Uri.TryCreate(address, UriKind.Absolute, out var uri) &&
+           (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == "blob");
+
+    private bool ShouldAutomaticallyResolve()
+    {
+        var item = _queue.GetWindowItem(_windowId);
+        return item is { IsUnavailableForProcessing: false } &&
+            _queue.Packages.FirstOrDefault(package => package.Id == item.PackageId || package.Items.Contains(item))?.AutoResolveHostLinks == true;
     }
 
     private void IncrementBlockedCount(string url, string reason)
@@ -833,6 +752,7 @@ public partial class BrowserWindowController : IDisposable
 
     private async void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
+        if (_isDisposed || _downloadClaimed || !ShouldAutomaticallyResolve()) return;
         if (!e.IsSuccess)
         {
             AppLogger.Warn($"[Browser Window {_windowId}] Navigation Status: {e.WebErrorStatus}");
@@ -861,7 +781,7 @@ public partial class BrowserWindowController : IDisposable
                         // Check for direct dl URLs in DOM
                         var dlLinks = Array.from(document.querySelectorAll('a[href*=""/dl/""]'));
                         if (dlLinks.length > 0 && dlLinks[0].href) {
-                            window.chrome.webview.postMessage(JSON.stringify({ type: 'direct_url', url: dlLinks[0].href }));
+                            window.chrome.webview.postMessage({ type: 'direct_url', url: dlLinks[0].href });
                             return;
                         }
 
@@ -871,12 +791,12 @@ public partial class BrowserWindowController : IDisposable
                             var text = scripts[i].textContent || '';
                             var match = text.match(/(https?:\/\/(?:dl[0-9]*\.)?[a-z0-9\-\.]+\.[a-z]+\/dl\/[^\s""'<>]+)/i);
                             if (match && match[1]) {
-                                window.chrome.webview.postMessage(JSON.stringify({ type: 'direct_url', url: match[1] }));
+                                window.chrome.webview.postMessage({ type: 'direct_url', url: match[1] });
                                 return;
                             }
                             var matchOpen = text.match(/window\.open\s*\(\s*['""](https?:\/\/[^'""]+\/dl\/[^'""]+)['""]/i);
                             if (matchOpen && matchOpen[1]) {
-                                window.chrome.webview.postMessage(JSON.stringify({ type: 'direct_url', url: matchOpen[1] }));
+                                window.chrome.webview.postMessage({ type: 'direct_url', url: matchOpen[1] });
                                 return;
                             }
                         }

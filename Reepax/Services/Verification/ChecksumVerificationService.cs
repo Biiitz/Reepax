@@ -20,6 +20,7 @@ public class ChecksumVerificationResult
 {
     public bool IsValid { get; set; }
     public string? ErrorMessage { get; set; }
+    public DownloadFailure? FailureDetails { get; set; }
     public string? CalculatedChecksum { get; set; }
     public string? Algorithm { get; set; }
 
@@ -28,6 +29,9 @@ public class ChecksumVerificationResult
 
     public static ChecksumVerificationResult Failure(string errorMessage) =>
         new() { IsValid = false, ErrorMessage = errorMessage };
+
+    public static ChecksumVerificationResult Failure(DownloadFailure failure) =>
+        new() { IsValid = false, ErrorMessage = failure.Message, FailureDetails = failure };
 }
 
 public class ChecksumVerificationService
@@ -70,11 +74,11 @@ public class ChecksumVerificationService
     public async Task<ChecksumVerificationResult> VerifyFileIntegrityAsync(DownloadItem item, CancellationToken cancellationToken = default)
     {
         if (item == null)
-            return ChecksumVerificationResult.Failure(Loc.Get("Validation_NoItemProvided"));
+            return ChecksumVerificationResult.Failure(new DownloadFailure());
 
         var filePath = item.SaveFilePath;
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
-            return ChecksumVerificationResult.Failure(Loc.Format("Validation_FileDoesNotExist", filePath ?? string.Empty));
+            return ChecksumVerificationResult.Failure(new DownloadFailure { Kind = DownloadFailureKind.MissingFile });
 
         return await Task.Run(async () =>
         {
@@ -86,21 +90,20 @@ public class ChecksumVerificationService
                 // 1. Check non-empty file
                 if (fileInfo.Length == 0)
                 {
-                    return ChecksumVerificationResult.Failure(Loc.Get("Validation_FileIsEmpty"));
+                    return ChecksumVerificationResult.Failure(new DownloadFailure { Kind = DownloadFailureKind.EmptyFile });
                 }
 
                 // 2. Check total byte size match against server header if known
                 if (item.TotalBytes > 0 && fileInfo.Length != item.TotalBytes)
                 {
-                    return ChecksumVerificationResult.Failure(
-                        Loc.Format("Validation_FileSizeMismatch", item.TotalBytes, fileInfo.Length));
+                    return ChecksumVerificationResult.Failure(new DownloadFailure
+                        { Kind = DownloadFailureKind.SizeMismatch, ExpectedBytes = item.TotalBytes, ActualBytes = fileInfo.Length });
                 }
 
                 // 3. Detect HTML error pages downloaded instead of binary archive parts (e.g. Cloudflare / 404 / 403)
                 if (IsHtmlErrorPage(filePath))
                 {
-                    return ChecksumVerificationResult.Failure(
-                        Loc.Get("Validation_HtmlErrorPageDetected"));
+                    return ChecksumVerificationResult.Failure(new DownloadFailure { Kind = DownloadFailureKind.HtmlResponse });
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -117,8 +120,7 @@ public class ChecksumVerificationService
 
                     if (!string.Equals(calculated, normalizedExpected, StringComparison.OrdinalIgnoreCase))
                     {
-                        return ChecksumVerificationResult.Failure(
-                            Loc.Format("Validation_ChecksumMismatch", algorithm, normalizedExpected, calculated));
+                        return ChecksumVerificationResult.Failure(new DownloadFailure { Kind = DownloadFailureKind.ChecksumMismatch });
                     }
 
                     return ChecksumVerificationResult.Success(calculated, algorithm);
@@ -131,8 +133,7 @@ public class ChecksumVerificationService
                     {
                         if (!ValidateArchiveStructure(filePath, out var structureError, cancellationToken))
                         {
-                            return ChecksumVerificationResult.Failure(
-                                Loc.Format("Validation_ArchiveCheckFailed", structureError ?? string.Empty));
+                            return ChecksumVerificationResult.Failure(new DownloadFailure { Kind = DownloadFailureKind.InvalidArchive });
                         }
                     }
                 }
@@ -152,12 +153,12 @@ public class ChecksumVerificationService
             catch (Exception ex)
             {
                 AppLogger.Error($"[ChecksumVerifier] Unerwarteter Fehler bei Überprüfung von '{filePath}'", ex);
-                return ChecksumVerificationResult.Failure(Loc.Format("Validation_GenericIntegrityError", ex.Message));
+                return ChecksumVerificationResult.Failure(DownloadFailure.FromException(ex));
             }
         }, cancellationToken);
     }
 
-    public bool IsHtmlErrorPage(string filePath)
+    public bool IsHtmlErrorPage(string filePath, string? intendedFileName = null)
     {
         try
         {
@@ -167,7 +168,7 @@ public class ChecksumVerificationService
             if (bytesRead == 0) return false;
 
             var text = Encoding.UTF8.GetString(buffer, 0, bytesRead).TrimStart();
-            var ext = Path.GetExtension(filePath).ToLowerInvariant();
+            var ext = Path.GetExtension(intendedFileName ?? filePath).ToLowerInvariant();
 
             bool isLegitHtmlExt = ext is ".html" or ".htm" or ".xhtml";
             bool isLegitXmlExt = ext is ".xml" or ".svg";
@@ -293,9 +294,9 @@ public class ChecksumVerificationService
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            error = ex.Message;
+            error = Loc.Get("DownloadFailure_Archive");
             return false;
         }
     }

@@ -19,14 +19,20 @@ public partial class DownloadEngine
         internal CancellationTokenSource Cts { get; } = cts;
         internal TaskCompletionSource<bool> Tcs { get; } = tcs;
         internal CancellationToken Token { get; } = cts.Token;
+        internal BrowserPauseState? BrowserPause { get; init; }
     }
 
     private void PublishDownloadState(DownloadItem item, CancellationToken token, Action action, bool allowEnded = false)
     {
         var state = UiState(item);
+        var publishedStatus = item.Status;
         void Apply()
         {
-            try { if (state.IsCurrent(token, requireRunning: !allowEnded)) action(); }
+            try
+            {
+                if (state.IsCurrent(token, requireRunning: !allowEnded) &&
+                    (!allowEnded || item.Status == publishedStatus)) action();
+            }
             catch (Exception) { }
         }
         var dispatcher = Application.Current?.Dispatcher;

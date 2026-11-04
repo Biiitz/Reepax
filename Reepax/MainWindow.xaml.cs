@@ -58,7 +58,6 @@ public partial class MainWindow : Window
         ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
 
         Loaded += MainWindow_Navigation_Loaded;
-        StatusFilterPopup.Opened += (s, e) => _isStatusFilterPopupOpen = true;
 
         // Browser-style navigation
         CommandBindings.Add(new CommandBinding(NavigationCommands.BrowseBack, (s, e) =>
@@ -528,7 +527,7 @@ public partial class MainWindow : Window
 
     private void ViewModel_MainNavigation_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ViewModel.SelectedMainTab))
+        if (e.PropertyName is nameof(ViewModel.SelectedMainTab) or nameof(ViewModel.CanOpenAddLinks))
             UpdateDownloadToolsAvailability();
     }
 
@@ -538,8 +537,8 @@ public partial class MainWindow : Window
         if (!enabled)
         {
             QuickSettingsPopup.IsOpen = false;
-            _isStatusFilterPopupOpen = false;
-            StatusFilterPopup.IsOpen = false;
+            StatusFilterButton.CloseDropdown();
+            PostDownloadActionButton.CloseDropdown();
 
             if (SearchFilterBarContainer.IsKeyboardFocusWithin || QuickSettingsButton.IsKeyboardFocusWithin)
                 Keyboard.ClearFocus();
@@ -547,6 +546,7 @@ public partial class MainWindow : Window
 
         SearchFilterBarContainer.IsEnabled = enabled;
         QuickSettingsButton.IsEnabled = enabled;
+        AddLinksButton.IsEnabled = ViewModel.CanOpenAddLinks;
     }
 
     private void UpdateWindowStateInMemory()
@@ -780,6 +780,7 @@ public partial class MainWindow : Window
     {
         if (urls == null || urls.Count == 0) return;
         if (!ViewModel.EnableClipboardMonitor) return;
+        if (!ViewModel.CanOpenAddLinks) return;
 
         var prefill = string.Join(Environment.NewLine, urls);
 
@@ -803,7 +804,7 @@ public partial class MainWindow : Window
 
     private void Window_DragEnter(object sender, DragEventArgs e)
     {
-        if (ViewModel.IsBusy)
+        if (!ViewModel.CanOpenAddLinks)
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -825,7 +826,7 @@ public partial class MainWindow : Window
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        if (ViewModel.IsBusy)
+        if (!ViewModel.CanOpenAddLinks)
         {
             e.Effects = DragDropEffects.None;
             e.Handled = true;
@@ -917,7 +918,7 @@ public partial class MainWindow : Window
 
     private void ProcessExternalDrop(DragEventArgs e, DownloadPackage? targetPackage = null)
     {
-        if (ViewModel.IsBusy)
+        if (!ViewModel.CanOpenAddLinks)
             return;
 
         e.Handled = true;
@@ -963,6 +964,7 @@ public partial class MainWindow : Window
         {
             try
             {
+                if (!ViewModel.CanOpenAddLinks) return;
                 if (droppedFiles != null && droppedFiles.Length > 0)
                 {
                     var pkgFiles = droppedFiles.Where(f => PackageExportImportService.IsSupportedPackageFile(f) && File.Exists(f)).ToList();
@@ -984,7 +986,7 @@ public partial class MainWindow : Window
                     }
                 }
 
-                if (!string.IsNullOrWhiteSpace(droppedText))
+                if (ViewModel.CanOpenAddLinks && !string.IsNullOrWhiteSpace(droppedText))
                 {
                     if (targetPackage != null)
                     {
@@ -1006,7 +1008,7 @@ public partial class MainWindow : Window
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        if (ViewModel.IsBusy)
+        if (!ViewModel.CanOpenAddLinks)
             return;
 
         if (e.Data.GetDataPresent("Reepax.DownloadPackage"))
@@ -1056,12 +1058,13 @@ public partial class MainWindow : Window
 
     private void ShowAddLinksDialog(string? prefill = null, DownloadPackage? targetPackage = null)
     {
+        if (ViewModel.SelectedMainTab != AppMainTab.Downloads) return;
         if (ViewModel.IsRemovalInProgress)
         {
             ShowAddLinksAfterRemoval(prefill, targetPackage);
             return;
         }
-        if (ViewModel.IsBusy)
+        if (!ViewModel.CanOpenAddLinks)
             return;
 
         // Already open dialog: avoid second modal window — append dropped text instead.
@@ -3396,7 +3399,11 @@ public partial class MainWindow : Window
         if (ColumnHeaderContextMenu != null && sender is FrameworkElement el)
         {
             ColumnHeaderContextMenu.PlacementTarget = el;
-            ColumnHeaderContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            ColumnHeaderContextMenu.Placement = PlacementMode.Bottom;
+            ColumnHeaderContextMenu.VerticalOffset = 4;
+            ColumnHeaderContextMenu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            ColumnHeaderContextMenu.HorizontalOffset = SystemParameters.MenuDropAlignment ? 0
+                : el.RenderSize.Width - ColumnHeaderContextMenu.DesiredSize.Width;
             ColumnHeaderContextMenu.IsOpen = true;
         }
     }
@@ -4092,85 +4099,6 @@ public partial class MainWindow : Window
             QuickSettingsPopup.Toggle(QuickSettingsButton);
     }
 
-    private void PostDownloadActionButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn && btn.ContextMenu != null)
-        {
-            btn.ContextMenu.PlacementTarget = btn;
-            btn.ContextMenu.Placement = PlacementMode.Bottom;
-            btn.ContextMenu.IsOpen = true;
-        }
-    }
 
-    #region Status Filter Popup Handlers
-
-    private bool _isStatusFilterPopupOpen = false;
-    private long _statusFilterClosedTimestamp = 0;
-    private bool _ignoreNextStatusFilterClick = false;
-
-    private void StatusFilterPopup_Closed(object? sender, EventArgs e)
-    {
-        _isStatusFilterPopupOpen = false;
-        _statusFilterClosedTimestamp = Environment.TickCount64;
-    }
-
-    private void StatusFilterButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left) return;
-
-        // If popup is currently open or was open when the user pressed the mouse button, suppress reopen
-        if (_isStatusFilterPopupOpen || StatusFilterPopup.IsOpen || (Environment.TickCount64 - _statusFilterClosedTimestamp < 200))
-        {
-            _isStatusFilterPopupOpen = false;
-            StatusFilterPopup.IsOpen = false;
-            _statusFilterClosedTimestamp = Environment.TickCount64;
-            _ignoreNextStatusFilterClick = true;
-            e.Handled = true;
-        }
-    }
-
-    private void StatusFilterButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left) return;
-
-        if (_ignoreNextStatusFilterClick || Environment.TickCount64 - _statusFilterClosedTimestamp < 200)
-        {
-            _ignoreNextStatusFilterClick = false;
-            e.Handled = true;
-        }
-    }
-
-    private void StatusFilterButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_ignoreNextStatusFilterClick)
-        {
-            _ignoreNextStatusFilterClick = false;
-            return;
-        }
-
-        if (_isStatusFilterPopupOpen)
-        {
-            _isStatusFilterPopupOpen = false;
-            StatusFilterPopup.IsOpen = false;
-            _statusFilterClosedTimestamp = Environment.TickCount64;
-            return;
-        }
-
-        if (Environment.TickCount64 - _statusFilterClosedTimestamp < 200)
-        {
-            return;
-        }
-
-        _isStatusFilterPopupOpen = true;
-        StatusFilterPopup.IsOpen = true;
-    }
-
-    private void StatusFilterOption_Click(object sender, RoutedEventArgs e)
-    {
-        _isStatusFilterPopupOpen = false;
-        StatusFilterPopup.IsOpen = false;
-    }
-
-    #endregion
 
 }

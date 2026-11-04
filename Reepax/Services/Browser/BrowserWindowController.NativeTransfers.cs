@@ -19,7 +19,7 @@ public partial class BrowserWindowController
     private NativeDownloadSession? RegisterNativeTransfer(DownloadItem item, Action cancel)
     {
         var session = new NativeDownloadSession(cancel);
-        if (!QueueManager.Instance.RegisterNativeTransfer(item, session))
+        if (!_queue.RegisterNativeTransfer(item, session))
             return null;
         _nativeTransfers.Add(session);
         return session;

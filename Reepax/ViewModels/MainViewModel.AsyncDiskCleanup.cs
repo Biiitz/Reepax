@@ -20,6 +20,8 @@ namespace Reepax.ViewModels;
 public partial class MainViewModel
 {
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenAddLinks))]
+    [NotifyCanExecuteChangedFor(nameof(OpenAddLinksCommand))]
     private bool _isRemovalInProgress;
     private TaskCompletionSource<bool>? _removalFinished;
 

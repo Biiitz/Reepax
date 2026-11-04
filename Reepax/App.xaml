@@ -10,6 +10,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Themes/VectorIcons.xaml" />
                 <ResourceDictionary Source="Themes/DarkTheme.xaml" />
+                <ResourceDictionary Source="Themes/DownloadStatus.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <converters:BytesToHumanReadableConverter x:Key="BytesConverter" />
@@ -68,7 +69,6 @@
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter TargetName="border" Property="Opacity" Value="0.8" />

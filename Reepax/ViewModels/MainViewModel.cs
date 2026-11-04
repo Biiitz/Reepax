@@ -141,6 +141,8 @@ public partial class MainViewModel : ObservableObject
     public string LogsFolderPath => SettingsService.LogsDirectory;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenAddLinks))]
+    [NotifyCanExecuteChangedFor(nameof(OpenAddLinksCommand))]
     private AppMainTab _selectedMainTab = AppMainTab.Downloads;
 
     partial void OnSelectedMainTabChanged(AppMainTab value)
@@ -304,6 +306,8 @@ public partial class MainViewModel : ObservableObject
     /// Disables adding links, drag & drop, and toolbar actions during this time.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanOpenAddLinks))]
+    [NotifyCanExecuteChangedFor(nameof(OpenAddLinksCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -552,7 +556,11 @@ public partial class MainViewModel : ObservableObject
                 foreach (var package in Packages.ToArray())
                 {
                     package.RefreshLocalizedAggregateText();
-                    foreach (var item in package.Items.ToArray()) item.RefreshChecksumVerificationSummary();
+                    foreach (var item in package.Items.ToArray())
+                    {
+                        item.RefreshChecksumVerificationSummary();
+                        item.RefreshDownloadFailure();
+                    }
                 }
             });
         };
@@ -3404,9 +3412,12 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
+    public bool CanOpenAddLinks => SelectedMainTab == AppMainTab.Downloads && !IsBusy && !IsRemovalInProgress;
+
+    [RelayCommand(CanExecute = nameof(CanOpenAddLinks))]
     public void OpenAddLinks()
     {
+        if (!CanOpenAddLinks) return;
         RequestShowAddLinksDialog?.Invoke(this, EventArgs.Empty);
     }
 

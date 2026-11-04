@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -99,6 +99,8 @@ public partial class SettingsView : UserControl
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(MainViewModel.SelectedThemeId) or nameof(MainViewModel.SelectedLanguage))
+            CloseSettingsDropdowns();
         if (e.PropertyName == nameof(MainViewModel.PickerSaturation) ||
             e.PropertyName == nameof(MainViewModel.PickerValue) ||
             e.PropertyName == nameof(MainViewModel.PickerHue) ||
@@ -116,6 +118,7 @@ public partial class SettingsView : UserControl
         }
         else if (e.PropertyName == nameof(MainViewModel.SelectedSettingsCategory))
         {
+            CloseSettingsDropdowns();
             Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: true)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
@@ -357,8 +360,6 @@ public partial class SettingsView : UserControl
     private bool _isCompletionSoundVolumeExpanded;
     private bool _isErrorSoundVolumeExpanded;
 
-    private long _completionSoundClosedTimestamp;
-    private long _errorSoundClosedTimestamp;
 
     private void UpdateCompletionSoundVolumeVisibility(bool animate = true)
     {
@@ -522,133 +523,11 @@ public partial class SettingsView : UserControl
         }
     }
 
-    private void CompletionSoundPopup_Closed(object? sender, EventArgs e)
-    {
-        _completionSoundClosedTimestamp = Environment.TickCount64;
-    }
+    private void CompletionSound_SelectionCommitted(object? sender, EventArgs args) =>
+        ViewModel?.SelectAndPreviewCompletionSound(CompletionSoundButton.SelectedValue as string);
 
-    private void CompletionSoundButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (CompletionSoundPopup.IsOpen || (Environment.TickCount64 - _completionSoundClosedTimestamp < 350))
-        {
-            CompletionSoundPopup.IsOpen = false;
-            _completionSoundClosedTimestamp = Environment.TickCount64;
-            e.Handled = true;
-        }
-    }
-
-    private void CompletionSoundButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (Environment.TickCount64 - _completionSoundClosedTimestamp < 350)
-            return;
-
-        CompletionSoundPopup.IsOpen = !CompletionSoundPopup.IsOpen;
-    }
-
-    private void CompletionSoundOption_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn)
-        {
-            var sound = btn.CommandParameter as string ?? btn.Tag as string;
-            if (!string.IsNullOrWhiteSpace(sound))
-            {
-                ViewModel?.SelectAndPreviewCompletionSound(sound);
-            }
-        }
-        CompletionSoundPopup.IsOpen = false;
-    }
-
-    private void CompletionSound_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Down)
-        {
-            ViewModel?.CycleCompletionSound(true);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Up)
-        {
-            ViewModel?.CycleCompletionSound(false);
-            e.Handled = true;
-        }
-    }
-
-    private void CompletionSound_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Delta < 0)
-        {
-            ViewModel?.CycleCompletionSound(true);
-            e.Handled = true;
-        }
-        else if (e.Delta > 0)
-        {
-            ViewModel?.CycleCompletionSound(false);
-            e.Handled = true;
-        }
-    }
-
-    private void ErrorSoundPopup_Closed(object? sender, EventArgs e)
-    {
-        _errorSoundClosedTimestamp = Environment.TickCount64;
-    }
-
-    private void ErrorSoundButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (ErrorSoundPopup.IsOpen || (Environment.TickCount64 - _errorSoundClosedTimestamp < 350))
-        {
-            ErrorSoundPopup.IsOpen = false;
-            _errorSoundClosedTimestamp = Environment.TickCount64;
-            e.Handled = true;
-        }
-    }
-
-    private void ErrorSoundButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (Environment.TickCount64 - _errorSoundClosedTimestamp < 350)
-            return;
-
-        ErrorSoundPopup.IsOpen = !ErrorSoundPopup.IsOpen;
-    }
-
-    private void ErrorSoundOption_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button btn)
-        {
-            var sound = btn.CommandParameter as string ?? btn.Tag as string;
-            if (!string.IsNullOrWhiteSpace(sound))
-            {
-                ViewModel?.SelectAndPreviewErrorSound(sound);
-            }
-        }
-        ErrorSoundPopup.IsOpen = false;
-    }
-
-    private void ErrorSound_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Down)
-        {
-            ViewModel?.CycleErrorSound(true);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Up)
-        {
-            ViewModel?.CycleErrorSound(false);
-            e.Handled = true;
-        }
-    }
-
-    private void ErrorSound_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-    {
-        if (e.Delta < 0)
-        {
-            ViewModel?.CycleErrorSound(true);
-            e.Handled = true;
-        }
-        else if (e.Delta > 0)
-        {
-            ViewModel?.CycleErrorSound(false);
-            e.Handled = true;
-        }
-    }
+    private void ErrorSound_SelectionCommitted(object? sender, EventArgs args) =>
+        ViewModel?.SelectAndPreviewErrorSound(ErrorSoundButton.SelectedValue as string);
 
     private void CompletionSoundVolumeSlider_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {

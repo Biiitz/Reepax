@@ -1,0 +1,39 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:models="clr-namespace:Reepax.Models"
+                    xmlns:converters="clr-namespace:Reepax.Converters">
+    <converters:DiagnosticTextConverter x:Key="DiagnosticTextConverter" />
+    <Style x:Key="DownloadStatusCellStyle" TargetType="Border">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="ToolTipService.ShowDuration" Value="30000" />
+        <Setter Property="ToolTipService.ShowsToolTipOnKeyboardFocus" Value="True" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Status}" Value="{x:Static models:DownloadStatus.Failed}">
+                <Setter Property="Focusable" Value="True" />
+                <Setter Property="AutomationProperties.HelpText" Value="{Binding StatusMessage, Converter={StaticResource DiagnosticTextConverter}}" />
+                <Setter Property="ToolTip">
+                    <Setter.Value>
+                        <ToolTip MaxWidth="560">
+                            <TextBlock Text="{Binding PlacementTarget.DataContext.StatusMessage, RelativeSource={RelativeSource AncestorType=ToolTip}, Converter={StaticResource DiagnosticTextConverter}}"
+                                       TextWrapping="Wrap" />
+                        </ToolTip>
+                    </Setter.Value>
+                </Setter>
+            </DataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Status}" Value="{x:Static models:DownloadStatus.Failed}" />
+                    <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True" />
+                </MultiDataTrigger.Conditions>
+                <Setter Property="Background" Value="{DynamicResource ChoiceHoverBrush}" />
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+                <MultiDataTrigger.Conditions>
+                    <Condition Binding="{Binding Status}" Value="{x:Static models:DownloadStatus.Failed}" />
+                    <Condition Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource Self}}" Value="True" />
+                </MultiDataTrigger.Conditions>
+                <Setter Property="Background" Value="{DynamicResource ChoiceHoverBrush}" />
+            </MultiDataTrigger>
+        </Style.Triggers>
+    </Style>
+</ResourceDictionary>

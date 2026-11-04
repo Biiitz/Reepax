@@ -84,6 +84,12 @@ public partial class BrowserWindow : Window
         Activate();
     }
 
+    internal void HideForResponseTransfer()
+    {
+        _revealTimer?.Stop();
+        Hide();
+    }
+
     private void BrowserWindow_StateChanged(object? sender, EventArgs e)
     {
         if (WindowState != WindowState.Minimized)
@@ -119,6 +125,7 @@ public partial class BrowserWindow : Window
         {
             var controller = new BrowserWindowController(_windowId, WebView);
             _controller = controller;
+            controller.ResponseTransferStarted += HideForResponseTransfer;
             controller.BlockedCountChanged += UpdateShieldBadge;
             await controller.InitializeAsync();
 

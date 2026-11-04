@@ -111,6 +111,13 @@ public sealed class RejectedDownloadFiles
             ((ulong)info.SizeHigh << 32) | info.SizeLow, info.Created, info.Written);
     }
 
+    internal static bool MatchesOpenFile(string path, SafeFileHandle handle)
+    {
+        var opened = ReadIdentity(handle);
+        var named = CaptureIdentity(path);
+        return opened != null && named != null && opened.Volume == named.Volume && opened.Index == named.Index;
+    }
+
     private static string NativePath(string path)
     {
         string full = Path.GetFullPath(path);
