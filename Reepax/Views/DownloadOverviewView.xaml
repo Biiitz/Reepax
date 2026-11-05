@@ -20,29 +20,31 @@
                 </Thumb.Template>
             </Thumb>
             <Border x:Name="HeaderFrame" Grid.Row="0" Height="41" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1">
-                <Grid Margin="12,0,8,0">
+                <Grid Margin="12,0,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{loc:Loc Overview_Title}" ToolTip="{loc:Loc Overview_Help}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
                     <TextBlock Grid.Column="1" Text="{Binding CompactSummary}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
-                    <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel x:Name="HeaderActions" Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Stretch">
                         <helpers:SingleChoiceDropdown x:Name="ScopeSelector" SelectedValue="{Binding Scope, Mode=TwoWay}"
-                            Style="{DynamicResource PopupButtonStyle}" Height="28" FontSize="12" Padding="10,0" BorderThickness="1" PopupPlacement="Top"
-                            AutomationProperties.Name="{loc:Loc Overview_Scope}" Margin="0,0,8,0">
+                            Style="{DynamicResource DockedToolbarButtonStyle}" Height="40" FontSize="12" Padding="10,0" BorderThickness="1,0,0,0" PopupPlacement="Top"
+                            AutomationProperties.Name="{loc:Loc Overview_Scope}">
                             <helpers:ChoiceOption Value="{x:Static models:DownloadOverviewScope.All}" Text="{loc:Loc Overview_All}" />
                             <helpers:ChoiceOption Value="{x:Static models:DownloadOverviewScope.Filtered}" Text="{loc:Loc Overview_Filtered}" />
                             <helpers:ChoiceOption Value="{x:Static models:DownloadOverviewScope.Selected}" Text="{loc:Loc Overview_Selected}" />
                         </helpers:SingleChoiceDropdown>
-                        <Button x:Name="MetricsButton" Width="28" Height="28" Padding="6" BorderThickness="1" Margin="0,0,8,0" VerticalAlignment="Center"
-                            Style="{DynamicResource PopupButtonStyle}" Click="OpenMetrics" ToolTip="{loc:Loc Overview_Customize}" AutomationProperties.Name="{loc:Loc Overview_Customize}">
-                            <Path Data="{DynamicResource IconSettings}" Fill="{DynamicResource TextSecondaryBrush}" Stretch="Uniform" Width="10" Height="10" />
-                        </Button>
-                        <Button x:Name="ExpandButton" Width="28" Height="28" Padding="6" BorderThickness="1" Margin="0,0,8,0" VerticalAlignment="Center" Style="{DynamicResource PopupButtonStyle}"
+                        <helpers:SingleChoiceDropdown x:Name="MetricsButton" Width="40" Height="40" Padding="6" BorderThickness="1,0,0,0" VerticalAlignment="Center"
+                            PopupPlacement="Top" Style="{DynamicResource DockedToolbarButtonStyle}" ToolTip="{loc:Loc Overview_Customize}" AutomationProperties.Name="{loc:Loc Overview_Customize}">
+                            <helpers:SingleChoiceDropdown.Content>
+                                <Path Data="{DynamicResource IconSettings}" Fill="{DynamicResource TextSecondaryBrush}" Stretch="Uniform" Width="10" Height="10" />
+                            </helpers:SingleChoiceDropdown.Content>
+                        </helpers:SingleChoiceDropdown>
+                        <Button x:Name="ExpandButton" Width="40" Height="40" Padding="6" BorderThickness="1,0,0,0" VerticalAlignment="Center" Style="{DynamicResource DockedToolbarButtonStyle}"
                             Command="{Binding ToggleExpandedCommand}" ToolTip="{loc:Loc Overview_Toggle}" AutomationProperties.Name="{loc:Loc Overview_Toggle}">
                             <Path helpers:ControlMotion.IsExpanded="{Binding IsExpanded}" Data="M 0 0 L 3.5 3.5 L 7 0 Z" Fill="{DynamicResource TextSecondaryBrush}" Stretch="Uniform" Width="10" Height="10" />
                         </Button>
-                        <Button x:Name="HideButton" Width="28" Height="28" Padding="6" BorderThickness="1" VerticalAlignment="Center" Style="{DynamicResource PopupButtonStyle}"
+                        <Button x:Name="HideButton" Width="40" Height="40" Padding="6" BorderThickness="1,0,0,0" VerticalAlignment="Center" Style="{DynamicResource DockedToolbarButtonStyle}"
                             Command="{Binding HideCommand}" ToolTip="{loc:Loc Overview_Hide}" AutomationProperties.Name="{loc:Loc Overview_Hide}">
                             <Path Data="{DynamicResource IconClose}" Fill="{DynamicResource TextSecondaryBrush}" Stretch="Uniform" Width="10" Height="10" />
                         </Button>
@@ -68,16 +70,31 @@
                                 <Setter Property="helpers:ModernScrollThumb.Framed" Value="True" />
                             </Style>
                         </ScrollViewer.Resources>
-                        <ItemsControl ItemsSource="{Binding VisibleMetrics}" Margin="12,8,12,8">
-                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl x:Name="MetricsItems" ItemsSource="{Binding VisibleMetrics}" Margin="12,8,12,8" SizeChanged="MetricGridSizeChanged">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="{Binding MetricColumnCount, RelativeSource={RelativeSource AncestorType=UserControl}}" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Height="26" Margin="0,0,24,0">
-                                        <TextBlock Text="{Binding Title, StringFormat='{}{0}:'}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13" MaxWidth="240"
-                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Title}" />
-                                        <TextBlock Text="{Binding Value}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="SemiBold" Margin="6,0,0,0" MaxWidth="260"
-                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Value}" />
-                                    </StackPanel>
+                                    <Thumb Height="28" Cursor="SizeAll" Focusable="True"
+                                        AutomationProperties.Name="{Binding Title}" DragStarted="MetricDragStarted" DragDelta="MetricDragDelta"
+                                        DragCompleted="MetricDragCompleted" PreviewKeyDown="MetricKeyDown">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Grid Background="Transparent">
+                                                    <Grid x:Name="MetricContent" Margin="0,0,20,0">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="3*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Title, StringFormat='{}{0}:'}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="13"
+                                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Value}" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="13" FontWeight="SemiBold" Margin="6,0,0,0"
+                                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Value}" ToolTipOpening="MetricValueToolTipOpening" />
+                                                    </Grid>
+                                                </Grid>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

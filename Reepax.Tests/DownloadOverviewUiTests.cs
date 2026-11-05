@@ -59,7 +59,19 @@ public partial class DialogUiTests
                 var (viewer, list) = DownloadListVirtualizationTests.CreateList(model.RootPackages, useFullTemplates: true);
                 Grid.SetRow(list, 0);
                 layout.Children.Add(list);
-                host.Content = layout;
+                var footerMarkup = new XElement(document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "BottomStatusBarBorder"));
+                foreach (string name in new[] { "Click", "PreviewMouseDown", "PreviewMouseUp" })
+                    footerMarkup.DescendantsAndSelf().Attributes(name).Remove();
+                DownloadListVirtualizationTests.SetNamespaces(footerMarkup, document.Root!);
+                var footer = (Border)XamlReader.Parse(footerMarkup.ToString());
+                Grid.SetRow(layout, 0);
+                Grid.SetRow(footer, 1);
+                var shell = new Grid();
+                shell.RowDefinitions.Add(new RowDefinition());
+                shell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                shell.Children.Add(layout);
+                shell.Children.Add(footer);
+                host.Content = shell;
                 host.Show();
                 PumpSettingsAnimations();
                 var overview = Descendants<DownloadOverviewView>(layout).Single();
@@ -75,22 +87,23 @@ public partial class DialogUiTests
                 Assert.Equal(new Thickness(0, 0, 0, 1), header.BorderThickness);
                 var actions = ((StackPanel)overview.FindName("HeaderActions")).Children.OfType<Button>().ToArray();
                 Assert.Equal(4, actions.Length);
-                Assert.All(actions, action => Assert.Equal(new Thickness(1), action.BorderThickness));
+                Assert.All(actions, action => Assert.Equal(new Thickness(1, 0, 0, 0), action.BorderThickness));
                 Assert.All(actions, action => Assert.Same(Application.Current.FindResource("BorderDarkBrush"), action.BorderBrush));
                 var bounds = actions.Select(button => button.TransformToAncestor(overview).TransformBounds(new Rect(button.RenderSize))).ToArray();
-                Assert.All(bounds, bound => Assert.Equal(28, bound.Height));
+                Assert.All(bounds, bound => Assert.Equal(40, bound.Height));
                 Assert.All(bounds, bound => Assert.Equal(bounds[0].Y, bound.Y));
                 double toolbarBottom = header.TransformToAncestor(overview).Transform(new Point(0, header.ActualHeight)).Y;
                 Assert.All(bounds, bound => Assert.InRange(Math.Abs(bound.Top + bound.Height / 2 - toolbarBottom / 2), 0, 0.51));
                 Assert.True(bounds[0].Left > overview.ActualWidth / 2);
-                for (int index = 1; index < bounds.Length; index++) Assert.Equal(8, bounds[index].Left - bounds[index - 1].Right);
+                for (int index = 1; index < bounds.Length; index++) Assert.Equal(0, bounds[index].Left - bounds[index - 1].Right);
                 foreach (var button in actions.Skip(1))
                 {
                     var icon = Descendants<System.Windows.Shapes.Path>(button).Single();
                     Assert.Equal(10, icon.Width);
                     Assert.Equal(10, icon.Height);
                     var drawing = icon.TransformToAncestor(button).TransformBounds(icon.RenderedGeometry.Bounds);
-                    Assert.InRange(Math.Abs(drawing.Left + drawing.Width / 2 - button.ActualWidth / 2), 0, 0.51);
+                    double faceCenter = (button.ActualWidth + button.BorderThickness.Left - button.BorderThickness.Right) / 2;
+                    Assert.InRange(Math.Abs(drawing.Left + drawing.Width / 2 - faceCenter), 0, 0.51);
                     Assert.InRange(Math.Abs(drawing.Top + drawing.Height / 2 - button.ActualHeight / 2), 0, 0.51);
                 }
                 var metricsScroll = (ScrollViewer)overview.FindName("MetricsScrollViewer");
@@ -105,7 +118,7 @@ public partial class DialogUiTests
                 Assert.All(labels, label => Assert.Equal(13, label.FontSize));
                 Assert.EndsWith(":", labels[0].Text);
                 Assert.Equal(labels[0].TransformToAncestor(firstMetric).Transform(new Point()).Y, labels[1].TransformToAncestor(firstMetric).Transform(new Point()).Y);
-                SaveOverviewPreview(layout, "Overview-" + theme);
+                SaveOverviewPreview(shell, "Overview-" + theme);
                 resize.RaiseEvent(new DragStartedEventArgs(0, 0) { RoutedEvent = Thumb.DragStartedEvent });
                 double grow = 224 - DownloadOverviewSettings.DefaultHeight;
                 resize.RaiseEvent(new DragDeltaEventArgs(0, -grow) { RoutedEvent = Thumb.DragDeltaEvent });
@@ -163,8 +176,10 @@ public partial class DialogUiTests
         });
     }
 
-    [Fact]
-    public void Overview_GearUpdatesMetricsAndLanguageAndClosesWithItsView()
+    [Theory]
+    [InlineData(ThemeCatalog.DefaultId)]
+    [InlineData(ThemeCatalog.MacOSId)]
+    public void Overview_GearUpdatesMetricsAndLanguageAndClosesWithItsView(string theme)
     {
         RunInSta(() =>
         {
@@ -172,6 +187,7 @@ public partial class DialogUiTests
             var settings = SettingsService.Instance.Settings;
             var previousPreferences = settings.DownloadOverview;
             var previousLanguage = LocalizationService.Instance.CurrentLanguage;
+            var previousTheme = ThemeService.Instance.CurrentTheme.Id;
             var shutdown = Application.Current.ShutdownMode;
             settings.DownloadOverview = new();
             Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -182,15 +198,21 @@ public partial class DialogUiTests
             Popup? popup = null;
             try
             {
+                ThemeService.Instance.SelectTheme(theme, save: false);
                 model.SelectedLanguage = "en";
                 Assert.All(model.Overview.Metrics, metric => Assert.Equal(Strings_en.Map["Overview_" + metric.Id], metric.Title));
                 host.Show();
                 PumpSettingsAnimations();
                 var gear = (Button)view.FindName("MetricsButton");
+                var selector = Assert.IsType<SingleChoiceDropdown>(gear);
+                int opened = 0;
+                selector.DropdownPopup.Opened += (_, _) => opened++;
                 PressOverviewButton(gear);
                 popup = (Popup)typeof(DownloadOverviewView).GetField("_metricsPopup", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(view)!;
                 PumpSettingsAnimations();
                 Assert.True(popup.IsOpen);
+                Assert.True(selector.IsDropdownOpen);
+                Assert.Same(Application.Current.FindResource("TextSecondaryBrush"), Descendants<System.Windows.Shapes.Path>(gear).Single().Fill);
                 Assert.IsType<MorphingPopupBorder>(popup.Child);
                 var boxes = Descendants<CheckBox>(popup.Child).ToArray();
                 Assert.Equal(model.Overview.Metrics.Count + 1, boxes.Length);
@@ -220,6 +242,19 @@ public partial class DialogUiTests
                 var reset = Descendants<Button>(popup.Child).Single(button => Equals(button.Content, Loc.Get("Overview_Reset")));
                 PressOverviewButton(reset);
                 Assert.Equal(DownloadOverviewSettings.DefaultMetrics, model.Overview.VisibleMetrics.Select(metric => metric.Id));
+                popup.IsOpen = false;
+                for (int repeat = 0; repeat < 12; repeat++) PressOverviewButton(gear);
+                Assert.False(popup.IsOpen);
+                Assert.Same(popup, selector.DropdownPopup);
+                Assert.False(selector.IsDropdownOpen);
+                Assert.Equal(1, opened);
+                Assert.Same(Application.Current.FindResource("TextSecondaryBrush"), Descendants<System.Windows.Shapes.Path>(gear).Single().Fill);
+                PumpSettingsAnimations(370);
+                PressOverviewButton(gear);
+                PumpSettingsAnimations();
+                Assert.True(popup.IsOpen);
+                Assert.True(selector.IsDropdownOpen);
+                Assert.Equal(2, opened);
                 view.Visibility = Visibility.Collapsed;
                 PumpSettingsAnimations();
                 Assert.False(popup.IsOpen);
@@ -230,6 +265,7 @@ public partial class DialogUiTests
                 if (popup != null) popup.IsOpen = false;
                 host.Close();
                 model.SelectedLanguage = previousLanguage;
+                ThemeService.Instance.SelectTheme(previousTheme, save: false);
                 settings.DownloadOverview = previousPreferences;
                 Application.Current.ShutdownMode = shutdown;
             }

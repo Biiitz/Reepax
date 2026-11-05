@@ -24,6 +24,9 @@ public sealed class ChoiceOption : DependencyObject
 [ContentProperty(nameof(Options))]
 public sealed class SingleChoiceDropdown : Button
 {
+    private static readonly DependencyProperty ObservedPopupOpenProperty = DependencyProperty.Register(
+        "ObservedPopupOpen", typeof(bool), typeof(SingleChoiceDropdown), new PropertyMetadata(false,
+            (owner, args) => ((SingleChoiceDropdown)owner).PopupOpenChanged((bool)args.NewValue)));
     private static readonly DependencyPropertyKey IsDropdownOpenPropertyKey = DependencyProperty.RegisterReadOnly(
         nameof(IsDropdownOpen), typeof(bool), typeof(SingleChoiceDropdown), new PropertyMetadata(false));
     public static readonly DependencyProperty IsDropdownOpenProperty = IsDropdownOpenPropertyKey.DependencyProperty;
@@ -50,7 +53,7 @@ public sealed class SingleChoiceDropdown : Button
         set
         {
             DropdownPopup.Placement = value;
-            DropdownPopup.VerticalOffset = value == PlacementMode.Top ? -4 : 4;
+            DropdownPopup.VerticalOffset = 0;
         }
     }
     public event EventHandler? SelectionCommitted;
@@ -59,7 +62,6 @@ public sealed class SingleChoiceDropdown : Button
     private readonly StackPanel _optionsPanel = new();
     private readonly List<(object Item, object? Value, Path Check)> _entries = new();
     private long _closedAt = long.MinValue / 2;
-    private bool _closeRequested;
 
     public SingleChoiceDropdown()
     {
@@ -80,12 +82,11 @@ public sealed class SingleChoiceDropdown : Button
         var border = new MorphingPopupBorder { Child = new ScrollViewer { Content = _optionsPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, MaxHeight = 360 } };
         border.Style = (Style)FindResource("SettingsDropdownPopupBorderStyle");
         border.SetBinding(System.Windows.Documents.TextElement.FontFamilyProperty, new Binding(nameof(FontFamily)) { Source = this });
-        DropdownPopup = new Popup { PlacementTarget = this, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, PopupAnimation = PopupAnimation.Fade, VerticalOffset = 4, Child = border };
+        DropdownPopup = new Popup { PlacementTarget = this, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, PopupAnimation = PopupAnimation.Fade, Child = border };
         PopupLayout.SetAlignRight(DropdownPopup, true);
         PopupMorph.SetIsEnabled(DropdownPopup, true);
         AddLogicalChild(DropdownPopup);
-        DropdownPopup.Opened += (_, _) => { _closeRequested = false; SetValue(IsDropdownOpenPropertyKey, true); ControlMotion.SetIsExpanded(_arrow, true); };
-        DropdownPopup.Closed += (_, _) => { if (!_closeRequested) _closedAt = Environment.TickCount64; SetValue(IsDropdownOpenPropertyKey, false); ControlMotion.SetIsExpanded(_arrow, false); };
+        SetBinding(ObservedPopupOpenProperty, new Binding(nameof(Popup.IsOpen)) { Source = DropdownPopup, Mode = BindingMode.OneWay });
         Options.CollectionChanged += (_, _) => RebuildOptions();
         Click += (_, args) => { if (ReferenceEquals(args.OriginalSource, this)) ToggleDropdown(); };
         Loaded += (_, _) => RebuildOptions();
@@ -175,12 +176,19 @@ public sealed class SingleChoiceDropdown : Button
         if (DropdownPopup.IsOpen)
         {
             // Measure the click guard from the request, not the end of WPF's fade-out.
-            _closeRequested = true;
             _closedAt = Environment.TickCount64;
         }
         DropdownPopup.IsOpen = false;
         SetValue(IsDropdownOpenPropertyKey, false);
         ControlMotion.SetIsExpanded(_arrow, false);
+    }
+
+    private void PopupOpenChanged(bool isOpen)
+    {
+        // Observe the close request before the native fade completes or another click arrives.
+        if (!isOpen) _closedAt = Environment.TickCount64;
+        SetValue(IsDropdownOpenPropertyKey, isOpen);
+        ControlMotion.SetIsExpanded(_arrow, isOpen);
     }
 
     protected override void OnPreviewMouseDown(MouseButtonEventArgs args)

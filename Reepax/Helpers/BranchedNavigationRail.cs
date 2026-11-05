@@ -60,8 +60,8 @@ public sealed class BranchedNavigationRail : FrameworkElement
         {
             _centers = centers.ToArray();
             var track = new GeometryGroup();
-            // Share one continuous trunk and end it at the final bend's tangent.
-            track.Children.Add(new LineGeometry(new Point(12, 4), new Point(12, Math.Max(4, _centers[^1] - 6))));
+            // Share one continuous trunk through every branch.
+            track.Children.Add(new LineGeometry(new Point(12, 4), new Point(12, _centers[^1])));
             foreach (double center in _centers) track.Children.Add(CreateRoute(center, 20, includeTrunk: false));
             track.Freeze();
             _track = track;
@@ -108,16 +108,12 @@ public sealed class BranchedNavigationRail : FrameworkElement
 
     private static Geometry CreateRoute(double center, double reach, bool includeTrunk = true)
     {
-        double radius = Math.Min(Math.Min(6, reach), center - 4);
         var route = new StreamGeometry();
         using (var context = route.Open())
         {
-            context.BeginFigure(new Point(12, includeTrunk ? 4 : center - radius), isFilled: false, isClosed: false);
-            if (includeTrunk) context.LineTo(new Point(12, center - radius), isStroked: true, isSmoothJoin: false);
-            if (radius > 0)
-                context.ArcTo(new Point(12 + radius, center), new Size(radius, radius), 0, false,
-                    SweepDirection.Counterclockwise, isStroked: true, isSmoothJoin: true);
-            context.LineTo(new Point(12 + reach, center), isStroked: true, isSmoothJoin: true);
+            context.BeginFigure(new Point(12, includeTrunk ? 4 : center), isFilled: false, isClosed: false);
+            if (includeTrunk) context.LineTo(new Point(12, center), isStroked: true, isSmoothJoin: false);
+            context.LineTo(new Point(12 + reach, center), isStroked: true, isSmoothJoin: false);
         }
         route.Freeze();
         return route;
@@ -127,7 +123,7 @@ public sealed class BranchedNavigationRail : FrameworkElement
     {
         base.OnRender(context);
         context.PushOpacity(0.45);
-        context.DrawGeometry(null, new Pen(TrackBrush, 1.5) { LineJoin = PenLineJoin.Round }, _track);
+        context.DrawGeometry(null, new Pen(TrackBrush, 1.5) { LineJoin = PenLineJoin.Miter }, _track);
         context.Pop();
         if (ActiveIndex < 0) return;
         if (_routeCenter != CurrentCenter || _routeReach != BranchReach)
@@ -136,8 +132,8 @@ public sealed class BranchedNavigationRail : FrameworkElement
             _routeReach = BranchReach;
             _route = CreateRoute(_routeCenter, _routeReach);
         }
-        var activePen = new Pen(ActiveBrush, 1.5) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        var activePen = new Pen(ActiveBrush, 1.5) { LineJoin = PenLineJoin.Miter };
         context.DrawGeometry(null, activePen, _route);
-        context.DrawEllipse(ActiveBrush, null, new Point(12 + BranchReach, CurrentCenter), 2, 2);
+        context.DrawRectangle(ActiveBrush, null, new Rect(10 + BranchReach, CurrentCenter - 2, 4, 4));
     }
 }

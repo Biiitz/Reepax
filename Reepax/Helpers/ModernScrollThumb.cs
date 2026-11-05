@@ -161,7 +161,7 @@ public sealed class ModernScrollThumb : Thumb
         var bounds = vertical ? new Rect((cross - thickness) / 2, 2, thickness, length - 4)
             : new Rect(2, (cross - thickness) / 2, length - 4, thickness);
         context.PushOpacity(IsEnabled ? 0.5 + emphasis * 0.4 : 0.25);
-        context.DrawRoundedRectangle(Foreground, null, bounds, thickness / 2, thickness / 2);
+        context.DrawRectangle(Foreground, null, bounds);
         context.Pop();
     }
 }

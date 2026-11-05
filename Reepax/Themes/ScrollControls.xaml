@@ -26,7 +26,7 @@
                                 <Track.Thumb><helpers:ModernScrollThumb MinHeight="28" Foreground="{DynamicResource ScrollThumbBrush}" /></Track.Thumb>
                                 <Track.IncreaseRepeatButton><RepeatButton Style="{StaticResource ScrollBarTrackButton}" Command="{x:Static ScrollBar.PageDownCommand}" /></Track.IncreaseRepeatButton>
                             </Track>
-                            <Border x:Name="InactiveThumb" Width="4.5" HorizontalAlignment="Center" CornerRadius="2.25" Margin="0,4"
+                            <Border x:Name="InactiveThumb" Width="4.5" HorizontalAlignment="Center" CornerRadius="0" Margin="0,4"
                                 Background="{DynamicResource ScrollThumbBrush}" Opacity="0.3" Visibility="Collapsed" IsHitTestVisible="False" />
                         </Grid>
                     </Border>

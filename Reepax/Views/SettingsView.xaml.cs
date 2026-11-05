@@ -35,6 +35,12 @@ public partial class SettingsView : UserControl
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
 
+    private void SettingsContentScrollChanged(object sender, ScrollChangedEventArgs args)
+    {
+        if (ReferenceEquals(args.OriginalSource, SettingsContentScrollViewer) &&
+            (args.VerticalChange != 0 || args.HorizontalChange != 0)) CloseSettingsDropdowns();
+    }
+
     private void SettingsView_Loaded(object sender, RoutedEventArgs e)
     {
         HookViewModel();

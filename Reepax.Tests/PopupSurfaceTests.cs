@@ -15,7 +15,7 @@ public partial class DialogUiTests
     [Theory]
     [InlineData(ThemeCatalog.DefaultId)]
     [InlineData(ThemeCatalog.MacOSId)]
-    public void PopupSurfaces_KeepTransparentCornersAndUseLayeredWindows(string theme)
+    public void PopupSurfaces_KeepSquareEdgesAndUseLayeredWindows(string theme)
     {
         RunInSta(() =>
         {
@@ -74,6 +74,8 @@ public partial class DialogUiTests
         while (surface?.HasAnimatedProperties == true && deadline.Elapsed < TimeSpan.FromSeconds(3))
             PumpSettingsAnimations(20);
         if (surface != null) Assert.False(surface.HasAnimatedProperties);
+        Assert.NotNull(surface);
+        Assert.Equal(new CornerRadius(0), surface!.CornerRadius);
         root.UpdateLayout();
         int width = (int)Math.Ceiling(root.ActualWidth), height = (int)Math.Ceiling(root.ActualHeight);
         Assert.True(width > 16 && height > 16);
@@ -81,10 +83,13 @@ public partial class DialogUiTests
         image.Render(root);
         var pixels = new byte[width * height * 4];
         image.CopyPixels(pixels, width * 4, 0);
-        foreach (int offset in new[] { 0, (width - 1) * 4, (height - 1) * width * 4, (height * width - 1) * 4 })
-            Assert.Equal(0, pixels[offset + 3]);
+        Rect surfaceBounds = surface.TransformToAncestor(root).TransformBounds(new Rect(surface.RenderSize));
+        foreach (var point in new[] { surfaceBounds.TopLeft + new Vector(1, 1), surfaceBounds.TopRight + new Vector(-2, 1),
+            surfaceBounds.BottomLeft + new Vector(1, -2), surfaceBounds.BottomRight + new Vector(-2, -2) })
+            Assert.True(pixels[((int)point.Y * width + (int)point.X) * 4 + 3] > 0, "The popup surface must fill every square corner.");
         var center = surface == null ? new Point(width / 2, height / 2) :
             surface.TransformToAncestor(root).Transform(new Point(surface.ActualWidth / 2, surface.ActualHeight / 2));
         Assert.True(pixels[((int)center.Y * width + (int)center.X) * 4 + 3] > 0);
+        SaveOverviewPreview(root, $"Square-Popup-{content.GetType().Name}-{ThemeService.Instance.CurrentTheme.Id}");
     }
 }

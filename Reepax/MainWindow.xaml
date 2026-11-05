@@ -39,6 +39,13 @@
             <Setter Property="Visibility" Value="{Binding DataContext.ShowPixelProgressBars, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}" />
         </Style>
         <ContextMenu x:Key="ColumnConfigurationMenu" x:Shared="False">
+            <ContextMenu.Template>
+                <ControlTemplate TargetType="ContextMenu">
+                    <helpers:MorphingPopupBorder Style="{StaticResource AnchoredPopupSurfaceStyle}" Padding="{TemplateBinding Padding}">
+                        <StackPanel IsItemsHost="True" />
+                    </helpers:MorphingPopupBorder>
+                </ControlTemplate>
+            </ContextMenu.Template>
             <MenuItem Header="{loc:Loc Col_Name}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
             <MenuItem Header="{loc:Loc Col_Hoster}" IsCheckable="True" IsChecked="{Binding ShowColHoster, Mode=TwoWay}" StaysOpenOnClick="True" />
             <MenuItem Header="{loc:Loc Col_SavePath}" IsCheckable="True" IsChecked="{Binding ShowColSavePath, Mode=TwoWay}" StaysOpenOnClick="True" />
@@ -255,9 +262,6 @@
                             <ContentPresenter x:Name="ButtonContent" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="ButtonContent" Property="Opacity" Value="0.35" />
                                 <Setter Property="Cursor" Value="Arrow" />
@@ -389,7 +393,7 @@
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
                                         <Grid Background="Transparent">
-                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="3.5" 
+                                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="0"
                                                     Background="{DynamicResource BgInputBrush}" 
                                                     BorderBrush="{DynamicResource BorderDarkBrush}" 
                                                     BorderThickness="1"
@@ -562,7 +566,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{Binding Status, Converter={StaticResource StatusBrushConverter}}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <Rectangle Grid.Column="0" Width="6" Height="6" Fill="{Binding Status, Converter={StaticResource StatusBrushConverter}}" Margin="0,0,5,0" VerticalAlignment="Center" />
                             <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" FontSize="10" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -663,7 +667,7 @@
                   Panel.ZIndex="100"
                   Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
                 <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
-                <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="0" VerticalAlignment="Center" />
             </Grid>
 
             <!-- Bottom Drop Indicator (Insert After / Below Item) -->
@@ -675,7 +679,7 @@
                   Panel.ZIndex="100"
                   Visibility="{Binding IsDropAfter, Converter={StaticResource BoolToVisConverter}}">
                 <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
-                <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="0" VerticalAlignment="Center" />
             </Grid>
         </Grid>
 
@@ -1138,7 +1142,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{Binding Status, Converter={StaticResource StatusBrushConverter}}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                <Rectangle Grid.Column="0" Width="6" Height="6" Fill="{Binding Status, Converter={StaticResource StatusBrushConverter}}" Margin="0,0,5,0" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" FontSize="10" Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
@@ -1275,7 +1279,7 @@
                       Panel.ZIndex="100"
                       Visibility="{Binding IsDropBefore, Converter={StaticResource BoolToVisConverter}}">
                     <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
-                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="0" VerticalAlignment="Center" />
                 </Grid>
 
             </Grid>
@@ -1399,11 +1403,6 @@
                                     </Grid>
                                     <ControlTemplate.Triggers>
                                         <!-- Inactive Tab Hover -->
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                                            <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                            <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
-                                        </Trigger>
 
                                         <!-- Active State (Downloads selected) -->
                                         <DataTrigger Binding="{Binding SelectedMainTab}" Value="Downloads">
@@ -1455,11 +1454,6 @@
                                     </Grid>
                                     <ControlTemplate.Triggers>
                                         <!-- Inactive Tab Hover -->
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="TabBg" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                                            <Setter TargetName="TabText" Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                                            <Setter TargetName="TabIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
-                                        </Trigger>
 
                                         <!-- Active State (Settings selected) -->
                                         <DataTrigger Binding="{Binding SelectedMainTab}" Value="Settings">
@@ -1517,10 +1511,6 @@
                                                VerticalAlignment="Center" />
                                 </Border>
                                 <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="BtnText" Property="TextDecorations" Value="Underline" />
-                                        <Setter TargetName="BtnText" Property="Foreground" Value="{DynamicResource DangerSoftBrush}" />
-                                    </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
@@ -1595,9 +1585,11 @@
                                         <Path.Style>
                                             <Style TargetType="Path">
                                                 <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                                <Setter Property="Opacity" Value="{DynamicResource InactiveToolbarIconOpacity}" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding EnableClipboardMonitor}" Value="True">
                                                         <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                        <Setter Property="Opacity" Value="1" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -1613,9 +1605,11 @@
                                             <Path.Style>
                                                 <Style TargetType="Path">
                                                     <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                                <Setter Property="Opacity" Value="{DynamicResource InactiveToolbarIconOpacity}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsPostDownloadActionActive}" Value="True">
                                                             <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                        <Setter Property="Opacity" Value="1" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -1694,10 +1688,6 @@
                                                        VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="BtnText" Property="TextDecorations" Value="Underline" />
-                                                <Setter TargetName="BtnText" Property="Foreground" Value="{DynamicResource DangerSoftBrush}" />
-                                            </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Button.Template>
@@ -1747,10 +1737,6 @@
                                             <Path x:Name="BtnIcon" Data="{StaticResource IconSettings}" Fill="{DynamicResource TextSecondaryBrush}" Width="10" Height="10" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
                                         <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                                <Setter TargetName="BtnIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
-                                            </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Button.Template>
@@ -2108,7 +2094,7 @@
                                         HorizontalAlignment="Left" 
                                         VerticalAlignment="Stretch"
                                         Background="{DynamicResource AccentBlueBrush}" 
-                                        CornerRadius="1"
+                                        CornerRadius="0"
                                         Visibility="Collapsed" 
                                         Panel.ZIndex="100"
                                         IsHitTestVisible="False">
@@ -2145,7 +2131,7 @@
                                       IsHitTestVisible="False" Panel.ZIndex="100"
                                       Visibility="{Binding HasPackageDropAfter, Converter={StaticResource BoolToVisConverter}}">
                                     <Border Height="4" Background="{DynamicResource InfoTrackBrush}" CornerRadius="{DynamicResource SmallCornerRadius}" />
-                                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="1" VerticalAlignment="Center" />
+                                    <Border Height="2" Background="{DynamicResource AccentBlueBrush}" CornerRadius="0" VerticalAlignment="Center" />
                                 </Grid>
                             </Grid>
                         </DataTemplate>
@@ -2254,14 +2240,14 @@
                             <!-- Progress Bar -->
                             <Border Height="3"
                                     Background="{DynamicResource BgCardAltBrush}"
-                                    CornerRadius="1.5"
+                                    CornerRadius="0"
                                     Width="300"
                                     ClipToBounds="True"
                                     Margin="0,0,0,12">
                                 <Grid>
                                     <!-- Progress Fill -->
                                     <Border x:Name="StartupProgressFill"
-                                            CornerRadius="1.5"
+                                            CornerRadius="0"
                                             Background="{DynamicResource AccentBlueBrush}">
                                         <Border.RenderTransform>
                                             <ScaleTransform x:Name="StartupProgressScale" ScaleX="0" />
@@ -2300,7 +2286,7 @@
 
 
         <!-- ================= BOTTOM ACTION & STATUS BAR ================= -->
-        <Border x:Name="BottomStatusBarBorder" Grid.Row="2" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,1,0,0" Padding="12,6">
+        <Border x:Name="BottomStatusBarBorder" Grid.Row="2" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,1,0,0" Padding="0" Height="42">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -2308,52 +2294,35 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <!-- Left Section: 'Add New Links' Button + Live Disk Space Box -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="AddLinksButton" Click="AddLinks_Click"
-                            Height="28" Padding="14,0" Margin="0,0,8,0"
-                            Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Stretch">
+                    <Button Style="{DynamicResource DockedToolbarButtonStyle}" x:Name="AddLinksButton" Click="AddLinks_Click"
+                            Height="41" Padding="14,0" Margin="0"
+                            Background="{DynamicResource BgHeaderBrush}"
+                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="0,0,1,0"
                             Cursor="Hand"
                             SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_AddLinks_ToolTip}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Border" 
-                                        Background="{TemplateBinding Background}" 
-                                        BorderBrush="{TemplateBinding BorderBrush}" 
-                                        BorderThickness="{TemplateBinding BorderThickness}" 
-                                        CornerRadius="{DynamicResource CompactCornerRadius}"
-                                        Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Path Data="{StaticResource IconPlus}" Fill="{DynamicResource AccentBlueBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,7,0" />
                             <TextBlock Text="{loc:Loc StatusBar_AddLinks_Text}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
 
-                    <!-- Live Disk Space Box -->
-                    <Border Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
-                            CornerRadius="{DynamicResource CompactCornerRadius}"
-                            Padding="10,0" 
-                            Height="28" 
+                    <!-- Disk space -->
+                    <Border x:Name="DownloadSpaceInfo" Background="{DynamicResource BgHeaderBrush}"
+                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="0,0,1,0"
+                            CornerRadius="0"
+                            Padding="10,0"
+                            Height="41"
                             VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Path Data="{StaticResource IconHardDrive}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
                             <TextBlock Text="{Binding FreeDiskSpaceText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
 
                             <!-- Warning Badge if requirement exceeds free disk space -->
-                            <Border Background="{DynamicResource DangerSurfaceBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="5,1" Margin="8,0,0,0"
+                            <Border Background="{DynamicResource DangerSurfaceBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="0" Padding="5,1" Margin="8,0,0,0"
                                     Visibility="{Binding IsDiskSpaceWarning, Converter={StaticResource BoolToVisConverter}}"
                                     ToolTip="{Binding DiskSpaceWarningMessage}">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -2366,39 +2335,27 @@
                 </StackPanel>
 
                 <!-- Right Section: Extensions folder + Settings Button + Popup -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Stretch">
                     <!-- Open extensions folder -->
-                    <Button x:Name="OpenExtensionsFolderButton"
+                    <Button Style="{DynamicResource DockedToolbarButtonStyle}" x:Name="OpenExtensionsFolderButton"
                             Command="{Binding OpenExtensionsFolderCommand}"
-                            Width="32" Height="28" Padding="0" Margin="0,0,8,0"
-                            Background="{DynamicResource BgCardAltBrush}"
+                            Width="40" Height="41" Padding="0" Margin="0"
+                            Background="{DynamicResource BgHeaderBrush}"
                             BorderBrush="{DynamicResource BorderDarkBrush}"
-                            BorderThickness="1"
+                            BorderThickness="0,0,1,0"
                             Cursor="Hand"
                             SnapsToDevicePixels="True"
                             ToolTip="{loc:Loc StatusBar_OpenExtensionsFolder_ToolTip}">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Border"
-                                        Background="{TemplateBinding Background}"
-                                        BorderBrush="{TemplateBinding BorderBrush}"
-                                        BorderThickness="{TemplateBinding BorderThickness}"
-                                        CornerRadius="{DynamicResource CompactCornerRadius}"
-                                        Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                            </ControlTemplate>
-                        </Button.Template>
                         <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextSecondaryBrush}"
                               Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center" />
                     </Button>
 
-                    <Button x:Name="QuickSettingsButton" 
-                            Height="28"
-                            Padding="10,0" 
-                            Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
+                    <Button Style="{DynamicResource DockedToolbarButtonStyle}" x:Name="QuickSettingsButton"
+                            Height="41"
+                            Padding="10,0"
+                            Background="{DynamicResource BgHeaderBrush}"
+                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="0"
                             Margin="0"
                             Cursor="Hand"
                             SnapsToDevicePixels="True"
@@ -2406,18 +2363,6 @@
                             PreviewMouseDown="QuickSettingsButton_PreviewMouseDown"
                             PreviewMouseUp="QuickSettingsButton_PreviewMouseUp"
                             Click="QuickSettingsButton_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border x:Name="Border" 
-                                        Background="{TemplateBinding Background}" 
-                                        BorderBrush="{TemplateBinding BorderBrush}" 
-                                        BorderThickness="{TemplateBinding BorderThickness}" 
-                                        CornerRadius="{DynamicResource CompactCornerRadius}"
-                                        Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                            </ControlTemplate>
-                        </Button.Template>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Path Data="{StaticResource IconSliders}" Fill="{DynamicResource TextSecondaryBrush}" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,5,0" />
                             <Path helpers:ControlMotion.IsExpanded="{Binding IsOpen, ElementName=QuickSettingsPopup}" Data="M 0,3.5 L 3.5,0 L 7,3.5" Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" Width="7" Height="4" Stretch="Uniform" VerticalAlignment="Center" />
@@ -2429,10 +2374,10 @@
                                                   PlacementTarget="{Binding ElementName=QuickSettingsButton}" />
                 </StackPanel>
 
-                <!-- Center Section: Search Bar & Status Filter Dropdown Popup (fills remaining space with equal margins) -->
+                <!-- Search and status filter -->
                 <Grid x:Name="SearchFilterBarContainer" Grid.Column="1"
-                      Margin="8,0" 
-                      VerticalAlignment="Center"
+                      Margin="0"
+                      VerticalAlignment="Stretch"
                       SnapsToDevicePixels="True"
                       UseLayoutRounding="True">
                     <Grid.ColumnDefinitions>
@@ -2441,12 +2386,12 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Search Input Box (stretches to fill remaining space) -->
-                    <Border Grid.Column="0"
-                            Background="{DynamicResource BgCardAltBrush}" 
-                            BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="1" 
-                            CornerRadius="{DynamicResource CompactCornerRadius}"
-                            Height="28" 
+                    <Border x:Name="DownloadSearchBorder" Grid.Column="0"
+                            Background="{DynamicResource BgHeaderBrush}"
+                            BorderBrush="{DynamicResource BorderDarkBrush}"
+                            BorderThickness="0,0,1,0"
+                            CornerRadius="0"
+                            Height="41"
                             MinWidth="120"
                             VerticalAlignment="Center">
                         <Grid>
@@ -2456,60 +2401,57 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <Path Grid.Column="0" 
-                                  Data="{StaticResource IconSearch}" 
-                                  Fill="{DynamicResource TextSecondaryBrush}" 
-                                  Width="12" Height="12" 
-                                  Stretch="Uniform" 
-                                  VerticalAlignment="Center" 
+                            <Path Grid.Column="0"
+                                  Data="{StaticResource IconSearch}"
+                                  Fill="{DynamicResource TextSecondaryBrush}"
+                                  Width="12" Height="12"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"
                                   Margin="9,0,6,0" />
 
                             <Grid Grid.Column="1" VerticalAlignment="Center">
                                 <!-- Placeholder Watermark -->
-                                <TextBlock Text="{loc:Loc Filter_Search_Placeholder}" 
-                                           Foreground="{DynamicResource TextSecondaryBrush}" 
-                                           FontSize="11.5" 
-                                           VerticalAlignment="Center" 
+                                <TextBlock Text="{loc:Loc Filter_Search_Placeholder}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11.5"
+                                           VerticalAlignment="Center"
                                            Margin="2,0,0,0"
                                            IsHitTestVisible="False"
                                            Visibility="{Binding HasSearchFilterText, Converter={StaticResource InverseBoolToVisConverter}}" />
 
                                 <!-- Search Text Box -->
                                 <TextBox x:Name="BottomSearchFilterBox"
-                                         Text="{Binding SearchFilterText, UpdateSourceTrigger=PropertyChanged}" 
-                                         Background="Transparent" 
-                                         Foreground="{DynamicResource TextPrimaryBrush}" 
-                                         CaretBrush="{DynamicResource TextPrimaryBrush}" 
-                                         BorderThickness="0" 
-                                         FontSize="11.5" 
-                                         VerticalAlignment="Center" 
+                                         Text="{Binding SearchFilterText, UpdateSourceTrigger=PropertyChanged}"
+                                         Background="Transparent"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         CaretBrush="{DynamicResource TextPrimaryBrush}"
+                                         BorderThickness="0"
+                                         FontSize="11.5"
+                                         VerticalAlignment="Center"
                                          Padding="2,0" />
                             </Grid>
 
                             <!-- Clear Button -->
-                            <Button Grid.Column="2" 
+                            <Button Grid.Column="2"
                                     Command="{Binding ClearSearchFilterCommand}"
-                                    Focusable="False" 
-                                    Background="Transparent" 
-                                    BorderThickness="0" 
-                                    Padding="0" 
+                                    Focusable="False"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
                                     Margin="0,0,6,0"
-                                    Cursor="Hand" 
+                                    Cursor="Hand"
                                     VerticalAlignment="Center"
                                     Visibility="{Binding HasSearchFilterText, Converter={StaticResource BoolToVisConverter}}"
                                     ToolTip="{loc:Loc Filter_Clear_ToolTip}">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border Background="Transparent" Padding="2">
-                                            <Path Data="{StaticResource IconClose}" 
-                                                  Fill="{DynamicResource TextSecondaryBrush}" 
-                                                  Width="10" Height="10" 
+                                            <Path Data="{StaticResource IconClose}"
+                                                  Fill="{DynamicResource TextSecondaryBrush}"
+                                                  Width="10" Height="10"
                                                   Stretch="Uniform" />
                                         </Border>
                                         <ControlTemplate.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Opacity" Value="0.75" />
-                                            </Trigger>
                                         </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Button.Template>
@@ -2518,25 +2460,9 @@
                     </Border>
 
                     <!-- Compact Status Filter Button -->
-                    <helpers:SingleChoiceDropdown x:Name="StatusFilterButton" SelectedValue="{Binding SelectedStatusFilter, Mode=TwoWay}"
-                        Grid.Column="1" PopupPlacement="Top" PopupVerticalOffset="-10" Height="28" Padding="10,0" Background="{DynamicResource BgCardAltBrush}"
-                        BorderThickness="1" Margin="8,0,0,0" Cursor="Hand" SnapsToDevicePixels="True">
-                        <helpers:SingleChoiceDropdown.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
-                                <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{DynamicResource CompactCornerRadius}" Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                            </Border>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </helpers:SingleChoiceDropdown.Style>
+                    <helpers:SingleChoiceDropdown Style="{DynamicResource DockedToolbarButtonStyle}" x:Name="StatusFilterButton" SelectedValue="{Binding SelectedStatusFilter, Mode=TwoWay}"
+                        Grid.Column="1" PopupPlacement="Top" PopupVerticalOffset="0" Height="41" Padding="10,0" Background="{DynamicResource BgHeaderBrush}"
+                        BorderThickness="0,0,1,0" Margin="0" Cursor="Hand" SnapsToDevicePixels="True">
                         <helpers:SingleChoiceDropdown.Content>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <StackPanel.Style>

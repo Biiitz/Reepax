@@ -36,11 +36,14 @@ public partial class DialogUiTests
                 { Source = new Uri("pack://application:,,,/Reepax;component/Themes/SettingsControls.xaml") });
             var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax", "MainWindow.xaml"));
             XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+            var toolbarStyle = new XElement(document.Descendants().Single(node => (string?)node.Attribute(x + "Key") == "ToolbarSquareButtonStyle"));
+            DownloadListVirtualizationTests.SetNamespaces(toolbarStyle, document.Root!);
+            panel.Resources.Add("ToolbarSquareButtonStyle", (Style)XamlReader.Parse(toolbarStyle.ToString()));
             var footer = new XElement(document.Descendants().Single(node => (string?)node.Attribute(x + "Name") == "StatusFilterButton"));
             footer.SetAttributeValue("SelectedValue", "{Binding SelectedStatusFilter, Mode=OneWay}");
             DownloadListVirtualizationTests.SetNamespaces(footer, document.Root!);
             panel.Children.Add((Button)XamlReader.Parse(footer.ToString()));
-            foreach (string key in new[] { "ModernButtonStyle", "PopupButtonStyle", "AccentButtonStyle", "RowActionButtonStyle",
+            foreach (string key in new[] { "ModernButtonStyle", "PopupButtonStyle", "DockedToolbarButtonStyle", "ToolbarSquareButtonStyle", "AccentButtonStyle", "RowActionButtonStyle",
                 "SettingsActionButtonStyle", "AccentColorButtonStyle", "SoundDropdownButtonStyle", "SoundDropdownItemStyle",
                 "ArchivePasswordToggleButtonStyle", "PasswordActionButtonStyle", "PasswordDeleteButtonStyle", "SettingsCategoryButtonStyle" })
                 panel.Children.Add(new Button { Name = key, Content = "Example", Style = (Style)panel.FindResource(key) });
@@ -51,6 +54,7 @@ public partial class DialogUiTests
             var keyField = typeof(ButtonBase).GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                 .Single(field => field.FieldType == typeof(DependencyPropertyKey) && field.Name.Contains("IsPressed", StringComparison.Ordinal));
             var pressed = (DependencyPropertyKey)keyField.GetValue(null)!;
+            var hover = (DependencyPropertyKey)typeof(UIElement).GetField("IsMouseOverPropertyKey", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
             try
             {
                 ThemeService.Instance.SelectTheme(theme, save: false);
@@ -65,6 +69,8 @@ public partial class DialogUiTests
                         Bounds: frame.TransformToAncestor(panel).TransformBounds(new Rect(frame.RenderSize)));
                 }).ToArray();
                 foreach (var state in states) state.Button.SetValue(pressed, true);
+                foreach (var state in states.Where(state => state.Button.Name is "DockedToolbarButtonStyle" or "ToolbarSquareButtonStyle" or "RowActionButtonStyle"))
+                    state.Button.SetValue(hover, true);
                 PumpSettingsAnimations(180);
                 foreach (var state in states)
                 {

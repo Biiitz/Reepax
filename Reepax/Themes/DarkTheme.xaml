@@ -96,6 +96,31 @@
 
     <Style x:Key="PopupButtonStyle" TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}" />
 
+    <Style x:Key="DockedToolbarButtonStyle" TargetType="Button" BasedOn="{StaticResource PopupButtonStyle}">
+        <Setter Property="Background" Value="{DynamicResource BgHeaderBrush}" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="border" Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="0" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True"
+                            TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="border" Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Implicit Button Style -->
     <Style TargetType="{x:Type Button}" BasedOn="{StaticResource ModernButtonStyle}" >
         <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
@@ -332,11 +357,11 @@
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                           Margin="6,2,20,2" VerticalAlignment="Center" HorizontalAlignment="Center"
                                           TextElement.Foreground="{DynamicResource ChoiceForegroundBrush}" TextElement.FontWeight="Bold" TextElement.FontSize="12" />
-                        <Popup helpers:PopupMorph.IsEnabled="True" Name="Popup" Placement="Bottom" VerticalOffset="4" helpers:PopupLayout.AlignRight="True"
+                        <Popup helpers:PopupMorph.IsEnabled="True" Name="Popup" Placement="Bottom" VerticalOffset="0" helpers:PopupLayout.AlignRight="True"
                                PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                             <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                                <helpers:MorphingPopupBorder x:Name="DropDownBorder" Background="{DynamicResource BgCardBrush}" BorderThickness="1" BorderBrush="{DynamicResource BorderDarkBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}">
+                                <helpers:MorphingPopupBorder x:Name="DropDownBorder" Style="{StaticResource AnchoredPopupSurfaceStyle}" Padding="0" Background="{DynamicResource BgCardBrush}" BorderThickness="1" BorderBrush="{DynamicResource BorderDarkBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}">
                                     <ScrollViewer Margin="2,4" SnapsToDevicePixels="True">
                                         <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
                                     </ScrollViewer>
@@ -510,7 +535,7 @@
                                         Width="8"
                                         Height="2"
                                         Background="{DynamicResource AccentForegroundBrush}"
-                                        CornerRadius="1"
+                                        CornerRadius="0"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         Visibility="Collapsed" />
@@ -618,7 +643,48 @@
         </Setter>
     </Style>
 
-    <!-- Modern Square ToolTip Style with Multi-Line Text Wrapping -->
+    <Style TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Border x:Name="ChoiceBox" Width="14" Height="14" CornerRadius="0"
+                            Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource CheckBorderBrush}" BorderThickness="1"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                            <Rectangle x:Name="SelectionMark" Width="6" Height="6" Fill="{DynamicResource AccentForegroundBrush}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                        </Border>
+                        <ContentPresenter Grid.Column="1" Margin="8,0,0,0" RecognizesAccessKey="True"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ChoiceBox" Property="BorderBrush" Value="{DynamicResource CheckHoverBorderBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="ChoiceBox" Property="Background" Value="{DynamicResource AccentBlueBrush}" />
+                            <Setter TargetName="ChoiceBox" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}" />
+                            <Setter TargetName="SelectionMark" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="ChoiceBox" Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.45" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Square tooltips with wrapped text. -->
     <Style TargetType="{x:Type ToolTip}">
         <Setter Property="helpers:PopupMorph.IsEnabled" Value="True" />
         <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />

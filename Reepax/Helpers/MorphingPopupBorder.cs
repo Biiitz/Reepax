@@ -96,6 +96,7 @@ public sealed class MorphingPopupBorder : Border
         double width = Math.Max(1, origin.Width + (size.Width - origin.Width) * p);
         double height = Math.Max(1, origin.Height + (size.Height - origin.Height) * p);
         double y = origin.Y + (0 - origin.Y) * Math.Min(p, 1);
+        if (corner == new CornerRadius(0)) return new RectangleGeometry(new Rect(x, y, width, height));
         double radius = Math.Min(Math.Min(width, height) / 2,
             corner.TopLeft + Math.Max(0, origin.Height / 2 - corner.TopLeft) * Math.Pow(1 - Math.Min(p, 1), 2));
         double neck = Math.Sin(Math.Min(p, 1) * Math.PI) * Math.Min(10, width * 0.06);

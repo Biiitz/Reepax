@@ -11,6 +11,7 @@ public sealed class DownloadOverviewSettings
     public DownloadOverviewScope Scope { get; set; }
     public bool IncludeDisabled { get; set; }
     public List<string> VisibleMetrics { get; set; } = DefaultMetrics.ToList();
+    public List<string> MetricOrder { get; set; } = new();
 
     public static IReadOnlyList<string> DefaultMetrics { get; } =
         new[] { "Files", "Size", "Downloaded", "Speed", "Eta", "Active", "Completed", "Failed" };

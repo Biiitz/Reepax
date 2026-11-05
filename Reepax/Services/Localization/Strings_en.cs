@@ -10,7 +10,7 @@ public static class Strings_en
         // Common
         ["Overview_Title"] = "Overview",
         ["Overview_Show"] = "Show download overview",
-        ["Overview_Help"] = "Show a resizable summary below the download list. Use the gear to choose which information appears.",
+        ["Overview_Help"] = "Choose visible information with the gear. Drag entries to swap their positions; use Ctrl + arrow keys with the keyboard.",
         ["Overview_Scope"] = "Overview scope",
         ["Overview_All"] = "All",
         ["Overview_Filtered"] = "Filtered",

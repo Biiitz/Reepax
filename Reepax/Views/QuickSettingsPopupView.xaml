@@ -14,9 +14,9 @@
            StaysOpen="False"
            AllowsTransparency="True"
            PopupAnimation="Fade"
-           VerticalOffset="-10"
+           VerticalOffset="0"
            Closed="PopupRoot_Closed">
-        <helpers:MorphingPopupBorder x:Name="PopupContent" Style="{DynamicResource PopupSurfaceStyle}"
+        <helpers:MorphingPopupBorder x:Name="PopupContent" Style="{DynamicResource AnchoredPopupSurfaceStyle}"
                 Background="{DynamicResource BgCardBrush}" 
                 BorderBrush="{DynamicResource BorderDarkBrush}" 
                 BorderThickness="1" 

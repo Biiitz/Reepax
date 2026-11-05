@@ -186,4 +186,44 @@ public sealed class DownloadOverviewTests
             Directory.Delete(directory, true);
         }
     }
+
+    [Fact]
+    public void Overview_SwapsPositionsWithoutDuplicatesAndRestoresTheOrder()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "overview-order-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var storage = new SettingsService(Path.Combine(directory, "settings.json"));
+        var model = new DownloadOverviewViewModel(storage, () => Array.Empty<DownloadPackage>(), () => Array.Empty<DownloadPackage>());
+        try
+        {
+            var original = model.VisibleMetrics.ToArray();
+            Assert.True(model.SwapMetrics(original[0], original[^1]));
+            Assert.Same(original[^1], model.VisibleMetrics[0]);
+            Assert.Same(original[0], model.VisibleMetrics[^1]);
+            Assert.Equal(original.Skip(1).SkipLast(1), model.VisibleMetrics.Skip(1).SkipLast(1));
+            Assert.Equal(original.Length, model.VisibleMetrics.Distinct().Count());
+            original[^1].IsVisible = false;
+            Assert.False(model.SwapMetrics(original[0], original[^1]));
+            original[^1].IsVisible = true;
+            Assert.Same(original[^1], model.VisibleMetrics[0]);
+            Assert.False(model.SwapMetrics(original[0], original[0]));
+            var order = model.VisibleMetrics.Select(metric => metric.Id).ToArray();
+            storage.SaveSettings();
+            var reopened = new SettingsService(Path.Combine(directory, "settings.json"));
+            reopened.Settings.DownloadOverview.MetricOrder.Insert(0, "RemovedMetric");
+            reopened.Settings.DownloadOverview.MetricOrder.Add(order[0]);
+            var restored = new DownloadOverviewViewModel(reopened, () => Array.Empty<DownloadPackage>(), () => Array.Empty<DownloadPackage>());
+            Assert.Equal(order, restored.VisibleMetrics.Select(metric => metric.Id));
+            restored.SelectAllMetricsCommand.Execute(null);
+            Assert.Equal(restored.Metrics.Count, restored.VisibleMetrics.Distinct().Count());
+            restored.ResetMetricsCommand.Execute(null);
+            Assert.Equal(DownloadOverviewSettings.DefaultMetrics, restored.VisibleMetrics.Select(metric => metric.Id));
+            reopened.SaveSettings();
+        }
+        finally
+        {
+            storage.SaveSettings();
+            Directory.Delete(directory, true);
+        }
+    }
 }

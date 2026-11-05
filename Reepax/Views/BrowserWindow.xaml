@@ -84,10 +84,10 @@
                         <Popup helpers:PopupMorph.IsEnabled="True" x:Name="ShieldPopup"
                                PlacementTarget="{Binding ElementName=ShieldButton}"
                                Placement="Bottom" helpers:PopupLayout.AlignRight="True"
-                               VerticalOffset="4"
+                               VerticalOffset="0"
                                StaysOpen="False"
                                AllowsTransparency="True">
-                            <helpers:MorphingPopupBorder Style="{DynamicResource PopupSurfaceStyle}" Background="{DynamicResource BgCardBrush}"
+                            <helpers:MorphingPopupBorder Style="{DynamicResource AnchoredPopupSurfaceStyle}" Background="{DynamicResource BgCardBrush}"
                                     BorderBrush="{DynamicResource BorderDarkBrush}"
                                     BorderThickness="1"
                                     CornerRadius="{DynamicResource CompactCornerRadius}"

@@ -180,6 +180,7 @@
 
         <!-- ==================== RIGHT CONTENT PANE ==================== -->
         <ScrollViewer x:Name="SettingsContentScrollViewer"
+            ScrollChanged="SettingsContentScrollChanged"
             Grid.Column="1"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto"
@@ -305,14 +306,14 @@
                                                             </LinearGradientBrush>
                                                         </Rectangle.Fill>
                                                     </Rectangle>
-                                                    <!-- Draggable Thumb Ring -->
+                                                    <!-- Draggable color marker. -->
                                                     <Canvas IsHitTestVisible="False">
-                                                        <Ellipse x:Name="SpectrumThumb" Width="14" Height="14"
+                                                        <Rectangle x:Name="SpectrumThumb" Width="14" Height="14"
                                                             Stroke="White" StrokeThickness="2">
-                                                            <Ellipse.Effect>
+                                                            <Rectangle.Effect>
                                                                 <DropShadowEffect BlurRadius="4" ShadowDepth="0" Color="Black" Opacity="0.9" />
-                                                            </Ellipse.Effect>
-                                                        </Ellipse>
+                                                            </Rectangle.Effect>
+                                                        </Rectangle>
                                                     </Canvas>
                                                 </Grid>
                                             </Border>
@@ -1676,13 +1677,15 @@
 
                     <!-- Centered Header (Logo without background, Name, Version as pure blue text) -->
                     <StackPanel HorizontalAlignment="Center" Margin="0,6,0,22">
-                        <Image Source="pack://application:,,,/Reepax;component/Assets/R.png"
+                        <Border x:Name="AboutLogo" Background="{DynamicResource AboutLogoBrush}"
                             Width="68" Height="68"
-                            Stretch="Uniform"
-                            RenderOptions.BitmapScalingMode="HighQuality"
                             SnapsToDevicePixels="True"
                             HorizontalAlignment="Center"
-                            Margin="0,0,0,10" />
+                            Margin="0,0,0,10">
+                            <Border.OpacityMask>
+                                <ImageBrush ImageSource="pack://application:,,,/Reepax;component/Assets/R.png" Stretch="Uniform" />
+                            </Border.OpacityMask>
+                        </Border>
 
                         <TextBlock Text="Reepax"
                             FontSize="22"

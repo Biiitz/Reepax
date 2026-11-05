@@ -10,7 +10,7 @@
     <SolidColorBrush x:Key="AlertWarningBrush" Color="#EAB308" />
     <SolidColorBrush x:Key="AlertCautionBrush" Color="#EF4444" />
     <SolidColorBrush x:Key="AlertNoteBrush" Color="#3B82F6" />
-    <CornerRadius x:Key="CheckBoxCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="CheckBoxCornerRadius">0</CornerRadius>
     <Thickness x:Key="CheckBoxBorderThickness">0</Thickness>
     <Color x:Key="ChoiceHoverColor">#2A2A2E</Color>
     <SolidColorBrush x:Key="ChoiceHoverBrush" Color="{StaticResource ChoiceHoverColor}" />
@@ -74,17 +74,19 @@
     <SolidColorBrush x:Key="ForegroundIconBrush" Color="{StaticResource ForegroundIconColor}" />
     <Color x:Key="StatusNeutralColor">#9CA3AF</Color>
     <SolidColorBrush x:Key="StatusNeutralBrush" Color="{StaticResource StatusNeutralColor}" />
-    <CornerRadius x:Key="SmallCornerRadius">2</CornerRadius>
-    <CornerRadius x:Key="CompactCornerRadius">4</CornerRadius>
-    <CornerRadius x:Key="SubtleCornerRadius">5</CornerRadius>
-    <CornerRadius x:Key="ControlCornerRadius">6</CornerRadius>
-    <CornerRadius x:Key="RoundedControlCornerRadius">7</CornerRadius>
-    <CornerRadius x:Key="SurfaceCornerRadius">8</CornerRadius>
-    <CornerRadius x:Key="CardCornerRadius">10</CornerRadius>
-    <CornerRadius x:Key="LargeSurfaceCornerRadius">12</CornerRadius>
+    <CornerRadius x:Key="SmallCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="CompactCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="SubtleCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="RoundedControlCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="SurfaceCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="CardCornerRadius">0</CornerRadius>
+    <CornerRadius x:Key="LargeSurfaceCornerRadius">0</CornerRadius>
     <FontFamily x:Key="AppFontFamily">Segoe UI</FontFamily>
     <Color x:Key="BackdropGlyphColor">#FFFFFF</Color>
     <SolidColorBrush x:Key="BackdropLogoBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="AboutLogoBrush" Color="#FFFFFF" />
+    <sys:Double x:Key="InactiveToolbarIconOpacity">1</sys:Double>
     <Color x:Key="GlyphPrimaryColor">#F3F4F6</Color>
     <SolidColorBrush x:Key="GlyphPrimaryBrush" Color="{StaticResource GlyphPrimaryColor}" />
     <Color x:Key="SecondaryAccentSurfaceColor">#1E3B82F6</Color>
@@ -118,5 +120,9 @@
         <Setter Property="Effect">
             <Setter.Value><DropShadowEffect BlurRadius="10" ShadowDepth="2" Color="Black" Opacity="0.35" /></Setter.Value>
         </Setter>
+    </Style>
+    <Style x:Key="AnchoredPopupSurfaceStyle" TargetType="Border" BasedOn="{StaticResource PopupSurfaceStyle}">
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Effect" Value="{x:Null}" />
     </Style>
 </ResourceDictionary>

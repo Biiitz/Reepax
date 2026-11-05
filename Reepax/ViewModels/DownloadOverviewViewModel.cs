@@ -92,10 +92,17 @@ public sealed class DownloadOverviewViewModel : ObservableObject
             "Speed", "Eta", "Active", "Queued", "Paused", "Waiting", "Completed", "Failed", "Disabled", "UnknownSizes",
             "Verifying", "Verified", "Duration", "AverageSpeed", "Added", "Finished", "Extracting", "Repairing", "Passwords", "Cleanup", "Connections" }
             .Select(id => new OverviewMetricViewModel(id, visible.Contains(id), MetricsChanged)).ToArray();
+        var known = Metrics.Select(metric => metric.Id).ToHashSet(StringComparer.Ordinal);
+        _preferences.MetricOrder = (_preferences.MetricOrder ?? new()).Where(known.Contains)
+            .Concat(Metrics.Select(metric => metric.Id)).Distinct(StringComparer.Ordinal).ToList();
         ToggleExpandedCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
         HideCommand = new RelayCommand(() => IsShown = false);
         SelectAllMetricsCommand = new RelayCommand(() => SetMetrics(Metrics.Select(metric => metric.Id)));
-        ResetMetricsCommand = new RelayCommand(() => SetMetrics(DownloadOverviewSettings.DefaultMetrics));
+        ResetMetricsCommand = new RelayCommand(() =>
+        {
+            _preferences.MetricOrder = Metrics.Select(metric => metric.Id).ToList();
+            SetMetrics(DownloadOverviewSettings.DefaultMetrics);
+        });
         SynchronizeMetrics();
     }
 
@@ -115,13 +122,27 @@ public sealed class DownloadOverviewViewModel : ObservableObject
     }
     private void SynchronizeMetrics()
     {
-        var wanted = Metrics.Where(metric => metric.IsVisible).ToArray();
+        var wanted = _preferences.MetricOrder.Select(id => Metrics.Single(metric => metric.Id == id))
+            .Where(metric => metric.IsVisible).ToArray();
         for (int i = VisibleMetrics.Count - 1; i >= 0; i--)
             if (!wanted.Contains(VisibleMetrics[i])) VisibleMetrics.RemoveAt(i);
         for (int i = 0; i < wanted.Length; i++)
-            if (i >= VisibleMetrics.Count || !ReferenceEquals(VisibleMetrics[i], wanted[i])) VisibleMetrics.Insert(i, wanted[i]);
+        {
+            int current = VisibleMetrics.IndexOf(wanted[i]);
+            if (current < 0) VisibleMetrics.Insert(i, wanted[i]);
+            else if (current != i) VisibleMetrics.Move(current, i);
+        }
         _preferences.VisibleMetrics = wanted.Select(metric => metric.Id).ToList();
         OnPropertyChanged(nameof(HasVisibleMetrics));
+    }
+    internal bool SwapMetrics(OverviewMetricViewModel first, OverviewMetricViewModel second)
+    {
+        if (ReferenceEquals(first, second) || !VisibleMetrics.Contains(first) || !VisibleMetrics.Contains(second)) return false;
+        int from = _preferences.MetricOrder.IndexOf(first.Id);
+        int to = _preferences.MetricOrder.IndexOf(second.Id);
+        (_preferences.MetricOrder[from], _preferences.MetricOrder[to]) = (_preferences.MetricOrder[to], _preferences.MetricOrder[from]);
+        SynchronizeMetrics(); Save();
+        return true;
     }
     internal void SetPresentationActive(bool active)
     {

@@ -129,10 +129,9 @@ public partial class DialogUiTests
             Assert.Equal(Alpha(12, 40), Alpha(12, 84));
             Assert.Equal(Alpha(12, 40), Alpha(12, 128));
             Assert.True(Alpha(24, 153) > 0);
-            for (int y = 153; y <= 155; y++)
-            for (int x = 11; x <= 12; x++)
-                Assert.Equal(0, Alpha(x, y));
-            for (int y = 4; y < 148; y++)
+            Assert.True(Alpha(12, 153) > 0);
+            Assert.Equal(0, Alpha(12, 155));
+            for (int y = 4; y < 154; y++)
                 Assert.True(Alpha(12, y) > 0, "The trunk must connect every branch without gaps.");
         }));
     }

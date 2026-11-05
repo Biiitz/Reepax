@@ -227,6 +227,8 @@ internal static class WindowDownloadFlowWorker
         void CheckVerticalPlacement(ContextMenu popup)
         {
             var surface = Descendants<MorphingPopupBorder>(popup).Single();
+            Assert.Null(surface.Effect);
+            Assert.Equal(new Thickness(0), surface.Margin);
             double bottom = header.PointToScreen(new Point(0, header.ActualHeight)).Y;
             Assert.InRange(Math.Abs(surface.PointToScreen(new Point()).Y - bottom), 0, 1);
         }

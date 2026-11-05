@@ -254,7 +254,7 @@ public partial class ThemeService
                     DwmSetWindowAttribute(hwnd, 34, ref borderColor, sizeof(int));
 
                     // Windows 11 DWMWA_WINDOW_CORNER_PREFERENCE
-                    int cornerPreference = isDark ? 0 : 2;
+                    int cornerPreference = 1; // DWMWCP_DONOTROUND
                     DwmSetWindowAttribute(hwnd, 33, ref cornerPreference, sizeof(int));
                 }
             }

@@ -10,7 +10,7 @@ public static class Strings_de
         // Common
         ["Overview_Title"] = "Übersicht",
         ["Overview_Show"] = "Download-Übersicht anzeigen",
-        ["Overview_Help"] = "Zeigt eine größenverstellbare Übersicht unter der Downloadliste. Über das Zahnrad wählst du die angezeigten Werte.",
+        ["Overview_Help"] = "Wähle Anzeigen über das Zahnrad. Ziehe Einträge, um ihre Plätze zu tauschen; per Tastatur mit Strg + Pfeiltasten.",
         ["Overview_Scope"] = "Bereich der Übersicht",
         ["Overview_All"] = "Alle",
         ["Overview_Filtered"] = "Gefiltert",

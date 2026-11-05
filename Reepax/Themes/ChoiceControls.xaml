@@ -14,7 +14,7 @@
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     </Style>
 
-    <Style x:Key="SettingsDropdownPopupBorderStyle" TargetType="Border" BasedOn="{StaticResource PopupSurfaceStyle}" />
+    <Style x:Key="SettingsDropdownPopupBorderStyle" TargetType="Border" BasedOn="{StaticResource AnchoredPopupSurfaceStyle}" />
 
     <!-- Sound Dropdown Menu Item Style -->
     <Style x:Key="SoundDropdownItemStyle" TargetType="{x:Type Button}">

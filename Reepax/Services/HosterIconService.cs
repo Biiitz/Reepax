@@ -409,7 +409,7 @@ public static class HosterIconService
         var group = new DrawingGroup();
         using (var dc = group.Open())
         {
-            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(37, 99, 235)), null, new Rect(0, 0, 24, 24), 5, 5);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(37, 99, 235)), null, new Rect(0, 0, 24, 24));
             var geom = Geometry.Parse("F1 M 12,3 C 7.03,3 3,7.03 3,12 C 3,16.97 7.03,21 12,21 C 16.97,21 21,16.97 21,12 C 21,7.03 16.97,3 12,3 Z M 11,18.93 C 7.5,18.44 5,15.5 5,12 C 5,11.5 5.1,11 5.3,10.5 L 9,14.2 L 9,15 C 9,16.1 9.9,17 11,17 Z M 17.9,16.39 C 17.6,15.58 16.9,15 16,15 L 15,12 C 15,11.45 14.55,11 14,11 L 8,9 L 10,9 C 10.55,9 11,8.55 11,8 L 11,6 L 13,6 C 14.1,6 15,5.1 15,4 C 17.6,5.1 19.5,7.6 19.9,10.6 C 19.8,12.9 19,14.9 17.9,16.39 Z");
             dc.DrawGeometry(Brushes.White, null, geom);
         }
@@ -429,7 +429,7 @@ public static class HosterIconService
         var group = new DrawingGroup();
         using (var dc = group.Open())
         {
-            dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromRgb(59, 130, 246)), null, new Rect(0, 0, 24, 24), 5, 5);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(59, 130, 246)), null, new Rect(0, 0, 24, 24));
 
             var ft = new FormattedText(
                 letter,
