@@ -229,7 +229,7 @@
         <Style x:Key="ToolbarSquareButtonStyle" TargetType="{x:Type Button}">
             <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderThickness" Value="0,0,1,0" />
             <Setter Property="Height" Value="34" />
             <Setter Property="Width" Value="38" />
             <Setter Property="Margin" Value="0" />
@@ -244,9 +244,9 @@
                         <Border x:Name="BtnBorder"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{DynamicResource BorderDarkBrush}"
-                                BorderThickness="0,0,1,0"
+                                BorderThickness="{TemplateBinding BorderThickness}"
                                 SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <ContentPresenter x:Name="ButtonContent" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -256,7 +256,7 @@
                                 <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.35" />
+                                <Setter TargetName="ButtonContent" Property="Opacity" Value="0.35" />
                                 <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -1556,30 +1556,7 @@
                                     <Path Data="{StaticResource IconCheck}" Fill="{DynamicResource TextSecondaryBrush}" Width="13" Height="13" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Button>
 
-                                <!-- Update Notification Button (Clean square button matching toolbar; no pulsing/animation) -->
-                                <Button Command="{Binding OpenUpdateDialogCommand}"
-                                        Style="{DynamicResource ToolbarSquareButtonStyle}"
-                                        ToolTip="{Binding UpdateTooltip}"
-                                        ToolTipService.ShowOnDisabled="True">
-                                    <Path Data="{StaticResource IconUpdate}"
-                                          Width="13" Height="13"
-                                          Stretch="Uniform"
-                                          HorizontalAlignment="Center"
-                                          VerticalAlignment="Center">
-                                        <Path.Style>
-                                            <Style TargetType="Path">
-                                                <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsUpdateAvailable}" Value="True">
-                                                        <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Path.Style>
-                                    </Path>
-                                </Button>
-
-                                <!-- Clipboard Link Grabber Quick-Toggle Button (beside Update button) -->
+                                <!-- Clipboard link grabber quick-toggle. -->
                                 <Button Command="{Binding ToggleClipboardMonitorCommand}"
                                         Style="{DynamicResource ToolbarSquareButtonStyle}"
                                         ToolTip="{Binding ClipboardMonitorTooltip}">
@@ -1623,6 +1600,31 @@
                                     <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.Sleep}" Text="{loc:Loc PostDownload_Action_Sleep}" />
                                     <helpers:ChoiceOption Value="{x:Static models:PostDownloadAction.ExitApp}" Text="{loc:Loc PostDownload_Action_ExitApp}" />
                                 </helpers:SingleChoiceDropdown>
+
+                                <!-- Update Notification Button -->
+                                <Border Width="1" Height="18" Margin="12,0" VerticalAlignment="Center"
+                                        Background="{DynamicResource BorderDarkBrush}" IsHitTestVisible="False" />
+                                <Button Command="{Binding OpenUpdateDialogCommand}"
+                                        Style="{DynamicResource ToolbarSquareButtonStyle}" BorderThickness="1,0,1,0"
+                                        ToolTip="{Binding UpdateTooltip}"
+                                        ToolTipService.ShowOnDisabled="True">
+                                    <Path Data="{StaticResource IconUpdate}"
+                                          Width="13" Height="13"
+                                          Stretch="Uniform"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center">
+                                        <Path.Style>
+                                            <Style TargetType="Path">
+                                                <Setter Property="Fill" Value="{DynamicResource TextSecondaryBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUpdateAvailable}" Value="True">
+                                                        <Setter Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Path.Style>
+                                    </Path>
+                                </Button>
                             </StackPanel>
 
                             <!-- Metadata analysis progress and operation status -->
