@@ -46,7 +46,7 @@ public partial class DialogUiTests
                 Assert.Equal(Visibility.Visible, completionArea.Visibility);
                 Assert.Equal(Visibility.Visible, failureArea.Visibility);
                 Assert.True(completionArea.ActualWidth > 300);
-                var sliders = Descendants<Slider>(view).Where(slider => slider.Maximum == 100).ToArray();
+                var sliders = Descendants<Slider>(completionArea).Concat(Descendants<Slider>(failureArea)).ToArray();
                 Assert.Equal(2, sliders.Length);
                 sliders[0].SetCurrentValue(RangeBase.ValueProperty, 42.0);
                 sliders[1].SetCurrentValue(RangeBase.ValueProperty, 28.0);

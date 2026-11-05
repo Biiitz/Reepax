@@ -29,13 +29,11 @@ public partial class ThemeService
     }
 
     private string _currentAccentColorHex = FixedAccentColorHex;
-    private string _customAccentColorHex = FixedAccentColorHex;
     public string CurrentAccentColorHex => _currentAccentColorHex;
 
     public void Initialize()
     {
-        var saved = SettingsService.Instance.Settings.AccentColorHex;
-        _customAccentColorHex = Helpers.ColorHelper.TryParseHex(saved, out _) ? saved : FixedAccentColorHex;
+        _previewAccents.Clear();
         SelectTheme(SettingsService.Instance.Settings.ThemeId, save: false);
     }
 
@@ -54,6 +52,7 @@ public partial class ThemeService
     public void SetAccentColor(string hexColor, bool save = true, double? hue = null, double? sat = null, double? val = null)
     {
         if (!SupportsCustomAccent) return;
+        GetAccentSettings(CurrentTheme.Id);
         if (string.IsNullOrWhiteSpace(hexColor) || !Helpers.ColorHelper.TryParseHex(hexColor, out _))
         {
             hexColor = FixedAccentColorHex;
@@ -82,7 +81,15 @@ public partial class ThemeService
             }
 
             _currentAccentColorHex = hexColor;
-            _customAccentColorHex = hexColor;
+            Helpers.ColorHelper.ToHsv(color, GetAccentSettings(CurrentTheme.Id).Hue ?? 217.22, out double h, out double s, out double v);
+            var accent = new Models.ThemeAccentSettings
+            {
+                Hex = hexColor,
+                Hue = hue.HasValue && double.IsFinite(hue.Value) ? Math.Clamp(hue.Value, 0, 360) : h,
+                Saturation = sat.HasValue && double.IsFinite(sat.Value) ? Math.Clamp(sat.Value, 0, 1) : s,
+                Value = val.HasValue && double.IsFinite(val.Value) ? Math.Clamp(val.Value, 0, 1) : v
+            };
+            _previewAccents[CurrentTheme.Id] = accent;
             var hoverColor = GetHoverColor(color);
 
             if (app != null)
@@ -131,20 +138,8 @@ public partial class ThemeService
             if (save)
             {
                 var settings = SettingsService.Instance.Settings;
-                settings.AccentColorHex = hexColor;
-                if (hue.HasValue && sat.HasValue && val.HasValue)
-                {
-                    settings.AccentColorHue = hue.Value;
-                    settings.AccentColorSaturation = sat.Value;
-                    settings.AccentColorValue = val.Value;
-                }
-                else
-                {
-                    Helpers.ColorHelper.ToHsv(color, settings.AccentColorHue ?? 217.22, out double h, out double s, out double v);
-                    settings.AccentColorHue = h;
-                    settings.AccentColorSaturation = s;
-                    settings.AccentColorValue = v;
-                }
+                settings.ThemeAccents[CurrentTheme.Id] = accent;
+                SetLegacyAccent(settings, accent);
                 SettingsService.Instance.RequestSaveSettings();
             }
 
@@ -188,7 +183,8 @@ public partial class ThemeService
         var settings = SettingsService.Instance.Settings;
         if (theme.SupportsCustomAccent)
         {
-            ApplyAccentColor(_customAccentColorHex, save: false);
+            var accent = GetAccentSettings(theme.Id);
+            ApplyAccentColor(accent.Hex, save: false, accent.Hue, accent.Saturation, accent.Value);
         }
         else
         {
@@ -199,8 +195,10 @@ public partial class ThemeService
         {
             settings.ThemeId = theme.Id;
             settings.IsDarkMode = theme.IsDark;
+            if (theme.SupportsCustomAccent) SetLegacyAccent(settings, GetAccentSettings(theme.Id));
             SettingsService.Instance.RequestSaveSettings();
         }
+        ApplySelectionOpacity();
         UpdateAllOpenWindowsTitleBar(theme.IsDark);
         RefreshStatusBindings();
         ThemeChanged?.Invoke(theme.IsDark);

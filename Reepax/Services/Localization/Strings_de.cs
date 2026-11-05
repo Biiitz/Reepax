@@ -8,6 +8,8 @@ public static class Strings_de
     public static readonly IReadOnlyDictionary<string, string> Map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         // Common
+        ["Settings_SelectionOpacity_Title"] = "Deckkraft der Markierung",
+        ["Settings_SelectionOpacity_Help"] = "Passt die Hervorhebung markierter Pakete und Dateien im Download-Tab an. 0% blendet sie aus; 100% erhält das bisherige Aussehen. Text und Fortschrittsanzeigen bleiben unverändert.",
         ["Common_Yes"] = "Ja",
         ["Common_No"] = "Nein",
         ["Common_Pause"] = "Pausieren",

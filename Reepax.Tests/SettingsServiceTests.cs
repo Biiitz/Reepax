@@ -31,6 +31,33 @@ public class SettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public void ThemeAccentsAndSelectionOpacity_RoundTripThroughProtectedSettings()
+    {
+        var path = Path.Combine(_tempDirectory, "appearance.json");
+        var service = new SettingsService(path);
+        service.Settings.ThemeAccents = new()
+        {
+            ["default"] = new() { Hex = "#A855F7", Hue = 271, Saturation = 0.66, Value = 0.97 },
+            ["macos"] = new() { Hex = "#000000", Hue = 120, Saturation = 0, Value = 0 }
+        };
+        service.Settings.DownloadSelectionOpacity = 0.35;
+        service.SaveSettings();
+        Assert.True(File.Exists(path));
+        var stored = JsonSerializer.Deserialize<AppSettings>(SecureAppDataStorage.DecryptString(File.ReadAllText(path)))!;
+        Assert.Equal(2, stored.ThemeAccents.Count);
+        Assert.Equal(0.35, stored.DownloadSelectionOpacity);
+        var reopened = new SettingsService(path);
+        Assert.False(reopened.HasSettingsLoadFailed);
+        Assert.Equal("#A855F7", reopened.Settings.ThemeAccents["default"].Hex);
+        var darkColor = reopened.Settings.ThemeAccents["macos"];
+        Assert.Equal("#000000", darkColor.Hex);
+        Assert.Equal(120, darkColor.Hue);
+        Assert.Equal(0, darkColor.Saturation);
+        Assert.Equal(0, darkColor.Value);
+        Assert.Equal(0.35, reopened.Settings.DownloadSelectionOpacity);
+    }
+
+    [Fact]
     public void SettingsService_WhenFileIsCorrupted_LoadFails_FlagIsSet_AndSaveIsBlocked()
     {
         var settingsPath = Path.Combine(_tempDirectory, "settings.json");

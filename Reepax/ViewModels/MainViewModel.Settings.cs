@@ -1072,6 +1072,15 @@ public partial class MainViewModel
 
     public void SyncAccentColorState(string hex)
     {
+        var accent = ThemeService.Instance.GetAccentSettings(ThemeService.Instance.CurrentTheme.Id);
+        if (string.Equals(hex, accent.Hex, StringComparison.OrdinalIgnoreCase) &&
+            accent.Hue is >= 0 and <= 360 && accent.Saturation is >= 0 and <= 1 && accent.Value is >= 0 and <= 1 &&
+            Helpers.ColorHelper.ToHex(Helpers.ColorHelper.FromHsv(accent.Hue.Value, accent.Saturation.Value, accent.Value.Value))
+                .Equals(hex, StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateFromHsv(accent.Hue.Value, accent.Saturation.Value, accent.Value.Value, applyToTheme: false);
+            return;
+        }
         if (Helpers.ColorHelper.TryParseHex(hex, out var color))
         {
             UpdateFromRgb(color.R, color.G, color.B, updateHexText: true, applyToTheme: false);
@@ -1094,7 +1103,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void ResetAccentColor()
     {
-        if (Helpers.ColorHelper.TryParseHex(ThemeService.FixedAccentColorHex, out var defaultColor))
+        if (Helpers.ColorHelper.TryParseHex(ThemeService.Instance.CurrentTheme.AccentColor, out var defaultColor))
         {
             UpdateFromRgb(defaultColor.R, defaultColor.G, defaultColor.B);
         }

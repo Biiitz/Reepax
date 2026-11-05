@@ -24,6 +24,8 @@ public class AppSettings
     public double? AccentColorHue { get; set; } = 217.22;
     public double? AccentColorSaturation { get; set; } = 0.76;
     public double? AccentColorValue { get; set; } = 0.96;
+    public Dictionary<string, ThemeAccentSettings> ThemeAccents { get; set; } = new();
+    public double DownloadSelectionOpacity { get; set; } = 1;
     public bool EnableAdBlocker { get; set; } = true;
     public double SpeedLimitMBps { get; set; } = 0; // 0 = unlimited
     public long SpeedLimitBytesPerSecond { get; set; } = 0; // 0 = unlimited

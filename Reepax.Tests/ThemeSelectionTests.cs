@@ -28,6 +28,7 @@ public partial class DialogUiTests
             var settings = SettingsService.Instance.Settings;
             var previous = (settings.ThemeId, settings.AccentColorHex, settings.AccentColorHue,
                 settings.AccentColorSaturation, settings.AccentColorValue, settings.IsDarkMode);
+            var previousAccents = settings.ThemeAccents;
             string theme = service.CurrentTheme.Id;
             string accent = service.CurrentAccentColorHex;
             string language = LocalizationService.Instance.CurrentLanguage;
@@ -36,6 +37,9 @@ public partial class DialogUiTests
             var host = new Window { Width = 1000, Height = 720 };
             try
             {
+                settings.ThemeAccents = new();
+                settings.AccentColorHex = "#3B82F6";
+                service.Initialize();
                 service.SelectTheme(ThemeCatalog.DefaultId, save: false);
                 service.SetAccentColor("#A855F7");
                 var model = new MainViewModel();
@@ -56,8 +60,8 @@ public partial class DialogUiTests
                 LocalizationService.Instance.CurrentLanguage = language == "en" ? "de" : "en";
                 Assert.Equal(ThemeCatalog.MacOSId, selector.SelectedValue);
                 Assert.Equal(Loc.Get("Settings_Theme_MacOS"), Assert.IsType<ThemeDefinition>(selector.SelectedItem).DisplayName);
-                Assert.Equal("#A855F7", service.CurrentAccentColorHex);
-                Assert.Equal("#A855F7", settings.AccentColorHex);
+                Assert.Equal("#3B82F6", service.CurrentAccentColorHex);
+                Assert.Equal("#3B82F6", settings.AccentColorHex);
                 service.SetAccentColor("#FFFFFF");
                 Assert.Equal("#FFFFFF", service.CurrentAccentColorHex);
                 Assert.Equal("#FFFFFF", settings.AccentColorHex);
@@ -73,8 +77,13 @@ public partial class DialogUiTests
                 Assert.False(model.IsColorPaletteOpen);
                 Assert.True(model.CanCustomizeAccent);
                 Assert.True(service.IsDarkMode);
-                Assert.Equal("#FFFFFF", service.CurrentAccentColorHex);
+                Assert.Equal("#A855F7", service.CurrentAccentColorHex);
+                Assert.Equal("#A855F7", model.CurrentAccentColor);
                 Assert.Equal((Color)ColorConverter.ConvertFromString("#121212"), Assert.IsType<SolidColorBrush>(view.Background).Color);
+                service.Initialize();
+                Assert.Equal("#A855F7", service.CurrentAccentColorHex);
+                service.SelectTheme(ThemeCatalog.MacOSId);
+                Assert.Equal("#FFFFFF", service.CurrentAccentColorHex);
             }
             finally
             {
@@ -85,6 +94,8 @@ public partial class DialogUiTests
                 service.SetAccentColor(accent, save: false);
                 (settings.ThemeId, settings.AccentColorHex, settings.AccentColorHue,
                     settings.AccentColorSaturation, settings.AccentColorValue, settings.IsDarkMode) = previous;
+                settings.ThemeAccents = previousAccents;
+                service.Initialize();
                 service.SelectTheme(theme, save: false);
                 Application.Current.ShutdownMode = shutdownMode;
             }
@@ -158,10 +169,12 @@ public partial class DialogUiTests
             var service = ThemeService.Instance;
             var settings = SettingsService.Instance.Settings;
             var previous = (settings.ThemeId, settings.AccentColorHex);
+            var previousAccents = settings.ThemeAccents;
             string theme = service.CurrentTheme.Id;
             try
             {
                 settings.ThemeId = ThemeCatalog.MacOSId;
+                settings.ThemeAccents = new();
                 settings.AccentColorHex = "#A855F7";
                 service.Initialize();
                 Assert.Equal(ThemeCatalog.MacOSId, service.CurrentTheme.Id);
@@ -176,6 +189,7 @@ public partial class DialogUiTests
             finally
             {
                 (settings.ThemeId, settings.AccentColorHex) = previous;
+                settings.ThemeAccents = previousAccents;
                 service.Initialize();
                 service.SelectTheme(theme, save: false);
             }

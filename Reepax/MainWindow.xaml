@@ -622,24 +622,26 @@
                           helpers:FadeAnimation.CollapseWhenHidden="False"
                           helpers:FadeAnimation.DurationMilliseconds="120"
                           helpers:FadeAnimation.IsShown="{Binding IsSelected}">
+                        <Grid Opacity="{DynamicResource DownloadSelectionOpacity}">
 
-                        <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
-                        <Border CornerRadius="0"
-                                BorderThickness="1.5,2,1.5,2"
-                                BorderBrush="{DynamicResource AccentBlueBrush}"
-                                Background="{DynamicResource AccentSelectionBgBrush}" />
+                            <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
+                            <Border CornerRadius="0"
+                                    BorderThickness="1.5,2,1.5,2"
+                                    BorderBrush="{DynamicResource AccentBlueBrush}"
+                                    Background="{DynamicResource AccentSelectionBgBrush}" />
 
-                        <!-- Inner Glow Layer 1 -->
-                        <Border Margin="1"
-                                CornerRadius="0"
-                                BorderThickness="1"
-                                BorderBrush="{DynamicResource AccentGlowBrush1}" />
+                            <!-- Inner Glow Layer 1 -->
+                            <Border Margin="1"
+                                    CornerRadius="0"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource AccentGlowBrush1}" />
 
-                        <!-- Inner Glow Layer 2 -->
-                        <Border Margin="2"
-                                CornerRadius="0"
-                                BorderThickness="1"
-                                BorderBrush="{DynamicResource AccentGlowBrush2}" />
+                            <!-- Inner Glow Layer 2 -->
+                            <Border Margin="2"
+                                    CornerRadius="0"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource AccentGlowBrush2}" />
+                        </Grid>
                     </Grid>
 
                 </Grid>
@@ -1208,24 +1210,26 @@
                               helpers:FadeAnimation.CollapseWhenHidden="False"
                               helpers:FadeAnimation.DurationMilliseconds="120"
                               helpers:FadeAnimation.IsShown="{Binding IsSelected}">
+                            <Grid Opacity="{DynamicResource DownloadSelectionOpacity}">
 
-                            <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
-                            <Border CornerRadius="0"
-                                    BorderThickness="1.5,2,1.5,2"
-                                    BorderBrush="{DynamicResource AccentBlueBrush}"
-                                    Background="{DynamicResource AccentSelectionBgBrush}" />
+                                <!-- Outer Edge Perimeter Border & Vertical Glow Gradient Background -->
+                                <Border CornerRadius="0"
+                                        BorderThickness="1.5,2,1.5,2"
+                                        BorderBrush="{DynamicResource AccentBlueBrush}"
+                                        Background="{DynamicResource AccentSelectionBgBrush}" />
 
-                            <!-- Inner Glow Layer 1 -->
-                            <Border Margin="1"
-                                    CornerRadius="0"
-                                    BorderThickness="1"
-                                    BorderBrush="{DynamicResource AccentGlowBrush1}" />
+                                <!-- Inner Glow Layer 1 -->
+                                <Border Margin="1"
+                                        CornerRadius="0"
+                                        BorderThickness="1"
+                                        BorderBrush="{DynamicResource AccentGlowBrush1}" />
 
-                            <!-- Inner Glow Layer 2 -->
-                            <Border Margin="2"
-                                    CornerRadius="0"
-                                    BorderThickness="1"
-                                    BorderBrush="{DynamicResource AccentGlowBrush2}" />
+                                <!-- Inner Glow Layer 2 -->
+                                <Border Margin="2"
+                                        CornerRadius="0"
+                                        BorderThickness="1"
+                                        BorderBrush="{DynamicResource AccentGlowBrush2}" />
+                            </Grid>
                         </Grid>
 
 

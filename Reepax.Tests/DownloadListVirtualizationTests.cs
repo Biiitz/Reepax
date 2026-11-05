@@ -148,6 +148,8 @@ public partial class DownloadListVirtualizationTests
             host.Attribute(x + "Name")?.Remove();
             host.SetAttributeValue(x + "Key", "List");
             resources.Add(host);
+            // Column menu factories are compiled resources, unrelated to these row templates.
+            resources.Elements().Where(element => (string?)element.Attribute(x + "Key") == "ColumnConfigurationMenu").Remove();
             var dictionary = (ResourceDictionary)XamlReader.Parse(resources.ToString());
             list = (ItemsControl)dictionary["List"];
             dictionary.Remove("List");

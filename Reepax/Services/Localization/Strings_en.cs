@@ -8,6 +8,8 @@ public static class Strings_en
     public static readonly IReadOnlyDictionary<string, string> Map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         // Common
+        ["Settings_SelectionOpacity_Title"] = "Selection opacity",
+        ["Settings_SelectionOpacity_Help"] = "Adjust the highlight of selected packages and files in Downloads. 0% hides the highlight; 100% keeps its original appearance. Text and progress indicators remain unchanged.",
         ["Common_Yes"] = "Yes",
         ["Common_No"] = "No",
         ["Common_Pause"] = "Pause",

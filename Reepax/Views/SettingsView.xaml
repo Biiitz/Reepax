@@ -470,6 +470,27 @@
                                     </Grid>
                                 </Border>
                             </helpers:AnimatedExpansionDecorator>
+                            <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,14,0,14" />
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="{loc:Loc Settings_SelectionOpacity_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                    <Border Style="{StaticResource SettingInfoIconStyle}" ToolTip="{loc:Loc Settings_SelectionOpacity_Help}">
+                                        <Path Style="{StaticResource SettingInfoPathStyle}" />
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Slider x:Name="SelectionOpacitySlider" Style="{StaticResource ModernVolumeSliderStyle}" Width="130"
+                                        Minimum="0" Maximum="100" SmallChange="5" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding SelectionOpacityPercent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        AutomationProperties.Name="{loc:Loc Settings_SelectionOpacity_Title}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding SelectionOpacityPercent, StringFormat={}{0:0}%}" Width="40" TextAlignment="Right"
+                                        Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                                </StackPanel>
+                            </Grid>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource SettingsCardStyle}">

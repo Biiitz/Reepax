@@ -4,6 +4,20 @@ namespace Reepax.ViewModels;
 
 public partial class MainViewModel
 {
+    public double SelectionOpacityPercent
+    {
+        get => ThemeService.NormalizeSelectionOpacity(_settingsService.Settings.DownloadSelectionOpacity) * 100;
+        set
+        {
+            double opacity = ThemeService.NormalizeSelectionOpacity(value / 100);
+            if (_settingsService.Settings.DownloadSelectionOpacity == opacity) return;
+            _settingsService.Settings.DownloadSelectionOpacity = opacity;
+            ThemeService.Instance.ApplySelectionOpacity();
+            _settingsService.RequestSaveSettings();
+            OnPropertyChanged();
+        }
+    }
+
     public IReadOnlyList<ThemeDefinition> ThemeOptions => ThemeCatalog.Themes;
     public bool CanCustomizeAccent => ThemeCatalog.Resolve(SelectedThemeId).SupportsCustomAccent;
 
