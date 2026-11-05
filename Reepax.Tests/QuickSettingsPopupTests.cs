@@ -1,6 +1,12 @@
 using System;
+using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
+using Reepax.Models;
+using Reepax.Services;
+using Reepax.Services.Localization;
 using Reepax.ViewModels;
 using Reepax.Views;
 using Xunit;
@@ -9,6 +15,53 @@ namespace Reepax.Tests;
 
 public partial class DialogUiTests
 {
+    [Theory]
+    [InlineData("en", ThemeCatalog.DefaultId)]
+    [InlineData("de", ThemeCatalog.MacOSId)]
+    public void QuickSettingsPopup_HintsFitBesideTheInputs(string language, string theme)
+    {
+        RunInSta(() =>
+        {
+            EnsureSettingsTheme();
+            var model = new MainViewModel();
+            var previous = (model.SelectedLanguage, ThemeService.Instance.CurrentTheme.Id);
+            var popup = new QuickSettingsPopupView { DataContext = model };
+            try
+            {
+                model.SelectedLanguage = language;
+                ThemeService.Instance.SelectTheme(theme, save: false);
+                PumpSettingsAnimations(20);
+                var content = popup.PopupContent;
+                content.Measure(new Size(340, double.PositiveInfinity));
+                content.Arrange(new Rect(new Point(), content.DesiredSize));
+                content.UpdateLayout();
+                foreach (var (name, input) in new[] { ("QuickSpeedHint", popup.QuickSpeedLimitBox),
+                    ("QuickDownloadsHint", popup.QuickMaxDownloadsBox), ("QuickConnectionsHint", popup.QuickConnectionsBox) })
+                {
+                    var hint = (TextBlock)popup.FindName(name);
+                    Assert.False(string.IsNullOrWhiteSpace(hint.Text));
+                    Assert.DoesNotContain("QuickSettings_", hint.Text);
+                    var text = new FormattedText(hint.Text, CultureInfo.CurrentCulture, hint.FlowDirection,
+                        new Typeface(hint.FontFamily, hint.FontStyle, hint.FontWeight, hint.FontStretch), hint.FontSize,
+                        Brushes.White, VisualTreeHelper.GetDpi(hint).PixelsPerDip);
+                    Assert.True(text.WidthIncludingTrailingWhitespace <= hint.ActualWidth + 0.5, name);
+                    var hintBounds = hint.TransformToAncestor(content).TransformBounds(new Rect(hint.RenderSize));
+                    var inputBounds = input.TransformToAncestor(content).TransformBounds(new Rect(input.RenderSize));
+                    Assert.True(hintBounds.Right <= inputBounds.Left - 8, name);
+                    Assert.True(((string)hint.ToolTip).Length > hint.Text.Length);
+                }
+                SaveOverviewPreview(content, "QuickSettings-" + theme);
+            }
+            finally
+            {
+                popup.IsOpen = false;
+                popup.DataContext = null;
+                model.SelectedLanguage = previous.SelectedLanguage;
+                ThemeService.Instance.SelectTheme(previous.Id, save: false);
+            }
+        });
+    }
+
     [Fact]
     public void QuickSettingsPopup_DisplaysNumbersAndBindsCorrectly()
     {

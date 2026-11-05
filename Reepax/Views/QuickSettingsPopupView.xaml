@@ -39,9 +39,10 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
                         <TextBlock Text="{loc:Loc Settings_SpeedLimit_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="{loc:Loc Settings_SpeedLimit_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
+                        <TextBlock x:Name="QuickSpeedHint" Text="{loc:Loc QuickSettings_SpeedLimit_Hint}" ToolTip="{loc:Loc Settings_SpeedLimit_Subtitle}"
+                                   TextWrapping="Wrap" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                     </StackPanel>
                     <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="24">
                         <Grid>
@@ -106,9 +107,6 @@
                                                         <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                                         <Setter TargetName="ArrowPath" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
                                                     </Trigger>
-                                                    <Trigger Property="IsPressed" Value="True">
-                                                        <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BorderDarkBrush}" />
-                                                    </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
                                         </Button.Template>
@@ -126,9 +124,6 @@
                                                     <Trigger Property="IsMouseOver" Value="True">
                                                         <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                                         <Setter TargetName="ArrowPath" Property="Fill" Value="{DynamicResource AccentBlueBrush}" />
-                                                    </Trigger>
-                                                    <Trigger Property="IsPressed" Value="True">
-                                                        <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BorderDarkBrush}" />
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
@@ -152,9 +147,10 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
                         <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="{loc:Loc Settings_ConcurrentDownloads_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
+                        <TextBlock x:Name="QuickDownloadsHint" Text="{loc:Loc QuickSettings_Downloads_Hint}" ToolTip="{loc:Loc Settings_ConcurrentDownloads_Subtitle}"
+                                   TextWrapping="Wrap" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                     </StackPanel>
                     <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="24">
                         <Grid>
@@ -252,9 +248,10 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
                         <TextBlock Text="{loc:Loc Settings_Connections_Title}" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="{loc:Loc Settings_Connections_Subtitle}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
+                        <TextBlock x:Name="QuickConnectionsHint" Text="{loc:Loc QuickSettings_Connections_Hint}" ToolTip="{loc:Loc Settings_Connections_Subtitle}"
+                                   TextWrapping="Wrap" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1,0,0" />
                     </StackPanel>
                     <Border Grid.Column="1" Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1" CornerRadius="{DynamicResource CompactCornerRadius}" Height="24">
                         <Grid>
@@ -347,6 +344,8 @@
                 <Separator Background="{DynamicResource BorderDarkBrush}" Margin="0,2,0,10" />
 
                 <!-- Open all settings button -->
+                <CheckBox Content="{loc:Loc Overview_Show}" IsChecked="{Binding Overview.IsShown, Mode=TwoWay}" Margin="0,2,0,12"
+                    AutomationProperties.Name="{loc:Loc Overview_Show}" />
                 <Button Style="{DynamicResource PopupButtonStyle}"
                         Click="OpenAllSettings_Click"
                         Padding="10,6"

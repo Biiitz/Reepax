@@ -61,6 +61,7 @@ public partial class MainViewModel : ObservableObject
     private bool _isReorderingPackages = false;
 
     public NavigationHistoryManager NavigationHistory => _navManager;
+    public DownloadOverviewViewModel Overview { get; }
 
     [ObservableProperty]
     private bool _canGoBack;
@@ -409,6 +410,7 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        Overview = new DownloadOverviewViewModel(_settingsService, () => Packages, () => RootPackages);
         var settings = _settingsService.Settings;
 
         // Migrate/sanitize old legacy bloated defaults (from earlier versions) so all columns fit cleanly without overflow
@@ -551,6 +553,7 @@ public partial class MainViewModel : ObservableObject
             SafeDispatch(() =>
             {
                 RefreshArchivePasswordEntries();
+                Overview.RefreshLanguage();
                 if (IsAnalyzingMetadata)
                     BusyMessage = Loc.Format("Busy_AnalyzingMetadata", MetadataAnalysisCompleted, MetadataAnalysisTotal);
                 foreach (var package in Packages.ToArray())
@@ -3173,6 +3176,7 @@ public partial class MainViewModel : ObservableObject
         OverallSpeedText = FormatSpeed(stats.Speed);
         OverallActiveDownloadsText = Loc.Format("StatusBar_OverallActiveDownloads", stats.ActiveDownloads, stats.TotalDownloads);
         OverallProgressText = Loc.Format("StatusBar_OverallProgress", (int)Math.Round(OverallProgressPercentage));
+        Overview.Refresh();
 
         UpdateDriveSpace();
         PostDownloadActionService.Instance.Evaluate(Packages);

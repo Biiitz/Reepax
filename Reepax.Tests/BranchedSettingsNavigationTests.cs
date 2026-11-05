@@ -56,7 +56,7 @@ public partial class DialogUiTests
                     Assert.True(button.IsVisible);
                     Assert.True(button.Focusable);
                     Assert.Equal(0, ((SolidColorBrush)button.Background).Color.A);
-                    Assert.False(ControlMotion.GetPressFeedback(button));
+                    Assert.True(ControlMotion.GetPressFeedback(button));
                     var peer = new ButtonAutomationPeer(button);
                     Assert.Equal(Loc.Get(key), peer.GetName());
                     ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();

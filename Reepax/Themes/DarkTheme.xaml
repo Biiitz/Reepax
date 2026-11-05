@@ -84,9 +84,6 @@
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                         </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
-                        </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="border" Property="Opacity" Value="0.4" />
                             <Setter Property="Cursor" Value="Arrow" />
@@ -127,9 +124,6 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter Property="Foreground" Value="{DynamicResource AccentHoverForegroundBrush}" />
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource AccentBlueHoverBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Opacity" Value="0.85" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="border" Property="Opacity" Value="0.4" />

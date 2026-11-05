@@ -258,9 +258,6 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardBrush}" />
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="ButtonContent" Property="Opacity" Value="0.35" />
                                 <Setter Property="Cursor" Value="Arrow" />
@@ -1710,10 +1707,11 @@
                 </Border>
 
                 <!-- ================= MAIN CONTENT (TreeListView) ================= -->
-                <Grid Grid.Row="1">
+                <Grid x:Name="DownloadListRegion" Grid.Row="1">
             <Grid.RowDefinitions>
                 <!-- TreeListView (Downloads list) -->
                 <RowDefinition x:Name="TreeListRow" Height="*" MinHeight="160" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!-- ================= TREELISTVIEW ================= -->
@@ -1731,6 +1729,7 @@
                         <!-- Dedicated Far-Right Gear Button (always on the far right end of the table header, strictly above vertical scrollbar) -->
                         <Border DockPanel.Dock="Right" Width="18" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource BorderDarkBrush}" Background="{DynamicResource BgHeaderBrush}" Panel.ZIndex="1">
                             <Button x:Name="ColumnConfigButton" 
+                                    helpers:ControlMotion.PressFeedback="True"
                                     Click="ColumnConfigButton_Click"
                                     Style="{x:Null}"
                                     Background="Transparent"
@@ -2282,6 +2281,9 @@
                     </Border>
                 </Grid>
             </Grid>
+            <helpers:AnimatedExpansionDecorator Grid.Row="1" IsExpanded="{Binding Overview.IsShown}" EnableAnimation="True">
+                <views:DownloadOverviewView DataContext="{Binding Overview}" AvailableHeight="{Binding ActualHeight, ElementName=DownloadListRegion}" />
+            </helpers:AnimatedExpansionDecorator>
         </Grid>
     </Grid>
 
@@ -2328,9 +2330,6 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgHeaderBrush}" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -2388,11 +2387,6 @@
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                         <Path Data="{StaticResource IconFolder}" Fill="{DynamicResource TextSecondaryBrush}"
@@ -2422,11 +2416,6 @@
                                         Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">

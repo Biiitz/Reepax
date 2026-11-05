@@ -36,7 +36,7 @@
     </Style>
 
     <Style x:Key="SettingsCategoryButtonStyle" TargetType="{x:Type Button}">
-        <Setter Property="helpers:ControlMotion.PressFeedback" Value="False" />
+        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -157,9 +157,6 @@
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource BgInputBrush}" />
                             <Setter TargetName="ChevronIcon" Property="Fill" Value="{DynamicResource TextPrimaryBrush}" />
                         </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardBrush}" />
-                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -185,9 +182,6 @@
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                             <Setter Property="Foreground" Value="{DynamicResource AccentBlueBrush}" />
                         </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="{DynamicResource BgInputBrush}" />
-                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -212,9 +206,6 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource DangerHoverSurfaceBrush}" />
                             <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="{DynamicResource DangerPressedSurfaceBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

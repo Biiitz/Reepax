@@ -70,9 +70,6 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="border" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
                                 </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="border" Property="Opacity" Value="0.8" />
-                                </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
                                     <Setter TargetName="border" Property="Opacity" Value="0.3" />
                                     <Setter Property="Cursor" Value="Arrow" />

@@ -43,10 +43,6 @@
                                 <Setter TargetName="border" Property="Background" Value="{DynamicResource DangerBrush}" />
                                 <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                             </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="{DynamicResource DangerDeepBrush}" />
-                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource DangerDeepPressedBrush}" />
-                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="border" Property="Opacity" Value="0.4" />
                                 <Setter Property="Cursor" Value="Arrow" />
