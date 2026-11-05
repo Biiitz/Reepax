@@ -278,7 +278,7 @@ public partial class DownloadPackage : ObservableObject
                 parts.Add(Loc.Get("NextTask_MoveToRecycleBin"));
             }
 
-            return "➔ " + string.Join(" & ", parts);
+            return "➔ " + string.Join(" - ", parts);
         }
     }
 

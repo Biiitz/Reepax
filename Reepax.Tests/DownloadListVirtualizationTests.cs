@@ -39,7 +39,7 @@ public partial class DownloadListVirtualizationTests
         thread.Join();
     }
 
-    private static void SetNamespaces(XElement element, XElement owner)
+    internal static void SetNamespaces(XElement element, XElement owner)
     {
         foreach (var child in element.DescendantsAndSelf())
         {

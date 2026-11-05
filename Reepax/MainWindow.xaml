@@ -1018,6 +1018,7 @@
 
                                         <!-- Animated next task steps -->
                                         <ItemsControl ItemsSource="{Binding NextTaskSteps}"
+                                                      AlternationCount="2147483647"
                                                       ToolTip="{Binding NextTaskTooltip}"
                                                       Visibility="{Binding HasNextTasks, Converter={StaticResource BoolToVisConverter}}">
                                             <ItemsControl.ItemsPanel>
@@ -1027,38 +1028,54 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate DataType="{x:Type models:NextTaskStep}">
-                                                    <TextBlock x:Name="StepText" Text="{Binding Name}" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                        <TextBlock.Style>
-                                                            <Style TargetType="TextBlock">
-                                                                <Setter Property="FontSize" Value="10" />
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding DataContext.IsClipped, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
-                                                                        <Setter Property="FontSize" Value="9.5" />
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </TextBlock.Style>
-                                                        <TextBlock.Foreground>
-                                                            <SolidColorBrush Color="{DynamicResource StatusNeutralColor}" />
-                                                        </TextBlock.Foreground>
-                                                    </TextBlock>
-                                                    <DataTemplate.Triggers>
-                                                        <DataTrigger Binding="{Binding State}" Value="Running">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource SuccessBrightBrush}" />
-                                                            <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding State}" Value="Transitioning">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource SuccessBrightBrush}" />
-                                                            <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding State}" Value="Done">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource SuccessBrush}" />
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding State}" Value="Failed">
-                                                            <Setter TargetName="StepText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
-                                                            <Setter TargetName="StepText" Property="FontWeight" Value="SemiBold" />
-                                                        </DataTrigger>
-                                                    </DataTemplate.Triggers>
+                                                    <DataTemplate.Resources>
+                                                        <Style x:Key="StepLabelStyle" TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="{Binding Name, StringFormat='- {0}'}" />
+                                                            <Setter Property="FontSize" Value="10" />
+                                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                                            <Setter Property="helpers:FadeAnimation.CollapseWhenHidden" Value="False" />
+                                                            <Setter Property="helpers:FadeAnimation.DurationMilliseconds" Value="220" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding (ItemsControl.AlternationIndex), RelativeSource={RelativeSource AncestorType=ContentPresenter}}" Value="0">
+                                                                    <Setter Property="Text" Value="{Binding Name}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding DataContext.IsClipped, RelativeSource={RelativeSource AncestorType=ItemsControl}}" Value="True">
+                                                                    <Setter Property="FontSize" Value="9.5" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </DataTemplate.Resources>
+                                                    <Grid Margin="8,0,0,0">
+                                                        <TextBlock x:Name="StepPendingText">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
+                                                                    <Setter Property="helpers:FadeAnimation.IsShown" Value="True" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding State}" Value="Done">
+                                                                            <Setter Property="helpers:FadeAnimation.IsShown" Value="False" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding State}" Value="Failed">
+                                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                        <TextBlock x:Name="StepCompletedText">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock" BasedOn="{StaticResource StepLabelStyle}">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBlueBrush}" />
+                                                                    <Setter Property="helpers:FadeAnimation.IsShown" Value="False" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding State}" Value="Done">
+                                                                            <Setter Property="helpers:FadeAnimation.IsShown" Value="True" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Grid>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>

@@ -65,13 +65,13 @@ public class ModelAggregateTests
         // 4. Auto-Extract + Delete Archive
         package.LowResourceExtraction = false;
         package.DeleteArchiveAfterExtraction = true;
-        Assert.Equal($"➔ {Loc.Get("NextTask_Extract")} & {Loc.Get("NextTask_DeleteArchive")}", package.NextTaskSummary);
+        Assert.Equal($"➔ {Loc.Get("NextTask_Extract")} - {Loc.Get("NextTask_DeleteArchive")}", package.NextTaskSummary);
         Assert.Contains(Loc.Get("NextTask_TooltipDeleteArchive"), package.NextTaskTooltip);
 
         // 5. Auto-Extract + Recycle Bin
         package.DeleteArchiveAfterExtraction = false;
         package.MoveArchiveToRecycleBin = true;
-        Assert.Equal($"➔ {Loc.Get("NextTask_Extract")} & {Loc.Get("NextTask_MoveToRecycleBin")}", package.NextTaskSummary);
+        Assert.Equal($"➔ {Loc.Get("NextTask_Extract")} - {Loc.Get("NextTask_MoveToRecycleBin")}", package.NextTaskSummary);
         Assert.Contains(Loc.Get("NextTask_TooltipRecycleArchive"), package.NextTaskTooltip);
 
         // 6. Turn off AutoExtract -> all empty

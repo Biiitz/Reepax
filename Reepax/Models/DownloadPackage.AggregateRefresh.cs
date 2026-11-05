@@ -200,6 +200,9 @@ public partial class DownloadPackage
 
     internal void RefreshLocalizedAggregateText()
     {
+        EnsureNextTaskSteps();
+        OnPropertyChanged(nameof(NextTaskSummary));
+        OnPropertyChanged(nameof(NextTaskTooltip));
         var items = Volatile.Read(ref _itemsSnapshot);
         PublishSummaryChanges(items.Length, CountEnabledItems(items));
         PublishTimeChanges();
