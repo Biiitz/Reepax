@@ -3439,15 +3439,18 @@ public partial class MainWindow : Window
 
     private void ColumnConfigButton_Click(object sender, RoutedEventArgs e)
     {
-        if (ColumnHeaderContextMenu != null && sender is FrameworkElement el)
+        if (sender is FrameworkElement { ContextMenu: { } menu } el)
         {
-            ColumnHeaderContextMenu.PlacementTarget = el;
-            ColumnHeaderContextMenu.Placement = PlacementMode.Bottom;
-            ColumnHeaderContextMenu.VerticalOffset = 4;
-            ColumnHeaderContextMenu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            ColumnHeaderContextMenu.HorizontalOffset = SystemParameters.MenuDropAlignment ? 0
-                : el.RenderSize.Width - ColumnHeaderContextMenu.DesiredSize.Width;
-            ColumnHeaderContextMenu.IsOpen = true;
+            // Keep the header's context-menu ownership separate from the button anchor.
+            ColumnHeadersBorder.ContextMenu.IsOpen = false;
+            menu.DataContext = ViewModel;
+            menu.PlacementTarget = el;
+            menu.Placement = PlacementMode.Bottom;
+            menu.VerticalOffset = 4;
+            menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            menu.HorizontalOffset = SystemParameters.MenuDropAlignment ? 0
+                : el.RenderSize.Width - menu.DesiredSize.Width;
+            menu.IsOpen = true;
         }
     }
 

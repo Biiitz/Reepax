@@ -32,6 +32,27 @@
     </Window.DataContext>
 
     <Window.Resources>
+        <ContextMenu x:Key="ColumnConfigurationMenu" x:Shared="False">
+            <MenuItem Header="{loc:Loc Col_Name}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Hoster}" IsCheckable="True" IsChecked="{Binding ShowColHoster, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_SavePath}" IsCheckable="True" IsChecked="{Binding ShowColSavePath, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Size}" IsCheckable="True" IsChecked="{Binding ShowColSize, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Progress}" IsCheckable="True" IsChecked="{Binding ShowColProgress, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Speed}" IsCheckable="True" IsChecked="{Binding ShowColSpeed, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Eta}" IsCheckable="True" IsChecked="{Binding ShowColEta, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Status}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Duration}" IsCheckable="True" IsChecked="{Binding ShowColDuration, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_AddedDate}" IsCheckable="True" IsChecked="{Binding ShowColAddedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_CompletedDate}" IsCheckable="True" IsChecked="{Binding ShowColCompletedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Checksum}" IsCheckable="True" IsChecked="{Binding ShowColChecksum, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <MenuItem Header="{loc:Loc Col_Actions}" IsCheckable="True" IsChecked="{Binding ShowColActions, Mode=TwoWay}" StaysOpenOnClick="True" />
+            <Separator Background="{DynamicResource BorderDarkBrush}" />
+            <MenuItem Header="{loc:Loc Col_ResetColumns}" Command="{Binding ResetColumnsCommand}">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconClose}" Fill="{DynamicResource DangerBrush}" Width="11" Height="11" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
+        </ContextMenu>
         <ContextMenu x:Key="PackageContextMenu" Opened="PackageContextMenu_Opened" Closed="PackageContextMenu_Closed">
             <MenuItem Header="{Binding Status, Converter={StaticResource PlayPauseTooltipConverter}}"
                       Command="{Binding DataContext.TogglePackagePauseCommand, Source={x:Reference RootWindow}}"
@@ -1669,31 +1690,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- Column Headers with 1:1 Screen-Coordinate Resizing & Gear Customization Menu on the Far Right -->
-                <Border Grid.Row="0" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="0,0" ClipToBounds="True" PreviewMouseWheel="TreeList_PreviewMouseWheel">
-                    <Border.ContextMenu>
-                        <ContextMenu x:Name="ColumnHeaderContextMenu">
-                            <MenuItem Header="{loc:Loc Col_Name}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Hoster}" IsCheckable="True" IsChecked="{Binding ShowColHoster, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_SavePath}" IsCheckable="True" IsChecked="{Binding ShowColSavePath, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Size}" IsCheckable="True" IsChecked="{Binding ShowColSize, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Progress}" IsCheckable="True" IsChecked="{Binding ShowColProgress, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Speed}" IsCheckable="True" IsChecked="{Binding ShowColSpeed, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Eta}" IsCheckable="True" IsChecked="{Binding ShowColEta, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Status}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Duration}" IsCheckable="True" IsChecked="{Binding ShowColDuration, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_AddedDate}" IsCheckable="True" IsChecked="{Binding ShowColAddedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_CompletedDate}" IsCheckable="True" IsChecked="{Binding ShowColCompletedDate, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Checksum}" IsCheckable="True" IsChecked="{Binding ShowColChecksum, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <MenuItem Header="{loc:Loc Col_Actions}" IsCheckable="True" IsChecked="{Binding ShowColActions, Mode=TwoWay}" StaysOpenOnClick="True" />
-                            <Separator Background="{DynamicResource BorderDarkBrush}" />
-                            <MenuItem Header="{loc:Loc Col_ResetColumns}" Command="{Binding ResetColumnsCommand}">
-                                <MenuItem.Icon>
-                                    <Path Data="{StaticResource IconClose}" Fill="{DynamicResource DangerBrush}" Width="11" Height="11" Stretch="Uniform" />
-                                </MenuItem.Icon>
-                            </MenuItem>
-                        </ContextMenu>
-                    </Border.ContextMenu>
-
+                <Border x:Name="ColumnHeadersBorder" ContextMenu="{StaticResource ColumnConfigurationMenu}" Grid.Row="0" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="0,0" ClipToBounds="True" PreviewMouseWheel="TreeList_PreviewMouseWheel">
                     <DockPanel LastChildFill="True">
                         <!-- Dedicated Far-Right Gear Button (always on the far right end of the table header, strictly above vertical scrollbar) -->
                         <Border DockPanel.Dock="Right" Width="18" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource BorderDarkBrush}" Background="{DynamicResource BgHeaderBrush}" Panel.ZIndex="1">
@@ -1706,6 +1703,9 @@
                                     HorizontalAlignment="Stretch"
                                     VerticalAlignment="Stretch"
                                     ToolTip="{loc:Loc Col_Customize_ToolTip}">
+                                <Button.ContextMenu>
+                                    <StaticResource ResourceKey="ColumnConfigurationMenu" />
+                                </Button.ContextMenu>
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="BtnBorder" Background="Transparent" Padding="2">

@@ -24,7 +24,7 @@ namespace Reepax.Tests;
 
 internal static class WindowDownloadFlowWorker
 {
-    internal static int Run(string root, string language)
+    internal static int Run(string root, string language, bool columnsOnly = false)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -32,7 +32,7 @@ internal static class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -44,7 +44,7 @@ internal static class WindowDownloadFlowWorker
         return result;
     }
 
-    private static async Task ExecuteAsync(string root, string language)
+    private static async Task ExecuteAsync(string root, string language, bool columnsOnly)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -61,6 +61,7 @@ internal static class WindowDownloadFlowWorker
         settings.EnableAdBlocker = language == "de";
         settings.EnableClipboardMonitor = settings.MinimizeToTrayOnClose = false;
         settings.PostDownloadAction = PostDownloadAction.None;
+        if (columnsOnly && language == "de") settings.ThemeId = Reepax.Services.ThemeCatalog.MacOSId;
         settings.EnableChecksumVerification = true;
         settings.MaxAutoRetryOnCorruption = 0;
         // Load production resources and windows without registering file associations or owning the user's app instance.
@@ -88,6 +89,12 @@ internal static class WindowDownloadFlowWorker
         {
             main.Show();
             await IdleAsync();
+            if (columnsOnly)
+            {
+                await CheckColumnMenuAsync(main);
+                Console.WriteLine("Column menu placement passed");
+                return;
+            }
             var power = Assert.IsType<SingleChoiceDropdown>(main.FindName("PostDownloadActionButton"));
             Assert.Equal(38, power.ActualWidth);
             Assert.Equal(34, power.ActualHeight);
@@ -193,6 +200,74 @@ internal static class WindowDownloadFlowWorker
                 finally { environment.BrowserProcessExited -= Exit; }
             }
         }
+    }
+
+    private static async Task CheckColumnMenuAsync(MainWindow main)
+    {
+        var gear = (Button)main.FindName("ColumnConfigButton");
+        var header = (Border)main.FindName("ColumnHeadersBorder");
+        var menu = header.ContextMenu;
+        var gearMenu = gear.ContextMenu;
+        void OpenHeaderContextMenu()
+        {
+            // Exercise WPF's context-menu ownership lifecycle without moving the user's pointer.
+            InputManager.Current.ProcessInput(new KeyEventArgs(Keyboard.PrimaryDevice,
+                PresentationSource.FromVisual(header), Environment.TickCount, Key.Apps)
+                { RoutedEvent = Keyboard.KeyUpEvent, Source = header });
+        }
+        void CheckGearPlacement()
+        {
+            var topLeft = gearMenu.PointToScreen(new Point());
+            var anchorRight = gear.PointToScreen(new Point(gear.ActualWidth, gear.ActualHeight));
+            var menuRight = gearMenu.PointToScreen(new Point(gearMenu.ActualWidth, 0));
+            Assert.InRange(Math.Abs(menuRight.X - anchorRight.X), 0, 3);
+            Assert.True(topLeft.X >= main.PointToScreen(new Point()).X,
+                $"Column menu moved outside the window: {topLeft.X}, expected near {anchorRight.X}.");
+        }
+        try
+        {
+            Invoke(gear);
+            await UntilAsync(() => gearMenu.IsOpen && gearMenu.ActualWidth > 0);
+            CheckGearPlacement();
+            gearMenu.IsOpen = false;
+            await UntilAsync(() => !gearMenu.IsOpen);
+            OpenHeaderContextMenu();
+            await UntilAsync(() => menu.IsOpen);
+            Invoke(gear);
+            await UntilAsync(() => gearMenu.IsOpen);
+            Assert.False(menu.IsOpen);
+            CheckGearPlacement();
+            gearMenu.IsOpen = false;
+            await UntilAsync(() => !gearMenu.IsOpen);
+            OpenHeaderContextMenu();
+            await UntilAsync(() => menu.IsOpen);
+            menu.IsOpen = false;
+            await UntilAsync(() => !menu.IsOpen);
+            Invoke(gear);
+            await UntilAsync(() => gearMenu.IsOpen);
+            CheckGearPlacement();
+            Assert.False(((MenuItem)gearMenu.Items[0]).IsEnabled);
+            Assert.False(((MenuItem)gearMenu.Items[7]).IsEnabled);
+            var model = (MainViewModel)main.DataContext;
+            bool original = model.ShowColHoster;
+            var toggle = (IToggleProvider)new MenuItemAutomationPeer((MenuItem)gearMenu.Items[1])
+                .GetPattern(PatternInterface.Toggle);
+            toggle.Toggle();
+            await UntilAsync(() => model.ShowColHoster != original);
+            Assert.True(gearMenu.IsOpen);
+            gearMenu.IsOpen = false;
+            await UntilAsync(() => !gearMenu.IsOpen);
+            OpenHeaderContextMenu();
+            await UntilAsync(() => menu.IsOpen);
+            Assert.Equal(!original, ((MenuItem)menu.Items[1]).IsChecked);
+            Assert.False(((MenuItem)menu.Items[0]).IsEnabled);
+            Assert.False(((MenuItem)menu.Items[7]).IsEnabled);
+            ((IToggleProvider)new MenuItemAutomationPeer((MenuItem)menu.Items[1])
+                .GetPattern(PatternInterface.Toggle)).Toggle();
+            await UntilAsync(() => model.ShowColHoster == original);
+            Assert.True(menu.IsOpen);
+        }
+        finally { menu.IsOpen = gearMenu.IsOpen = false; }
     }
 
     private sealed record PointPosition(double x, double y);
