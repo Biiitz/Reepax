@@ -167,7 +167,6 @@ public partial class DownloadEngine
         item.UserAgent = userAgent;
         item.Referer = referer;
 
-        item.StartDownloadSession();
         PublishDownloadState(item, token, () =>
         {
             if (item.IsUnavailableForProcessing)
@@ -232,7 +231,6 @@ public partial class DownloadEngine
             return;
         }
 
-        item.StartDownloadSession();
         PublishDownloadState(item, token, () =>
         {
             if (item.IsUnavailableForProcessing)
@@ -890,7 +888,6 @@ public partial class DownloadEngine
             item.DownloadedBytes = initialDownloaded;
             item.Status = DownloadStatus.Downloading;
             item.StatusMessage = Loc.Get("Status_Downloading");
-            item.StartedAt ??= DateTime.Now;
         });
 
         // Watcher: aggregates segment progress 1x per second for calm UI + sidecar persistence
@@ -1120,6 +1117,8 @@ public partial class DownloadEngine
                             break;
                         }
 
+                        if (!cancellationToken.IsCancellationRequested && item.Status == DownloadStatus.Downloading)
+                            item.StartDownloadSession();
                         bufferedBytes += bytesRead;
                         segment.AddReceivedBytes(bytesRead);
 
@@ -1346,6 +1345,7 @@ public partial class DownloadEngine
                 string previousPath = tempFilePath;
                 await browserPause.WaitAsync(cancellationToken, () =>
                 {
+                    item.RecordSessionDuration();
                     item.DownloadedBytes = currentDownloaded;
                     if (checkpoint != null)
                     {
@@ -1407,6 +1407,8 @@ public partial class DownloadEngine
                     {
                         break;
                     }
+                    if (!cancellationToken.IsCancellationRequested && item.Status == DownloadStatus.Downloading)
+                        item.StartDownloadSession();
                     if (totalBytes > 0 && bytesRead > totalBytes - currentDownloaded)
                         throw new InvalidDataException("Server sent more bytes than the declared file size.");
 

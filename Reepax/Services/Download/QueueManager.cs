@@ -777,7 +777,6 @@ public partial class QueueManager
             }
 
             // Set status synchronously so FindNextBrowserItem won't pick the item again
-            nextItem.StartDownloadSession();
             nextItem.Status = DownloadStatus.InBrowser;
             nextItem.CurrentSlot = windowId;
             nextItem.StatusMessage = hidden
@@ -1956,7 +1955,7 @@ public partial class QueueManager
         if (!package.CheckIsFullyCompleted())
             return;
 
-        package.HasCompletedNotified = true;
+        if (!package.TryClaimCompletionNotification()) return;
 
         // 1. Trigger visual shine animation in app & collapse package (if open and setting enabled)
         SafeInvoke(() =>

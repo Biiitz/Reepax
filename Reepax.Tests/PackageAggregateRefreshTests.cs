@@ -450,7 +450,8 @@ public class PackageAggregateRefreshTests
     public void ActiveDuration_RemainsLiveWithoutProgressChanges()
     {
         var package = new DownloadPackage { IsCustomName = true, AutoPar2Repair = false };
-        package.Items.Add(new DownloadItem { Status = DownloadStatus.Downloading, TotalBytes = 1000 });
+        package.Items.Add(new DownloadItem { Status = DownloadStatus.Downloading, TotalBytes = 1000,
+            CurrentSessionStartedAt = DateTime.UtcNow.AddSeconds(-10) });
         package.CurrentSessionStartedAt = DateTime.UtcNow.AddSeconds(-10);
         package.RecalculateAggregates(force: true);
         var changed = new List<string>();

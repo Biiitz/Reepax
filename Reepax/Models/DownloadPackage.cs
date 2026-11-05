@@ -178,7 +178,14 @@ public partial class DownloadPackage : ObservableObject
     private bool _isJustMovedDown;
 
     /// <summary>Prevents duplicate notifications for the same package.</summary>
-    public bool HasCompletedNotified { get; set; }
+    public bool HasCompletedNotified
+    {
+        get => Volatile.Read(ref _hasCompletedNotified) != 0;
+        set => Interlocked.Exchange(ref _hasCompletedNotified, value ? 1 : 0);
+    }
+    private int _hasCompletedNotified;
+
+    internal bool TryClaimCompletionNotification() => Interlocked.CompareExchange(ref _hasCompletedNotified, 1, 0) == 0;
 
     [ObservableProperty]
     private bool _hasVerifyBatFile;
@@ -509,15 +516,11 @@ public partial class DownloadPackage : ObservableObject
                     var cur = (DateTime.UtcNow - CurrentSessionStartedAt.Value).TotalMilliseconds;
                     if (cur > 0) totalMs += (long)cur;
                 }
-                else if (StartedAt.HasValue && DateTime.Now >= StartedAt.Value)
-                {
-                    totalMs += (long)(DateTime.Now - StartedAt.Value).TotalMilliseconds;
-                }
             }
             if (totalMs > 0)
                 return TimeSpan.FromMilliseconds(totalMs);
 
-            if (CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
+            if (Status == DownloadStatus.Completed && CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
                 return CompletedAt.Value - StartedAt.Value;
 
             if (!_progressCache.TryGetDuration(out long sumTicks))
@@ -690,6 +693,19 @@ public partial class DownloadPackage : ObservableObject
             {
                 SafeInvokeAsync(() => Reepax.Services.Extractor.LinkMetadataResolverService.TryUpdatePackageName(this));
             }
+            return;
+        }
+
+        if (e.PropertyName == nameof(DownloadItem.IsTransferActive))
+        {
+            SafeInvokeAsync(() =>
+            {
+                if (IsEnabled && Volatile.Read(ref _itemsSnapshot).Any(item => item.IsEnabled && item.IsTransferActive))
+                    StartDownloadSession();
+                else
+                    RecordSessionDuration();
+                PublishTimeChanges();
+            });
             return;
         }
 
@@ -938,7 +954,8 @@ public partial class DownloadPackage : ObservableObject
         }
         else if (hasActive)
         {
-            StartDownloadSession();
+            if (itemsSnapshot.Any(item => item.IsEnabled && item.IsTransferActive)) StartDownloadSession();
+            else RecordSessionDuration();
             CompletedAt = null;
             Status = DownloadStatus.Downloading;
             StatusMessage = Loc.Get("Status_DownloadingPackage");

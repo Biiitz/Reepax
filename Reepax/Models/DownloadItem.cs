@@ -247,29 +247,43 @@ public partial class DownloadItem : ObservableObject
     /// Used to calculate live active duration without accumulating pause/idle time.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public DateTime? CurrentSessionStartedAt { get; set; }
+    public DateTime? CurrentSessionStartedAt
+    {
+        get
+        {
+            long ticks = Interlocked.Read(ref _currentSessionStartedTicks);
+            return ticks == 0 ? null : new DateTime(ticks, DateTimeKind.Utc);
+        }
+        set => Interlocked.Exchange(ref _currentSessionStartedTicks, value?.ToUniversalTime().Ticks ?? 0);
+    }
+    private long _currentSessionStartedTicks;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsTransferActive => Status == DownloadStatus.Downloading && CurrentSessionStartedAt.HasValue;
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public int OriginalOrderIndex { get; set; }
 
     public void StartDownloadSession()
     {
-        CurrentSessionStartedAt = DateTime.UtcNow;
+        if (Interlocked.CompareExchange(ref _currentSessionStartedTicks, DateTime.UtcNow.Ticks, 0) != 0) return;
         StartedAt ??= DateTime.Now;
+        OnPropertyChanged(nameof(IsTransferActive));
         OnPropertyChanged(nameof(Duration));
         OnPropertyChanged(nameof(DurationFormatted));
     }
 
     public void RecordSessionDuration()
     {
-        if (CurrentSessionStartedAt.HasValue)
+        long ticks = Interlocked.Exchange(ref _currentSessionStartedTicks, 0);
+        if (ticks != 0)
         {
-            var sessionMs = (long)(DateTime.UtcNow - CurrentSessionStartedAt.Value).TotalMilliseconds;
+            var sessionMs = (long)(DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc)).TotalMilliseconds;
             if (sessionMs > 0)
             {
                 ElapsedDurationMs += sessionMs;
             }
-            CurrentSessionStartedAt = null;
+            OnPropertyChanged(nameof(IsTransferActive));
             OnPropertyChanged(nameof(Duration));
             OnPropertyChanged(nameof(DurationFormatted));
         }
@@ -282,20 +296,16 @@ public partial class DownloadItem : ObservableObject
             long totalMs = ElapsedDurationMs;
             if (Status == DownloadStatus.Downloading)
             {
-                if (CurrentSessionStartedAt.HasValue)
+                if (CurrentSessionStartedAt is { } sessionStartedAt)
                 {
-                    var cur = (DateTime.UtcNow - CurrentSessionStartedAt.Value).TotalMilliseconds;
+                    var cur = (DateTime.UtcNow - sessionStartedAt).TotalMilliseconds;
                     if (cur > 0) totalMs += (long)cur;
-                }
-                else if (StartedAt.HasValue && DateTime.Now >= StartedAt.Value)
-                {
-                    totalMs += (long)(DateTime.Now - StartedAt.Value).TotalMilliseconds;
                 }
             }
             if (totalMs > 0)
                 return TimeSpan.FromMilliseconds(totalMs);
 
-            if (CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
+            if (Status == DownloadStatus.Completed && CompletedAt.HasValue && StartedAt.HasValue && CompletedAt.Value >= StartedAt.Value)
                 return CompletedAt.Value - StartedAt.Value;
 
             return TimeSpan.Zero;

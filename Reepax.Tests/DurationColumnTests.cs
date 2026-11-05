@@ -83,12 +83,14 @@ public class DurationColumnTests
 
         // Active download
         item.StartedAt = DateTime.Now.AddSeconds(-45);
+        item.CurrentSessionStartedAt = DateTime.UtcNow.AddSeconds(-45);
         item.Status = DownloadStatus.Downloading;
         Assert.True(item.Duration.TotalSeconds >= 44 && item.Duration.TotalSeconds <= 46);
         Assert.Equal("45s", item.DurationFormatted);
 
         // Completed item with explicit start and completed timestamps
         item.Status = DownloadStatus.Completed;
+        item.CurrentSessionStartedAt = null;
         item.StartedAt = new DateTime(2026, 1, 1, 10, 0, 0);
         item.CompletedAt = new DateTime(2026, 1, 1, 11, 23, 45);
         Assert.Equal(new TimeSpan(1, 23, 45), item.Duration);
@@ -98,6 +100,27 @@ public class DurationColumnTests
         item.ElapsedDurationMs = 125_000; // 2m 5s
         Assert.Equal(TimeSpan.FromMilliseconds(125_000), item.Duration);
         Assert.Equal("2m 05s", item.DurationFormatted);
+    }
+
+    [Fact]
+    public void Duration_DoesNotResumeFromAnOldTimestampWhileWaitingForBodyBytes()
+    {
+        var item = new DownloadItem { Status = DownloadStatus.Downloading, StartedAt = DateTime.Now.AddHours(-2), ElapsedDurationMs = 12000 };
+        var package = new DownloadPackage { StartedAt = DateTime.Now.AddHours(-2) };
+        package.Items.Add(item);
+        package.RecalculateAggregates(force: true);
+        Assert.Null(package.CurrentSessionStartedAt);
+        Assert.Equal(TimeSpan.FromSeconds(12), item.Duration);
+        Assert.Equal(TimeSpan.FromSeconds(12), package.Duration);
+        item.StartDownloadSession();
+        var started = item.CurrentSessionStartedAt;
+        item.StartDownloadSession();
+        Assert.Equal(started, item.CurrentSessionStartedAt);
+        package.RecalculateAggregates(force: true);
+        Assert.NotNull(package.CurrentSessionStartedAt);
+        item.RecordSessionDuration();
+        package.RecalculateAggregates(force: true);
+        Assert.Null(package.CurrentSessionStartedAt);
     }
 
     [Fact]

@@ -25,7 +25,6 @@ public partial class DownloadEngine
         if (!_activeDownloads.TryGetValue(item.Id, out var active) || active.BrowserPause == null || active.Token.IsCancellationRequested)
             return false;
         UiState(item).Begin(active.Token);
-        if (active.BrowserPause.IsPaused) item.StartDownloadSession();
         item.Status = DownloadStatus.Downloading;
         item.StatusMessage = Loc.Get("Status_Downloading");
         active.BrowserPause.Resume();

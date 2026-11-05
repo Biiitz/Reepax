@@ -24,7 +24,6 @@ public partial class DownloadEngine
         // Preserve resumable GET context without replaying the initial browser request.
         item.DirectDownloadUrl = response.RequestMessage is { Method: var method, RequestUri: { Scheme: "http" or "https" } address } &&
             method == HttpMethod.Get ? address.AbsoluteUri : null;
-        item.StartDownloadSession();
         PublishDownloadState(item, token, () =>
         {
             item.ClearDownloadFailure();

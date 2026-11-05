@@ -177,6 +177,76 @@ public sealed class LocalDownloadIntegrityTests : IDisposable
         Assert.Equal(data, File.ReadAllBytes(path + ".part"));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Duration_StartsOnFirstBodyBytesInsteadOfWaitingForTheTransfer(bool browserResponse)
+    {
+        byte[] data = Data(8192);
+        using var body = new DurationGatedStream(data);
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) };
+        response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://example.test/payload");
+        response.Content.Headers.ContentLength = data.Length;
+        using var handler = new TestMockHttpMessageHandler((_, _) => Task.FromResult(response));
+        using var client = new HttpClient(handler);
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 1 };
+        var item = Item(Path.Combine(_root, "timed.bin"), data.Length);
+        item.OriginalUrl = "https://example.test/payload";
+        item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
+        var package = new DownloadPackage { Name = "Sample" };
+        package.Items.Add(item);
+        Task transfer = browserResponse ? engine.StartBrowserResponseAsync(item, response) : engine.ResumeDownloadAsync(item);
+        try
+        {
+            await body.WaitingForFirstRead.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            package.RecalculateAggregates(force: true);
+            Assert.Null(item.CurrentSessionStartedAt);
+            Assert.Null(item.StartedAt);
+            Assert.Equal(TimeSpan.Zero, item.Duration);
+            Assert.Null(package.CurrentSessionStartedAt);
+            Assert.Equal(TimeSpan.Zero, package.Duration);
+            body.ReleaseFirstRead.TrySetResult();
+            await body.WaitingForNextRead.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            package.RecalculateAggregates(force: true);
+            Assert.NotNull(item.CurrentSessionStartedAt);
+            Assert.NotNull(package.CurrentSessionStartedAt);
+            body.ReleaseRemaining.TrySetResult();
+            await transfer.WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
+            Assert.Equal(item.ExpectedChecksum, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(item.SaveFilePath!))).ToLowerInvariant());
+        }
+        finally
+        {
+            body.ReleaseFirstRead.TrySetResult();
+            body.ReleaseRemaining.TrySetResult();
+            await engine.PauseAllAsync();
+            await transfer.WaitAsync(TimeSpan.FromSeconds(15));
+        }
+    }
+
+    private sealed class DurationGatedStream(byte[] bytes) : MemoryStream(bytes)
+    {
+        internal TaskCompletionSource WaitingForFirstRead { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource ReleaseFirstRead { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource WaitingForNextRead { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource ReleaseRemaining { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _reads;
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _reads) == 1)
+            {
+                WaitingForFirstRead.TrySetResult();
+                await ReleaseFirstRead.Task.WaitAsync(cancellationToken);
+                return await base.ReadAsync(buffer[..Math.Min(128, buffer.Length)], cancellationToken);
+            }
+            WaitingForNextRead.TrySetResult();
+            await ReleaseRemaining.Task.WaitAsync(cancellationToken);
+            return await base.ReadAsync(buffer, cancellationToken);
+        }
+    }
+
     private static DownloadItem Item(string path, long total) => new()
     {
         FileName = Path.GetFileName(path), SaveFilePath = path, DirectDownloadUrl = "https://example.test/payload",

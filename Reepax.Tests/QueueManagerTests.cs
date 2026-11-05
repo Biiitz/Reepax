@@ -15,6 +15,22 @@ namespace Reepax.Tests;
 
 public class QueueManagerTests
 {
+    [Fact]
+    public void PackageCompletionNotification_CanOnlyBeClaimedOnceAcrossConcurrentUpdates()
+    {
+        var package = new DownloadPackage();
+        int claims = 0;
+        Parallel.For(0, 1000, _ =>
+        {
+            if (package.TryClaimCompletionNotification()) Interlocked.Increment(ref claims);
+        });
+        Assert.Equal(1, claims);
+        Assert.True(package.HasCompletedNotified);
+        package.HasCompletedNotified = false;
+        Assert.True(package.TryClaimCompletionNotification());
+        Assert.False(package.TryClaimCompletionNotification());
+    }
+
     /// <summary>
     /// Fake host pool of external browser windows for tests without WebView2/UI thread.
     /// </summary>
@@ -170,6 +186,13 @@ public class QueueManagerTests
         Assert.NotNull(items[0].CurrentSlot);
         Assert.NotNull(items[1].CurrentSlot);
         Assert.Null(items[2].CurrentSlot);
+        Assert.All(items, item =>
+        {
+            Assert.Null(item.StartedAt);
+            Assert.Null(item.CurrentSessionStartedAt);
+            Assert.Equal(TimeSpan.Zero, item.Duration);
+        });
+        queueManager.StopQueue();
     }
 
     [Fact]
