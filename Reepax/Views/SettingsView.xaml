@@ -1658,21 +1658,7 @@
                         Padding="20,16"
                         Margin="0,0,0,16">
                         <StackPanel>
-                            <Grid Margin="0,0,0,14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{loc:Loc About_SystemDiagnostics_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
-                                <Button Grid.Column="1"
-                                    Command="{Binding CopySystemDiagnosticInfoCommand}"
-                                    Style="{StaticResource SettingsActionButtonStyle}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Path Data="{StaticResource IconCopy}" Fill="{DynamicResource TextPrimaryBrush}" Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                        <TextBlock Text="{loc:Loc About_CopyDiagnostics_Button}" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Button>
-                            </Grid>
+                            <TextBlock Text="{loc:Loc About_SystemDiagnostics_Title}" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,14" />
 
                             <!-- OS -->
                             <Grid Margin="0,0,0,8">

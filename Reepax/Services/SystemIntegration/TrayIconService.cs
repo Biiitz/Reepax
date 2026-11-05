@@ -3,7 +3,9 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Reepax.Models;
 using Reepax.Services.Download;
@@ -249,17 +251,22 @@ public class TrayIconService : IDisposable
     private void CreateContextMenu()
     {
         _contextMenu = new ContextMenu();
+        _contextMenu.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("/Reepax;component/Themes/TrayMenu.xaml", UriKind.Relative)
+        });
 
-        var openItem = new MenuItem { Header = Loc.Get("Tray_Menu_Open"), FontWeight = FontWeights.Bold };
+        var openItem = CreateMenuItem("Tray_Menu_Open", "IconExternalLink");
+        openItem.FontWeight = FontWeights.SemiBold;
         openItem.Click += (s, e) => RestoreMainWindow();
 
-        var pauseAllItem = new MenuItem { Header = Loc.Get("Tray_Menu_PauseAll") };
+        var pauseAllItem = CreateMenuItem("Tray_Menu_PauseAll", "IconPause");
         pauseAllItem.Click += (s, e) => QueueManager.Instance.StopQueue();
 
-        var resumeAllItem = new MenuItem { Header = Loc.Get("Tray_Menu_ResumeAll") };
+        var resumeAllItem = CreateMenuItem("Tray_Menu_ResumeAll", "IconPlay");
         resumeAllItem.Click += (s, e) => QueueManager.Instance.StartQueue();
 
-        var exitItem = new MenuItem { Header = Loc.Get("Tray_Menu_Exit") };
+        var exitItem = CreateMenuItem("Tray_Menu_Exit", "IconClose");
         exitItem.Click += (s, e) =>
         {
             if (_mainWindow is MainWindow mw)
@@ -284,22 +291,30 @@ public class TrayIconService : IDisposable
             }
         };
 
-        var postActionMenu = new MenuItem { Header = Loc.Get("PostDownload_Menu_Header") };
+        var postActionMenu = CreateMenuItem("PostDownload_Menu_Header", "IconPower");
         void RefreshPostActionMenuItems()
         {
             postActionMenu.Items.Clear();
             var current = PostDownloadActionService.Instance.CurrentAction;
 
-            var noneItem = new MenuItem { Header = Loc.Get("PostDownload_Action_None"), IsCheckable = true, IsChecked = current == PostDownloadAction.None };
+            var noneItem = CreateMenuItem("PostDownload_Action_None");
+            noneItem.IsCheckable = true;
+            noneItem.IsChecked = current == PostDownloadAction.None;
             noneItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.None;
 
-            var shutdownItem = new MenuItem { Header = Loc.Get("PostDownload_Action_Shutdown"), IsCheckable = true, IsChecked = current == PostDownloadAction.Shutdown };
+            var shutdownItem = CreateMenuItem("PostDownload_Action_Shutdown", "IconPower");
+            shutdownItem.IsCheckable = true;
+            shutdownItem.IsChecked = current == PostDownloadAction.Shutdown;
             shutdownItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.Shutdown;
 
-            var sleepItem = new MenuItem { Header = Loc.Get("PostDownload_Action_Sleep"), IsCheckable = true, IsChecked = current == PostDownloadAction.Sleep };
+            var sleepItem = CreateMenuItem("PostDownload_Action_Sleep", "IconMoon");
+            sleepItem.IsCheckable = true;
+            sleepItem.IsChecked = current == PostDownloadAction.Sleep;
             sleepItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.Sleep;
 
-            var exitAppItem = new MenuItem { Header = Loc.Get("PostDownload_Action_ExitApp"), IsCheckable = true, IsChecked = current == PostDownloadAction.ExitApp };
+            var exitAppItem = CreateMenuItem("PostDownload_Action_ExitApp", "IconClose");
+            exitAppItem.IsCheckable = true;
+            exitAppItem.IsChecked = current == PostDownloadAction.ExitApp;
             exitAppItem.Click += (s, e) => PostDownloadActionService.Instance.CurrentAction = PostDownloadAction.ExitApp;
 
             postActionMenu.Items.Add(noneItem);
@@ -319,6 +334,23 @@ public class TrayIconService : IDisposable
         _contextMenu.Items.Add(postActionMenu);
         _contextMenu.Items.Add(new Separator());
         _contextMenu.Items.Add(exitItem);
+    }
+
+    private static MenuItem CreateMenuItem(string labelKey, string? iconKey = null)
+    {
+        var item = new MenuItem();
+        item.SetBinding(HeaderedItemsControl.HeaderProperty, new Binding($"[{labelKey}]")
+        {
+            Source = LocalizationService.Instance
+        });
+        if (iconKey != null)
+        {
+            var icon = new System.Windows.Shapes.Path { Width = 13, Height = 13, Stretch = Stretch.Uniform };
+            icon.SetResourceReference(System.Windows.Shapes.Path.DataProperty, iconKey);
+            icon.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "TextSecondaryBrush");
+            item.Icon = icon;
+        }
+        return item;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
