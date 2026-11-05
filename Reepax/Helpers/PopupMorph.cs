@@ -100,12 +100,11 @@ public static class PopupMorph
             surface.OpensUpward = upward;
             surface.Origin = new Rect(originX, upward ? height - originHeight : 0, originWidth, originHeight);
             surface.UpdateContent();
-            var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
-            animation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-            animation.KeyFrames.Add(new EasingDoubleKeyFrame(1.015, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(230)),
-                new CubicEase { EasingMode = EasingMode.EaseOut }));
-            animation.KeyFrames.Add(new EasingDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(320)),
-                new SineEase { EasingMode = EasingMode.EaseInOut }));
+            var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240))
+            {
+                FillBehavior = FillBehavior.Stop,
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
             animation.Completed += (_, _) =>
             {
                 if (ReferenceEquals(_surface, surface)) surface.EndMorph();

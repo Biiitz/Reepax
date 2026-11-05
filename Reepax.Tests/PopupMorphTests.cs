@@ -44,12 +44,12 @@ public partial class DialogUiTests
             var margin = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(FrameworkElement.MarginProperty, typeof(MorphingPopupBorder));
             var offset = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(Popup.VerticalOffsetProperty, typeof(Popup));
             EventHandler changed = (_, _) => changes++;
-            var frames = new List<(double Time, Point Position)>();
+            var frames = new List<(double Time, Point Position, double Progress)>();
             var clock = System.Diagnostics.Stopwatch.StartNew();
             EventHandler rendered = (_, _) =>
             {
                 if (surface.IsMorphing && surface.HasAnimatedProperties)
-                    frames.Add((clock.Elapsed.TotalMilliseconds, surface.PointToScreen(new Point())));
+                    frames.Add((clock.Elapsed.TotalMilliseconds, surface.PointToScreen(new Point()), surface.Progress));
             };
             CompositionTarget.Rendering += rendered;
             margin.AddValueChanged(surface, changed);
@@ -64,6 +64,8 @@ public partial class DialogUiTests
                 {
                     Assert.True(frames.Count >= 2, "The real WPF render loop must sample the running animation.");
                     Assert.All(frames, frame => Assert.InRange((frame.Position - frames[0].Position).Length, 0, 0.5));
+                    Assert.All(frames, frame => Assert.InRange(frame.Progress, 0, 1));
+                    Assert.All(frames.Zip(frames.Skip(1)), pair => Assert.True(pair.Second.Progress >= pair.First.Progress));
                     var gaps = frames.Zip(frames.Skip(1), (first, second) => second.Time - first.Time).OrderBy(gap => gap).ToArray();
                     _popupOutput.WriteLine($"{placement}: {frames.Count} frames; maximum frame gap {gaps[^1]:F2} ms; p95 {gaps[(int)((gaps.Length - 1) * 0.95)]:F2} ms; no placement changes.");
                 }
@@ -124,7 +126,7 @@ public partial class DialogUiTests
                 if (SystemParameters.ClientAreaAnimation)
                 {
                     Assert.Equal((placement == PlacementMode.Top) != screenEdge, surface.OpensUpward);
-                    Assert.InRange(surface.Progress, 0.001, 1.035);
+                    Assert.InRange(surface.Progress, 0.001, 1);
                     Assert.Equal(anchor.ActualWidth, surface.Origin.Width, 2);
                     Assert.Equal(Math.Min(20, surface.ActualHeight), surface.Origin.Height, 2);
                 }
@@ -193,7 +195,7 @@ public partial class DialogUiTests
     }
 
     [Fact]
-    public void PopupMorph_ContentStaysHiddenUntilTheCardIsMostlyFormedAndRestoresItsProperties()
+    public void PopupMorph_ContentFadesDuringRevealWithoutSwitchingShadowOrTextCache()
     {
         RunInSta(() =>
         {
@@ -205,12 +207,15 @@ public partial class DialogUiTests
             surface.Measure(new Size(200, 160));
             surface.Arrange(new Rect(0, 0, 200, 160));
             surface.BeginMorph();
-            surface.Progress = 0.6;
+            surface.Progress = 0.1;
             Assert.Equal(0, text.Opacity);
-            Assert.IsType<BitmapCache>(text.CacheMode);
-            Assert.Null(surface.Effect);
+            Assert.Null(text.CacheMode);
+            Assert.Same(effect, surface.Effect);
+            surface.Progress = 0.6;
+            Assert.InRange(text.Opacity, 0.01, 0.79);
             surface.Progress = 1;
             Assert.Equal(0.8, text.Opacity);
+            Assert.Same(clip, text.Clip);
             surface.EndMorph();
             Assert.Same(clip, text.Clip);
             Assert.Same(effect, surface.Effect);
@@ -332,6 +337,55 @@ public partial class DialogUiTests
                 model.SelectedStatusFilter = previous.SelectedStatusFilter;
                 Application.Current.ShutdownMode = shutdown;
             }
+        });
+    }
+
+    [Theory]
+    [InlineData(ThemeCatalog.DefaultId, false)]
+    [InlineData(ThemeCatalog.DefaultId, true)]
+    [InlineData(ThemeCatalog.MacOSId, false)]
+    [InlineData(ThemeCatalog.MacOSId, true)]
+    public void PopupMorph_FinalFrameMatchesSettledSurface(string theme, bool upward)
+    {
+        RunInSta(() =>
+        {
+            EnsureSettingsTheme();
+            string previous = ThemeService.Instance.CurrentTheme.Id;
+            try
+            {
+                ThemeService.Instance.SelectTheme(theme, save: false);
+                var surface = new MorphingPopupBorder
+                {
+                    Width = 220, Height = 160,
+                    Style = (Style)Application.Current.FindResource("PopupSurfaceStyle"),
+                    Background = (Brush)Application.Current.FindResource("BgCardBrush"),
+                    BorderBrush = (Brush)Application.Current.FindResource("BorderDarkBrush"),
+                    BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6),
+                    Child = new TextBlock { Text = "Example options", Margin = new Thickness(12) },
+                    Origin = new Rect(80, upward ? 140 : 0, 140, 20), OpensUpward = upward
+                };
+                var root = new Border { Padding = new Thickness(24), Child = surface };
+                root.Measure(new Size(268, 208));
+                root.Arrange(new Rect(0, 0, 268, 208));
+                byte[] Capture()
+                {
+                    root.UpdateLayout();
+                    var bitmap = new RenderTargetBitmap(268, 208, 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(root);
+                    var pixels = new byte[268 * 208 * 4];
+                    bitmap.CopyPixels(pixels, 268 * 4, 0);
+                    return pixels;
+                }
+                surface.BeginMorph();
+                surface.Progress = 1;
+                byte[] finalFrame = Capture();
+                surface.EndMorph();
+                byte[] settled = Capture();
+                Assert.Contains(settled.Where((_, index) => index % 4 == 3), alpha => alpha > 0);
+                Assert.True(finalFrame.SequenceEqual(settled),
+                    $"Finishing the animation changed {finalFrame.Zip(settled).Count(pair => pair.First != pair.Second)} rendered channels.");
+            }
+            finally { ThemeService.Instance.SelectTheme(previous, save: false); }
         });
     }
 
