@@ -81,13 +81,13 @@
                         </Button>
 
                         <!-- Shield Popup Flyout -->
-                        <Popup x:Name="ShieldPopup"
+                        <Popup helpers:PopupMorph.IsEnabled="True" x:Name="ShieldPopup"
                                PlacementTarget="{Binding ElementName=ShieldButton}"
                                Placement="Bottom" helpers:PopupLayout.AlignRight="True"
                                VerticalOffset="4"
                                StaysOpen="False"
                                AllowsTransparency="True">
-                            <Border Style="{DynamicResource PopupSurfaceStyle}" Background="{DynamicResource BgCardBrush}"
+                            <helpers:MorphingPopupBorder Style="{DynamicResource PopupSurfaceStyle}" Background="{DynamicResource BgCardBrush}"
                                     BorderBrush="{DynamicResource BorderDarkBrush}"
                                     BorderThickness="1"
                                     CornerRadius="{DynamicResource CompactCornerRadius}"
@@ -138,7 +138,7 @@
                                             Padding="6,5"
                                             FontSize="10.5" />
                                 </StackPanel>
-                            </Border>
+                            </helpers:MorphingPopupBorder>
                         </Popup>
                     </Grid>
 

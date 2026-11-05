@@ -230,6 +230,7 @@
 
     <!-- Dark ContextMenu Style -->
     <Style TargetType="{x:Type ContextMenu}">
+        <Setter Property="helpers:PopupMorph.IsEnabled" Value="True" />
         <Setter Property="HasDropShadow" Value="False" />
         <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -239,13 +240,13 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ContextMenu}">
-                    <Border Style="{StaticResource PopupSurfaceStyle}" Background="{TemplateBinding Background}"
+                    <helpers:MorphingPopupBorder Style="{StaticResource PopupSurfaceStyle}" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{DynamicResource RoundedControlCornerRadius}"
                             Padding="{TemplateBinding Padding}">
                         <StackPanel IsItemsHost="True" />
-                    </Border>
+                    </helpers:MorphingPopupBorder>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -337,15 +338,15 @@
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
                                           Margin="6,2,20,2" VerticalAlignment="Center" HorizontalAlignment="Center"
                                           TextElement.Foreground="{DynamicResource ChoiceForegroundBrush}" TextElement.FontWeight="Bold" TextElement.FontSize="12" />
-                        <Popup Name="Popup" Placement="Bottom" VerticalOffset="4" helpers:PopupLayout.AlignRight="True"
+                        <Popup helpers:PopupMorph.IsEnabled="True" Name="Popup" Placement="Bottom" VerticalOffset="4" helpers:PopupLayout.AlignRight="True"
                                PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
-                               IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                               IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
                             <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                                <Border x:Name="DropDownBorder" Background="{DynamicResource BgCardBrush}" BorderThickness="1" BorderBrush="{DynamicResource BorderDarkBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}">
+                                <helpers:MorphingPopupBorder x:Name="DropDownBorder" Background="{DynamicResource BgCardBrush}" BorderThickness="1" BorderBrush="{DynamicResource BorderDarkBrush}" CornerRadius="{DynamicResource RoundedControlCornerRadius}">
                                     <ScrollViewer Margin="2,4" SnapsToDevicePixels="True">
                                         <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
                                     </ScrollViewer>
-                                </Border>
+                                </helpers:MorphingPopupBorder>
                             </Grid>
                         </Popup>
                     </Grid>
@@ -625,6 +626,7 @@
 
     <!-- Modern Square ToolTip Style with Multi-Line Text Wrapping -->
     <Style TargetType="{x:Type ToolTip}">
+        <Setter Property="helpers:PopupMorph.IsEnabled" Value="True" />
         <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderDarkBrush}" />
@@ -636,7 +638,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ToolTip}">
-                    <Border Style="{StaticResource PopupSurfaceStyle}" Background="{TemplateBinding Background}"
+                    <helpers:MorphingPopupBorder Style="{StaticResource PopupSurfaceStyle}" Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="{DynamicResource ControlCornerRadius}"
@@ -656,7 +658,7 @@
                                 </Style>
                             </ContentPresenter.Resources>
                         </ContentPresenter>
-                    </Border>
+                    </helpers:MorphingPopupBorder>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

@@ -9,14 +9,14 @@
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
              Width="0" Height="0" Focusable="False">
-    <Popup x:Name="PopupRoot"
+    <Popup helpers:PopupMorph.IsEnabled="True" x:Name="PopupRoot"
            Placement="Top" helpers:PopupLayout.AlignRight="True"
            StaysOpen="False"
            AllowsTransparency="True"
            PopupAnimation="Fade"
            VerticalOffset="-10"
            Closed="PopupRoot_Closed">
-        <Border x:Name="PopupContent" Style="{DynamicResource PopupSurfaceStyle}"
+        <helpers:MorphingPopupBorder x:Name="PopupContent" Style="{DynamicResource PopupSurfaceStyle}"
                 Background="{DynamicResource BgCardBrush}" 
                 BorderBrush="{DynamicResource BorderDarkBrush}" 
                 BorderThickness="1" 
@@ -357,6 +357,6 @@
                     </StackPanel>
                 </Button>
             </StackPanel>
-        </Border>
+        </helpers:MorphingPopupBorder>
     </Popup>
 </UserControl>

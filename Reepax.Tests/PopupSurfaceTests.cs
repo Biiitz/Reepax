@@ -41,11 +41,15 @@ public partial class DialogUiTests
                 menu.IsOpen = true;
                 PumpSettingsAnimations();
                 Assert.False(menu.HasDropShadow);
+                Assert.True(PopupMorph.GetIsEnabled(menu));
+                Assert.Single(Descendants<MorphingPopupBorder>(menu));
                 CheckPopup(menu);
                 menu.IsOpen = false;
                 tip.IsOpen = true;
                 PumpSettingsAnimations();
                 Assert.False(tip.HasDropShadow);
+                Assert.True(PopupMorph.GetIsEnabled(tip));
+                Assert.Single(Descendants<MorphingPopupBorder>(tip));
                 CheckPopup(tip);
             }
             finally
@@ -65,6 +69,11 @@ public partial class DialogUiTests
         var source = Assert.IsType<HwndSource>(PresentationSource.FromVisual(content));
         Assert.True(source.UsesPerPixelOpacity);
         var root = (FrameworkElement)source.RootVisual;
+        var surface = content as MorphingPopupBorder ?? Descendants<MorphingPopupBorder>(root).FirstOrDefault();
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (surface?.HasAnimatedProperties == true && deadline.Elapsed < TimeSpan.FromSeconds(3))
+            PumpSettingsAnimations(20);
+        if (surface != null) Assert.False(surface.HasAnimatedProperties);
         root.UpdateLayout();
         int width = (int)Math.Ceiling(root.ActualWidth), height = (int)Math.Ceiling(root.ActualHeight);
         Assert.True(width > 16 && height > 16);
@@ -74,6 +83,8 @@ public partial class DialogUiTests
         image.CopyPixels(pixels, width * 4, 0);
         foreach (int offset in new[] { 0, (width - 1) * 4, (height - 1) * width * 4, (height * width - 1) * 4 })
             Assert.Equal(0, pixels[offset + 3]);
-        Assert.True(pixels[((height / 2) * width + width / 2) * 4 + 3] > 0);
+        var center = surface == null ? new Point(width / 2, height / 2) :
+            surface.TransformToAncestor(root).Transform(new Point(surface.ActualWidth / 2, surface.ActualHeight / 2));
+        Assert.True(pixels[((int)center.Y * width + (int)center.X) * 4 + 3] > 0);
     }
 }
