@@ -224,15 +224,52 @@ internal static class WindowDownloadFlowWorker
             Assert.True(topLeft.X >= main.PointToScreen(new Point()).X,
                 $"Column menu moved outside the window: {topLeft.X}, expected near {anchorRight.X}.");
         }
+        void CheckVerticalPlacement(ContextMenu popup)
+        {
+            var surface = Descendants<MorphingPopupBorder>(popup).Single();
+            double bottom = header.PointToScreen(new Point(0, header.ActualHeight)).Y;
+            Assert.InRange(Math.Abs(surface.PointToScreen(new Point()).Y - bottom), 0, 1);
+        }
         try
         {
             Invoke(gear);
             await UntilAsync(() => gearMenu.IsOpen && gearMenu.ActualWidth > 0);
             CheckGearPlacement();
+            CheckVerticalPlacement(gearMenu);
             gearMenu.IsOpen = false;
             await UntilAsync(() => !gearMenu.IsOpen);
             OpenHeaderContextMenu();
             await UntilAsync(() => menu.IsOpen);
+            CheckVerticalPlacement(menu);
+            void OpenAt(double anchor)
+            {
+                var request = (ContextMenuEventArgs)Activator.CreateInstance(typeof(ContextMenuEventArgs),
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+                    null, new object[] { header, true, anchor, 5.0 }, null)!;
+                header.RaiseEvent(request);
+                Assert.True(request.Handled);
+            }
+            await UntilAsync(() => !Descendants<MorphingPopupBorder>(menu).Single().IsMorphing);
+            int reopenCount = 0;
+            menu.Opened += (_, _) => reopenCount++;
+            foreach (double anchor in new[] { 160.0, 360.0, 220.0 })
+            {
+                OpenAt(anchor);
+                await IdleAsync();
+                double expected = header.PointToScreen(new Point(anchor, 0)).X;
+                Assert.InRange(Math.Abs(menu.PointToScreen(new Point()).X - expected), 0, 1);
+                CheckVerticalPlacement(menu);
+                Assert.False(Descendants<MorphingPopupBorder>(menu).Single().IsMorphing);
+            }
+            Assert.Equal(0, reopenCount);
+            foreach (double anchor in new[] { 320.0, 180.0, 380.0 })
+            {
+                menu.IsOpen = false;
+                OpenAt(anchor);
+                await UntilAsync(() => menu.IsOpen && !Descendants<MorphingPopupBorder>(menu).Single().IsMorphing);
+                Assert.InRange(Math.Abs(menu.PointToScreen(new Point()).X - header.PointToScreen(new Point(anchor, 0)).X), 0, 1);
+                CheckVerticalPlacement(menu);
+            }
             Invoke(gear);
             await UntilAsync(() => gearMenu.IsOpen);
             Assert.False(menu.IsOpen);

@@ -3443,15 +3443,38 @@ public partial class MainWindow : Window
         {
             // Keep the header's context-menu ownership separate from the button anchor.
             ColumnHeadersBorder.ContextMenu.IsOpen = false;
-            menu.DataContext = ViewModel;
-            menu.PlacementTarget = el;
-            menu.Placement = PlacementMode.Bottom;
-            menu.VerticalOffset = 4;
-            menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            menu.HorizontalOffset = SystemParameters.MenuDropAlignment ? 0
-                : el.RenderSize.Width - menu.DesiredSize.Width;
-            menu.IsOpen = true;
+            double right = el.TranslatePoint(new Point(el.ActualWidth, 0), ColumnHeadersBorder).X;
+            OpenColumnConfigurationMenu(menu, right, alignRight: true);
         }
+    }
+
+    private void ColumnHeaders_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        e.Handled = true;
+        ColumnConfigButton.ContextMenu.IsOpen = false;
+        var point = e.OriginalSource is UIElement source
+            ? source.TranslatePoint(new Point(e.CursorLeft, e.CursorTop), ColumnHeadersBorder)
+            : Mouse.GetPosition(ColumnHeadersBorder);
+        double left = e.CursorLeft < 0 ? 0 : Math.Clamp(point.X, 0, ColumnHeadersBorder.ActualWidth);
+        OpenColumnConfigurationMenu(ColumnHeadersBorder.ContextMenu, left, alignRight: false);
+    }
+
+    private void OpenColumnConfigurationMenu(ContextMenu menu, double horizontalAnchor, bool alignRight)
+    {
+        menu.DataContext = ViewModel;
+        menu.PlacementTarget = ColumnHeadersBorder;
+        menu.Placement = PlacementMode.Custom;
+        if (!menu.IsOpen) menu.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        // Align the visible card, excluding its transparent shadow margin, with the header edge.
+        double shadowMargin = VisualTreeHelper.GetChildrenCount(menu) > 0 &&
+            VisualTreeHelper.GetChild(menu, 0) is FrameworkElement surface ? surface.Margin.Top : 0;
+        menu.CustomPopupPlacementCallback = (popupSize, targetSize, _) =>
+            new[] { new CustomPopupPlacement(new Point(alignRight ? -popupSize.Width : 0,
+                targetSize.Height - shadowMargin), PopupPrimaryAxis.Horizontal) };
+        menu.HorizontalOffset = menu.VerticalOffset = 0;
+        // Changing the anchor rectangle repositions a visible menu in one placement pass.
+        menu.PlacementRectangle = new Rect(horizontalAnchor, 0, 0, ColumnHeadersBorder.ActualHeight);
+        menu.IsOpen = true;
     }
 
 

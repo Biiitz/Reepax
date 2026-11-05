@@ -1690,7 +1690,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- Column Headers with 1:1 Screen-Coordinate Resizing & Gear Customization Menu on the Far Right -->
-                <Border x:Name="ColumnHeadersBorder" ContextMenu="{StaticResource ColumnConfigurationMenu}" Grid.Row="0" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="0,0" ClipToBounds="True" PreviewMouseWheel="TreeList_PreviewMouseWheel">
+                <Border x:Name="ColumnHeadersBorder" ContextMenu="{StaticResource ColumnConfigurationMenu}" ContextMenuOpening="ColumnHeaders_ContextMenuOpening" Grid.Row="0" Background="{DynamicResource BgHeaderBrush}" BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="0,0,0,1" Padding="0,0" ClipToBounds="True" PreviewMouseWheel="TreeList_PreviewMouseWheel">
                     <DockPanel LastChildFill="True">
                         <!-- Dedicated Far-Right Gear Button (always on the far right end of the table header, strictly above vertical scrollbar) -->
                         <Border DockPanel.Dock="Right" Width="18" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource BorderDarkBrush}" Background="{DynamicResource BgHeaderBrush}" Panel.ZIndex="1">
