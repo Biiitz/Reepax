@@ -9,6 +9,8 @@ public static class Strings_de
     {
         // Common
         ["Settings_SelectionOpacity_Title"] = "Deckkraft der Markierung",
+        ["Settings_PixelProgress_Title"] = "Pixel-Fortschrittsbalken",
+        ["Settings_PixelProgress_Help"] = "Zeigt den Fortschritt von Paketen und Dateien als dezentes Pixelraster hinter der Prozentzahl. Während des Downloads läuft gelegentlich ein sanfter Schimmer darüber. Ohne Fortschritt bleibt der Hintergrund leer; bei Pause stoppen die Animationen.",
         ["Settings_SelectionOpacity_Help"] = "Passt die Hervorhebung markierter Pakete und Dateien im Download-Tab an. 0% blendet sie aus; 100% erhält das bisherige Aussehen. Text und Fortschrittsanzeigen bleiben unverändert.",
         ["Common_Yes"] = "Ja",
         ["Common_No"] = "Nein",

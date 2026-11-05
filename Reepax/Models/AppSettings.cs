@@ -26,6 +26,7 @@ public class AppSettings
     public double? AccentColorValue { get; set; } = 0.96;
     public Dictionary<string, ThemeAccentSettings> ThemeAccents { get; set; } = new();
     public double DownloadSelectionOpacity { get; set; } = 1;
+    public bool ShowPixelProgressBars { get; set; } = false;
     public bool EnableAdBlocker { get; set; } = true;
     public double SpeedLimitMBps { get; set; } = 0; // 0 = unlimited
     public long SpeedLimitBytesPerSecond { get; set; } = 0; // 0 = unlimited

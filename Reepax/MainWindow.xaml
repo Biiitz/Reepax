@@ -32,6 +32,12 @@
     </Window.DataContext>
 
     <Window.Resources>
+        <Style x:Key="DownloadPixelProgressStyle" TargetType="helpers:PixelProgressBar">
+            <Setter Property="Opacity" Value="0.08" />
+            <Setter Property="Progress" Value="{Binding ProgressPercentage}" />
+            <Setter Property="Status" Value="{Binding Status}" />
+            <Setter Property="Visibility" Value="{Binding DataContext.ShowPixelProgressBars, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}" />
+        </Style>
         <ContextMenu x:Key="ColumnConfigurationMenu" x:Shared="False">
             <MenuItem Header="{loc:Loc Col_Name}" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" />
             <MenuItem Header="{loc:Loc Col_Hoster}" IsCheckable="True" IsChecked="{Binding ShowColHoster, Mode=TwoWay}" StaysOpenOnClick="True" />
@@ -524,10 +530,14 @@
 
                     <!-- 4: Individual Progress Percentage -->
                     <Border Grid.Column="{Binding DataContext.ColIndexProgress, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
-                            BorderThickness="{Binding DataContext.ShowDividerProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="4,0,8,0"
+                            BorderThickness="{Binding DataContext.ShowDividerProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}"
                             Visibility="{Binding DataContext.ShowColProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}" 
-                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <Grid>
+                            <helpers:PixelProgressBar x:Name="ItemPixelProgress" Style="{StaticResource DownloadPixelProgressStyle}" Margin="0,-3,0,-3" />
+                            <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Margin="4,0,8,0" TextTrimming="CharacterEllipsis" />
+                        </Grid>
                     </Border>
 
                     <!-- 5: Speed -->
@@ -1079,11 +1089,14 @@
 
                         <!-- 4: Aggregated Progress Percentage -->
                         <Border Grid.Column="{Binding DataContext.ColIndexProgress, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
-                                BorderThickness="{Binding DataContext.ShowDividerProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="4,0,8,0"
+                                BorderThickness="{Binding DataContext.ShowDividerProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}"
                                 Visibility="{Binding DataContext.ShowColProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">
-                            <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}" 
-                                       FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="11" 
-                                       HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            <Grid ClipToBounds="True">
+                                <helpers:PixelProgressBar x:Name="PackagePixelProgress" Style="{StaticResource DownloadPixelProgressStyle}" />
+                                <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.00} %'}"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" FontSize="11"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,0,8,0" TextTrimming="CharacterEllipsis" />
+                            </Grid>
                         </Border>
 
                         <!-- 5: Aggregated Speed -->

@@ -31,7 +31,7 @@ public class SettingsServiceTests : IDisposable
     }
 
     [Fact]
-    public void ThemeAccentsAndSelectionOpacity_RoundTripThroughProtectedSettings()
+    public void AppearancePreferences_RoundTripThroughProtectedSettings()
     {
         var path = Path.Combine(_tempDirectory, "appearance.json");
         var service = new SettingsService(path);
@@ -41,6 +41,9 @@ public class SettingsServiceTests : IDisposable
             ["macos"] = new() { Hex = "#000000", Hue = 120, Saturation = 0, Value = 0 }
         };
         service.Settings.DownloadSelectionOpacity = 0.35;
+        Assert.False(service.Settings.ShowPixelProgressBars);
+        Assert.False(JsonSerializer.Deserialize<AppSettings>("{}")!.ShowPixelProgressBars);
+        service.Settings.ShowPixelProgressBars = true;
         service.SaveSettings();
         Assert.True(File.Exists(path));
         var stored = JsonSerializer.Deserialize<AppSettings>(SecureAppDataStorage.DecryptString(File.ReadAllText(path)))!;
@@ -55,6 +58,7 @@ public class SettingsServiceTests : IDisposable
         Assert.Equal(0, darkColor.Saturation);
         Assert.Equal(0, darkColor.Value);
         Assert.Equal(0.35, reopened.Settings.DownloadSelectionOpacity);
+        Assert.True(reopened.Settings.ShowPixelProgressBars);
     }
 
     [Fact]

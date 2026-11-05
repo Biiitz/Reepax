@@ -4,6 +4,18 @@ namespace Reepax.ViewModels;
 
 public partial class MainViewModel
 {
+    public bool ShowPixelProgressBars
+    {
+        get => _settingsService.Settings.ShowPixelProgressBars;
+        set
+        {
+            if (_settingsService.Settings.ShowPixelProgressBars == value) return;
+            _settingsService.Settings.ShowPixelProgressBars = value;
+            _settingsService.RequestSaveSettings();
+            OnPropertyChanged();
+        }
+    }
+
     public double SelectionOpacityPercent
     {
         get => ThemeService.NormalizeSelectionOpacity(_settingsService.Settings.DownloadSelectionOpacity) * 100;

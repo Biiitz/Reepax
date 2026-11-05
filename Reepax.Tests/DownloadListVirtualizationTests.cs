@@ -989,7 +989,7 @@ public partial class DownloadListVirtualizationTests
             var root = new DownloadPackage { Name = "Archive", AutoPar2Repair = false, IsCustomName = true };
             root.AddItems(Enumerable.Range(0, 1000).Select(i => new DownloadItem
             {
-                FileName = $"file-{i}.bin", Status = DownloadStatus.Paused, HosterName = "Source A"
+                FileName = $"file-{i}.bin", Status = DownloadStatus.Paused, HosterName = "Source A", ProgressPercentage = i % 100
             }));
             var child = new DownloadPackage { Name = "Attached", AutoPar2Repair = false, ParentPackageId = root.Id };
             var childItem = new DownloadItem { FileName = "attached.bin", Status = DownloadStatus.Paused };
@@ -1003,12 +1003,28 @@ public partial class DownloadListVirtualizationTests
                     .Count(i => list.ItemContainerGenerator.ContainerFromIndex(i) != null), 1, 60);
                 var header = FindVisual<ContentPresenter>(list.ItemContainerGenerator.ContainerFromIndex(0))!;
                 Assert.Same(root, ((Border)((DownloadRowTemplateSelector)header.ContentTemplateSelector).PackageTemplate!.FindName("PackageBorder", header)).DataContext);
+                var progress = FindVisual<PixelProgressBar>(header)!;
+                Assert.Equal(root.ProgressPercentage, progress.Progress);
+                Assert.Equal(root.Status, progress.Status);
                 var packageButton = FindVisual<Button>(header)!;
                 Assert.Same(root, packageButton.CommandParameter);
                 Assert.True(packageButton.Command.CanExecute(packageButton.CommandParameter));
                 packageButton.Command.Execute(packageButton.CommandParameter);
                 var file = FindVisual<ContentPresenter>(list.ItemContainerGenerator.ContainerFromIndex(1))!;
                 Assert.Same(root.Items[0], ((Border)((DownloadRowTemplateSelector)file.ContentTemplateSelector).ItemTemplate!.FindName("ItemBorder", file)).DataContext);
+                var itemProgress = FindVisual<PixelProgressBar>(file)!;
+                Assert.Equal(root.Items[0].ProgressPercentage, itemProgress.Progress);
+                var itemBorder = (Border)((DownloadRowTemplateSelector)file.ContentTemplateSelector).ItemTemplate!.FindName("ItemBorder", file);
+                Assert.InRange(Math.Abs(itemProgress.ActualHeight - (itemBorder.ActualHeight -
+                    itemBorder.BorderThickness.Top - itemBorder.BorderThickness.Bottom)), 0, 1);
+                root.Items[0].ProgressPercentage = 35;
+                root.Items[0].Status = DownloadStatus.Downloading;
+                root.RefreshStatistics();
+                Layout(list);
+                Assert.Equal(root.ProgressPercentage, progress.Progress);
+                Assert.Equal(root.Status, progress.Status);
+                Assert.Equal(35, itemProgress.Progress);
+                Assert.Equal(DownloadStatus.Downloading, itemProgress.Status);
                 var itemButton = FindVisual<Button>(file)!;
                 Assert.Same(root.Items[0], itemButton.CommandParameter);
                 Assert.True(itemButton.Command.CanExecute(itemButton.CommandParameter));
@@ -1018,6 +1034,8 @@ public partial class DownloadListVirtualizationTests
                 file = FindVisual<ContentPresenter>(list.ItemContainerGenerator.ContainerFromIndex(1002))!;
                 var border = (Border)((DownloadRowTemplateSelector)file.ContentTemplateSelector).ItemTemplate!.FindName("ItemBorder", file);
                 Assert.Same(childItem, border.DataContext);
+                Assert.Equal(childItem.ProgressPercentage, FindVisual<PixelProgressBar>(file)!.Progress);
+                Assert.Equal(DownloadStatus.Paused, FindVisual<PixelProgressBar>(file)!.Status);
                 Assert.Equal(28, FindVisual<StackPanel>(border)!.Margin.Left);
                 Assert.NotNull(FindVisual<System.Windows.Controls.Primitives.ScrollBar>(viewer));
                 Assert.Null(list.ItemContainerGenerator.ContainerFromIndex(0));

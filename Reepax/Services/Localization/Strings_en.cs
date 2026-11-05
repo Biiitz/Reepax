@@ -9,6 +9,8 @@ public static class Strings_en
     {
         // Common
         ["Settings_SelectionOpacity_Title"] = "Selection opacity",
+        ["Settings_PixelProgress_Title"] = "Pixel progress bar",
+        ["Settings_PixelProgress_Help"] = "Show package and file progress as a subtle pixel grid behind the percentage. A gentle shimmer occasionally passes over it during downloads. Without progress, the background stays empty; pausing stops the animations.",
         ["Settings_SelectionOpacity_Help"] = "Adjust the highlight of selected packages and files in Downloads. 0% hides the highlight; 100% keeps its original appearance. Text and progress indicators remain unchanged.",
         ["Common_Yes"] = "Yes",
         ["Common_No"] = "No",
