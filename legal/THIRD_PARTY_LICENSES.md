@@ -1,10 +1,10 @@
-# Third-Party Licenses
+<h1 align="center">Third-Party Licenses</h1>
 
-Reepax's original code is licensed under MIT. Third-party components retain their own licenses.
+Reepax's original code is covered by the [MIT License](../LICENSE). The components below retain their own licenses and copyright notices; they are not relicensed under Reepax's license.
 
-Full license texts and copyright notices are collected in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+License texts and attribution notices are collected in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). The source references below identify upstream versions and, where applicable, local modifications.
 
-| Component | Version | License | Source |
+| Component | Version | License | Source and local changes |
 | --- | --- | --- | --- |
 | par2cmdline-turbo | 1.5.0 | GPL-2.0-or-later | [Corresponding source archive](https://github.com/animetosho/par2cmdline-turbo/releases/download/v1.5.0/par2cmdline-turbo-1.5.0.tar.xz) |
 | adblock-rust | 0.13.3 | MPL-2.0; dependencies retain their respective licenses | [Engine source](https://github.com/brave/adblock-rust/tree/v0.13.3), [bridge source and lockfile](../native/adblock_bridge) |
