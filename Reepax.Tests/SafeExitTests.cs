@@ -331,11 +331,11 @@ public class SafeExitTests
         {
             LocalizationService.Instance.CurrentLanguage = "de";
             Assert.Equal("In Infobereich minimieren beim Schließen", Loc.Get("Settings_MinimizeToTrayOnClose_Title"));
-            Assert.Equal("Hält Downloads im Hintergrund aktiv, wenn das Fenster geschlossen wird.", Loc.Get("Settings_MinimizeToTrayOnClose_Subtitle"));
+            Assert.Equal("Beim Schließen läuft Reepax neben der Windows-Uhr weiter. Downloads werden nicht beendet.", Loc.Get("Settings_MinimizeToTrayOnClose_Subtitle"));
 
             LocalizationService.Instance.CurrentLanguage = "en";
             Assert.Equal("Minimize to tray on close", Loc.Get("Settings_MinimizeToTrayOnClose_Title"));
-            Assert.Equal("Keeps downloads running in the background when closing the window.", Loc.Get("Settings_MinimizeToTrayOnClose_Subtitle"));
+            Assert.Equal("Closing the window keeps Reepax running in the notification area. Downloads continue.", Loc.Get("Settings_MinimizeToTrayOnClose_Subtitle"));
         }
         finally
         {

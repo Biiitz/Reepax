@@ -100,8 +100,9 @@ internal static class WindowDownloadFlowWorker
             Assert.Equal(34, power.ActualHeight);
             Assert.IsType<System.Windows.Shapes.Path>(power.Content);
             var filter = Assert.IsType<SingleChoiceDropdown>(main.FindName("StatusFilterButton"));
-            Assert.Equal(28, filter.ActualHeight);
-            Assert.Equal(new Thickness(8, 0, 0, 0), filter.Margin);
+            Assert.Equal(41, filter.ActualHeight);
+            Assert.Equal(new Thickness(0), filter.Margin);
+            Assert.Equal(new Thickness(0, 0, 1, 0), filter.BorderThickness);
             Assert.Equal(2, Descendants<System.Windows.Shapes.Path>(filter).Count());
             filter.RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
             { RoutedEvent = Mouse.PreviewMouseWheelEvent });

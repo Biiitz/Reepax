@@ -374,86 +374,41 @@ public partial class SettingsService
 
         try
         {
+            roamingDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(roamingDir));
+            targetDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDir));
+            if (string.Equals(roamingDir, targetDir, StringComparison.OrdinalIgnoreCase) ||
+                roamingDir.StartsWith(targetDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                targetDir.StartsWith(roamingDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return false;
+
             if (!Directory.Exists(roamingDir))
                 return true;
 
-            if (!Directory.Exists(targetDir))
-            {
-                Directory.CreateDirectory(targetDir);
-            }
+            Directory.CreateDirectory(targetDir);
+            if (IsMigrationLink(roamingDir) || IsMigrationLink(targetDir)) return false;
 
             bool allSucceeded = true;
-            string[] filesToMigrate = { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json" };
-            foreach (var file in filesToMigrate)
+            foreach (var src in Directory.GetFiles(roamingDir))
             {
-                var src = Path.Combine(roamingDir, file);
-                var dest = Path.Combine(targetDir, file);
-                if (File.Exists(src))
-                {
-                    bool shouldCopy = !File.Exists(dest);
-                    if (!shouldCopy)
-                    {
-                        var srcInfo = new FileInfo(src);
-                        var destInfo = new FileInfo(dest);
-                        // If source has actual data and destination is empty/default, prioritize user's actual data
-                        if (srcInfo.Length > destInfo.Length || destInfo.Length <= 10)
-                        {
-                            shouldCopy = true;
-                        }
-                    }
-
-                    if (shouldCopy)
-                    {
-                        try
-                        {
-                            File.Copy(src, dest, overwrite: true);
-                            var srcInfo = new FileInfo(src);
-                            var destInfo = new FileInfo(dest);
-                            if (!destInfo.Exists || destInfo.Length != srcInfo.Length)
-                            {
-                                allSucceeded = false;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            allSucceeded = false;
-                            AppLogger.Warn($"[SettingsService] Error migrating '{file}': {ex.Message}");
-                        }
-                    }
-                }
+                var file = Path.GetFileName(src);
+                if (!Array.Exists(RoamingFilesToMigrate, name => string.Equals(name, file, StringComparison.OrdinalIgnoreCase)) ||
+                    !CopyMigrationFile(src, Path.Combine(targetDir, file)))
+                    allSucceeded = false;
             }
 
-            // Migrate Extensions, Icons, and any subdirectories
-            string[] dirsToMigrate = { "Extensions", "Icons" };
-            foreach (var subDir in dirsToMigrate)
+            foreach (var srcSub in Directory.GetDirectories(roamingDir))
             {
-                var srcSub = Path.Combine(roamingDir, subDir);
-                var destSub = Path.Combine(targetDir, subDir);
-                if (Directory.Exists(srcSub))
-                {
-                    if (!CopyDirectory(srcSub, destSub))
-                    {
-                        allSucceeded = false;
-                    }
-                }
+                var subDir = Path.GetFileName(srcSub);
+                if (!Array.Exists(RoamingDirectoriesToMigrate, name => string.Equals(name, subDir, StringComparison.OrdinalIgnoreCase)) ||
+                    !CopyDirectory(srcSub, Path.Combine(targetDir, subDir)))
+                    allSucceeded = false;
             }
 
-            // Clean up old Roaming directory ONLY if all items were migrated successfully
             if (allSucceeded)
-            {
-                try
-                {
-                    Directory.Delete(roamingDir, recursive: true);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Debug($"[SettingsService] Could not remove roaming directory after migration: {ex.Message}");
-                }
-            }
-            else
-            {
-                AppLogger.Warn("[SettingsService] Roaming directory was preserved because some items failed to copy.");
-            }
+                allSucceeded = RemoveMigratedDirectory(roamingDir, targetDir, isRoot: true);
+
+            if (!allSucceeded)
+                AppLogger.Warn("[SettingsService] Roaming data retained because migration is incomplete or conflicting.");
 
             return allSucceeded;
         }
@@ -464,34 +419,84 @@ public partial class SettingsService
         }
     }
 
+    private static readonly string[] RoamingFilesToMigrate =
+        { "settings.json", "settings.json.bak", "downloads.json", "downloads.json.bak", "history.json", "history.json.bak", "extensions.json" };
+    private static readonly string[] RoamingDirectoriesToMigrate = { "Extensions", "Icons" };
+
+    private static bool IsMigrationLink(string path) =>
+        (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+
+    private static bool CopyMigrationFile(string source, string target)
+    {
+        string? temporary = null;
+        try
+        {
+            if (IsMigrationLink(source) || (File.Exists(target) && IsMigrationLink(target))) return false;
+            using var input = File.Open(source, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (File.Exists(target))
+            {
+                using var existing = File.Open(target, FileMode.Open, FileAccess.Read, FileShare.Read);
+                // A different destination remains authoritative, even if it is smaller or unreadable.
+                return MigrationBytesEqual(input, existing);
+            }
+
+            temporary = Path.Combine(Path.GetDirectoryName(target)!, $".migration-{Guid.NewGuid():N}.tmp");
+            using (var staged = new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            {
+                input.CopyTo(staged);
+                staged.Flush(flushToDisk: true);
+                if (!MigrationBytesEqual(input, staged))
+                    throw new IOException("Migration copy verification failed.");
+            }
+            // Publication must also refuse a destination created after the existence check.
+            File.Move(temporary, target);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn($"[SettingsService] Migration copy failed: {ex.GetType().Name}");
+            return false;
+        }
+        finally
+        {
+            if (temporary != null)
+            {
+                try { File.Delete(temporary); } catch { }
+            }
+        }
+    }
+
+    private static bool MigrationBytesEqual(Stream first, Stream second)
+    {
+        if (first.Length != second.Length) return false;
+        first.Position = second.Position = 0;
+        Span<byte> firstBuffer = stackalloc byte[4096];
+        Span<byte> secondBuffer = stackalloc byte[4096];
+        long remaining = first.Length;
+        while (remaining > 0)
+        {
+            int count = (int)Math.Min(remaining, firstBuffer.Length);
+            first.ReadExactly(firstBuffer[..count]);
+            second.ReadExactly(secondBuffer[..count]);
+            if (!firstBuffer[..count].SequenceEqual(secondBuffer[..count])) return false;
+            remaining -= count;
+        }
+        return true;
+    }
+
     private static bool CopyDirectory(string sourceDir, string targetDir)
     {
         try
         {
             Directory.CreateDirectory(targetDir);
+            if (IsMigrationLink(sourceDir) || IsMigrationLink(targetDir)) return false;
             bool allFilesSucceeded = true;
 
             foreach (var file in Directory.GetFiles(sourceDir))
             {
                 var dest = Path.Combine(targetDir, Path.GetFileName(file));
-                try
-                {
-                    if (!File.Exists(dest) || new FileInfo(dest).Length == 0)
-                    {
-                        File.Copy(file, dest, overwrite: true);
-                        var srcInfo = new FileInfo(file);
-                        var destInfo = new FileInfo(dest);
-                        if (!destInfo.Exists || destInfo.Length != srcInfo.Length)
-                        {
-                            allFilesSucceeded = false;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
+                if (!CopyMigrationFile(file, dest))
                     allFilesSucceeded = false;
-                    AppLogger.Warn($"[SettingsService] Failed to copy '{file}' to '{dest}': {ex.Message}");
-                }
             }
 
             foreach (var subDir in Directory.GetDirectories(sourceDir))
@@ -510,5 +515,32 @@ public partial class SettingsService
             AppLogger.Warn($"[SettingsService] Failed to copy directory '{sourceDir}': {ex.Message}");
             return false;
         }
+    }
+
+    private static bool RemoveMigratedDirectory(string sourceDir, string targetDir, bool isRoot = false)
+    {
+        // Recheck each source before deletion; never recursively remove unexamined data.
+        if (IsMigrationLink(sourceDir) || IsMigrationLink(targetDir)) return false;
+        foreach (string source in Directory.GetFiles(sourceDir))
+        {
+            string file = Path.GetFileName(source);
+            if (isRoot && !Array.Exists(RoamingFilesToMigrate, name => string.Equals(name, file, StringComparison.OrdinalIgnoreCase))) return false;
+            string target = Path.Combine(targetDir, file);
+            if (IsMigrationLink(source) || IsMigrationLink(target)) return false;
+            using (var input = File.Open(source, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var output = File.Open(target, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                if (!MigrationBytesEqual(input, output)) return false;
+            }
+            File.Delete(source);
+        }
+        foreach (string directory in Directory.GetDirectories(sourceDir))
+        {
+            string name = Path.GetFileName(directory);
+            if (isRoot && !Array.Exists(RoamingDirectoriesToMigrate, entry => string.Equals(entry, name, StringComparison.OrdinalIgnoreCase))) return false;
+            if (!RemoveMigratedDirectory(directory, Path.Combine(targetDir, name))) return false;
+        }
+        Directory.Delete(sourceDir);
+        return true;
     }
 }

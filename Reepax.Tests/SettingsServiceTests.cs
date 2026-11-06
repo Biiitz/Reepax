@@ -11,15 +11,26 @@ namespace Reepax.Tests;
 public class SettingsServiceTests : IDisposable
 {
     private readonly string _tempDirectory;
+    private readonly string? _previousAppData = SettingsService.AppDataDirectoryOverride;
+    private readonly string? _previousLogs = (string?)typeof(AppLogger)
+        .GetField("_customLogsDirectory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null);
+    private readonly bool _previousLogging = AppLogger.IsLoggingEnabled;
 
     public SettingsServiceTests()
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), "Reepax_SettingsTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDirectory);
+        SettingsService.AppDataDirectoryOverride = _tempDirectory;
+        AppLogger.LogsDirectory = Path.Combine(_tempDirectory, "logs");
+        AppLogger.IsLoggingEnabled = false;
     }
 
     public void Dispose()
     {
+        AppLogger.Flush();
+        SettingsService.AppDataDirectoryOverride = _previousAppData;
+        AppLogger.LogsDirectory = _previousLogs!;
+        AppLogger.IsLoggingEnabled = _previousLogging;
         try
         {
             if (Directory.Exists(_tempDirectory))
