@@ -609,6 +609,7 @@ public partial class DownloadPackage : ObservableObject
 
     private void Items_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        Interlocked.Exchange(ref _itemsSnapshotDirty, 1);
         Interlocked.Exchange(ref _hosterNotificationsDirty, 1);
         if (e.Action == NotifyCollectionChangedAction.Reset)
         {
@@ -648,10 +649,11 @@ public partial class DownloadPackage : ObservableObject
         }
 
         MarkDirty();
-        if (_deferItemUpdates)
+        if (IsDeferringItemUpdates)
             return;
 
         Volatile.Write(ref _itemsSnapshot, Items.ToArray());
+        Interlocked.Exchange(ref _itemsSnapshotDirty, 0);
         RecalculateAggregates(force: true);
     }
 
@@ -737,7 +739,7 @@ public partial class DownloadPackage : ObservableObject
 
     private void RecalculateAggregatesFromEvent()
     {
-        if (_deferItemUpdates)
+        if (IsDeferringItemUpdates)
             return;
 
         var app = System.Windows.Application.Current;
@@ -813,7 +815,7 @@ public partial class DownloadPackage : ObservableObject
 
     public void RecalculateAggregates(bool force = false)
     {
-        if (_deferItemUpdates)
+        if (IsDeferringItemUpdates)
             return;
 
         if (!force && !IsDirty && Status != DownloadStatus.Downloading && SpeedBytesPerSecond <= 0)

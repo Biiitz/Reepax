@@ -2,6 +2,7 @@ using System.IO;
 using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
 using Xunit;
 
@@ -9,6 +10,45 @@ namespace Reepax.Tests;
 
 public sealed class PackagePipelineTests
 {
+    [Fact]
+    public async Task LocalDownload_FailedPublicationBlocksCompletionUntilSuccessfulRetry()
+    {
+        await using var fixture = await PackagePipelineFixture.CreateAsync("intact");
+        fixture.Package.AutoPar2Repair = false;
+        fixture.Package.EnsureNextTaskSteps();
+        await fixture.DownloadRepairFilesAsync();
+        using (var lockedTarget = new FileStream(fixture.OutputPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await fixture.DownloadArchiveAsync();
+            Assert.False(await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(30)));
+            fixture.EvaluateCompletion();
+            Assert.Equal(fixture.OriginalArchive, File.ReadAllBytes(fixture.Archive.SaveFilePath!));
+            Assert.Equal(PackagePipelineFixture.Hash(fixture.OriginalArchive), fixture.Archive.CalculatedChecksum);
+            Assert.Equal(DownloadStatus.Completed, fixture.Package.Status);
+            Assert.Contains(fixture.Package.NextTaskSteps, step => step.Key == "Extract" && step.State == NextTaskStepState.Failed);
+            Assert.False(fixture.Package.IsFullyCompleted);
+            Assert.False(fixture.Package.HasCompletedNotified);
+            Assert.Equal(fixture.PreviousOutput, File.ReadAllBytes(fixture.OutputPath));
+            Assert.Equal(0, fixture.NotificationCount);
+            Assert.Equal(0, fixture.CountdownCount);
+            Assert.Equal(PostDownloadAction.Sleep, PostDownloadActionService.Instance.CurrentAction);
+            fixture.AssertUnaffectedFiles();
+        }
+
+        Assert.True(await fixture.RetryExtractionAsync().WaitAsync(TimeSpan.FromSeconds(30)));
+        await fixture.CountdownStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(fixture.Payload, File.ReadAllBytes(fixture.OutputPath));
+        Assert.Equal(fixture.OriginalArchive, File.ReadAllBytes(fixture.Archive.SaveFilePath!));
+        Assert.True(fixture.Package.IsFullyCompleted);
+        Assert.All(fixture.Package.NextTaskSteps, step => Assert.Equal(NextTaskStepState.Done, step.State));
+        Assert.Equal(1, fixture.NotificationCount);
+        Assert.Equal(1, fixture.CountdownCount);
+        Assert.Empty(fixture.EarlyCompletion);
+        Assert.Equal(1, fixture.Source.Requests["archive.zip"]);
+        fixture.AssertUnaffectedFiles();
+        Assert.Empty(Directory.GetDirectories(fixture.Package.SaveDirectory, ".archive-work-*", SearchOption.AllDirectories));
+    }
+
     [Theory]
     [InlineData("intact")]
     [InlineData("repairable")]

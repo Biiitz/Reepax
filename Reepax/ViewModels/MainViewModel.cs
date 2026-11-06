@@ -1153,24 +1153,30 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        StatusSummary = Loc.Get("Status_Par2Verifying");
-        package.SetNextTaskRunning("Par2");
-
-        var success = await Services.Verification.Par2RepairService.Instance.ProcessPackagePar2Async(
-            package,
-            msg => package.StatusMessage = msg,
-            pct => package.StatusMessage = Loc.Format("Status_Par2Repairing", pct.ToString("0.0")));
-
-        if (success)
+        bool repairCompleted = false;
+        try
         {
-            package.SetNextTaskDone("Par2");
+            StatusSummary = Loc.Get("Status_Par2Verifying");
+            package.SetNextTaskRunning("Par2");
+            if (!await Services.Verification.Par2RepairService.Instance.ProcessPackagePar2Async(
+                package,
+                msg => package.StatusMessage = msg,
+                pct => package.StatusMessage = Loc.Format("Status_Par2Repairing", pct.ToString("0.0"))))
+                return;
+
             if (package.RequiresArchivePassword)
                 Services.Extractor.ArchiveExtractionService.Instance.InvalidatePackageArchivePasswords(package);
+            package.SetNextTaskDone("Par2");
             StatusSummary = Loc.Get("Status_Par2Repaired");
+            repairCompleted = true;
         }
-        else
+        finally
         {
-            StatusSummary = Loc.Get("Status_Par2RepairFailedGeneric");
+            if (!repairCompleted)
+            {
+                package.SetNextTaskFailed("Par2");
+                StatusSummary = Loc.Get("Status_Par2RepairFailedGeneric");
+            }
         }
     }
 
@@ -1569,16 +1575,20 @@ public partial class MainViewModel : ObservableObject
         if (pkg.Status == DownloadStatus.Downloading)
             return true;
 
-        if (IsRunningStatus(pkg.StatusMessage))
+        bool hasTerminalResult = pkg.Status == DownloadStatus.Completed ||
+            pkg.NextTaskSteps?.Any(step => step.State == NextTaskStepState.Failed) == true;
+        if (!hasTerminalResult && IsRunningStatus(pkg.StatusMessage))
             return true;
 
-        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id))
+        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id) ||
+            Services.Verification.Par2RepairService.Instance.IsPackageRepairing(pkg.Id))
             return true;
 
         if (pkg.NextTaskSteps != null && pkg.NextTaskSteps.Any(s => s.State == NextTaskStepState.Running))
             return true;
 
-        if (pkg.Items != null && pkg.Items.Any(i => i.Status == DownloadStatus.Downloading || IsRunningStatus(i.StatusMessage)))
+        if (pkg.Items != null && pkg.Items.Any(i => i.Status == DownloadStatus.Downloading || i.IsVerifyingIntegrity ||
+            (!hasTerminalResult && IsRunningStatus(i.StatusMessage))))
             return true;
 
         if (pkg.ClippedPackages != null && pkg.ClippedPackages.Any(IsRunningPackage))
@@ -1677,6 +1687,9 @@ public partial class MainViewModel : ObservableObject
         if (pkg == null) return false;
 
         if (pkg.Status == DownloadStatus.Failed)
+            return true;
+
+        if (pkg.NextTaskSteps.Any(step => step.State == NextTaskStepState.Failed))
             return true;
 
         if (IsFailedStatus(pkg.StatusMessage))

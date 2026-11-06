@@ -2,10 +2,15 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Localization;
+using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
+using Reepax.ViewModels;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -166,7 +171,7 @@ Repair is not possible.
 You need 4 more recovery blocks to be able to repair.
 ";
         var result = new Par2VerifyResult();
-        Par2RepairService.ParseVerificationOutput(sampleOutput, 1, result);
+        Par2RepairService.ParseVerificationOutput(sampleOutput, 2, result);
 
         Assert.Equal(Par2VerificationStatus.RepairNotPossible, result.Status);
         Assert.Equal(4, result.NeededRecoveryBlocks);
@@ -174,10 +179,12 @@ You need 4 more recovery blocks to be able to repair.
     }
 
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    public async Task EndToEnd_CreatePar2_Corrupt_And_RepairAsync(bool purgeBackups, bool useVolume)
+    [InlineData(true, false, "file1.bin")]
+    [InlineData(false, false, "file1.bin")]
+    [InlineData(true, true, "file1.bin")]
+    [InlineData(true, false, "All files are correct, repair is not required.bin")]
+    [InlineData(false, false, "Repair is possible - Repair complete.bin")]
+    public async Task EndToEnd_CreatePar2_Corrupt_And_RepairAsync(bool purgeBackups, bool useVolume, string fileName)
     {
         var exePath = Par2RepairService.Instance.ResolvePar2ExecutablePath();
         Assert.NotNull(exePath);
@@ -190,7 +197,7 @@ You need 4 more recovery blocks to be able to repair.
             var originalContent1 = "The quick brown fox jumps over the lazy dog 1234567890 ABCDEFGHIJKLMNOPQRSTUVWXYZ";
             var originalContent2 = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt";
 
-            var file1 = Path.Combine(tempDir, "file1.bin");
+            var file1 = Path.Combine(tempDir, fileName);
             var file2 = Path.Combine(tempDir, "file2.bin");
             var par2File = Path.Combine(tempDir, "archive.par2");
 
@@ -265,15 +272,263 @@ You need 4 more recovery blocks to be able to repair.
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RepairAsync_InvalidParity_PreservesUnrelatedFileAndBackup(bool cancel)
+    [InlineData("All files are correct, repair is not required.bin", false)]
+    [InlineData("Repair is possible - Repair complete.bin", false)]
+    [InlineData("All files are correct, repair is not required.bin", true)]
+    [InlineData("Repair is possible - Repair complete.bin", true)]
+    public async Task UnrepairableFiles_WithOutcomeTextInNames_DoNotReportSuccess(string fileName, bool missing)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Par2Outcome_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        using var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            byte[] original = Enumerable.Range(0, 1024).Select(index => (byte)((index * 37 + 11) % 251)).ToArray();
+            byte[] damaged = Enumerable.Repeat((byte)255, original.Length).ToArray();
+            byte[] independent = Encoding.UTF8.GetBytes("independent original and backup");
+            string file = Path.Combine(directory, fileName);
+            File.WriteAllBytes(file, original);
+            string parity = await CreateParityAsync(directory, file);
+            File.WriteAllBytes(file + ".1", independent);
+            string unrelated = Path.Combine(directory, "unrelated.bin");
+            File.WriteAllBytes(unrelated, independent);
+            File.WriteAllBytes(unrelated + ".1", independent);
+            if (missing) File.Delete(file);
+            else File.WriteAllBytes(file, damaged);
+
+            var service = Par2RepairService.Instance;
+            var verification = await service.VerifyAsync(parity, ct: timeout.Token);
+            Assert.Equal(Par2VerificationStatus.RepairNotPossible, verification.Status);
+            Assert.False(verification.IsRepairedOrIntact);
+            Assert.True(verification.NeededRecoveryBlocks > 0);
+            var repair = await service.RepairAsync(parity, ct: timeout.Token);
+            Assert.False(repair.Success);
+            Assert.False(string.IsNullOrWhiteSpace(repair.ErrorMessage));
+
+            var package = new DownloadPackage
+            {
+                Name = "Example package", SaveDirectory = directory, AutoExtractArchives = true, AutoPar2Repair = true
+            };
+            package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = fileName, SaveFilePath = file,
+                Status = DownloadStatus.Completed, TotalBytes = original.Length, DownloadedBytes = original.Length });
+            package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = Path.GetFileName(parity),
+                SaveFilePath = parity, Status = DownloadStatus.Completed });
+            package.EnsureNextTaskSteps();
+            Assert.False(await service.ProcessPackagePar2Async(package, ct: timeout.Token));
+            if (!missing)
+            {
+                var viewModel = new Reepax.ViewModels.MainViewModel();
+                await viewModel.Par2RepairPackageCommand.ExecuteAsync(package);
+                Assert.Equal(Reepax.Services.Localization.Loc.Get("Status_Par2RepairFailedGeneric"), viewModel.StatusSummary);
+                Assert.Contains(package.NextTaskSteps, step => step.Key == "Par2" && step.State == NextTaskStepState.Failed);
+            }
+
+            Assert.Equal(!missing, File.Exists(file));
+            if (!missing) Assert.Equal(damaged, File.ReadAllBytes(file));
+            Assert.Equal(independent, File.ReadAllBytes(file + ".1"));
+            Assert.Equal(independent, File.ReadAllBytes(unrelated));
+            Assert.Equal(independent, File.ReadAllBytes(unrelated + ".1"));
+            Assert.False(File.Exists(file + ".2"));
+            Assert.Empty(service.GetActiveRepairs());
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("en", "unrepairable", false)]
+    [InlineData("de", "unrepairable", true)]
+    [InlineData("en", "cancelled", false)]
+    [InlineData("de", "error", false)]
+    [InlineData("en", "callback-error", false)]
+    public async Task ManualRepair_FailureEndsStepAndSuccessfulRetryPreservesData(string language, string failure, bool missing)
+    {
+        string directory = Directory.CreateTempSubdirectory("ManualPar2_").FullName;
+        var service = Par2RepairService.Instance;
+        var previousHook = service.ProcessStarted;
+        var actions = PostDownloadActionService.Instance;
+        var previousAction = actions.CurrentAction;
+        var settings = SettingsService.Instance.Settings;
+        var previousLanguage = settings.Language;
+        string previousCurrentLanguage = LocalizationService.Instance.CurrentLanguage;
+        try
+        {
+            actions.CancelCountdown();
+            actions.CurrentAction = PostDownloadAction.None;
+            var viewModel = new MainViewModel();
+            LocalizationService.Instance.CurrentLanguage = language;
+            byte[] original = Enumerable.Range(0, 80).Select(index => (byte)(index * 3)).ToArray();
+            byte[] damaged = Enumerable.Repeat((byte)255, original.Length).ToArray();
+            byte[] independent = Encoding.UTF8.GetBytes("independent installed result and backup");
+            string file = Path.Combine(directory, "payload.bin");
+            File.WriteAllBytes(file, original);
+            string parity = await CreateParityAsync(directory, file);
+            string[] volumes = Directory.GetFiles(directory, "data.vol*.par2");
+            string recovery = Directory.CreateDirectory(Path.Combine(directory, "recovery")).FullName;
+            if (failure == "unrepairable")
+                foreach (string volume in volumes) File.Move(volume, Path.Combine(recovery, Path.GetFileName(volume)));
+            if (missing) File.Delete(file);
+            else File.WriteAllBytes(file, damaged);
+            File.WriteAllBytes(file + ".1", independent);
+            string installed = Path.Combine(directory, "installed.bin");
+            File.WriteAllBytes(installed, independent);
+            File.WriteAllBytes(installed + ".1", independent);
+
+            string expected = Convert.ToHexString(SHA256.HashData(original));
+            var package = new DownloadPackage { Name = "Example package", SaveDirectory = directory,
+                AutoExtractArchives = true, AutoPar2Repair = true, Status = DownloadStatus.Completed };
+            var item = new DownloadItem { PackageId = package.Id, FileName = "payload.bin", SaveFilePath = file,
+                Status = DownloadStatus.Completed, TotalBytes = original.Length, DownloadedBytes = original.Length,
+                ExpectedChecksum = expected, CalculatedChecksum = expected };
+            package.Items.Add(item);
+            package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "data.par2", SaveFilePath = parity,
+                Status = DownloadStatus.Completed, TotalBytes = new FileInfo(parity).Length });
+            package.EnsureNextTaskSteps();
+            package.SetNextTaskDone("Extract");
+            package.SetNextTaskDone("Par2");
+            bool observedRunning = false;
+            service.ProcessStarted = (_, _) =>
+            {
+                observedRunning = MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running);
+                if (failure == "cancelled") throw new OperationCanceledException();
+                if (failure == "error") throw new IOException("Simulated native operation failure.");
+            };
+            System.ComponentModel.PropertyChangedEventHandler fault = (_, args) =>
+            {
+                if (args.PropertyName == nameof(DownloadPackage.StatusMessage) &&
+                    package.StatusMessage == Loc.Get("Status_Par2Verifying"))
+                    throw new IOException("Simulated status observer failure.");
+            };
+            if (failure == "callback-error") package.PropertyChanged += fault;
+            try
+            {
+                if (failure == "callback-error")
+                    await Assert.ThrowsAsync<IOException>(() => viewModel.Par2RepairPackageCommand.ExecuteAsync(package));
+                else
+                    await viewModel.Par2RepairPackageCommand.ExecuteAsync(package);
+            }
+            finally { package.PropertyChanged -= fault; }
+            service.ProcessStarted = previousHook;
+
+            Assert.Contains(package.NextTaskSteps, step => step.Key == "Par2" && step.State == NextTaskStepState.Failed);
+            Assert.Equal(Loc.Get("Status_Par2RepairFailedGeneric"), viewModel.StatusSummary);
+            Assert.False(package.IsFullyCompleted);
+            Assert.False(PostDownloadActionService.CheckHasActiveWork(new[] { package }));
+            Assert.False(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running));
+            Assert.True(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Failed));
+            Assert.False(package.HasCompletedNotified);
+            Assert.Empty(service.GetActiveRepairs());
+            if (failure != "callback-error") Assert.True(observedRunning);
+            actions.CurrentAction = PostDownloadAction.Sleep;
+            actions.NotifyWorkStarted();
+            actions.Evaluate(new[] { package });
+            Assert.False(actions.IsCountdownActive);
+            Assert.Equal(!missing, File.Exists(file));
+            if (!missing) Assert.Equal(damaged, File.ReadAllBytes(file));
+            Assert.Equal(independent, File.ReadAllBytes(file + ".1"));
+            Assert.Equal(independent, File.ReadAllBytes(installed));
+            Assert.Equal(independent, File.ReadAllBytes(installed + ".1"));
+
+            if (failure == "unrepairable")
+                foreach (string volume in volumes) File.Move(Path.Combine(recovery, Path.GetFileName(volume)), volume);
+            await viewModel.Par2RepairPackageCommand.ExecuteAsync(package);
+
+            Assert.Contains(package.NextTaskSteps, step => step.Key == "Par2" && step.State == NextTaskStepState.Done);
+            Assert.Equal(Loc.Get("Status_Par2Repaired"), viewModel.StatusSummary);
+            Assert.True(package.IsFullyCompleted);
+            Assert.False(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running));
+            Assert.False(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Failed));
+            Assert.Equal(original, File.ReadAllBytes(file));
+            Assert.Equal(expected, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(file))));
+            Assert.Equal(expected, item.ExpectedChecksum);
+            Assert.Null(item.CalculatedChecksum);
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(independent, File.ReadAllBytes(file + ".1"));
+            Assert.Equal(independent, File.ReadAllBytes(installed));
+            Assert.Equal(independent, File.ReadAllBytes(installed + ".1"));
+            Assert.False(File.Exists(file + ".2"));
+            Assert.Empty(service.GetActiveRepairs());
+            actions.Evaluate(new[] { package });
+            Assert.True(actions.IsCountdownActive);
+        }
+        finally
+        {
+            service.ProcessStarted = previousHook;
+            actions.CancelCountdown();
+            actions.CurrentAction = previousAction;
+            settings.Language = previousLanguage;
+            LocalizationService.Instance.CurrentLanguage = previousCurrentLanguage;
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public async Task ManualRepair_WithoutAutomaticExtractionIsRunningOnlyWhileNativeWorkIsActive()
+    {
+        string directory = Directory.CreateTempSubdirectory("ManualPar2Activity_").FullName;
+        var service = Par2RepairService.Instance;
+        var previousHook = service.ProcessStarted;
+        string previousLanguage = LocalizationService.Instance.CurrentLanguage;
+        try
+        {
+            var viewModel = new MainViewModel();
+            LocalizationService.Instance.CurrentLanguage = "de";
+            string file = Path.Combine(directory, "payload.bin");
+            File.WriteAllBytes(file, Enumerable.Range(0, 80).Select(index => (byte)index).ToArray());
+            string parity = await CreateParityAsync(directory, file);
+            var package = new DownloadPackage { SaveDirectory = directory, AutoExtractArchives = false,
+                Status = DownloadStatus.Completed };
+            package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "payload.bin", SaveFilePath = file,
+                Status = DownloadStatus.Completed });
+            package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "data.par2", SaveFilePath = parity,
+                Status = DownloadStatus.Completed });
+            bool observedRunning = false;
+            service.ProcessStarted = (_, _) => observedRunning = MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running);
+
+            await viewModel.Par2RepairPackageCommand.ExecuteAsync(package);
+
+            Assert.True(observedRunning);
+            Assert.True(package.IsFullyCompleted);
+            Assert.False(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running));
+            Assert.Empty(package.NextTaskSteps);
+            Assert.Empty(service.GetActiveRepairs());
+        }
+        finally
+        {
+            service.ProcessStarted = previousHook;
+            LocalizationService.Instance.CurrentLanguage = previousLanguage;
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void ParseVerificationOutput_ErrorCodeCannotBeOverriddenByOutcomeText(int exitCode)
+    {
+        var result = new Par2VerifyResult();
+        const string output = "File: \"All files are correct, repair is not required - Repair complete.bin\" - damaged.\nRepair is possible.\n";
+
+        Par2RepairService.ParseVerificationOutput(output, exitCode, result);
+
+        Assert.Equal(Par2VerificationStatus.Failed, result.Status);
+        Assert.False(result.IsRepairedOrIntact);
+    }
+
+    [Theory]
+    [InlineData(false, "data.par2")]
+    [InlineData(true, "data.par2")]
+    [InlineData(false, "Repair complete.par2")]
+    [InlineData(false, "All files are correct, repair is not required.par2")]
+    public async Task RepairAsync_InvalidParity_PreservesUnrelatedFileAndBackup(bool cancel, string fileName)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         try
         {
-            var parityFile = Path.Combine(tempDir, "data.par2");
+            var parityFile = Path.Combine(tempDir, fileName);
             var document = Path.Combine(tempDir, "document.txt");
             File.WriteAllText(parityFile, "invalid parity data");
             File.WriteAllText(document, "current document");
@@ -496,7 +751,18 @@ You need 4 more recovery blocks to be able to repair.
         Assert.NotNull(process);
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+        }
         Assert.True(process.ExitCode == 0, await output + await error);
         return parityFile;
     }

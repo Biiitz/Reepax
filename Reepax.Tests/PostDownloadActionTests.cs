@@ -315,6 +315,151 @@ public class PostDownloadActionTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Evaluate_CompletedPackageDoesNotHideAnotherPackageFailure(bool processingFailure)
+    {
+        var service = PostDownloadActionService.Instance;
+        var failed = CreateCompletedPackage();
+        if (processingFailure) failed.SetNextTaskFailed("Extract");
+        else
+        {
+            failed.AutoExtractArchives = false;
+            failed.Items[0].Status = DownloadStatus.Failed;
+            failed.Status = DownloadStatus.Failed;
+        }
+        service.CurrentAction = PostDownloadAction.Sleep;
+        service.NotifyWorkStarted();
+
+        service.Evaluate(new[] { CreateCompletedPackage(), failed });
+
+        Assert.False(service.IsCountdownActive);
+        Assert.Equal(PostDownloadAction.Sleep, service.CurrentAction);
+    }
+
+    [Theory]
+    [InlineData("paused")]
+    [InlineData("disabled")]
+    [InlineData("skipped")]
+    public void Evaluate_CompletedWorkStillAllowsPausedOrDisabledPackages(string state)
+    {
+        var service = PostDownloadActionService.Instance;
+        var ignored = CreateCompletedPackage();
+        ignored.ResetNextTasks();
+        if (state == "disabled") ignored.IsEnabled = false;
+        else if (state == "skipped") ignored.Items[0].IsEnabled = false;
+        else ignored.Items[0].Status = DownloadStatus.Paused;
+        ignored.Status = DownloadStatus.Paused;
+        service.CurrentAction = PostDownloadAction.Sleep;
+        service.NotifyWorkStarted();
+
+        service.Evaluate(new[] { CreateCompletedPackage(), ignored });
+
+        Assert.True(service.IsCountdownActive);
+    }
+
+    [Fact]
+    public void Evaluate_FailureCancelsCountdownAndSuccessfulRetryStartsItAgain()
+    {
+        var service = PostDownloadActionService.Instance;
+        var package = CreateCompletedPackage();
+        service.CurrentAction = PostDownloadAction.Sleep;
+        service.NotifyWorkStarted();
+        service.Evaluate(new[] { package });
+        Assert.True(service.IsCountdownActive);
+
+        package.SetNextTaskFailed("Extract");
+        service.Evaluate(new[] { package });
+
+        Assert.False(service.IsCountdownActive);
+        Assert.Equal(PostDownloadAction.Sleep, service.CurrentAction);
+        package.SetNextTaskDone("Extract");
+        service.Evaluate(new[] { package });
+        Assert.True(service.IsCountdownActive);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Countdown_RechecksCurrentPackagesBeforeFinishingWithoutAnotherEvaluation(bool addFailure)
+    {
+        var service = PostDownloadActionService.Instance;
+        var packages = new List<DownloadPackage> { CreateCompletedPackage() };
+        var outcome = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool reachedBoundary = false;
+        async Task OnUiAsync(Action action)
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.CheckAccess())
+            {
+                action();
+                return;
+            }
+            // Drain earlier UI notifications before installing this countdown's observers.
+            await dispatcher.InvokeAsync(action, System.Windows.Threading.DispatcherPriority.Background)
+                .Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        void Tick(int seconds)
+        {
+            if (seconds != 0) return;
+            reachedBoundary = true;
+            if (!addFailure) return;
+            var failed = CreateCompletedPackage();
+            failed.SetNextTaskFailed("Extract");
+            packages.Add(failed);
+        }
+        void Finished()
+        {
+            // Suppress the action even if the regression causes an incorrect completion.
+            service.CurrentAction = PostDownloadAction.None;
+            outcome.TrySetResult(true);
+        }
+        void Cancelled(bool manual) => outcome.TrySetResult(false);
+        try
+        {
+            await OnUiAsync(() =>
+            {
+                service.CancelCountdown();
+                service.CurrentAction = PostDownloadAction.None;
+                service.CountdownTick += Tick;
+                service.CountdownFinished += Finished;
+                service.CountdownCancelled += Cancelled;
+                service.CurrentAction = PostDownloadAction.Sleep;
+                service.NotifyWorkStarted();
+                service.Evaluate(packages);
+            });
+
+            Assert.Equal(!addFailure, await outcome.Task.WaitAsync(TimeSpan.FromSeconds(20)));
+            Assert.True(reachedBoundary);
+            Assert.Equal(addFailure ? 2 : 1, packages.Count);
+            Assert.False(service.IsCountdownActive);
+            Assert.Equal(addFailure ? PostDownloadAction.Sleep : PostDownloadAction.None, service.CurrentAction);
+        }
+        finally
+        {
+            await OnUiAsync(() =>
+            {
+                service.CancelCountdown();
+                service.CurrentAction = PostDownloadAction.None;
+                service.CountdownTick -= Tick;
+                service.CountdownFinished -= Finished;
+                service.CountdownCancelled -= Cancelled;
+            });
+        }
+    }
+
+    private static DownloadPackage CreateCompletedPackage()
+    {
+        var package = new DownloadPackage { Name = "Example package", AutoExtractArchives = true, IsEnabled = true };
+        package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "payload.bin", Status = DownloadStatus.Completed,
+            TotalBytes = 100, DownloadedBytes = 100, IsEnabled = true });
+        package.EnsureNextTaskSteps();
+        package.SetNextTaskDone("Extract");
+        package.Status = DownloadStatus.Completed;
+        return package;
+    }
+
+    [Theory]
     [InlineData(PostDownloadAction.None, "PostDownload_Action_None")]
     [InlineData(PostDownloadAction.Shutdown, "PostDownload_Action_Shutdown")]
     [InlineData(PostDownloadAction.Sleep, "PostDownload_Action_Sleep")]

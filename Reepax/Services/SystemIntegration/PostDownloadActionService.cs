@@ -107,19 +107,41 @@ public sealed class PostDownloadActionService
                 return;
             }
 
-            // No active work currently.
-            // Check if we previously had active work running and an action is armed.
+            if (CurrentAction == PostDownloadAction.None || (!_hadActiveWork && !IsCountdownActive))
+                return;
+
+            if (!ArePackagesReady(packageList))
+            {
+                if (IsCountdownActive)
+                {
+                    _hadActiveWork = true;
+                    CancelCountdown(manual: false);
+                }
+                return;
+            }
+
             if (_hadActiveWork && CurrentAction != PostDownloadAction.None && !IsCountdownActive)
             {
-                // Verify that at least one package in the list is fully completed
-                bool hasCompletedPackages = packageList.Any(p => p.IsEnabled && (p.CheckIsFullyCompleted() || p.Status == DownloadStatus.Completed));
-                if (hasCompletedPackages)
+                _hadActiveWork = false;
+                StartCountdown(() =>
                 {
-                    _hadActiveWork = false;
-                    StartCountdown();
-                }
+                    var currentPackages = packages.ToList();
+                    return !CheckHasActiveWork(currentPackages) && ArePackagesReady(currentPackages);
+                });
             }
         }
+    }
+
+    private static bool ArePackagesReady(IEnumerable<DownloadPackage> packages)
+    {
+        bool hasCompletedPackage = false;
+        foreach (var package in packages)
+        {
+            if (!package.IsEnabled) continue;
+            if (package.CheckIsFullyCompleted()) hasCompletedPackage = true;
+            else if (package.Status != DownloadStatus.Paused) return false;
+        }
+        return hasCompletedPackage;
     }
 
     /// <summary>
@@ -207,7 +229,9 @@ public sealed class PostDownloadActionService
     /// <summary>
     /// Starts the 10-second countdown before executing the armed action.
     /// </summary>
-    public void StartCountdown()
+    public void StartCountdown() => StartCountdown(null);
+
+    private void StartCountdown(Func<bool>? canComplete)
     {
         lock (_lock)
         {
@@ -250,9 +274,19 @@ public sealed class PostDownloadActionService
 
                     SafeInvoke(() =>
                     {
-                        if (token.IsCancellationRequested)
-                            return;
-                        IsCountdownActive = false;
+                        lock (_lock)
+                        {
+                            if (token.IsCancellationRequested)
+                                return;
+                            if (_activeCleanupCount > 0 || canComplete?.Invoke() == false)
+                            {
+                                // Keep the action armed for a successful retry.
+                                _hadActiveWork = true;
+                                CancelCountdown(manual: false);
+                                return;
+                            }
+                            IsCountdownActive = false;
+                        }
                         CountdownFinished?.Invoke();
                         ExecuteArmedAction();
                     });

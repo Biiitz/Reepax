@@ -21,7 +21,7 @@ public partial class DownloadPackage
 
     private void RefreshStatisticsInternal()
     {
-        if (_deferItemUpdates) return;
+        if (IsDeferringItemUpdates) return;
         Interlocked.Exchange(ref _lastAggregateRecalcTicks, Environment.TickCount64);
         if (!TryRefreshCachedProgress()) RecalculateAggregatesInternal();
     }

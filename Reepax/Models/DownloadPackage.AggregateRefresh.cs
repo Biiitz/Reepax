@@ -10,7 +10,9 @@ namespace Reepax.Models;
 public partial class DownloadPackage
 {
     private DownloadItem[] _itemsSnapshot = Array.Empty<DownloadItem>();
-    private bool _deferItemUpdates;
+    private int _itemUpdateDepth;
+    private int _itemsSnapshotDirty;
+    private bool IsDeferringItemUpdates => Volatile.Read(ref _itemUpdateDepth) > 0;
     private int _hosterNotificationsDirty = 1;
     private string _publishedPrimaryHoster = "Archive";
     private string[] _publishedHosters = Array.Empty<string>();
@@ -37,19 +39,27 @@ public partial class DownloadPackage
     internal void AddItems(IEnumerable<DownloadItem> items)
     {
         ArgumentNullException.ThrowIfNull(items);
-        bool wasDeferring = _deferItemUpdates;
-        _deferItemUpdates = true;
-        try
+        UpdateItems(() =>
         {
             foreach (var item in items)
                 Items.Add(item);
+        });
+    }
+
+    internal void UpdateItems(Action update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        Interlocked.Increment(ref _itemUpdateDepth);
+        try
+        {
+            update();
         }
         finally
         {
-            _deferItemUpdates = wasDeferring;
-            if (!wasDeferring)
+            if (Interlocked.Decrement(ref _itemUpdateDepth) == 0)
             {
-                Volatile.Write(ref _itemsSnapshot, Items.ToArray());
+                if (Interlocked.Exchange(ref _itemsSnapshotDirty, 0) != 0)
+                    Volatile.Write(ref _itemsSnapshot, Items.ToArray());
                 RecalculateAggregates(force: true);
             }
         }
@@ -96,7 +106,7 @@ public partial class DownloadPackage
 
     private void PublishHosterChanges(DownloadItem[] items)
     {
-        if (_deferItemUpdates)
+        if (IsDeferringItemUpdates)
             return;
 
         if (Interlocked.Exchange(ref _hosterNotificationsDirty, 0) == 0)

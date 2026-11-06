@@ -454,8 +454,7 @@ public partial class Par2RepairService
             }
 
             var output = outputBuilder.ToString();
-            bool success = process.ExitCode == 0 || output.Contains("Repair complete", StringComparison.OrdinalIgnoreCase) ||
-                           output.Contains("All files are correct, repair is not required", StringComparison.OrdinalIgnoreCase);
+            bool success = process.ExitCode == 0;
 
             // Handle only backups identified before this repair started.
             if (success)
@@ -609,33 +608,15 @@ public partial class Par2RepairService
 
     public static void ParseVerificationOutput(string output, int exitCode, Par2VerifyResult result)
     {
-        if (string.IsNullOrWhiteSpace(output))
+        // Exit codes are authoritative; diagnostic output also contains untrusted file names.
+        result.Status = exitCode switch
         {
-            result.Status = exitCode == 0 ? Par2VerificationStatus.AllFilesIntact : Par2VerificationStatus.Failed;
-            return;
-        }
-
-        // Check overall outcome
-        if (output.Contains("All files are correct, repair is not required", StringComparison.OrdinalIgnoreCase))
-        {
-            result.Status = Par2VerificationStatus.AllFilesIntact;
-        }
-        else if (output.Contains("Repair is possible", StringComparison.OrdinalIgnoreCase))
-        {
-            result.Status = Par2VerificationStatus.RepairPossible;
-        }
-        else if (output.Contains("Repair is not possible", StringComparison.OrdinalIgnoreCase))
-        {
-            result.Status = Par2VerificationStatus.RepairNotPossible;
-        }
-        else if (exitCode == 0)
-        {
-            result.Status = Par2VerificationStatus.AllFilesIntact;
-        }
-        else
-        {
-            result.Status = Par2VerificationStatus.Failed;
-        }
+            0 => Par2VerificationStatus.AllFilesIntact,
+            1 => Par2VerificationStatus.RepairPossible,
+            2 => Par2VerificationStatus.RepairNotPossible,
+            _ => Par2VerificationStatus.Failed
+        };
+        if (string.IsNullOrWhiteSpace(output)) return;
 
         // Parse missing blocks
         var matchNeeded = _neededBlocksRegex.Match(output);

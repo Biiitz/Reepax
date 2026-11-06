@@ -97,6 +97,12 @@ public partial class Par2RepairService
         }
     }
 
+    internal bool IsPackageRepairing(Guid packageId)
+    {
+        lock (_repairSync)
+            return _activeRepairs.ContainsKey(packageId);
+    }
+
     internal Dictionary<Guid, RepairActivity> GetActiveRepairs()
     {
         lock (_repairSync)

@@ -189,6 +189,32 @@ public class DownloadFilterTests : IDisposable
         Assert.Contains(pkgItemDownloading, _viewModel.RootPackages);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StatusFilter_FailedStepDoesNotHideOtherActiveWork(bool verifying)
+    {
+        var package = new DownloadPackage { AutoExtractArchives = true, AutoPar2Repair = false };
+        var item = new DownloadItem { FileName = "payload.bin", Status = DownloadStatus.Completed,
+            TotalBytes = 100, DownloadedBytes = 100 };
+        package.Items.Add(item);
+        package.EnsureNextTaskSteps();
+        package.SetNextTaskFailed("Extract");
+        package.StatusMessage = "Verifying checksum failed";
+        if (verifying) item.IsVerifyingIntegrity = true;
+        else item.Status = DownloadStatus.Downloading;
+
+        Assert.True(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running));
+        Assert.True(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Failed));
+
+        item.Status = DownloadStatus.Completed;
+        item.IsVerifyingIntegrity = false;
+        package.RecalculateAggregates();
+
+        Assert.False(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Running));
+        Assert.True(MainViewModel.MatchesStatusFilter(package, DownloadStatusFilter.Failed));
+    }
+
     [Fact]
     public void StatusFilter_Paused_MatchesPausedAndStopped()
     {

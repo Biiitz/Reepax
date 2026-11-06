@@ -245,6 +245,13 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
 
     internal void EvaluateCompletion() => _actions.Evaluate(_queue.Packages);
 
+    internal Task<bool> RetryExtractionAsync()
+    {
+        var operation = ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(Package, force: true);
+        _operations.Add(operation);
+        return operation;
+    }
+
     private void PackageChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName == nameof(DownloadPackage.IsNewlyCompleted) && Package.IsNewlyCompleted)

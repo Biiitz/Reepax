@@ -1417,26 +1417,34 @@ public partial class QueueManager
 
     public void ResumePackage(DownloadPackage? package, bool processQueue)
     {
-        if (package == null || package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
+        if (package == null)
+            return;
+        var dispatcher = Application.Current?.Dispatcher;
+        if (!Storage.DownloadPersistenceService.IsTestEnvironment && dispatcher?.Thread.IsAlive == true &&
+            !dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished && !dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(new Action(() => ResumePackage(package, processQueue)));
+            return;
+        }
+        if (package.Status == DownloadStatus.Completed || package.CheckIsFullyCompleted())
             return;
 
         var itemsSnapshot = package.Items.ToArray();
         bool needsProcessQueue = false;
-        foreach (var item in itemsSnapshot)
+        package.UpdateItems(() =>
         {
-            if (!item.IsEnabled || item.Status == DownloadStatus.Completed)
-                continue;
-
-            if (item.Status is DownloadStatus.Paused or DownloadStatus.Failed)
+            foreach (var item in itemsSnapshot)
             {
-                if (ResumeItemCore(item, triggerProcessQueue: false))
+                if (!item.IsEnabled || item.Status == DownloadStatus.Completed)
+                    continue;
+
+                if (item.Status is DownloadStatus.Paused or DownloadStatus.Failed)
                 {
-                    needsProcessQueue = true;
+                    if (ResumeItemCore(item, triggerProcessQueue: false))
+                        needsProcessQueue = true;
                 }
             }
-        }
-
-        SafeInvoke(() => package.RecalculateAggregates());
+        });
 
         if (processQueue && needsProcessQueue)
         {
