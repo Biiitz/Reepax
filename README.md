@@ -2,9 +2,7 @@
 
   <img src="Reepax/Assets/app.png" alt="Reepax" width="88" height="88" />
 
-  <h1>Reepax</h1>
-
-  <p>A Windows download manager with an integrated browser, archive extraction, and PAR2 repair.</p>
+  ---
 
   <p>
     <a href="https://github.com/Biiitz/Reepax/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Biiitz/Reepax/release.yml?style=flat-square&amp;label=Build%20%26%20release&amp;labelColor=1a1a1a&amp;color=303030" alt="Build and release status" /></a>
