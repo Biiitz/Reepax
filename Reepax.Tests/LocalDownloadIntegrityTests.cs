@@ -10,6 +10,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Download;
+using Reepax.Services.Extractor;
+using Reepax.Services.Storage;
+using Reepax.Services.Verification;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -17,6 +20,98 @@ namespace Reepax.Tests;
 public sealed class LocalDownloadIntegrityTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("LocalIntegrity_").FullName;
+
+    [Theory]
+    [InlineData(32, false)]
+    [InlineData(64, false)]
+    [InlineData(32, true)]
+    [InlineData(64, true)]
+    public async Task Metadata_HexEntityTag_DoesNotRejectValidDownloadedBytes(int length, bool weak)
+    {
+        byte[] data = Data(128 * 1024);
+        var headers = new Dictionary<string, string> { ["ETag"] = (weak ? "W/" : "") + "\"" + new string('a', length) + "\"" };
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = data }, responseHeaders: headers);
+        using var client = new HttpClient(new HttpClientHandler { UseProxy = false });
+        var resolver = new LinkMetadataResolverService(client);
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 1 };
+        var item = Item(Path.Combine(_root, "payload.bin"), 0);
+        item.DirectDownloadUrl = null;
+        item.OriginalUrl = source.Url("payload.bin");
+        int completed = 0;
+        engine.DownloadCompleted += _ => Interlocked.Increment(ref completed);
+
+        Assert.True(await resolver.ResolveItemMetadataAsync(item));
+        Assert.Equal(data.Length, item.TotalBytes);
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Null(item.ExpectedChecksum);
+        var verification = await ChecksumVerificationService.Instance.VerifyFileIntegrityAsync(item);
+        Assert.True(verification.IsValid);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant(), verification.CalculatedChecksum);
+        Assert.Equal(1, completed);
+        Assert.True(source.Requests["payload.bin"] >= 2);
+        Assert.False(File.Exists(item.SaveFilePath + ".part"));
+    }
+
+    [Theory]
+    [InlineData("content-md5", true)]
+    [InlineData("content-md5", false)]
+    [InlineData("repr-digest", true)]
+    [InlineData("repr-digest", false)]
+    [InlineData("existing", true)]
+    [InlineData("existing", false)]
+    public async Task Metadata_ExplicitChecksumsRemainAuthoritativeAndAreEnforced(string checksumSource, bool matching)
+    {
+        byte[] data = Data(128 * 1024);
+        byte[] reference = matching ? data : new byte[] { 0 };
+        string expected = Convert.ToHexString(checksumSource == "content-md5" ? MD5.HashData(reference) : SHA256.HashData(reference)).ToLowerInvariant();
+        var headers = new Dictionary<string, string> { ["ETag"] = "\"" + new string('a', 64) + "\"" };
+        if (checksumSource == "content-md5") headers["Content-MD5"] = Convert.ToBase64String(MD5.HashData(reference));
+        else headers["Repr-Digest"] = "sha-256=:" + Convert.ToBase64String(SHA256.HashData(checksumSource == "repr-digest" ? reference : data)) + ":";
+        if (checksumSource == "existing") headers["Content-MD5"] = Convert.ToBase64String(MD5.HashData(new byte[] { 9 }));
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = data }, responseHeaders: headers);
+        using var client = new HttpClient(new HttpClientHandler { UseProxy = false });
+        var resolver = new LinkMetadataResolverService(client);
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 1 };
+        var item = Item(Path.Combine(_root, "payload.bin"), 0);
+        item.DirectDownloadUrl = null;
+        item.OriginalUrl = source.Url("payload.bin");
+        if (checksumSource == "existing") item.ExpectedChecksum = expected;
+        int completed = 0;
+        engine.DownloadCompleted += _ => Interlocked.Increment(ref completed);
+
+        Assert.True(await resolver.ResolveItemMetadataAsync(item));
+        if (checksumSource != "repr-digest") Assert.Equal(expected, item.ExpectedChecksum);
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(expected, item.ExpectedChecksum, ignoreCase: true);
+        Assert.Equal(matching ? DownloadStatus.Completed : DownloadStatus.Failed, item.Status);
+        Assert.Equal(matching ? 1 : 0, completed);
+        Assert.Equal(matching, File.Exists(item.SaveFilePath));
+        Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath + (matching ? "" : ".part")));
+    }
+
+    [Theory]
+    [InlineData(32)]
+    [InlineData(64)]
+    public async Task Metadata_PersistedChecksumWithoutProvenance_IsPreserved(int length)
+    {
+        byte[] data = Data(4096);
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = data });
+        var item = Item(Path.Combine(_root, "payload.bin"), 0);
+        item.OriginalUrl = source.Url("payload.bin");
+        item.DirectDownloadUrl = null;
+        item.ExpectedChecksum = new string('b', length);
+        var package = new DownloadPackage { Name = "Example collection", IsCustomName = true, SaveDirectory = _root, AutoPar2Repair = false };
+        package.Items.Add(item);
+        using var storage = new DownloadPersistenceService(Path.Combine(_root, "downloads.json"));
+        storage.SaveDownloads(new[] { package }, sync: true);
+        var restored = Assert.Single(Assert.Single(storage.LoadDownloads()).Items);
+        using var client = new HttpClient(new HttpClientHandler { UseProxy = false });
+        Assert.True(await new LinkMetadataResolverService(client).ResolveItemMetadataAsync(restored));
+        Assert.Equal(item.ExpectedChecksum, restored.ExpectedChecksum);
+    }
 
     [Theory]
     [InlineData(0)]

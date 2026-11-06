@@ -13,6 +13,7 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly ConcurrentBag<Task> _connections = new();
     private readonly IReadOnlyDictionary<string, byte[]> _files;
+    private readonly IReadOnlyDictionary<string, string>? _responseHeaders;
     private readonly Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? _writeBody;
     private readonly Task _accept;
     private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -21,10 +22,12 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     internal ConcurrentQueue<(string File, long? Start)> Ranges { get; } = new();
 
     internal PipelineHttpSource(IReadOnlyDictionary<string, byte[]> files,
-        Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? writeBody = null)
+        Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? writeBody = null,
+        IReadOnlyDictionary<string, string>? responseHeaders = null)
     {
         _files = files;
         _writeBody = writeBody;
+        _responseHeaders = responseHeaders;
         _listener.Start();
         _accept = AcceptAsync();
     }
@@ -79,7 +82,9 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
                 Ranges.Enqueue((name, requestedRange == null ? null : first));
                 string status = requestedRange == null ? "200 OK" : "206 Partial Content";
                 string contentRange = requestedRange == null ? "" : $"Content-Range: bytes {first}-{last}/{body.Length}\r\n";
-                string headers = $"HTTP/1.1 {status}\r\nContent-Length: {last - first + 1}\r\n{contentRange}Content-Type: application/octet-stream\r\nETag: \"fixture-v1\"\r\nConnection: close\r\n\r\n";
+                string extraHeaders = _responseHeaders == null ? "ETag: \"fixture-v1\"\r\n"
+                    : string.Concat(_responseHeaders.Select(header => $"{header.Key}: {header.Value}\r\n"));
+                string headers = $"HTTP/1.1 {status}\r\nContent-Length: {last - first + 1}\r\n{contentRange}Content-Type: application/octet-stream\r\n{extraHeaders}Connection: close\r\n\r\n";
                 await stream.WriteAsync(Encoding.ASCII.GetBytes(headers), _stop.Token);
                 await stream.FlushAsync(_stop.Token);
                 if (request[0] == "HEAD") return;

@@ -316,22 +316,13 @@ public partial class LinkMetadataResolverService
         // Content-Disposition (clean file name)
         await ApplyContentDispositionFileNameAsync(item, response, cancellationToken);
 
-        // Checksum from ETag or Content-MD5
+        // ETags identify versions and are not guaranteed content hashes.
         if (string.IsNullOrWhiteSpace(item.ExpectedChecksum))
         {
             if (response.Content.Headers.ContentMD5 != null && response.Content.Headers.ContentMD5.Length > 0)
             {
                 var md5 = Convert.ToHexString(response.Content.Headers.ContentMD5).ToLowerInvariant();
                 SafeInvoke(() => item.ExpectedChecksum = md5);
-            }
-            else if (response.Headers.ETag != null && !string.IsNullOrWhiteSpace(response.Headers.ETag.Tag))
-            {
-                var cleanTag = response.Headers.ETag.Tag.Trim('\"', 'W', '/', ' ');
-                if (cleanTag.Length is 32 or 64 && Regex.IsMatch(cleanTag, "^[0-9a-fA-F]+$"))
-                {
-                    var tag = cleanTag.ToLowerInvariant();
-                    SafeInvoke(() => item.ExpectedChecksum = tag);
-                }
             }
         }
 

@@ -119,7 +119,7 @@ public class LinkMetadataResolverTests
         Assert.True(success);
         Assert.Equal(1048576000, item.TotalBytes);
         Assert.Equal("data.part01.rar", item.FileName);
-        Assert.Equal("a1b2c3d4e5f60718293a4b5c6d7e8f90", item.ExpectedChecksum);
+        Assert.Null(item.ExpectedChecksum);
     }
 
     [Fact]
