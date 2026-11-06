@@ -85,6 +85,7 @@ public partial class Par2RepairService
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private string? _cachedExecutablePath;
+    internal Action<Process, bool>? ProcessStarted { get; set; }
 
     public string? ResolvePar2ExecutablePath()
     {
@@ -295,19 +296,30 @@ public partial class Par2RepairService
                 }
             };
 
+            ct.ThrowIfCancellationRequested();
             process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            using (ct.Register(() =>
+            try
             {
-                try { if (!process.HasExited) process.Kill(true); } catch { }
-            }))
-            {
-                await process.WaitForExitAsync(ct);
+                using (ct.Register(() =>
+                {
+                    try { if (!process.HasExited) process.Kill(true); } catch { }
+                }))
+                {
+                    ProcessStarted?.Invoke(process, false);
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    await process.WaitForExitAsync(ct);
+                }
+                process.WaitForExit();
             }
-
-            try { process.WaitForExit(); } catch { }
+            catch
+            {
+                // Do not release package tracking until the native reader has stopped.
+                if (!process.HasExited) process.Kill(true);
+                await process.WaitForExitAsync(CancellationToken.None);
+                process.WaitForExit();
+                throw;
+            }
 
             var output = outputBuilder.ToString();
             result.RawOutput = output;
@@ -411,18 +423,20 @@ public partial class Par2RepairService
                 }
             };
 
+            ct.ThrowIfCancellationRequested();
             process.Start();
             repairStopped = false;
 
             try
             {
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
                 using (ct.Register(() =>
                 {
                     try { if (!process.HasExited) process.Kill(true); } catch { }
                 }))
                 {
+                    ProcessStarted?.Invoke(process, true);
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
                     await process.WaitForExitAsync(ct);
                 }
                 process.WaitForExit();

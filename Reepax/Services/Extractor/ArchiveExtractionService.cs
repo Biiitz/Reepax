@@ -517,7 +517,9 @@ public partial class ArchiveExtractionService
                                 string formatted = Loc.Format("Status_Par2Repairing", pct.ToString("0.0"));
                                 SafeInvoke(() => package.StatusMessage = formatted);
                             }
-                        });
+                        }, ct: token);
+
+                    token.ThrowIfCancellationRequested();
 
                     if (!par2Success)
                     {
@@ -685,7 +687,7 @@ public partial class ArchiveExtractionService
                 package.RequiresArchivePassword = false;
                 foreach (var step in package.NextTaskSteps)
                 {
-                    if (step.Key == "Extract" && step.State == NextTaskStepState.Running)
+                    if (step.State == NextTaskStepState.Running)
                     {
                         step.State = NextTaskStepState.Pending;
                     }

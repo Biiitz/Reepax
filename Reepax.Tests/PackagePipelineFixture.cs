@@ -50,6 +50,7 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
     internal ConcurrentQueue<string> EarlyCompletion { get; } = new();
     internal TaskCompletionSource CountdownStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal PipelineHttpSource Source => _source!;
+    internal bool AutoStartExtraction { get; set; } = true;
 
     private PackagePipelineFixture()
     {
@@ -79,6 +80,7 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         _queue.ActiveDownloadsCountOverride = () => 1000;
         _queue.ExtractPackageAsync = package =>
         {
+            if (!AutoStartExtraction) return Task.FromResult(false);
             Task<bool> task = _previousExtractor(package);
             _operations.Add(task);
             _extractions.Writer.TryWrite(task);
@@ -106,12 +108,12 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         _actions.StateChanged += ActionStateChanged;
     }
 
-    internal static async Task<PackagePipelineFixture> CreateAsync(string scenario, bool encrypted = false)
+    internal static async Task<PackagePipelineFixture> CreateAsync(string scenario, bool encrypted = false, int payloadLength = 16 * 1024)
     {
         var fixture = new PackagePipelineFixture();
         try
         {
-            await fixture.InitializeAsync(scenario, encrypted);
+            await fixture.InitializeAsync(scenario, encrypted, payloadLength);
             return fixture;
         }
         catch
@@ -121,14 +123,14 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         }
     }
 
-    private async Task InitializeAsync(string scenario, bool encrypted)
+    private async Task InitializeAsync(string scenario, bool encrypted, int payloadLength)
     {
         string originals = Path.Combine(_root, "source");
         string downloads = Path.Combine(_root, "downloads");
         Directory.CreateDirectory(originals);
         Directory.CreateDirectory(downloads);
         var random = new Random(731);
-        Payload = new byte[16 * 1024];
+        Payload = new byte[payloadLength];
         random.NextBytes(Payload);
         if (encrypted)
         {
