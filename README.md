@@ -27,6 +27,8 @@ Reepax brings download pages, related files, and archive processing into one wor
 
 The project is in active development. Features and behavior may change between releases.
 
+See the [Reepax website](https://reepax.pages.dev/#preview) for screenshots of the app and its interface.
+
 <h2 align="center">Features</h2>
 
 | Area | What it offers |
