@@ -172,7 +172,7 @@ public static class Strings_de
         ["Settings_MinimizeToTrayOnClose_Title"] = "In Infobereich minimieren beim Schließen",
         ["Settings_MinimizeToTrayOnClose_Subtitle"] = "Beim Schließen läuft Reepax neben der Windows-Uhr weiter. Downloads werden nicht beendet.",
         ["Settings_Notifications_Title"] = "Benachrichtigungen",
-        ["Settings_Notifications_Subtitle"] = "Zeigt eine Benachrichtigung, sobald ein Paket abgeschlossen ist.",
+        ["Settings_Notifications_Subtitle"] = "Zeigt eine Windows Benachrichtigung, sobald ein Paket abgeschlossen ist.",
         ["Settings_Card_Sounds_Title"] = "Audio-Benachrichtigungen",
         ["Settings_Card_Sounds_Subtitle"] = "Akustische Signale bei erfolgreichem oder fehlgeschlagenem Download abspielen",
         ["Settings_Sound_Volume_Title"] = "Lautstärke für Sounds",

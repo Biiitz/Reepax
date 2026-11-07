@@ -36,6 +36,8 @@ public sealed class SingleChoiceDropdown : Button
     public static readonly DependencyProperty DisplayMemberPathProperty = DependencyProperty.Register(nameof(DisplayMemberPath), typeof(string), typeof(SingleChoiceDropdown), new PropertyMetadata(nameof(ChoiceOption.Text), Rebuild));
     public static readonly DependencyProperty SelectedValuePathProperty = DependencyProperty.Register(nameof(SelectedValuePath), typeof(string), typeof(SingleChoiceDropdown), new PropertyMetadata(nameof(ChoiceOption.Value), Rebuild));
     public IEnumerable? ItemsSource { get => (IEnumerable?)GetValue(ItemsSourceProperty); set => SetValue(ItemsSourceProperty, value); }
+    public static readonly DependencyProperty MaxVisibleItemsProperty = DependencyProperty.Register(nameof(MaxVisibleItems), typeof(int), typeof(SingleChoiceDropdown), new PropertyMetadata(0, Rebuild));
+    public int MaxVisibleItems { get => (int)GetValue(MaxVisibleItemsProperty); set => SetValue(MaxVisibleItemsProperty, value); }
     public object? SelectedValue { get => GetValue(SelectedValueProperty); set => SetValue(SelectedValueProperty, value); }
     public string DisplayMemberPath { get => (string)GetValue(DisplayMemberPathProperty); set => SetValue(DisplayMemberPathProperty, value); }
     public string SelectedValuePath { get => (string)GetValue(SelectedValuePathProperty); set => SetValue(SelectedValuePathProperty, value); }
@@ -60,6 +62,7 @@ public sealed class SingleChoiceDropdown : Button
     private readonly TextBlock _label = new() { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 440 };
     private readonly Path _arrow = new() { Data = Geometry.Parse("M 0,0 L 3.5,3.5 L 7,0"), StrokeThickness = 1.5, Width = 7, Height = 4, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center };
     private readonly StackPanel _optionsPanel = new();
+    private readonly ScrollViewer _optionsScroll;
     private readonly List<(object Item, object? Value, Path Check)> _entries = new();
     private long _closedAt = long.MinValue / 2;
 
@@ -79,7 +82,8 @@ public sealed class SingleChoiceDropdown : Button
         Grid.SetColumn(_arrow, 1);
         content.Children.Add(_arrow);
         Content = content;
-        var border = new MorphingPopupBorder { Child = new ScrollViewer { Content = _optionsPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, MaxHeight = 360 } };
+        _optionsScroll = new ScrollViewer { Content = _optionsPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, MaxHeight = 360 };
+        var border = new MorphingPopupBorder { Child = _optionsScroll };
         border.Style = (Style)FindResource("SettingsDropdownPopupBorderStyle");
         border.SetBinding(System.Windows.Documents.TextElement.FontFamilyProperty, new Binding(nameof(FontFamily)) { Source = this });
         DropdownPopup = new Popup { PlacementTarget = this, Placement = PlacementMode.Bottom, StaysOpen = false, AllowsTransparency = true, PopupAnimation = PopupAnimation.Fade, Child = border };
@@ -151,6 +155,15 @@ public sealed class SingleChoiceDropdown : Button
             _entries.Add((item, value, check));
         }
         RefreshSelection();
+        UpdateOptionsHeight();
+    }
+
+    private void UpdateOptionsHeight()
+    {
+        if (_optionsScroll == null || MaxVisibleItems <= 0 || _optionsPanel.Children.Count == 0) return;
+        _optionsPanel.Measure(new Size(500, double.PositiveInfinity));
+        _optionsScroll.MaxHeight = Math.Min(360, _optionsPanel.Children.Cast<UIElement>().Take(MaxVisibleItems)
+            .Sum(option => option.DesiredSize.Height));
     }
 
     private void BindLabel(TextBlock label, object item)
@@ -215,6 +228,7 @@ public sealed class SingleChoiceDropdown : Button
         var border = (Border)DropdownPopup.Child;
         border.MinWidth = ActualWidth;
         border.MaxWidth = Math.Min(500, SystemParameters.WorkArea.Width);
+        UpdateOptionsHeight();
         DropdownPopup.IsOpen = !DropdownPopup.IsOpen;
     }
 

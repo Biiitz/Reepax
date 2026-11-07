@@ -39,7 +39,7 @@ public class AppSettings
     public bool EnableCompletionNotifications { get; set; } = false;
     public bool EnableCompletionSound { get; set; } = false;
     public CompletionSoundTrigger CompletionSoundTrigger { get; set; } = CompletionSoundTrigger.EntirePackage;
-    public string SelectedCompletionSound { get; set; } = "1.mp3";
+    public string SelectedCompletionSound { get; set; } = "sounds/1.wav";
 
     private int _completionSoundVolume = 80;
     public int CompletionSoundVolume
@@ -53,7 +53,7 @@ public class AppSettings
     }
 
     public bool EnableErrorSound { get; set; } = false;
-    public string SelectedErrorSound { get; set; } = "1.mp3";
+    public string SelectedErrorSound { get; set; } = "sounds/1.wav";
 
     private int _errorSoundVolume = 80;
     public int ErrorSoundVolume
@@ -254,56 +254,15 @@ public class AppSettings
         return list;
     }
 
-    public static readonly string[] ValidCompletionSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3", "6.mp3", "7.mp3", "8.mp3", "9.mp3", "10.mp3", "11.mp3", "12.mp3"];
-    public static readonly string[] ValidErrorSounds = ["1.mp3", "2.mp3", "3.mp3", "4.mp3", "5.mp3"];
+    public static string[] ValidCompletionSounds => Services.Audio.SoundCatalog.Default.Sounds.Select(sound => sound.Value).ToArray();
+    public static string[] ValidErrorSounds => ValidCompletionSounds;
 
     public static void SanitizeSoundSettings(AppSettings? settings)
     {
         if (settings == null) return;
-
-        // Completion sound normalization
-        if (string.IsNullOrWhiteSpace(settings.SelectedCompletionSound))
-        {
-            settings.SelectedCompletionSound = "1.mp3";
-        }
-        else
-        {
-            var raw = settings.SelectedCompletionSound.Trim();
-            if (!raw.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
-            {
-                raw += ".mp3";
-            }
-            if (ValidCompletionSounds.Contains(raw, StringComparer.OrdinalIgnoreCase))
-            {
-                settings.SelectedCompletionSound = ValidCompletionSounds.First(s => string.Equals(s, raw, StringComparison.OrdinalIgnoreCase));
-            }
-            else
-            {
-                settings.SelectedCompletionSound = "1.mp3";
-            }
-        }
-
-        // Error sound normalization
-        if (string.IsNullOrWhiteSpace(settings.SelectedErrorSound))
-        {
-            settings.SelectedErrorSound = "1.mp3";
-        }
-        else
-        {
-            var raw = settings.SelectedErrorSound.Trim();
-            if (!raw.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
-            {
-                raw += ".mp3";
-            }
-            if (ValidErrorSounds.Contains(raw, StringComparer.OrdinalIgnoreCase))
-            {
-                settings.SelectedErrorSound = ValidErrorSounds.First(s => string.Equals(s, raw, StringComparison.OrdinalIgnoreCase));
-            }
-            else
-            {
-                settings.SelectedErrorSound = "1.mp3";
-            }
-        }
+        var catalog = Services.Audio.SoundCatalog.Default;
+        settings.SelectedCompletionSound = catalog.SanitizeSelection(settings.SelectedCompletionSound);
+        settings.SelectedErrorSound = catalog.SanitizeSelection(settings.SelectedErrorSound);
 
         // Volume clamping
         settings.CompletionSoundVolume = Math.Clamp(settings.CompletionSoundVolume, 0, 100);

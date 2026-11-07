@@ -683,20 +683,7 @@
 
                                             <!-- Left: Sound Selector Dropdown & Popup -->
                                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <helpers:SingleChoiceDropdown x:Name="CompletionSoundButton" SelectedValue="{Binding SelectedCompletionSound, Mode=TwoWay}" IsEnabled="{Binding EnableCompletionSound}" SelectionCommitted="CompletionSound_SelectionCommitted">
-                                    <helpers:ChoiceOption Value="1.mp3" Text="Sound 1" />
-                                    <helpers:ChoiceOption Value="2.mp3" Text="Sound 2" />
-                                    <helpers:ChoiceOption Value="3.mp3" Text="Sound 3" />
-                                    <helpers:ChoiceOption Value="4.mp3" Text="Sound 4" />
-                                    <helpers:ChoiceOption Value="5.mp3" Text="Sound 5" />
-                                    <helpers:ChoiceOption Value="6.mp3" Text="Sound 6" />
-                                    <helpers:ChoiceOption Value="7.mp3" Text="Sound 7" />
-                                    <helpers:ChoiceOption Value="8.mp3" Text="Sound 8" />
-                                    <helpers:ChoiceOption Value="9.mp3" Text="Sound 9" />
-                                    <helpers:ChoiceOption Value="10.mp3" Text="Sound 10" />
-                                    <helpers:ChoiceOption Value="11.mp3" Text="Sound 11" />
-                                    <helpers:ChoiceOption Value="12.mp3" Text="Sound 12" />
-                                </helpers:SingleChoiceDropdown>
+                                                <helpers:SingleChoiceDropdown x:Name="CompletionSoundButton" SelectedValue="{Binding SelectedCompletionSound, Mode=TwoWay}" IsEnabled="{Binding EnableCompletionSound}" SelectionCommitted="CompletionSound_SelectionCommitted" ItemsSource="{Binding SoundOptions}" SelectedValuePath="Value" DisplayMemberPath="Text" MaxVisibleItems="7" />
                                             </StackPanel>
 
                                             <!-- Right: Volume Control with Speaker Icon, Slider & Percentage Badge -->
@@ -783,13 +770,7 @@
 
                                         <!-- Left: Sound Selector Dropdown & Popup -->
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <helpers:SingleChoiceDropdown x:Name="ErrorSoundButton" SelectedValue="{Binding SelectedErrorSound, Mode=TwoWay}" IsEnabled="{Binding EnableErrorSound}" SelectionCommitted="ErrorSound_SelectionCommitted">
-                                    <helpers:ChoiceOption Value="1.mp3" Text="Sound 1" />
-                                    <helpers:ChoiceOption Value="2.mp3" Text="Sound 2" />
-                                    <helpers:ChoiceOption Value="3.mp3" Text="Sound 3" />
-                                    <helpers:ChoiceOption Value="4.mp3" Text="Sound 4" />
-                                    <helpers:ChoiceOption Value="5.mp3" Text="Sound 5" />
-                                </helpers:SingleChoiceDropdown>
+                                            <helpers:SingleChoiceDropdown x:Name="ErrorSoundButton" SelectedValue="{Binding SelectedErrorSound, Mode=TwoWay}" IsEnabled="{Binding EnableErrorSound}" SelectionCommitted="ErrorSound_SelectionCommitted" ItemsSource="{Binding SoundOptions}" SelectedValuePath="Value" DisplayMemberPath="Text" MaxVisibleItems="7" />
                                         </StackPanel>
 
                                         <!-- Right: Volume Control with Speaker Icon, Slider & Percentage Badge -->

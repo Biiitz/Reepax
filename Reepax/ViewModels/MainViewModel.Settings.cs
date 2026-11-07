@@ -593,7 +593,7 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
-    private string _selectedCompletionSound = "1.mp3";
+    private string _selectedCompletionSound = "sounds/1.wav";
 
     partial void OnSelectedCompletionSoundChanged(string value)
     {
@@ -613,7 +613,7 @@ public partial class MainViewModel
     }
 
     [ObservableProperty]
-    private string _selectedErrorSound = "1.mp3";
+    private string _selectedErrorSound = "sounds/1.wav";
 
     partial void OnSelectedErrorSoundChanged(string value)
     {
@@ -665,8 +665,9 @@ public partial class MainViewModel
         }
     }
 
-    private static readonly string[] AvailableCompletionSounds = AppSettings.ValidCompletionSounds;
-    private static readonly string[] AvailableErrorSounds = AppSettings.ValidErrorSounds;
+    public System.Collections.Generic.IReadOnlyList<SoundOption> SoundOptions => SoundCatalog.Default.Sounds;
+    private static string[] AvailableCompletionSounds => AppSettings.ValidCompletionSounds;
+    private static string[] AvailableErrorSounds => AppSettings.ValidErrorSounds;
 
     [RelayCommand]
     public void SelectAndPreviewCompletionSound(string? soundFileName)
@@ -687,6 +688,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void CycleCompletionSound(bool forward)
     {
+        if (AvailableCompletionSounds.Length == 0) return;
         int currentIndex = Array.IndexOf(AvailableCompletionSounds, SelectedCompletionSound);
         if (currentIndex < 0) currentIndex = 0;
         int newIndex = forward
@@ -699,6 +701,7 @@ public partial class MainViewModel
     [RelayCommand]
     public void CycleErrorSound(bool forward)
     {
+        if (AvailableErrorSounds.Length == 0) return;
         int currentIndex = Array.IndexOf(AvailableErrorSounds, SelectedErrorSound);
         if (currentIndex < 0) currentIndex = 0;
         int newIndex = forward
@@ -711,14 +714,14 @@ public partial class MainViewModel
     [RelayCommand]
     public void PreviewCompletionVolumeSound()
     {
-        string sound = !string.IsNullOrWhiteSpace(SelectedCompletionSound) ? SelectedCompletionSound : "1.mp3";
+        string sound = !string.IsNullOrWhiteSpace(SelectedCompletionSound) ? SelectedCompletionSound : "sounds/1.wav";
         AudioNotificationService.Instance.PlayPreview("sounds_done", sound, CompletionSoundVolume, updateVolumeOnlyIfPlaying: true);
     }
 
     [RelayCommand]
     public void PreviewErrorVolumeSound()
     {
-        string sound = !string.IsNullOrWhiteSpace(SelectedErrorSound) ? SelectedErrorSound : "1.mp3";
+        string sound = !string.IsNullOrWhiteSpace(SelectedErrorSound) ? SelectedErrorSound : "sounds/1.wav";
         AudioNotificationService.Instance.PlayPreview("sounds_error", sound, ErrorSoundVolume, updateVolumeOnlyIfPlaying: true);
     }
 

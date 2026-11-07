@@ -18,6 +18,61 @@ public partial class DialogUiTests
     [Theory]
     [InlineData("en", ThemeCatalog.DefaultId)]
     [InlineData("de", ThemeCatalog.MacOSId)]
+    public void SoundSelectors_ShareAllOptionsAndScrollAfterSevenRows(string language, string theme)
+    {
+        RunInSta(() =>
+        {
+            EnsureSettingsTheme();
+            var model = new MainViewModel();
+            var previous = (model.SelectedLanguage, model.SelectedThemeId, model.EnableCompletionSound, model.EnableErrorSound,
+                model.SelectedCompletionSound, model.SelectedErrorSound);
+            model.SelectedLanguage = language;
+            model.SelectedThemeId = theme;
+            model.EnableCompletionSound = model.EnableErrorSound = true;
+            var view = new SettingsView { DataContext = model };
+            var host = new Window { Content = view, Width = 1100, Height = 750, Left = -10000, Top = -10000,
+                ShowActivated = false, ShowInTaskbar = false };
+            var shutdown = Application.Current.ShutdownMode;
+            Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            try
+            {
+                host.Show();
+                PumpSettingsAnimations();
+                foreach (string name in new[] { "CompletionSoundButton", "ErrorSoundButton" })
+                {
+                    var selector = (SingleChoiceDropdown)view.FindName(name);
+                    Assert.Equal(7, selector.MaxVisibleItems);
+                    selector.DropdownPopup.IsOpen = true;
+                    PumpSettingsAnimations();
+                    var scroll = Assert.Single(Descendants<ScrollViewer>(selector.DropdownPopup.Child));
+                    var rows = Descendants<Button>(scroll).Where(button => button.CommandParameter is string).ToArray();
+                    Assert.Equal(model.SoundOptions.Count, rows.Length);
+                    Assert.True(rows.Length > 7);
+                    Assert.Equal(rows.Take(7).Sum(row => row.ActualHeight + row.Margin.Top + row.Margin.Bottom), scroll.ViewportHeight, 1);
+                    Assert.True(scroll.ScrollableHeight > 0);
+                    scroll.ScrollToBottom();
+                    PumpSettingsAnimations();
+                    Assert.Equal(scroll.ScrollableHeight, scroll.VerticalOffset, 1);
+                    selector.CloseDropdown();
+                }
+            }
+            finally
+            {
+                host.Close();
+                model.SelectedLanguage = previous.SelectedLanguage;
+                model.SelectedThemeId = previous.SelectedThemeId;
+                model.EnableCompletionSound = previous.EnableCompletionSound;
+                model.EnableErrorSound = previous.EnableErrorSound;
+                model.SelectedCompletionSound = previous.SelectedCompletionSound;
+                model.SelectedErrorSound = previous.SelectedErrorSound;
+                Application.Current.ShutdownMode = shutdown;
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("en", ThemeCatalog.DefaultId)]
+    [InlineData("de", ThemeCatalog.MacOSId)]
     public void SharedChoiceDropdown_FitsSelectedTextAndKeepsIndependentSelections(string language, string theme)
     {
         RunInSta(() =>

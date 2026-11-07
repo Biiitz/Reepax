@@ -172,7 +172,7 @@ public static class Strings_en
         ["Settings_MinimizeToTrayOnClose_Title"] = "Minimize to tray on close",
         ["Settings_MinimizeToTrayOnClose_Subtitle"] = "Closing the window keeps Reepax running in the notification area. Downloads continue.",
         ["Settings_Notifications_Title"] = "Notifications",
-        ["Settings_Notifications_Subtitle"] = "Show a notification when a package finishes.",
+        ["Settings_Notifications_Subtitle"] = "Show a Windows notification when a package finishes.",
         ["Settings_Card_Sounds_Title"] = "Audio Notifications",
         ["Settings_Card_Sounds_Subtitle"] = "Play audio cues when downloads finish or encounter errors",
         ["Settings_Sound_Volume_Title"] = "Sound Volume",

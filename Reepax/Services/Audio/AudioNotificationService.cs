@@ -36,7 +36,7 @@ public sealed class AudioNotificationService
 
         string fileName = !string.IsNullOrWhiteSpace(settings.SelectedCompletionSound)
             ? settings.SelectedCompletionSound
-            : "1.mp3";
+            : SoundCatalog.Default.DefaultSound;
 
         PlaySoundInternal("sounds_done", fileName, settings.CompletionSoundVolume, isPreview);
     }
@@ -54,7 +54,7 @@ public sealed class AudioNotificationService
 
         string fileName = !string.IsNullOrWhiteSpace(settings.SelectedErrorSound)
             ? settings.SelectedErrorSound
-            : "1.mp3";
+            : SoundCatalog.Default.DefaultSound;
 
         PlaySoundInternal("sounds_error", fileName, settings.ErrorSoundVolume, isPreview);
     }
@@ -81,31 +81,8 @@ public sealed class AudioNotificationService
             return null;
         }
 
-        var candidates = new[]
-        {
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", folder, fileName),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "Reepax", "Assets", folder, fileName),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Assets", folder, fileName),
-            Path.Combine(Directory.GetCurrentDirectory(), "Reepax", "Assets", folder, fileName),
-            Path.Combine(Directory.GetCurrentDirectory(), "Assets", folder, fileName)
-        };
-
-        foreach (var path in candidates)
-        {
-            try
-            {
-                if (File.Exists(path))
-                {
-                    return Path.GetFullPath(path);
-                }
-            }
-            catch
-            {
-                // Ignore path resolution errors for invalid candidates
-            }
-        }
-
-        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", folder, fileName);
+        if (folder is not ("sounds" or "sounds_done" or "sounds_error")) return null;
+        return SoundCatalog.Default.Resolve(fileName);
     }
 
     public static double ConvertToMediaPlayerVolume(int volumePercent)
@@ -115,7 +92,7 @@ public sealed class AudioNotificationService
 
     internal static string? ResolvePlayableSoundPath(string folder, string fileName)
     {
-        foreach (var candidate in new[] { fileName, "1.mp3" })
+        foreach (var candidate in new[] { fileName, SoundCatalog.Default.DefaultSound })
         {
             try
             {

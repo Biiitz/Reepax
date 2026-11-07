@@ -55,11 +55,10 @@
     <Content Include="Assets\avatars\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Assets\sounds_done\**\*.*">
+    <Content Include="Assets\**\*.wav;Assets\**\*.mp3;Assets\**\*.m4a;Assets\**\*.wma"
+             Exclude="Assets\etc\**\*;Assets\sounds_done\**\*;Assets\sounds_error\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Assets\sounds_error\**\*.*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
     <None Include="reepax_adblock.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

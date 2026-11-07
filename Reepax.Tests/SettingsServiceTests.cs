@@ -123,7 +123,7 @@ public class SettingsServiceTests : IDisposable
 
         // Must successfully restore from backup
         Assert.False(service.HasSettingsLoadFailed);
-        Assert.Equal("5.mp3", service.Settings.SelectedCompletionSound);
+        Assert.Equal("sounds/5.wav", service.Settings.SelectedCompletionSound);
         Assert.Equal(95, service.Settings.CompletionSoundVolume);
     }
 
@@ -153,7 +153,7 @@ public class SettingsServiceTests : IDisposable
         // Primary settings file should now be valid encrypted json with the new setting
         var reloadedService = new SettingsService(settingsPath);
         Assert.False(reloadedService.HasSettingsLoadFailed);
-        Assert.Equal("3.mp3", reloadedService.Settings.SelectedErrorSound);
+        Assert.Equal("sounds/3.wav", reloadedService.Settings.SelectedErrorSound);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class SettingsServiceTests : IDisposable
         Assert.True(File.Exists(settingsPath));
         var reloadedService = new SettingsService(settingsPath);
         Assert.False(reloadedService.HasSettingsLoadFailed);
-        Assert.Equal("4.mp3", reloadedService.Settings.SelectedCompletionSound);
+        Assert.Equal("sounds/4.wav", reloadedService.Settings.SelectedCompletionSound);
     }
 
     [Theory]

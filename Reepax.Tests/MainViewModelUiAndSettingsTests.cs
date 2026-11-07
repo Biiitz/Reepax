@@ -269,16 +269,16 @@ public class MainViewModelUiAndSettingsTests
     public void CycleCompletionSound_ForwardAndBackward_WrapsCorrectly()
     {
         var vm = new MainViewModel();
-        vm.SelectedCompletionSound = "1.mp3";
+        vm.SelectedCompletionSound = "sounds/1.wav";
         Assert.Equal("Sound 1", vm.SelectedCompletionSoundDisplayName);
 
         // Cycle forward
         vm.CycleCompletionSound(forward: true);
-        Assert.Equal("2.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/2.wav", vm.SelectedCompletionSound);
 
         // Cycle backwards
         vm.CycleCompletionSound(forward: false);
-        Assert.Equal("1.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/1.wav", vm.SelectedCompletionSound);
 
         // Cycling backward wraps to the final registered sound.
         vm.CycleCompletionSound(forward: false);
@@ -286,30 +286,30 @@ public class MainViewModelUiAndSettingsTests
 
         // Cycling forward from the final sound restores the first sound.
         vm.CycleCompletionSound(forward: true);
-        Assert.Equal("1.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/1.wav", vm.SelectedCompletionSound);
     }
 
     [Fact]
     public void CycleErrorSound_ForwardAndBackward_WrapsCorrectly()
     {
         var vm = new MainViewModel();
-        vm.SelectedErrorSound = "1.mp3";
+        vm.SelectedErrorSound = "sounds/1.wav";
         Assert.Equal("Sound 1", vm.SelectedErrorSoundDisplayName);
 
         // Cycle forward to 2.mp3
         vm.CycleErrorSound(forward: true);
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        Assert.Equal("sounds/2.wav", vm.SelectedErrorSound);
 
         vm.SelectedErrorSound = AppSettings.ValidErrorSounds[^1];
         vm.CycleErrorSound(forward: true);
-        Assert.Equal("1.mp3", vm.SelectedErrorSound);
+        Assert.Equal("sounds/1.wav", vm.SelectedErrorSound);
 
         // Cycling backward wraps to the final registered sound.
         vm.CycleErrorSound(forward: false);
         Assert.Equal(AppSettings.ValidErrorSounds[^1], vm.SelectedErrorSound);
 
         // Restore default
-        vm.SelectedErrorSound = "1.mp3";
+        vm.SelectedErrorSound = "sounds/1.wav";
     }
 
     [Fact]
@@ -318,12 +318,12 @@ public class MainViewModelUiAndSettingsTests
         var vm = new MainViewModel();
 
         // Preview completion sound command
-        vm.SelectAndPreviewCompletionSound("3.mp3");
-        Assert.Equal("3.mp3", vm.SelectedCompletionSound);
+        vm.SelectAndPreviewCompletionSound("sounds/3.wav");
+        Assert.Equal("sounds/3.wav", vm.SelectedCompletionSound);
 
         // Preview error sound command
-        vm.SelectAndPreviewErrorSound("2.mp3");
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        vm.SelectAndPreviewErrorSound("sounds/2.wav");
+        Assert.Equal("sounds/2.wav", vm.SelectedErrorSound);
 
         // Volume preview commands
         vm.PreviewCompletionVolumeSound();
@@ -332,14 +332,14 @@ public class MainViewModelUiAndSettingsTests
 
         // Empty/null input guards
         vm.SelectAndPreviewCompletionSound(null);
-        Assert.Equal("3.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/3.wav", vm.SelectedCompletionSound);
 
         vm.SelectAndPreviewErrorSound("");
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        Assert.Equal("sounds/2.wav", vm.SelectedErrorSound);
 
         // Restore defaults
-        vm.SelectedCompletionSound = "1.mp3";
-        vm.SelectedErrorSound = "1.mp3";
+        vm.SelectedCompletionSound = "sounds/1.wav";
+        vm.SelectedErrorSound = "sounds/1.wav";
     }
 
     // =========================================================================

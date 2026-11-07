@@ -20,7 +20,7 @@ public class AudioNotificationTests
     {
         var resolved = AudioNotificationService.ResolvePlayableSoundPath("sounds_done", fileName);
         Assert.NotNull(resolved);
-        Assert.Equal("1.mp3", Path.GetFileName(resolved));
+        Assert.Equal("1.wav", Path.GetFileName(resolved));
         Assert.True(File.Exists(resolved));
         Assert.Null(AudioNotificationService.ResolvePlayableSoundPath("unavailable", fileName));
     }
@@ -183,29 +183,16 @@ public class AudioNotificationTests
         internal void RaiseFailed() => Failed?.Invoke();
     }
 
-    [Theory]
-    [InlineData("sounds_done", "1.mp3")]
-    [InlineData("sounds_done", "2.mp3")]
-    [InlineData("sounds_done", "3.mp3")]
-    [InlineData("sounds_done", "4.mp3")]
-    [InlineData("sounds_done", "5.mp3")]
-    [InlineData("sounds_done", "6.mp3")]
-    [InlineData("sounds_done", "7.mp3")]
-    [InlineData("sounds_done", "8.mp3")]
-    [InlineData("sounds_done", "9.mp3")]
-    [InlineData("sounds_done", "10.mp3")]
-    [InlineData("sounds_done", "11.mp3")]
-    [InlineData("sounds_done", "12.mp3")]
-    [InlineData("sounds_error", "1.mp3")]
-    [InlineData("sounds_error", "2.mp3")]
-    [InlineData("sounds_error", "3.mp3")]
-    [InlineData("sounds_error", "4.mp3")]
-    [InlineData("sounds_error", "5.mp3")]
-    public void AudioAssets_AllRequiredFilesExist(string folder, string fileName)
+    [Fact]
+    public void AudioAssets_AllRegisteredFilesExistForBothNotificationCategories()
     {
-        string? resolvedPath = AudioNotificationService.ResolveSoundPath(folder, fileName);
-        Assert.NotNull(resolvedPath);
-        Assert.True(File.Exists(resolvedPath), $"Sound file not found: {resolvedPath}");
+        Assert.NotEmpty(SoundCatalog.Default.Sounds);
+        foreach (var sound in SoundCatalog.Default.Sounds)
+        {
+            foreach (var category in new[] { "sounds_done", "sounds_error" })
+                Assert.Equal(sound.FullPath, AudioNotificationService.ResolveSoundPath(category, sound.Value));
+            Assert.True(File.Exists(sound.FullPath));
+        }
     }
 
     [Theory]
@@ -216,7 +203,7 @@ public class AudioNotificationTests
         bool completion = folder == "sounds_done";
         var catalog = completion ? AppSettings.ValidCompletionSounds : AppSettings.ValidErrorSounds;
         var project = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax"));
-        var files = Directory.GetFiles(Path.Combine(project, "Assets", folder), "*.mp3").Select(Path.GetFileName).ToArray();
+        var files = Directory.GetFiles(Path.Combine(project, "Assets", "sounds"), "*.wav").Select(path => "sounds/" + Path.GetFileName(path)).ToArray();
         Assert.Equal(catalog.OrderBy(name => name, StringComparer.Ordinal), files.OrderBy(name => name, StringComparer.Ordinal));
         var view = XDocument.Load(Path.Combine(project, "Views", "SettingsView.xaml"));
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -225,12 +212,12 @@ public class AudioNotificationTests
         string prefix = completion ? "Completion" : "Error";
         Assert.Equal("{Binding Selected" + prefix + "Sound, Mode=TwoWay}", (string?)selector.Attribute("SelectedValue"));
         Assert.Equal(prefix + "Sound_SelectionCommitted", (string?)selector.Attribute("SelectionCommitted"));
-        var options = selector.Elements().Where(element => element.Name.LocalName == "ChoiceOption")
-            .Select(element => (string?)element.Attribute("Value"));
-        Assert.Equal(catalog, options);
+        Assert.Equal("{Binding SoundOptions}", (string?)selector.Attribute("ItemsSource"));
+        Assert.Equal("7", (string?)selector.Attribute("MaxVisibleItems"));
+        Assert.Equal(AppSettings.ValidCompletionSounds, AppSettings.ValidErrorSounds);
         foreach (var sound in catalog)
         {
-            var settings = new AppSettings { SelectedCompletionSound = completion ? sound : "1.mp3", SelectedErrorSound = completion ? "1.mp3" : sound };
+            var settings = new AppSettings { SelectedCompletionSound = completion ? sound : "sounds/1.wav", SelectedErrorSound = completion ? "sounds/1.wav" : sound };
             var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
             AppSettings.SanitizeSoundSettings(restored);
             Assert.Equal(sound, completion ? restored.SelectedCompletionSound : restored.SelectedErrorSound);
@@ -243,9 +230,9 @@ public class AudioNotificationTests
         var settings = new AppSettings();
 
         Assert.False(settings.EnableCompletionSound);
-        Assert.Equal("1.mp3", settings.SelectedCompletionSound);
+        Assert.Equal("sounds/1.wav", settings.SelectedCompletionSound);
         Assert.False(settings.EnableErrorSound);
-        Assert.Equal("1.mp3", settings.SelectedErrorSound);
+        Assert.Equal("sounds/1.wav", settings.SelectedErrorSound);
         Assert.Equal(80, settings.SoundVolume);
         Assert.Equal(80, settings.CompletionSoundVolume);
         Assert.Equal(80, settings.ErrorSoundVolume);
@@ -257,9 +244,9 @@ public class AudioNotificationTests
         var original = new AppSettings
         {
             EnableCompletionSound = false,
-            SelectedCompletionSound = "4.mp3",
+            SelectedCompletionSound = "sounds/4.wav",
             EnableErrorSound = false,
-            SelectedErrorSound = "2.mp3",
+            SelectedErrorSound = "sounds/2.wav",
             SoundVolume = 45,
             CompletionSoundVolume = 65,
             ErrorSoundVolume = 90
@@ -270,9 +257,9 @@ public class AudioNotificationTests
 
         Assert.NotNull(deserialized);
         Assert.False(deserialized.EnableCompletionSound);
-        Assert.Equal("4.mp3", deserialized.SelectedCompletionSound);
+        Assert.Equal("sounds/4.wav", deserialized.SelectedCompletionSound);
         Assert.False(deserialized.EnableErrorSound);
-        Assert.Equal("2.mp3", deserialized.SelectedErrorSound);
+        Assert.Equal("sounds/2.wav", deserialized.SelectedErrorSound);
         Assert.Equal(65, deserialized.CompletionSoundVolume);
         Assert.Equal(90, deserialized.ErrorSoundVolume);
     }
@@ -300,10 +287,10 @@ public class AudioNotificationTests
         var ex2 = Record.Exception(() => service.PlayErrorSound());
         Assert.Null(ex2);
 
-        var ex3 = Record.Exception(() => service.PlayPreview("sounds_done", "1.mp3", 50));
+        var ex3 = Record.Exception(() => service.PlayPreview("sounds_done", "sounds/1.wav", 50));
         Assert.Null(ex3);
 
-        var ex4 = Record.Exception(() => service.PlayPreview("sounds_error", "2.mp3", 100));
+        var ex4 = Record.Exception(() => service.PlayPreview("sounds_error", "sounds/2.wav", 100));
         Assert.Null(ex4);
     }
 
@@ -312,11 +299,10 @@ public class AudioNotificationTests
     {
         Assert.Null(AudioNotificationService.ResolveSoundPath("", ""));
         Assert.Null(AudioNotificationService.ResolveSoundPath("sounds_done", ""));
-        Assert.Null(AudioNotificationService.ResolveSoundPath("", "1.mp3"));
+        Assert.Null(AudioNotificationService.ResolveSoundPath("", "sounds/1.wav"));
 
         string? nonExistent = AudioNotificationService.ResolveSoundPath("non_existent_folder", "missing.mp3");
-        Assert.NotNull(nonExistent);
-        Assert.False(File.Exists(nonExistent));
+        Assert.Null(nonExistent);
     }
 
     [Theory]
@@ -345,12 +331,12 @@ public class AudioNotificationTests
     }
 
     [Theory]
-    [InlineData("1.mp3", "Sound 1")]
-    [InlineData("2.mp3", "Sound 2")]
-    [InlineData("3.mp3", "Sound 3")]
-    [InlineData("4.mp3", "Sound 4")]
-    [InlineData("5.mp3", "Sound 5")]
-    [InlineData("6.mp3", "Sound 6")]
+    [InlineData("sounds/1.wav", "Sound 1")]
+    [InlineData("sounds/2.wav", "Sound 2")]
+    [InlineData("sounds/3.wav", "Sound 3")]
+    [InlineData("sounds/4.wav", "Sound 4")]
+    [InlineData("sounds/5.wav", "Sound 5")]
+    [InlineData("sounds/6.wav", "Sound 6")]
     [InlineData(null, "Sound 1")]
     [InlineData("", "Sound 1")]
     public void MainViewModel_SoundDisplayName_FormatsCorrectly(string? soundFile, string expected)
@@ -393,10 +379,10 @@ public class AudioNotificationTests
                 triggered.Add(e.PropertyName);
         };
 
-        vm.SelectedCompletionSound = "3.mp3";
+        vm.SelectedCompletionSound = "sounds/3.wav";
         Assert.Contains(nameof(vm.SelectedCompletionSoundDisplayName), triggered);
 
-        vm.SelectedErrorSound = "2.mp3";
+        vm.SelectedErrorSound = "sounds/2.wav";
         Assert.Contains(nameof(vm.SelectedErrorSoundDisplayName), triggered);
 
         vm.EnableCompletionSound = true;
@@ -408,30 +394,31 @@ public class AudioNotificationTests
     {
         var vm = new ViewModels.MainViewModel
         {
-            SelectedCompletionSound = "1.mp3"
+            SelectedCompletionSound = "sounds/1.wav"
         };
 
         // Forward cycling includes the newly registered sounds.
         vm.CycleCompletionSound(true);
-        Assert.Equal("2.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/2.wav", vm.SelectedCompletionSound);
 
         vm.CycleCompletionSound(true);
-        Assert.Equal("3.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/3.wav", vm.SelectedCompletionSound);
 
-        vm.SelectedCompletionSound = "10.mp3";
+        vm.SelectedCompletionSound = "sounds/10.wav";
         vm.CycleCompletionSound(true);
-        Assert.Equal("11.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/11.wav", vm.SelectedCompletionSound);
         vm.CycleCompletionSound(true);
-        Assert.Equal("12.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/12.wav", vm.SelectedCompletionSound);
+        vm.SelectedCompletionSound = AppSettings.ValidCompletionSounds[^1];
         vm.CycleCompletionSound(true);
-        Assert.Equal("1.mp3", vm.SelectedCompletionSound);
+        Assert.Equal("sounds/1.wav", vm.SelectedCompletionSound);
 
         // Backward cycling wraps to the final registered sound.
         vm.CycleCompletionSound(false);
-        Assert.Equal("12.mp3", vm.SelectedCompletionSound);
+        Assert.Equal(AppSettings.ValidCompletionSounds[^1], vm.SelectedCompletionSound);
 
         vm.CycleCompletionSound(false);
-        Assert.Equal("11.mp3", vm.SelectedCompletionSound);
+        Assert.Equal(AppSettings.ValidCompletionSounds[^2], vm.SelectedCompletionSound);
     }
 
     [Fact]
@@ -439,25 +426,25 @@ public class AudioNotificationTests
     {
         var vm = new ViewModels.MainViewModel
         {
-            SelectedErrorSound = "1.mp3"
+            SelectedErrorSound = "sounds/1.wav"
         };
 
         // Forward cycling includes the newly registered sounds.
         vm.CycleErrorSound(true);
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        Assert.Equal("sounds/2.wav", vm.SelectedErrorSound);
 
         vm.CycleErrorSound(true);
-        Assert.Equal("3.mp3", vm.SelectedErrorSound);
-        vm.SelectedErrorSound = "5.mp3";
+        Assert.Equal("sounds/3.wav", vm.SelectedErrorSound);
+        vm.SelectedErrorSound = AppSettings.ValidErrorSounds[^1];
         vm.CycleErrorSound(true);
-        Assert.Equal("1.mp3", vm.SelectedErrorSound);
+        Assert.Equal("sounds/1.wav", vm.SelectedErrorSound);
 
         // Backward cycling wraps to the final registered sound.
         vm.CycleErrorSound(false);
-        Assert.Equal("5.mp3", vm.SelectedErrorSound);
+        Assert.Equal(AppSettings.ValidErrorSounds[^1], vm.SelectedErrorSound);
 
         vm.CycleErrorSound(false);
-        Assert.Equal("4.mp3", vm.SelectedErrorSound);
+        Assert.Equal(AppSettings.ValidErrorSounds[^2], vm.SelectedErrorSound);
     }
 
     [Fact]
@@ -465,16 +452,16 @@ public class AudioNotificationTests
     {
         var vm = new ViewModels.MainViewModel();
 
-        vm.SelectAndPreviewCompletionSound("7.mp3");
-        Assert.Equal("7.mp3", vm.SelectedCompletionSound);
+        vm.SelectAndPreviewCompletionSound("sounds/7.wav");
+        Assert.Equal("sounds/7.wav", vm.SelectedCompletionSound);
         Assert.Equal("Sound 7", vm.SelectedCompletionSoundDisplayName);
 
-        vm.SelectAndPreviewCompletionSound("10.mp3");
-        Assert.Equal("10.mp3", vm.SelectedCompletionSound);
+        vm.SelectAndPreviewCompletionSound("sounds/10.wav");
+        Assert.Equal("sounds/10.wav", vm.SelectedCompletionSound);
         Assert.Equal("Sound 10", vm.SelectedCompletionSoundDisplayName);
 
-        vm.SelectAndPreviewErrorSound("2.mp3");
-        Assert.Equal("2.mp3", vm.SelectedErrorSound);
+        vm.SelectAndPreviewErrorSound("sounds/2.wav");
+        Assert.Equal("sounds/2.wav", vm.SelectedErrorSound);
         Assert.Equal("Sound 2", vm.SelectedErrorSoundDisplayName);
     }
 
@@ -544,8 +531,8 @@ public class AudioNotificationTests
 
         AppSettings.SanitizeSoundSettings(settings);
 
-        Assert.Equal("3.mp3", settings.SelectedCompletionSound);
-        Assert.Equal("2.mp3", settings.SelectedErrorSound);
+        Assert.Equal("sounds/3.wav", settings.SelectedCompletionSound);
+        Assert.Equal("sounds/2.wav", settings.SelectedErrorSound);
         Assert.Equal(100, settings.CompletionSoundVolume);
         Assert.Equal(0, settings.ErrorSoundVolume);
 
@@ -554,23 +541,23 @@ public class AudioNotificationTests
         settings.SelectedErrorSound = "non_existent.wav";
         AppSettings.SanitizeSoundSettings(settings);
 
-        Assert.Equal("1.mp3", settings.SelectedCompletionSound);
-        Assert.Equal("1.mp3", settings.SelectedErrorSound);
+        Assert.Equal("sounds/1.wav", settings.SelectedCompletionSound);
+        Assert.Equal("sounds/1.wav", settings.SelectedErrorSound);
     }
 
     [Theory]
-    [InlineData("1.mp3")]
-    [InlineData("2.mp3")]
-    [InlineData("3.mp3")]
-    [InlineData("4.mp3")]
-    [InlineData("5.mp3")]
-    [InlineData("6.mp3")]
-    [InlineData("7.mp3")]
-    [InlineData("8.mp3")]
-    [InlineData("9.mp3")]
-    [InlineData("10.mp3")]
-    [InlineData("11.mp3")]
-    [InlineData("12.mp3")]
+    [InlineData("sounds/1.wav")]
+    [InlineData("sounds/2.wav")]
+    [InlineData("sounds/3.wav")]
+    [InlineData("sounds/4.wav")]
+    [InlineData("sounds/5.wav")]
+    [InlineData("sounds/6.wav")]
+    [InlineData("sounds/7.wav")]
+    [InlineData("sounds/8.wav")]
+    [InlineData("sounds/9.wav")]
+    [InlineData("sounds/10.wav")]
+    [InlineData("sounds/11.wav")]
+    [InlineData("sounds/12.wav")]
     public void AppSettings_AudioProperties_Sanitization_PreservesAllCompletionSounds(string sound)
     {
         var settings = new AppSettings { SelectedCompletionSound = sound };

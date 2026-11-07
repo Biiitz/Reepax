@@ -31,7 +31,7 @@ public partial class DialogUiTests
             try
             {
                 vm.SelectedLanguage = language;
-                vm.SelectedCompletionSound = vm.SelectedErrorSound = "1.mp3";
+                vm.SelectedCompletionSound = vm.SelectedErrorSound = "sounds/1.wav";
                 vm.IsCompletionSoundEntirePackage = true;
                 vm.EnableCompletionSound = vm.EnableErrorSound = true;
                 vm.CompletionSoundVolume = 37;
