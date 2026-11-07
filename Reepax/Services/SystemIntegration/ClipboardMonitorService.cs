@@ -36,7 +36,7 @@ public sealed class ClipboardMonitorService : IDisposable
     private Action<List<string>>? _onLinksDetected;
     private static string? _lastInternalCopiedHash;
     private static DateTime _lastInternalCopiedTime = DateTime.MinValue;
-    private string? _lastProcessedUrlsKey;
+    private string[]? _lastProcessedUrls;
     private readonly object _lock = new();
 
     public static bool IsTestEnvironment { get; set; } = DownloadPersistenceService.IsTestEnvironment;
@@ -153,18 +153,7 @@ public sealed class ClipboardMonitorService : IDisposable
                         return;
 
                     var links = await ExtractLinksFromClipboardAsync();
-                    if (links.Count == 0)
-                        return;
-
-                    var key = string.Join("|", links);
-                    if (string.Equals(_lastProcessedUrlsKey, key, StringComparison.OrdinalIgnoreCase))
-                    {
-                        // Duplicate trigger for the same links
-                        return;
-                    }
-
-                    _lastProcessedUrlsKey = key;
-                    _onLinksDetected?.Invoke(links);
+                    DispatchDetectedLinks(links);
                 }
                 catch (Exception ex)
                 {
@@ -172,6 +161,16 @@ public sealed class ClipboardMonitorService : IDisposable
                 }
             });
         });
+    }
+
+    internal void DispatchDetectedLinks(List<string> links)
+    {
+        if (links.Count == 0 || (_lastProcessedUrls != null &&
+            _lastProcessedUrls.SequenceEqual(links, DownloadUrlComparer.Instance)))
+            return;
+
+        _lastProcessedUrls = links.ToArray();
+        _onLinksDetected?.Invoke(links);
     }
 
     /// <summary>
@@ -270,7 +269,7 @@ public sealed class ClipboardMonitorService : IDisposable
     /// </summary>
     public static List<string> ExtractLinksFromData(string? html, string? text)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(DownloadUrlComparer.Instance);
         var result = new List<string>();
 
         void AddLinks(IEnumerable<ExtractedLink> extracted)

@@ -67,7 +67,7 @@ public static partial class LinkExtractor
         if (string.IsNullOrWhiteSpace(rawText))
             return result;
 
-        var seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenUrls = new HashSet<string>(DownloadUrlComparer.Instance);
 
         // 0. Browser HTML fragment (drag & drop selection): isolate genuine content,
         //    preventing fragment headers (Version/StartHTML/...) from leaking as junk
@@ -227,7 +227,7 @@ public static partial class LinkExtractor
         if (data == null)
             return urls;
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(DownloadUrlComparer.Instance);
 
         // 1. Try HTML Format first - browsers put the full anchor markup with href in DataFormats.Html,
         // while DataFormats.UnicodeText often only contains the visible anchor text (e.g. "Part 1").

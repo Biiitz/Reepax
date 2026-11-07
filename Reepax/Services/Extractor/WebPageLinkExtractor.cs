@@ -123,7 +123,7 @@ public static class WebPageLinkExtractor
 
         progress?.Report($"'{result.PageTitle}': Links werden extrahiert…");
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(DownloadUrlComparer.Instance);
 
         // Primary: links matching known hosters or direct downloads
         foreach (Match match in AnchorRegex.Matches(html))

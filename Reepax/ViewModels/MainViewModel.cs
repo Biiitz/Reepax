@@ -2722,7 +2722,7 @@ public partial class MainViewModel : ObservableObject
         foreach (var link in extracted)
         {
             // Skip already existing links (matching original page URL)
-            if (package.Items.Any(i => string.Equals(i.OriginalUrl, link.Url, StringComparison.OrdinalIgnoreCase)))
+            if (package.Items.Any(i => DownloadUrlComparer.Instance.Equals(i.OriginalUrl, link.Url)))
                 continue;
 
             var cleanFileName = PackageGrouper.MakeSafeFileName(link.RawFileName);
@@ -2923,17 +2923,17 @@ public partial class MainViewModel : ObservableObject
         {
             if (!string.IsNullOrWhiteSpace(item.OriginalUrl))
             {
-                if (string.Equals(l.Url.TrimEnd('/'), item.OriginalUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                if (DownloadUrlComparer.Instance.Equals(l.Url, item.OriginalUrl))
                     return true;
             }
             if (!string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
             {
-                if (string.Equals(l.Url.TrimEnd('/'), item.DirectDownloadUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                if (DownloadUrlComparer.Instance.Equals(l.Url, item.DirectDownloadUrl))
                     return true;
             }
             if (!string.IsNullOrWhiteSpace(l.DirectDownloadUrl) && !string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
             {
-                if (string.Equals(l.DirectDownloadUrl.TrimEnd('/'), item.DirectDownloadUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+                if (DownloadUrlComparer.Instance.Equals(l.DirectDownloadUrl, item.DirectDownloadUrl))
                     return true;
             }
             return false;
