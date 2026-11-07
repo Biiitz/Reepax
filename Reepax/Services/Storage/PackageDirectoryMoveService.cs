@@ -238,9 +238,28 @@ internal sealed class PackageDirectoryMoveService
         }
     }
 
-    private static bool ReferencesDirectory(DownloadPackage package, string directory) =>
+    internal static bool CanRenamePackageDirectory(DownloadPackage package, string directory)
+    {
+        if (ViewModels.MainViewModel.IsProtectedDirectory(directory)) return false;
+
+        var pending = new Stack<DownloadPackage>();
+        pending.Push(package);
+        if (Download.QueueManager.IsInitialized)
+            foreach (var candidate in Download.QueueManager.Instance.Packages.ToArray()) pending.Push(candidate);
+
+        var visited = new HashSet<DownloadPackage>();
+        while (pending.TryPop(out var candidate))
+        {
+            if (!visited.Add(candidate)) continue;
+            if (!ReferenceEquals(candidate, package) && ReferencesDirectory(candidate, directory, includeAncestors: false)) return false;
+            foreach (var child in candidate.ClippedPackages.ToArray()) pending.Push(child);
+        }
+        return true;
+    }
+
+    private static bool ReferencesDirectory(DownloadPackage package, string directory, bool includeAncestors = true) =>
         (!string.IsNullOrWhiteSpace(package.SaveDirectory) &&
-            (Within(package.SaveDirectory, directory) || Within(directory, package.SaveDirectory))) ||
+            (Within(package.SaveDirectory, directory) || (includeAncestors && Within(directory, package.SaveDirectory)))) ||
         (!string.IsNullOrWhiteSpace(package.ExtractionDirectory) && Within(package.ExtractionDirectory, directory)) ||
         package.ItemsSnapshot.Any(item => !string.IsNullOrWhiteSpace(item.SaveFilePath) && Within(item.SaveFilePath, directory));
 

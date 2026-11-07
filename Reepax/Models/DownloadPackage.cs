@@ -1108,6 +1108,10 @@ public partial class DownloadPackage : ObservableObject
 
         try
         {
+            // A shared or protected directory is independent of this package's display name.
+            if (!PackageDirectoryMoveService.CanRenamePackageDirectory(this, SaveDirectory))
+                return true;
+
             var normalizedDir = SaveDirectory.TrimEnd('\\', '/');
             var parentDir = System.IO.Path.GetDirectoryName(normalizedDir);
             if (!string.IsNullOrWhiteSpace(parentDir))

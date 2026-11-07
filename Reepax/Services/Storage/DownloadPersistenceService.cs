@@ -2034,7 +2034,8 @@ public class DownloadPersistenceService : IDisposable
 
     public static string SanitizeSavedPackageDirectory(string? savedDir, string? packageName, bool isCustomName = false)
     {
-        if (isCustomName)
+        // An existing directory remains authoritative even when only the package label changed.
+        if (isCustomName || Directory.Exists(savedDir))
             return savedDir ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(savedDir))
