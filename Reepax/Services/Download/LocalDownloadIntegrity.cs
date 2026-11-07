@@ -5,6 +5,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
+using Reepax.Services.Storage;
 
 namespace Reepax.Services.Download;
 
@@ -95,6 +96,8 @@ internal sealed class LocalDownloadIntegrity : IDisposable
 
     internal void VerifyFile(SafeFileHandle handle, long start, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
+        VerificationFileIo.LowerPriority(handle);
         var snapshot = Snapshot();
         using var actual = ReadVerifiedPrefix(handle, start, snapshot.Length, snapshot.Hashes, token);
         if (actual.Snapshot().Length != snapshot.Length)

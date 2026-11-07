@@ -10,6 +10,9 @@ namespace Reepax.Services.Download;
 
 public partial class DownloadEngine
 {
+    internal Func<CancellationToken, Task> WaitForSegmentProgressTickAsync { get; init; } =
+        static token => Task.Delay(300, token);
+
     private readonly ConditionalWeakTable<DownloadItem, DownloadUiState> _downloadUiStates = new();
     private DownloadUiState UiState(DownloadItem item) => _downloadUiStates.GetValue(item,
         key => new DownloadUiState(key, () => DownloadProgressUpdated?.Invoke(key)));

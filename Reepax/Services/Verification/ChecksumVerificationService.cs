@@ -112,9 +112,8 @@ public class ChecksumVerificationService
                 if (!string.IsNullOrWhiteSpace(item.ExpectedChecksum))
                 {
                     var normalizedExpected = NormalizeChecksum(item.ExpectedChecksum);
-                    var (calculated, algorithm) = cancellationToken.CanBeCanceled
-                        ? await CalculateChecksumForExpectedAsync(filePath, normalizedExpected, cancellationToken).ConfigureAwait(false)
-                        : CalculateChecksumForExpected(filePath, normalizedExpected);
+                    var (calculated, algorithm) = await CalculateChecksumForExpectedAsync(
+                        filePath, normalizedExpected, cancellationToken).ConfigureAwait(false);
 
                     cancellationToken.ThrowIfCancellationRequested();
 
@@ -140,9 +139,7 @@ public class ChecksumVerificationService
 
                 // A local fingerprint does not prove agreement with an original checksum.
                 cancellationToken.ThrowIfCancellationRequested();
-                var sha256 = cancellationToken.CanBeCanceled
-                    ? await CalculateHashAsync(filePath, SHA256.Create(), cancellationToken).ConfigureAwait(false)
-                    : CalculateSha256(filePath);
+                var sha256 = await CalculateHashAsync(filePath, SHA256.Create(), cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
                 return ChecksumVerificationResult.Success(sha256, "SHA256");
             }
@@ -359,6 +356,7 @@ public class ChecksumVerificationService
         using (algorithm)
         using (var stream = _openHashStream(filePath))
         {
+            VerificationFileIo.LowerPriority(stream);
             var hashBytes = await algorithm.ComputeHashAsync(stream, cancellationToken).ConfigureAwait(false);
             return Convert.ToHexString(hashBytes).ToLowerInvariant();
         }
@@ -368,6 +366,7 @@ public class ChecksumVerificationService
     {
         uint crc = 0xFFFFFFFF;
         using var stream = _openHashStream(filePath);
+        VerificationFileIo.LowerPriority(stream);
         var buffer = new byte[64 * 1024];
         int bytesRead;
         while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
@@ -385,6 +384,7 @@ public class ChecksumVerificationService
     {
         using var sha256 = SHA256.Create();
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024);
+        VerificationFileIo.LowerPriority(stream);
         var hashBytes = sha256.ComputeHash(stream);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
@@ -393,6 +393,7 @@ public class ChecksumVerificationService
     {
         using var sha1 = SHA1.Create();
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024);
+        VerificationFileIo.LowerPriority(stream);
         var hashBytes = sha1.ComputeHash(stream);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
@@ -401,6 +402,7 @@ public class ChecksumVerificationService
     {
         using var md5 = MD5.Create();
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024);
+        VerificationFileIo.LowerPriority(stream);
         var hashBytes = md5.ComputeHash(stream);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
@@ -415,6 +417,7 @@ public class ChecksumVerificationService
     {
         uint crc = 0xFFFFFFFF;
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024);
+        VerificationFileIo.LowerPriority(stream);
         var buffer = new byte[64 * 1024];
         int bytesRead;
         while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0)

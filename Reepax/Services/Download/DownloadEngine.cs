@@ -879,7 +879,7 @@ public partial class DownloadEngine
         var speedTracker = new RollingSpeedTracker(initialDownloaded);
         // Shared trickle throttler across ALL segments -> 500 KB/s in paused mode
         var trickleThrottler = new BandwidthThrottler { MaxBytesPerSecond = 500 * 1024 };
-        var segmentsFinished = false;
+        using var watcherCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         UiState(item).Clear(cancellationToken);
         PublishDownloadState(item, cancellationToken, () =>
@@ -890,13 +890,13 @@ public partial class DownloadEngine
             item.StatusMessage = Loc.Get("Status_Downloading");
         });
 
-        // Watcher: aggregates segment progress 1x per second for calm UI + sidecar persistence
+        // Keep the progress cadence independent of transfer completion.
         var watcher = Task.Run(async () =>
         {
             long lastSaveTs = Stopwatch.GetTimestamp();
-            while (!Volatile.Read(ref segmentsFinished) && !cancellationToken.IsCancellationRequested)
+            while (!watcherCancellation.IsCancellationRequested)
             {
-                try { await Task.Delay(300, cancellationToken); }
+                try { await WaitForSegmentProgressTickAsync(watcherCancellation.Token); }
                 catch (OperationCanceledException) { break; }
 
                 long aggregated = segments.Sum(s => s.ReceivedBytes);
@@ -971,7 +971,7 @@ public partial class DownloadEngine
         }
         finally
         {
-            Volatile.Write(ref segmentsFinished, true);
+            watcherCancellation.Cancel();
             try { await watcher; } catch { }
             SaveSegmentState(segMetaPath, state, dataFile: fs);
             long doneBytes = segments.Sum(s => s.Done);
