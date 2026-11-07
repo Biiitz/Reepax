@@ -8,6 +8,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class BrowserPopupInteractionTests : IClassFixture<BrowserScriptTestHost>
 {
     private readonly BrowserScriptTestHost _browser;

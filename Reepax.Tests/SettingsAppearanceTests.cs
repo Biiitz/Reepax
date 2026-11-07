@@ -321,11 +321,11 @@ public partial class DialogUiTests
 
     private static void RenderSettings(FrameworkElement view, string name, int width = 900)
     {
-        PumpSettingsAnimations();
+        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
         view.Measure(new Size(width, 680));
         view.Arrange(new Rect(0, 0, width, 680));
         view.UpdateLayout();
-        PumpSettingsAnimations();
+        WaitForSettingsLayout(view);
         string? directory = Environment.GetEnvironmentVariable("REEPAX_UI_PREVIEW_DIRECTORY");
         if (string.IsNullOrWhiteSpace(directory)) return;
         Directory.CreateDirectory(directory);
@@ -335,6 +335,34 @@ public partial class DialogUiTests
         encoder.Frames.Add(BitmapFrame.Create(image));
         using var output = File.Create(Path.Combine(directory, name + ".png"));
         encoder.Save(output);
+    }
+
+    private static void WaitForSettingsLayout(FrameworkElement view)
+    {
+        Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+        var expanders = Descendants<AnimatedExpansionDecorator>(view).ToArray();
+        var elements = Descendants<FrameworkElement>(view).Where(element =>
+            element is AnimatedExpansionDecorator || element.Name.StartsWith("Category", StringComparison.Ordinal) ||
+            element.Name.EndsWith("SoundVolumeContainer", StringComparison.Ordinal) ||
+            element.Name.EndsWith("SoundVolumeContent", StringComparison.Ordinal) ||
+            FadeAnimation.GetIsShown(element).HasValue).Prepend(view).ToArray();
+        bool VolumeReady(string name, bool expanded) => view.FindName(name) is not Border border ||
+            (border.Visibility == (expanded ? Visibility.Visible : Visibility.Collapsed) && !border.HasAnimatedProperties);
+        bool Settled() => view.IsMeasureValid && view.IsArrangeValid &&
+            expanders.All(element => !element.HasAnimatedProperties && element.ExpansionProgress == (element.IsExpanded ? 1 : 0)) &&
+            elements.All(element => !element.HasAnimatedProperties && !element.RenderTransform.HasAnimatedProperties) &&
+            (view.DataContext is not MainViewModel model ||
+                (VolumeReady("CompletionSoundVolumeContainer", model.EnableCompletionSound) &&
+                 VolumeReady("ErrorSoundVolumeContainer", model.EnableErrorSound)));
+        if (Settled()) return;
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(10) };
+        timer.Tick += (_, _) => frame.Continue = !Settled() && deadline.Elapsed < TimeSpan.FromSeconds(3);
+        timer.Start();
+        try { Dispatcher.PushFrame(frame); }
+        finally { timer.Stop(); }
+        Assert.True(Settled(), "Settings layout and transitions did not finish.");
     }
 
     private static void PumpSettingsAnimations(int milliseconds = 280)

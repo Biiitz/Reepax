@@ -8,6 +8,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class SingleInstanceIpcTests : IAsyncLifetime
 {
     private readonly List<SingleInstanceService> _services = new();

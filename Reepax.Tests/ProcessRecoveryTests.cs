@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Integration")]
 public sealed partial class ProcessRecoveryTests : IDisposable
 {
     private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("ProcessRecovery_");

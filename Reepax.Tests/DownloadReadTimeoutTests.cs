@@ -13,6 +13,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Integration")]
 public sealed class DownloadReadTimeoutTests : IDisposable
 {
     private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("TransferTimeout_");

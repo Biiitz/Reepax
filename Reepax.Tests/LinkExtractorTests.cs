@@ -4,6 +4,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Unit")]
 public class LinkExtractorTests
 {
     [Fact]

@@ -6,6 +6,7 @@ using Xunit.Abstractions;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Load")]
 public sealed class ConcurrentLoadTests(ITestOutputHelper output)
 {
     [Theory]

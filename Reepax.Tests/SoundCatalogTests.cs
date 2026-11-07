@@ -5,6 +5,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "Unit")]
 public sealed class SoundCatalogTests
 {
     [Fact]

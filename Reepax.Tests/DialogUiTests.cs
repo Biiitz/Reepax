@@ -18,6 +18,7 @@ using Xunit;
 
 namespace Reepax.Tests;
 
+[Trait("Category", "UI")]
 public partial class DialogUiTests
 {
     private static Dispatcher? _staDispatcher;

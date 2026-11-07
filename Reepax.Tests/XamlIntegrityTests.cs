@@ -113,8 +113,7 @@ public class XamlIntegrityTests
         var xamlFiles = Directory.GetFiles(projectDir, "*.xaml", SearchOption.AllDirectories);
 
         var locRegex = new Regex(@"\{loc:Loc\s+([a-zA-Z0-9_]+)\}", RegexOptions.Compiled);
-        var missingKeys = new List<string>();
-        var loc = LocalizationService.Instance;
+        var references = new List<(string Key, string File)>();
 
         foreach (var xamlPath in xamlFiles)
         {
@@ -124,35 +123,11 @@ public class XamlIntegrityTests
             string xamlContent = File.ReadAllText(xamlPath);
             var matches = locRegex.Matches(xamlContent);
 
-        try
-        {
             foreach (Match m in matches)
-            {
-                string key = m.Groups[1].Value;
-
-                // Test in English
-                loc.CurrentLanguage = "en";
-                string enVal = loc[key];
-                if (string.IsNullOrWhiteSpace(enVal) || enVal == key)
-                {
-                    missingKeys.Add($"EN: '{key}' in {Path.GetFileName(xamlPath)}");
-                }
-
-                // Test in German
-                loc.CurrentLanguage = "de";
-                string deVal = loc[key];
-                if (string.IsNullOrWhiteSpace(deVal) || deVal == key)
-                {
-                    missingKeys.Add($"DE: '{key}' in {Path.GetFileName(xamlPath)}");
-                }
-            }
-        }
-        finally
-        {
-            loc.CurrentLanguage = "en";
-        }
+                references.Add((m.Groups[1].Value, Path.GetFileName(xamlPath)));
         }
 
+        var missingKeys = FindMissingLocalizationReferences(references);
         Assert.True(missingKeys.Count == 0,
             $"Missing localization keys referenced in XAML:\n{string.Join("\n", missingKeys)}");
     }
@@ -164,46 +139,72 @@ public class XamlIntegrityTests
         var csFiles = Directory.GetFiles(projectDir, "*.cs", SearchOption.AllDirectories);
 
         var locRegex = new Regex(@"Loc\.(?:Get|Format)\s*\(\s*""([^""]+)""", RegexOptions.Compiled);
-        var missingKeys = new List<string>();
-        var loc = LocalizationService.Instance;
+        var references = new List<(string Key, string File)>();
 
+        foreach (var csPath in csFiles)
+        {
+            if (csPath.Contains(@"\bin\") || csPath.Contains(@"\obj\"))
+                continue;
+            string csContent = File.ReadAllText(csPath);
+            foreach (Match match in locRegex.Matches(csContent))
+                references.Add((match.Groups[1].Value, Path.GetFileName(csPath)));
+        }
+
+        var missingKeys = FindMissingLocalizationReferences(references);
+        Assert.True(missingKeys.Count == 0,
+            $"Missing localization keys referenced in C# files:\n{string.Join("\n", missingKeys)}");
+    }
+
+    private static List<string> FindMissingLocalizationReferences(IReadOnlyList<(string Key, string File)> references)
+    {
+        var missing = new List<string>();
+        var service = LocalizationService.Instance;
+        string previous = service.CurrentLanguage;
         try
         {
-            foreach (var csPath in csFiles)
+            // Check every occurrence in both languages without repeatedly refreshing all app bindings.
+            foreach (string language in new[] { "en", "de" })
             {
-                if (csPath.Contains(@"\bin\") || csPath.Contains(@"\obj\"))
-                    continue;
-
-                string csContent = File.ReadAllText(csPath);
-                var matches = locRegex.Matches(csContent);
-
-                foreach (Match m in matches)
+                service.CurrentLanguage = language;
+                foreach (var reference in references)
                 {
-                    string key = m.Groups[1].Value;
-
-                    loc.CurrentLanguage = "en";
-                    string enVal = loc[key];
-                    if (string.IsNullOrWhiteSpace(enVal) || enVal == key)
-                    {
-                        missingKeys.Add($"EN: '{key}' in {Path.GetFileName(csPath)}");
-                    }
-
-                    loc.CurrentLanguage = "de";
-                    string deVal = loc[key];
-                    if (string.IsNullOrWhiteSpace(deVal) || deVal == key)
-                    {
-                        missingKeys.Add($"DE: '{key}' in {Path.GetFileName(csPath)}");
-                    }
+                    string value = service[reference.Key];
+                    if (string.IsNullOrWhiteSpace(value) || value == reference.Key)
+                        missing.Add($"{language.ToUpperInvariant()}: '{reference.Key}' in {reference.File}");
                 }
             }
         }
-        finally
-        {
-            loc.CurrentLanguage = "en";
-        }
+        finally { service.CurrentLanguage = previous; }
+        return missing;
+    }
 
-        Assert.True(missingKeys.Count == 0,
-            $"Missing localization keys referenced in C# files:\n{string.Join("\n", missingKeys)}");
+    [Fact]
+    public void LocalizationReferenceCheck_VisitsBothLanguagesAndPreservesEveryOccurrence()
+    {
+        var service = LocalizationService.Instance;
+        string previous = service.CurrentLanguage;
+        int changes = 0;
+        void Changed(string _) => changes++;
+        service.LanguageChanged += Changed;
+        try
+        {
+            var missing = FindMissingLocalizationReferences(new[]
+            {
+                ("Package_DefaultName", "Example.xaml"),
+                ("Missing_Fixture_Translation", "First.xaml"),
+                ("Missing_Fixture_Translation", "Second.cs")
+            });
+            Assert.Equal(new[]
+            {
+                "EN: 'Missing_Fixture_Translation' in First.xaml",
+                "EN: 'Missing_Fixture_Translation' in Second.cs",
+                "DE: 'Missing_Fixture_Translation' in First.xaml",
+                "DE: 'Missing_Fixture_Translation' in Second.cs"
+            }, missing);
+            Assert.Equal(previous, service.CurrentLanguage);
+            Assert.Equal(2, changes);
+        }
+        finally { service.LanguageChanged -= Changed; }
     }
 
     [Fact]
