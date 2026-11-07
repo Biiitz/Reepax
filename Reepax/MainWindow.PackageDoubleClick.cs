@@ -53,7 +53,7 @@ public partial class MainWindow
                     ShowCreateInstallFolderDialog(package);
                     break;
                 case PackageDoubleClickAction.EditPackage:
-                    ShowEditPackageDialog(package);
+                    await ShowEditPackageDialogAsync(package);
                     break;
                 case PackageDoubleClickAction.AddLinks:
                     ShowAddLinksDialog(targetPackage: package);

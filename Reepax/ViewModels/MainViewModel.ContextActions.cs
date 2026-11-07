@@ -93,28 +93,13 @@ public partial class MainViewModel
             foreach (var item in items) item.SetPathChangePending(true);
             if (packages.Any(IsPackageBusyForPathChange))
                 throw new InvalidOperationException("A selected package is being processed.");
-            var recovered = packages.Where(package => package.RequiresRecoveredPathConfirmation).ToArray();
-            if (recovered.Length > 0)
-            {
-                IReadOnlyList<string> paths = recovered.Select(package => package.SaveDirectory).ToArray();
-                var confirmed = RecoveredPathConfirmationOverride?.Invoke(paths) ??
-                    (!DownloadPersistenceService.IsTestEnvironment && Views.ConfirmDialog.Show(
-                        Loc.Get("Dialog_ConfirmRecoveredPaths_Title"),
-                        Loc.Format("Dialog_ConfirmRecoveredMove_Message", string.Join(Environment.NewLine, paths)), isDanger: true));
-                if (!confirmed) return false;
-                foreach (var package in recovered) package.RequiresRecoveredPathConfirmation = false;
-            }
+            if (!ConfirmRecoveredPathsForMove(packages)) return false;
             var allPackages = Packages.ToArray();
             var plans = await Task.Run(() => PackageDirectoryMoveService.Prepare(packages, allPackages, destination));
-            var service = new PackageDirectoryMoveService();
             foreach (var plan in plans)
             {
-                cleaned &= await Task.Run(() => service.ExecuteAsync(plan));
-                plan.Package.SaveDirectory = plan.Target;
-                foreach (var entry in plan.ItemPaths) entry.Key.SaveFilePath = entry.Value;
-                plan.Package.ExtractionDirectory = plan.ExtractionDirectory;
+                cleaned &= await ExecuteDownloadPathPlanAsync(plan);
                 moved++;
-                DownloadPersistenceService.Instance.RequestSave();
             }
             StatusSummary = Loc.Format(cleaned ? "Status_DownloadPathsChanged" : "Status_DownloadPathsCleanupIncomplete", moved);
             if (!cleaned) RenameFailureNotification(StatusSummary);
@@ -135,5 +120,29 @@ public partial class MainViewModel
             BusyMessage = string.Empty;
             _queueManager.ProcessQueue();
         }
+    }
+
+    private bool ConfirmRecoveredPathsForMove(DownloadPackage[] packages)
+    {
+        var recovered = packages.Where(package => package.RequiresRecoveredPathConfirmation).ToArray();
+        if (recovered.Length == 0) return true;
+        IReadOnlyList<string> paths = recovered.Select(package => package.SaveDirectory).ToArray();
+        var confirmed = RecoveredPathConfirmationOverride?.Invoke(paths) ??
+            (!DownloadPersistenceService.IsTestEnvironment && Views.ConfirmDialog.Show(
+                Loc.Get("Dialog_ConfirmRecoveredPaths_Title"),
+                Loc.Format("Dialog_ConfirmRecoveredMove_Message", string.Join(Environment.NewLine, paths)), isDanger: true));
+        if (!confirmed) return false;
+        foreach (var package in recovered) package.RequiresRecoveredPathConfirmation = false;
+        return true;
+    }
+
+    private static async Task<bool> ExecuteDownloadPathPlanAsync(PackageDirectoryMoveService.Plan plan)
+    {
+        var cleaned = await Task.Run(() => new PackageDirectoryMoveService().ExecuteAsync(plan));
+        plan.Package.SaveDirectory = plan.Target;
+        foreach (var entry in plan.ItemPaths) entry.Key.SaveFilePath = entry.Value;
+        plan.Package.ExtractionDirectory = plan.ExtractionDirectory;
+        DownloadPersistenceService.Instance.RequestSave();
+        return cleaned;
     }
 }

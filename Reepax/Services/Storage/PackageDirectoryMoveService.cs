@@ -22,18 +22,20 @@ internal sealed class PackageDirectoryMoveService
 
     internal sealed record FileEntry(string Source, string RelativePath);
     internal sealed record Plan(DownloadPackage Package, string? Source, string Target, bool WholeDirectory,
-        Dictionary<DownloadItem, string> ItemPaths, string? ExtractionDirectory, FileEntry[] Files, string[] Directories);
+        Dictionary<DownloadItem, string> ItemPaths, string? ExtractionDirectory, FileEntry[] Files, string[] Directories,
+        bool UseExistingEmptyDestination);
 
     private sealed record ProtectedCopy(RelocationFileAccess.SourceLease Source, byte[] Hash, string RelativePath) : IDisposable
     {
         public void Dispose() => Source.Dispose();
     }
 
-    internal static Plan[] Prepare(DownloadPackage[] packages, DownloadPackage[] allPackages, string destination)
+    internal static Plan[] Prepare(DownloadPackage[] packages, DownloadPackage[] allPackages, string destination,
+        bool useExactDestination = false)
     {
         var root = Path.GetFullPath(destination);
         EnsurePlainPath(root);
-        var plans = packages.Select(package => PreparePackage(package, allPackages, root)).ToArray();
+        var plans = packages.Select(package => PreparePackage(package, allPackages, root, useExactDestination)).ToArray();
         if (plans.Select(plan => plan.Target).Distinct(StringComparer.OrdinalIgnoreCase).Count() != plans.Length)
             throw new IOException("Package destinations overlap.");
         foreach (var plan in plans)
@@ -48,18 +50,21 @@ internal sealed class PackageDirectoryMoveService
         return plans;
     }
 
-    private static Plan PreparePackage(DownloadPackage package, DownloadPackage[] allPackages, string root)
+    private static Plan PreparePackage(DownloadPackage package, DownloadPackage[] allPackages, string root, bool useExactDestination)
     {
         if (package.RequiresRecoveredPathConfirmation)
             throw new IOException("The recovered source directory requires confirmation.");
         var name = PackageGrouper.MakeSafeDirectoryName(package.Name);
         if (string.IsNullOrWhiteSpace(name) || name is "." or ".." || Path.GetFileName(name) != name)
             throw new IOException("Invalid package directory name.");
-        var target = Path.GetFullPath(Path.Combine(root, name));
+        var target = Path.GetFullPath(useExactDestination ? root : Path.Combine(root, name));
         var source = string.IsNullOrWhiteSpace(package.SaveDirectory) ? null : Path.GetFullPath(package.SaveDirectory);
         EnsurePlainPath(target);
         if (source != null) EnsurePlainPath(source);
-        if (!Same(source, target) && (Directory.Exists(target) || File.Exists(target)))
+        bool useEmptyDestination = useExactDestination && !Same(source, target) && Directory.Exists(target) &&
+            !Directory.EnumerateFileSystemEntries(target).Any() &&
+            !allPackages.Where(other => other != package).Any(other => ReferencesDirectory(other, target, includeAncestors: false));
+        if (!Same(source, target) && (Directory.Exists(target) || File.Exists(target)) && !useEmptyDestination)
             throw new IOException("The destination already exists.");
         var itemPaths = new Dictionary<DownloadItem, string>();
         var originals = new Dictionary<DownloadItem, string>();
@@ -113,7 +118,8 @@ internal sealed class PackageDirectoryMoveService
         var extraction = package.ExtractionDirectory;
         if (whole && !string.IsNullOrWhiteSpace(extraction) && Within(extraction, source!))
             extraction = Path.Combine(target, Path.GetRelativePath(source!, extraction));
-        return new Plan(package, source, target, whole, itemPaths, extraction, files.Values.ToArray(), directories.ToArray());
+        return new Plan(package, source, target, whole, itemPaths, extraction, files.Values.ToArray(), directories.ToArray(),
+            useEmptyDestination);
     }
 
     internal async Task<bool> ExecuteAsync(Plan plan)
@@ -123,7 +129,7 @@ internal sealed class PackageDirectoryMoveService
         Directory.CreateDirectory(Path.GetDirectoryName(plan.Target)!);
         if (_allowDirectoryRename && plan.WholeDirectory && Same(Path.GetPathRoot(plan.Source!), Path.GetPathRoot(plan.Target)))
         {
-            Directory.Move(plan.Source!, plan.Target);
+            PublishDirectory(plan.Source!, plan);
             return true;
         }
         var stage = Path.Combine(Path.GetDirectoryName(plan.Target)!, ".download-move-" + Guid.NewGuid().ToString("N"));
@@ -140,7 +146,7 @@ internal sealed class PackageDirectoryMoveService
                 copies.Add(await CopyVerifiedAsync(file.Source, output, file.RelativePath).ConfigureAwait(false));
                 _fileCopied?.Invoke(file.Source);
             }
-            Directory.Move(stage, plan.Target);
+            PublishDirectory(stage, plan);
             foreach (var copy in copies)
             {
                 var published = new FileStream(Path.Combine(plan.Target, copy.RelativePath), FileMode.Open,
@@ -183,6 +189,18 @@ internal sealed class PackageDirectoryMoveService
             foreach (var published in publishedFiles) published.Dispose();
             foreach (var copy in copies) copy.Dispose();
             if (Directory.Exists(stage)) DeleteOwnedTree(stage);
+        }
+    }
+
+    private static void PublishDirectory(string source, Plan plan)
+    {
+        // Nonrecursive deletion also rejects files added after the empty-target check.
+        if (plan.UseExistingEmptyDestination) Directory.Delete(plan.Target, recursive: false);
+        try { Directory.Move(source, plan.Target); }
+        catch
+        {
+            if (plan.UseExistingEmptyDestination && !Path.Exists(plan.Target)) Directory.CreateDirectory(plan.Target);
+            throw;
         }
     }
 

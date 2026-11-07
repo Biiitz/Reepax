@@ -2796,7 +2796,7 @@ public partial class MainViewModel : ObservableObject
     /// Edits an existing package: updates options (extraction, host resolver, directory, name),
     /// removes deleted links, and adds new links. Existing links preserve status &amp; progress.
     /// </summary>
-    public void EditPackage(
+    public async Task EditPackageAsync(
         DownloadPackage? package,
         string newRawText,
         string? newPackageName,
@@ -2805,18 +2805,13 @@ public partial class MainViewModel : ObservableObject
         bool lowResourceExtraction,
         bool deleteArchiveAfterExtraction,
         bool moveArchiveToRecycleBin,
-        bool autoResolveHostLinks = false)
-    {
-        RunWhenCleanupPathsAvailable(() => EditPackageCore(package, newRawText, newPackageName, newDownloadDirectory,
-            autoExtractArchives, lowResourceExtraction, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks));
-    }
-
-    private void EditPackageCore(DownloadPackage? package, string newRawText, string? newPackageName,
-        string? newDownloadDirectory, bool autoExtractArchives, bool lowResourceExtraction,
-        bool deleteArchiveAfterExtraction, bool moveArchiveToRecycleBin, bool autoResolveHostLinks)
+        bool autoResolveHostLinks = false,
+        string? originalDownloadDirectory = null)
     {
         if (package == null || !Packages.Contains(package) || string.IsNullOrWhiteSpace(newRawText))
             return;
+
+        var directoryBeforeEdit = originalDownloadDirectory ?? package.SaveDirectory;
 
         var newExtractedLinks = LinkExtractor.ExtractLinks(newRawText, fileHostersOnly: true);
         if (newExtractedLinks.Count == 0)
@@ -2829,14 +2824,91 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Reject rename failures before applying other package changes.
-        if (!string.IsNullOrWhiteSpace(newPackageName))
+        if (IsBusy || _isChangingDownloadPaths)
         {
-            var trimmedName = newPackageName.Trim();
-            if (!string.Equals(package.Name, trimmedName, StringComparison.Ordinal) && !TryRenamePackage(package, trimmedName))
-                return;
+            StatusSummary = Loc.Get("Status_DownloadPathBusy");
+            RenameFailureNotification(StatusSummary);
+            return;
         }
 
+        _isChangingDownloadPaths = true;
+        IsBusy = true;
+        BusyMessage = Loc.Get("Status_ChangingDownloadPath");
+        IReadOnlyList<DownloadItem> reservedItems = Array.Empty<DownloadItem>();
+        bool extractAfterEdit = false;
+        List<DownloadItem>? addedItems = null;
+        try
+        {
+            using var lease = await PackagePathOperationGate.Instance.EnterAsync();
+            if (!Packages.Contains(package)) return;
+
+            var name = string.IsNullOrWhiteSpace(newPackageName) ? package.Name : newPackageName.Trim();
+            bool rename = !string.Equals(package.Name, name, StringComparison.Ordinal);
+            var directory = string.IsNullOrWhiteSpace(newDownloadDirectory) ? package.SaveDirectory : newDownloadDirectory.Trim();
+            bool relocate = !string.IsNullOrWhiteSpace(newDownloadDirectory) &&
+                (string.IsNullOrWhiteSpace(directoryBeforeEdit) ||
+                 !string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)),
+                     Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryBeforeEdit)), StringComparison.OrdinalIgnoreCase));
+            bool renameDirectory = rename && !string.IsNullOrWhiteSpace(package.SaveDirectory) &&
+                PackageDirectoryMoveService.CanRenamePackageDirectory(package, package.SaveDirectory);
+            if (relocate || renameDirectory)
+            {
+                var items = package.ItemsSnapshot;
+                if (items.Any(item => item.IsUnavailableForProcessing) || IsPackageBusyForPathChange(package))
+                {
+                    StatusSummary = Loc.Get("Status_DownloadPathBusy");
+                    RenameFailureNotification(StatusSummary);
+                    return;
+                }
+                reservedItems = items;
+                foreach (var item in reservedItems) item.SetPathChangePending(true);
+                if (IsPackageBusyForPathChange(package))
+                    throw new InvalidOperationException("The package is being processed.");
+                if (!ConfirmRecoveredPathsForMove(new[] { package })) return;
+            }
+
+            bool cleaned = true;
+            if (relocate)
+            {
+                var allPackages = Packages.ToArray();
+                var plans = await Task.Run(() => PackageDirectoryMoveService.Prepare(new[] { package }, allPackages,
+                    directory, useExactDestination: true));
+                cleaned = await ExecuteDownloadPathPlanAsync(plans.Single());
+                if (rename) package.RenameAfterRelocation(name);
+            }
+            else if (rename && !TryRenamePackage(package, name)) return;
+
+            (addedItems, extractAfterEdit) = EditPackageCore(package, newExtractedLinks, autoExtractArchives, lowResourceExtraction,
+                deleteArchiveAfterExtraction, moveArchiveToRecycleBin);
+            if (!cleaned)
+            {
+                StatusSummary = Loc.Format("Status_DownloadPathsCleanupIncomplete", 1);
+                RenameFailureNotification(StatusSummary);
+            }
+        }
+        catch (Exception)
+        {
+            AppLogger.Warn("[MainViewModel] Could not apply package changes.");
+            StatusSummary = Loc.Format("Status_DownloadPathFailed", 0, 1);
+            RenameFailureNotification(StatusSummary);
+        }
+        finally
+        {
+            foreach (var item in reservedItems) item.SetPathChangePending(false);
+            _isChangingDownloadPaths = false;
+            IsBusy = false;
+            BusyMessage = string.Empty;
+            _queueManager.ProcessQueue();
+        }
+        if (addedItems?.Count > 0)
+            _ = ResolvePackageSizesAsync(new[] { package }, addedItems);
+        if (extractAfterEdit)
+            _ = Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
+    }
+
+    private (List<DownloadItem> AddedItems, bool Extract) EditPackageCore(DownloadPackage package, List<ExtractedLink> newExtractedLinks,
+        bool autoExtractArchives, bool lowResourceExtraction, bool deleteArchiveAfterExtraction, bool moveArchiveToRecycleBin)
+    {
         // 1. Apply options
         bool autoExtractChangedToTrue = !package.AutoExtractArchives && autoExtractArchives;
         package.AutoResolveHostLinks = false;
@@ -2845,30 +2917,6 @@ public partial class MainViewModel : ObservableObject
         package.DeleteArchiveAfterExtraction = deleteArchiveAfterExtraction;
         package.MoveArchiveToRecycleBin = moveArchiveToRecycleBin;
         package.EnsureNextTaskSteps();
-
-        // 2. Destination directory
-        if (!string.IsNullOrWhiteSpace(newDownloadDirectory))
-        {
-            var trimmedDir = newDownloadDirectory.Trim();
-            trimmedDir = DownloadPersistenceService.SanitizeSavedPackageDirectory(trimmedDir, package.Name, package.IsCustomName);
-
-            if (!string.Equals(package.SaveDirectory, trimmedDir, StringComparison.OrdinalIgnoreCase))
-            {
-                package.SaveDirectory = trimmedDir;
-            }
-        }
-
-        // Update target file paths for items
-        if (!string.IsNullOrWhiteSpace(package.SaveDirectory))
-        {
-            foreach (var item in package.Items)
-            {
-                if (!string.IsNullOrWhiteSpace(item.FileName))
-                {
-                    item.SaveFilePath = Path.Combine(package.SaveDirectory, item.FileName);
-                }
-            }
-        }
 
         // 3. Synchronize links
         static bool Matches(ExtractedLink l, DownloadItem item)
@@ -2970,17 +3018,9 @@ public partial class MainViewModel : ObservableObject
             _queueManager.ProcessQueue();
         }
 
-        if (newlyAddedItems.Count > 0)
-        {
-            _ = ResolvePackageSizesAsync(new[] { package }, newlyAddedItems);
-        }
-
-        // 5. If extraction was enabled retroactively and all files are already completed, extract now
-        if (autoExtractChangedToTrue && package.Items.Count > 0 &&
-            package.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
-        {
-            _ = Services.Extractor.ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
-        }
+        // Start retroactive extraction only after path reservations have been released.
+        return (newlyAddedItems, autoExtractChangedToTrue && package.Items.Count > 0 &&
+            package.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed));
     }
 
     /// <summary>

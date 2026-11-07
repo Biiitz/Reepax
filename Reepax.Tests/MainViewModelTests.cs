@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
@@ -741,78 +743,98 @@ https://other-hoster.net/dl/Movie.part01.rar
     }
 
     [Fact]
-    public void MainViewModel_EditPackage_RemovesAddsAndUpdatesProperly()
+    public async Task MainViewModel_EditPackage_RemovesAddsAndUpdatesProperly()
     {
         // Arrange
         var vm = new MainViewModel();
+        var previous = vm.Packages.ToArray();
         vm.Packages.Clear();
+        string root = Directory.CreateTempSubdirectory("EditPackage_").FullName;
 
-        string initialLinks = @"
-https://rapidgator.net/file/101/package.part1.rar
-https://rapidgator.net/file/102/package.part2.rar
-";
-        vm.AddLinksFromText(initialLinks, "Example Package", autoExtractArchives: false);
-        Assert.Single(vm.Packages);
-        var pkg = vm.Packages[0];
-        Assert.Equal(2, pkg.Items.Count);
+        using var metadataHandler = new TestMockHttpMessageHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[1000]) }));
+        using var metadataClient = new HttpClient(metadataHandler);
+        vm.MetadataResolver = new LinkMetadataResolverService(metadataClient);
 
-        var item1 = pkg.Items.First(i => i.OriginalUrl.Contains("101"));
-        var item2 = pkg.Items.First(i => i.OriginalUrl.Contains("102"));
-        var originalItem1Id = item1.Id;
-        item1.DownloadedBytes = 500;
-        item1.TotalBytes = 1000;
-        item1.Status = DownloadStatus.Downloading;
+        try
+        {
+            string initialLinks = @"
+    https://rapidgator.net/file/101/package.part1.rar
+    https://rapidgator.net/file/102/package.part2.rar
+    ";
+            vm.AddLinksFromText(initialLinks, "Example Package", autoExtractArchives: false, customDownloadDir: root);
+            Assert.Single(vm.Packages);
+            var pkg = vm.Packages[0];
+            await vm.ResolvePackageSizesAsync(new[] { pkg });
+            Assert.Equal(2, pkg.Items.Count);
 
-        // Act: Edit package:
-        // - Remove URL 102
-        // - Keep URL 101
-        // - Add URL 103
-        // - Change options & Name & Directory
-        string editedLinks = @"
-https://rapidgator.net/file/101/package.part1.rar
-https://rapidgator.net/file/103/package.part3.rar
-";
-        string newDir = Path.Combine(Path.GetTempPath(), "Reepax_EditTest_" + Guid.NewGuid().ToString("N"));
+            var item1 = pkg.Items.First(i => i.OriginalUrl.Contains("101"));
+            var item2 = pkg.Items.First(i => i.OriginalUrl.Contains("102"));
+            var originalItem1Id = item1.Id;
+            item1.DownloadedBytes = 500;
+            item1.TotalBytes = 1000;
+            item1.Status = DownloadStatus.Paused;
 
-        vm.EditPackage(
-            pkg,
-            editedLinks,
-            newPackageName: "Example Package Updated",
-            newDownloadDirectory: newDir,
-            autoExtractArchives: true,
-            lowResourceExtraction: true,
-            deleteArchiveAfterExtraction: true,
-            moveArchiveToRecycleBin: false,
-            autoResolveHostLinks: false);
+            // Act: Edit package:
+            // - Remove URL 102
+            // - Keep URL 101
+            // - Add URL 103
+            // - Change options & Name & Directory
+            string editedLinks = @"
+    https://rapidgator.net/file/101/package.part1.rar
+    https://rapidgator.net/file/103/package.part3.rar
+    ";
+            string newDir = Path.Combine(root, "ChosenDestination");
 
-        // Assert
-        Assert.Equal("Example Package Updated", pkg.Name);
-        Assert.Equal(newDir, pkg.SaveDirectory);
-        Assert.True(pkg.AutoExtractArchives);
-        Assert.True(pkg.LowResourceExtraction);
-        Assert.True(pkg.DeleteArchiveAfterExtraction);
-        Assert.False(pkg.MoveArchiveToRecycleBin);
-        Assert.False(pkg.AutoResolveHostLinks);
+            await vm.EditPackageAsync(
+                pkg,
+                editedLinks,
+                newPackageName: "Example Package Updated",
+                newDownloadDirectory: newDir,
+                autoExtractArchives: true,
+                lowResourceExtraction: true,
+                deleteArchiveAfterExtraction: true,
+                moveArchiveToRecycleBin: false,
+                autoResolveHostLinks: false);
 
-        Assert.Equal(2, pkg.Items.Count);
+            // Assert
+            Assert.Equal("Example Package Updated", pkg.Name);
+            Assert.Equal(newDir, pkg.SaveDirectory);
+            Assert.True(pkg.AutoExtractArchives);
+            Assert.True(pkg.LowResourceExtraction);
+            Assert.True(pkg.DeleteArchiveAfterExtraction);
+            Assert.False(pkg.MoveArchiveToRecycleBin);
+            Assert.False(pkg.AutoResolveHostLinks);
 
-        // Item 102 removed
-        Assert.DoesNotContain(pkg.Items, i => i.OriginalUrl.Contains("102"));
+            Assert.Equal(2, pkg.Items.Count);
 
-        // Item 101 kept with ID, bytes, status, but updated save path
-        var keptItem = pkg.Items.First(i => i.OriginalUrl.Contains("101"));
-        Assert.Equal(originalItem1Id, keptItem.Id);
-        Assert.Equal(500, keptItem.DownloadedBytes);
-        Assert.Equal(1000, keptItem.TotalBytes);
-        Assert.Equal(Path.Combine(newDir, keptItem.FileName), keptItem.SaveFilePath);
+            // Item 102 removed
+            Assert.DoesNotContain(pkg.Items, i => i.OriginalUrl.Contains("102"));
 
-        // Item 103 added
-        var addedItem = pkg.Items.First(i => i.OriginalUrl.Contains("103"));
-        Assert.NotNull(addedItem);
-        Assert.Equal(Path.Combine(newDir, addedItem.FileName), addedItem.SaveFilePath);
+            // Item 101 kept with ID, bytes, status, but updated save path
+            var keptItem = pkg.Items.First(i => i.OriginalUrl.Contains("101"));
+            Assert.Equal(originalItem1Id, keptItem.Id);
+            Assert.Equal(DownloadStatus.Paused, keptItem.Status);
+            Assert.Equal(500, keptItem.DownloadedBytes);
+            Assert.Equal(1000, keptItem.TotalBytes);
+            Assert.Equal(Path.Combine(newDir, keptItem.FileName), keptItem.SaveFilePath);
 
-        // Next tasks initialized
-        Assert.True(pkg.HasNextTasks);
+            // Item 103 added
+            var addedItem = pkg.Items.First(i => i.OriginalUrl.Contains("103"));
+            Assert.NotNull(addedItem);
+            Assert.Equal(Path.Combine(newDir, addedItem.FileName), addedItem.SaveFilePath);
+
+            // Next tasks initialized
+            Assert.True(pkg.HasNextTasks);
+            await vm.ResolvePackageSizesAsync(new[] { pkg });
+        }
+        finally
+        {
+            await vm.ResolvePackageSizesAsync(vm.Packages.ToArray());
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
@@ -847,47 +869,65 @@ https://rapidgator.net/file/103/package.part3.rar
     }
 
     [Fact]
-    public void MainViewModel_EditPackage_WhenDownloadsAlreadyCompleted_AndAutoExtractTurnedOn_InitializesNextTasks()
+    public async Task MainViewModel_EditPackage_WhenDownloadsAlreadyCompleted_AndAutoExtractTurnedOn_InitializesNextTasks()
     {
         // Arrange
         var vm = new MainViewModel();
+        var previous = vm.Packages.ToArray();
         vm.Packages.Clear();
+        string root = Directory.CreateTempSubdirectory("EditPackage_").FullName;
 
-        string initialLinks = @"
-https://rapidgator.net/file/201/archive.part1.rar
-https://rapidgator.net/file/202/archive.part2.rar
-";
-        vm.AddLinksFromText(initialLinks, "Archive Package", autoExtractArchives: false);
-        var pkg = vm.Packages[0];
+        using var metadataHandler = new TestMockHttpMessageHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[1000]) }));
+        using var metadataClient = new HttpClient(metadataHandler);
+        vm.MetadataResolver = new LinkMetadataResolverService(metadataClient);
 
-        // Mark all items completed
-        foreach (var item in pkg.Items)
+        try
         {
-            item.TotalBytes = 1000;
-            item.DownloadedBytes = 1000;
-            item.Status = DownloadStatus.Completed;
+            string initialLinks = @"
+    https://rapidgator.net/file/201/archive.part1.rar
+    https://rapidgator.net/file/202/archive.part2.rar
+    ";
+            vm.AddLinksFromText(initialLinks, "Archive Package", autoExtractArchives: false, customDownloadDir: root);
+            var pkg = vm.Packages[0];
+            await vm.ResolvePackageSizesAsync(new[] { pkg });
+
+            // Mark all items completed
+            foreach (var item in pkg.Items)
+            {
+                item.TotalBytes = 1000;
+                item.DownloadedBytes = 1000;
+                item.Status = DownloadStatus.Completed;
+            }
+            pkg.RecalculateAggregates();
+            Assert.Equal(DownloadStatus.Completed, pkg.Status);
+            Assert.False(pkg.AutoExtractArchives);
+            Assert.False(pkg.HasNextTasks);
+
+            // Act: Edit package to turn ON autoExtractArchives
+            await vm.EditPackageAsync(
+                pkg,
+                initialLinks,
+                newPackageName: pkg.Name,
+                newDownloadDirectory: pkg.SaveDirectory,
+                autoExtractArchives: true,
+                lowResourceExtraction: false,
+                deleteArchiveAfterExtraction: false,
+                moveArchiveToRecycleBin: false,
+                autoResolveHostLinks: true);
+
+            // Assert: AutoExtract is turned on and NextTaskSteps are initialized
+            Assert.True(pkg.AutoExtractArchives);
+            Assert.True(pkg.HasNextTasks);
+            Assert.Contains(pkg.NextTaskSteps, s => string.Equals(s.Key, "Extract", StringComparison.OrdinalIgnoreCase));
         }
-        pkg.RecalculateAggregates();
-        Assert.Equal(DownloadStatus.Completed, pkg.Status);
-        Assert.False(pkg.AutoExtractArchives);
-        Assert.False(pkg.HasNextTasks);
-
-        // Act: Edit package to turn ON autoExtractArchives
-        vm.EditPackage(
-            pkg,
-            initialLinks,
-            newPackageName: pkg.Name,
-            newDownloadDirectory: pkg.SaveDirectory,
-            autoExtractArchives: true,
-            lowResourceExtraction: false,
-            deleteArchiveAfterExtraction: false,
-            moveArchiveToRecycleBin: false,
-            autoResolveHostLinks: true);
-
-        // Assert: AutoExtract is turned on and NextTaskSteps are initialized
-        Assert.True(pkg.AutoExtractArchives);
-        Assert.True(pkg.HasNextTasks);
-        Assert.Contains(pkg.NextTaskSteps, s => string.Equals(s.Key, "Extract", StringComparison.OrdinalIgnoreCase));
+        finally
+        {
+            await vm.ResolvePackageSizesAsync(vm.Packages.ToArray());
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

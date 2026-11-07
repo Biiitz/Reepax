@@ -1082,6 +1082,14 @@ public partial class DownloadPackage : ObservableObject
 
     internal Action<string, string> RenameDirectory { get; set; } = Directory.Move;
 
+    internal void RenameAfterRelocation(string name)
+    {
+        // The explicit destination has already been published; only commit the display name.
+        IsCustomName = true;
+        SetProperty(ref _name, name, nameof(Name));
+        DownloadPersistenceService.Instance.RequestSave();
+    }
+
     public bool Rename(string newName, bool isUserAction = true)
     {
         if (string.IsNullOrWhiteSpace(newName))

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
@@ -203,7 +204,7 @@ public class PackageAndItemRenameTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void PackageRename_CollisionReportsFailureInBothUserEntryPoints(bool editPackage)
+    public async Task PackageRename_CollisionReportsFailureInBothUserEntryPoints(bool editPackage)
     {
         var (root, package, item) = CreateRenamePackage();
         var source = package.SaveDirectory;
@@ -217,7 +218,7 @@ public class PackageAndItemRenameTests
         try
         {
             if (editPackage)
-                vm.EditPackage(package, "https://example.invalid/data.bin", "TargetFolder", source, true, true, true, true);
+                await vm.EditPackageAsync(package, "https://example.invalid/data.bin", "TargetFolder", source, true, true, true, true);
             else
                 vm.RenamePackageWhenAvailable(package, "TargetFolder");
 

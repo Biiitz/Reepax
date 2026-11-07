@@ -1174,14 +1174,14 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    private void EditPackage_MenuItem_Click(object sender, RoutedEventArgs e)
+    private async void EditPackage_MenuItem_Click(object sender, RoutedEventArgs e)
     {
         var package = GetPackageFromSender(sender);
         if (package == null) return;
-        ShowEditPackageDialog(package);
+        await ShowEditPackageDialogAsync(package);
     }
 
-    private void ShowEditPackageDialog(DownloadPackage package)
+    private async Task ShowEditPackageDialogAsync(DownloadPackage package)
     {
         if (ViewModel.IsBusy || package == null)
             return;
@@ -1192,6 +1192,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        var originalDirectory = package.SaveDirectory;
         var dialog = new AddLinksDialog(package);
         dialog.Owner = this;
         _openAddLinksDialog = dialog;
@@ -1199,7 +1200,7 @@ public partial class MainWindow : Window
 
         if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.EnteredText))
         {
-            ViewModel.EditPackage(
+            await ViewModel.EditPackageAsync(
                 package,
                 dialog.EnteredText,
                 dialog.CustomPackageName,
@@ -1208,7 +1209,8 @@ public partial class MainWindow : Window
                 dialog.LowResourceExtraction,
                 dialog.DeleteArchiveAfterExtraction,
                 dialog.MoveArchiveToRecycleBin,
-                dialog.AutoResolveHostLinks);
+                dialog.AutoResolveHostLinks,
+                originalDownloadDirectory: originalDirectory);
         }
     }
 
