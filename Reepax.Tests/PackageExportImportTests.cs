@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Xunit;
@@ -250,6 +251,64 @@ public class PackageExportImportTests : IDisposable
     {
         var nonExistentPath = Path.Combine(_tempTestDir, "does_not_exist.repx");
         Assert.Throws<FileNotFoundException>(() => PackageExportImportService.ImportFromFile(nonExistentPath));
+    }
+
+    [Theory]
+    [InlineData("en", "Empty", "de", "Leer")]
+    [InlineData("de", "Leer", "en", "Empty")]
+    public async Task ImportAndAddAsync_EmptyPackage_LocalizesStatusAndPreservesDataOnLanguageChange(
+        string language, string expected, string nextLanguage, string nextExpected)
+    {
+        var localization = LocalizationService.Instance;
+        string previousLanguage = localization.CurrentLanguage;
+        var viewModel = new MainViewModel();
+        var previousPackages = viewModel.Packages.ToArray();
+        try
+        {
+            viewModel.Packages.Clear();
+            localization.CurrentLanguage = language;
+            string path = Path.Combine(_tempTestDir, "empty.repx");
+            const string json = """{"format":"repx","version":1,"name":"Example","items":[]}""";
+            File.WriteAllText(path, json);
+            byte[] original = File.ReadAllBytes(path);
+
+            var imported = await PackageExportImportService.ImportAndAddAsync(path, viewModel);
+            Assert.NotNull(imported);
+            Assert.Same(imported, Assert.Single(viewModel.Packages));
+            Assert.Equal(expected, imported.StatusMessage);
+            Assert.Empty(imported.Items);
+            Assert.Equal(DownloadStatus.Queued, imported.Status);
+            Assert.Equal(0, imported.TotalItemsCount);
+            Assert.Equal(0, imported.ProgressPercentage);
+            Assert.False(imported.IsFullyCompleted);
+            Guid id = imported.Id;
+            string directory = imported.SaveDirectory;
+            var changed = new System.Collections.Generic.List<string?>();
+            imported.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+
+            localization.CurrentLanguage = nextLanguage;
+            Assert.Equal(nextExpected, imported.StatusMessage);
+            Assert.Contains(nameof(DownloadPackage.StatusMessage), changed);
+            Assert.Equal(id, imported.Id);
+            Assert.Equal(directory, imported.SaveDirectory);
+            Assert.Equal("Example", imported.Name);
+            Assert.Empty(imported.Items);
+            Assert.Equal(DownloadStatus.Queued, imported.Status);
+            Assert.Equal(0, imported.TotalBytes);
+            Assert.Equal(0, imported.DownloadedBytes);
+            Assert.Equal(original, File.ReadAllBytes(path));
+
+            imported.StatusMessage = "Example diagnostic";
+            localization.CurrentLanguage = language;
+            Assert.Equal("Example diagnostic", imported.StatusMessage);
+            Assert.Equal(DownloadStatus.Queued, imported.Status);
+        }
+        finally
+        {
+            viewModel.Packages.Clear();
+            foreach (var package in previousPackages) viewModel.Packages.Add(package);
+            localization.CurrentLanguage = previousLanguage;
+        }
     }
 
     [Theory]

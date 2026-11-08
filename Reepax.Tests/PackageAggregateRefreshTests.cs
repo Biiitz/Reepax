@@ -501,6 +501,40 @@ public class PackageAggregateRefreshTests
         }
     }
 
+    [Theory]
+    [InlineData("en", "Empty")]
+    [InlineData("de", "Leer")]
+    public void RemovingLastItem_LocalizesEmptyStatusWithoutChangingTheRemovedItem(string language, string expected)
+    {
+        var localization = LocalizationService.Instance;
+        string previousLanguage = localization.CurrentLanguage;
+        try
+        {
+            localization.CurrentLanguage = language;
+            var package = new DownloadPackage { Name = "Example", IsCustomName = true };
+            var item = new DownloadItem
+            {
+                FileName = "example.bin", Status = DownloadStatus.Paused,
+                TotalBytes = 64, DownloadedBytes = 32
+            };
+            package.Items.Add(item);
+            package.Items.Remove(item);
+            Assert.Empty(package.Items);
+            Assert.Equal(expected, package.StatusMessage);
+            Assert.Equal(DownloadStatus.Queued, package.Status);
+            Assert.Equal(0, package.TotalItemsCount);
+            Assert.Equal(0, package.TotalBytes);
+            Assert.Equal(0, package.DownloadedBytes);
+            Assert.Equal(0, package.ProgressPercentage);
+            Assert.False(package.IsFullyCompleted);
+            Assert.Equal("example.bin", item.FileName);
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Equal(64, item.TotalBytes);
+            Assert.Equal(32, item.DownloadedBytes);
+        }
+        finally { localization.CurrentLanguage = previousLanguage; }
+    }
+
     [Fact]
     public void GlobalStats_TrackEnabledItemsAndEmptyPackagesAfterChanges()
     {

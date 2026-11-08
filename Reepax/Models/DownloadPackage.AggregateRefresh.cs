@@ -21,6 +21,7 @@ public partial class DownloadPackage
     private bool _publishedCanEdit = true;
     private bool _publishedFullyCompleted;
     private string? _publishedSummary;
+    private string? _publishedEmptyStatusMessage;
     private string? _summaryLanguage;
     private int _summaryItemCount = -1;
     private int _summaryEnabledCount = -1;
@@ -214,6 +215,12 @@ public partial class DownloadPackage
         OnPropertyChanged(nameof(NextTaskSummary));
         OnPropertyChanged(nameof(NextTaskTooltip));
         var items = Volatile.Read(ref _itemsSnapshot);
+        // Preserve diagnostic messages that replaced the generated empty status.
+        if (items.Length == 0 && _publishedEmptyStatusMessage != null && StatusMessage == _publishedEmptyStatusMessage)
+        {
+            _publishedEmptyStatusMessage = Loc.Get("Status_Empty");
+            StatusMessage = _publishedEmptyStatusMessage;
+        }
         PublishSummaryChanges(items.Length, CountEnabledItems(items));
         PublishTimeChanges();
     }

@@ -851,7 +851,8 @@ public partial class DownloadPackage : ObservableObject
             RemainingSeconds = 0;
             CompletedItemsCount = 0;
             Status = DownloadStatus.Queued;
-            StatusMessage = "Leer";
+            _publishedEmptyStatusMessage = Loc.Get("Status_Empty");
+            StatusMessage = _publishedEmptyStatusMessage;
             _progressCache.Rebuild(itemsSnapshot);
             long emptyRevision = _progressCache.Revision;
             PublishStructuralChanges(itemsSnapshot, 0);

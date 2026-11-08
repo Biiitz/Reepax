@@ -277,6 +277,7 @@ public static class Strings_en
         // Status Messages
         ["Status_ReadyDragDrop"] = "Ready – Drag and drop links or text into the window",
         ["Status_Queued"] = "Queued",
+        ["Status_Empty"] = "Empty",
         ["Status_Waiting"] = "Waiting",
         ["Status_Downloading"] = "Downloading",
         ["Status_DownloadingPackage"] = "Downloading",
