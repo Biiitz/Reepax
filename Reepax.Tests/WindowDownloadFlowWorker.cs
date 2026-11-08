@@ -22,9 +22,9 @@ using Xunit;
 
 namespace Reepax.Tests;
 
-internal static class WindowDownloadFlowWorker
+internal static partial class WindowDownloadFlowWorker
 {
-    internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false)
+    internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false, bool filtersOnly = false)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -32,7 +32,7 @@ internal static class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -44,7 +44,7 @@ internal static class WindowDownloadFlowWorker
         return result;
     }
 
-    private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly)
+    private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly, bool filtersOnly)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -89,6 +89,12 @@ internal static class WindowDownloadFlowWorker
         {
             main.Show();
             await IdleAsync();
+            if (filtersOnly)
+            {
+                environment = await CheckFilterUpdatesAsync(language);
+                Console.WriteLine("Browser filter updates passed");
+                return;
+            }
             if (clipboardOnly)
             {
                 CheckClipboardHandoffs(main, app);

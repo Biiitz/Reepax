@@ -25,6 +25,15 @@ public sealed class WindowDownloadFlowTests
     public async Task MainWindow_ClipboardRetriesRejectedLinksAndAppendsOnlyNewLinks(string language)
         => await RunWindowWorkerAsync(language, "--clipboard-window-worker", "Clipboard handoff passed");
 
+    [Theory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task Browser_FilterListButtonUpdatesRealRequestsAndPreservesRulesOnFailure(string language)
+        => await RunWindowWorkerAsync(language, "--filter-update-worker",
+            Environment.GetEnvironmentVariable("REEPAX_LIVE_FILTER_CHECK") == "1" && language == "en"
+                ? "Live HTTPS filter update and unchanged-list detection passed"
+                : "Browser filter updates passed");
+
     private static async Task RunWindowWorkerAsync(string language, string worker, string success)
     {
         string root = Directory.CreateTempSubdirectory("WindowFlow_").FullName;

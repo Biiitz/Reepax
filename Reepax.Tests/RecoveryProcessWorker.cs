@@ -28,6 +28,8 @@ internal static class RecoveryProcessWorker
             return WindowDownloadFlowWorker.Run(args[1], args[2], columnsOnly: true);
         if (args.Length == 3 && args[0] == "--clipboard-window-worker")
             return WindowDownloadFlowWorker.Run(args[1], args[2], clipboardOnly: true);
+        if (args.Length == 3 && args[0] == "--filter-update-worker")
+            return WindowDownloadFlowWorker.Run(args[1], args[2], filtersOnly: true);
         if (args.Length == 4 && args[0] == "--load-worker")
             return ConcurrentLoadWorker.Run(args[1], int.Parse(args[2]), int.Parse(args[3]));
         if (args.Length != 7 || args[0] != "--recovery-worker") return 2;
