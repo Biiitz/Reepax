@@ -754,7 +754,7 @@ public partial class MainViewModel
 
         if (!value)
         {
-            SettingsService.CleanupLogFiles();
+            AppLogger.CleanupDisabledLogs();
         }
     }
 
@@ -1220,7 +1220,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Download-Ordners: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the download folder", ex);
             StatusSummary = Loc.Format("Status_CannotOpenDownloadFolder", ex.Message);
         }
     }
@@ -1247,7 +1247,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen der Konfigurationsdatei: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the configuration file", ex);
             StatusSummary = Loc.Format("Status_CannotOpenSettingsFile", ex.Message);
         }
     }
@@ -1282,7 +1282,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des AppData-Ordners: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the application data folder", ex);
             StatusSummary = Loc.Format("Status_CannotOpenAppDataFolder", ex.Message);
         }
     }
@@ -1317,7 +1317,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Log-Ordners: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the logs folder", ex);
         }
     }
 
@@ -1354,7 +1354,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Kopieren der Diagnose-Infos: {ex.Message}");
+            AppLogger.Warn($"[MainViewModel] Could not copy diagnostics", ex);
         }
     }
 
@@ -1386,7 +1386,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen von '{url}': {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the requested URL", ex);
         }
     }
 

@@ -167,7 +167,7 @@ public partial class QuickSettingsPopupView : UserControl
         }
         catch (Exception ex)
         {
-            Services.Storage.AppLogger.Warn($"[QuickSettingsPopup] Preheat notice: {ex.Message}");
+            Services.Storage.AppLogger.Warn($"[QuickSettingsPopup] Preheat notice", ex);
         }
     }
 

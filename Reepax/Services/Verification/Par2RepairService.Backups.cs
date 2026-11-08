@@ -103,7 +103,7 @@ public partial class Par2RepairService
             catch (Exception ex)
             {
                 scope.Dispose();
-                AppLogger.Warn($"[Par2RepairService] Backup tracking unavailable: {ex.Message}");
+                AppLogger.Warn($"[Par2RepairService] Backup tracking unavailable", ex);
             }
             return scope;
         }
@@ -137,7 +137,7 @@ public partial class Par2RepairService
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[Par2RepairService] Backup handling failed: {ex.Message}");
+                    AppLogger.Warn($"[Par2RepairService] Backup handling failed", ex);
                 }
             }
         }

@@ -148,7 +148,7 @@ public static class FastHostResolver
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[FastHostResolver] Could not resolve '{pageUrl}': {ex.Message}");
+            AppLogger.Warn($"[FastHostResolver] Could not resolve '{pageUrl}'", ex);
             return null;
         }
     }

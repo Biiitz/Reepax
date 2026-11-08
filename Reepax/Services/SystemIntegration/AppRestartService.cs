@@ -28,7 +28,7 @@ public static class AppRestartService
         if (Interlocked.Exchange(ref _isRestarting, 1) != 0)
             return;
 
-        AppLogger.Info("[AppRestartService] Application restart requested via keyboard shortcut / command.");
+        AppLogger.Info("[AppRestartService] command.");
 
         try
         {
@@ -61,7 +61,7 @@ public static class AppRestartService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[AppRestartService] Error saving window state before restart: {ex.Message}");
+            AppLogger.Warn($"[AppRestartService] Error saving window state before restart", ex);
         }
 
         try

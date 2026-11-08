@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 
@@ -187,7 +188,7 @@ public static class CrashLogService
     {
         var sb = new StringBuilder();
         sb.AppendLine("================================================================================");
-        sb.AppendLine($"[CRASH REPORT] {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine("[CRASH REPORT] " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
         sb.AppendLine($"Source:       {source}");
         sb.AppendLine($"App Version:  {GetAppVersion()}");
         sb.AppendLine($"OS Version:   {Environment.OSVersion} ({(Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit")})");
@@ -195,21 +196,7 @@ public static class CrashLogService
         sb.AppendLine($"Base Dir:     {AppDomain.CurrentDomain.BaseDirectory}");
         sb.AppendLine($"AppData Dir:  {SettingsService.AppDataDirectory}");
         sb.AppendLine("--------------------------------------------------------------------------------");
-        sb.AppendLine($"Exception:    {ex.GetType().FullName}: {ex.Message}");
-        sb.AppendLine("Stack Trace:");
-        sb.AppendLine(ex.StackTrace ?? "  (No stack trace available)");
-
-        var inner = ex.InnerException;
-        int depth = 1;
-        while (inner != null && depth <= 10)
-        {
-            sb.AppendLine("--------------------------------------------------------------------------------");
-            sb.AppendLine($"Inner Exception [{depth}]: {inner.GetType().FullName}: {inner.Message}");
-            sb.AppendLine("Stack Trace:");
-            sb.AppendLine(inner.StackTrace ?? "  (No stack trace available)");
-            inner = inner.InnerException;
-            depth++;
-        }
+        DiagnosticExceptionFormatter.Append(sb, ex);
 
         sb.AppendLine("================================================================================");
         sb.AppendLine();

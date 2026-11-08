@@ -345,7 +345,7 @@ public sealed class PowerManagementService
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[PowerManagement] Failed to update execution state: {ex.Message}");
+                AppLogger.Warn($"[PowerManagement] Failed to update execution state", ex);
             }
         }
     }

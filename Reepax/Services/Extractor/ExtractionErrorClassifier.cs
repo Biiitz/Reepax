@@ -247,7 +247,7 @@ public static class ExtractionErrorClassifier
         }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[ExtractionErrorClassifier] Volume check failed for '{primaryArchivePath}': {ex.Message}");
+            AppLogger.Debug($"[ExtractionErrorClassifier] Volume check failed for '{primaryArchivePath}'", ex);
         }
 
         return null;

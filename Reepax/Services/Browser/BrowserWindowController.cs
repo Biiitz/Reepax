@@ -142,7 +142,7 @@ public partial class BrowserWindowController : IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[Extensions] Installation failed: {ex.Message}");
+                AppLogger.Warn($"[Extensions] Installation failed", ex);
             }
             finally
             {
@@ -498,7 +498,7 @@ public partial class BrowserWindowController : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[Browser Window {_windowId}] Failed to navigate current window to popup target {url}: {ex.Message}");
+            AppLogger.Warn($"[Browser Window {_windowId}] Failed to navigate current window to popup target {url}", ex);
         }
     }
 
@@ -628,7 +628,7 @@ public partial class BrowserWindowController : IDisposable
             }
         }
 
-        AppLogger.Info($"[Browser Window {_windowId}] Blob-Download nativ übernommen: {blobUrl}");
+        AppLogger.Info($"[Browser Window {_windowId}] Native blob download adopted: {blobUrl}");
 
         op.BytesReceivedChanged += (_, _) =>
         {

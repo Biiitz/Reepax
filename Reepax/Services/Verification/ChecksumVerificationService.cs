@@ -149,7 +149,7 @@ public class ChecksumVerificationService
             }
             catch (Exception ex)
             {
-                AppLogger.Error($"[ChecksumVerifier] Unerwarteter Fehler bei Überprüfung von '{filePath}'", ex);
+                AppLogger.Error("[ChecksumVerifier] Unexpected verification failure", ex);
                 return ChecksumVerificationResult.Failure(DownloadFailure.FromException(ex));
             }
         }, cancellationToken);

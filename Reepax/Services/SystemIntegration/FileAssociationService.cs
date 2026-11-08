@@ -99,7 +99,7 @@ public static class FileAssociationService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"Failed to register file association: {ex.Message}");
+            AppLogger.Warn($"Failed to register file association", ex);
         }
     }
 }

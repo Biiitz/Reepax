@@ -1177,7 +1177,7 @@ public partial class DownloadPackage : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[DownloadPackage] Could not rename package directory: {ex.Message}");
+            AppLogger.Warn($"[DownloadPackage] Could not rename package directory", ex);
             return false;
         }
         return true;

@@ -337,7 +337,7 @@ public partial class Par2RepairService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[Par2RepairService] Fehler bei PAR2-Verifikation von '{par2FilePath}'", ex);
+            AppLogger.Error("[Par2RepairService] PAR2 verification failed", ex);
             return new Par2VerifyResult
             {
                 Status = Par2VerificationStatus.Failed,
@@ -498,7 +498,7 @@ public partial class Par2RepairService
         {
             if (repairStopped)
                 backups?.Restore();
-            AppLogger.Error($"[Par2RepairService] Fehler bei PAR2-Reparatur von '{par2FilePath}'", ex);
+            AppLogger.Error("[Par2RepairService] PAR2 repair failed", ex);
             return new Par2RepairResult
             {
                 Success = false,
@@ -535,7 +535,7 @@ public partial class Par2RepairService
 
         if (verifyResult.Status == Par2VerificationStatus.AllFilesIntact)
         {
-            AppLogger.Info($"[Par2RepairService] Paket '{package.Name}': Alle Dateien sind intakt. Keine Reparatur nötig.");
+            AppLogger.Info("[Par2RepairService] All files are intact; no repair is required.");
             statusCallback?.Invoke(Loc.Get("Status_Par2Intact"));
             return true;
         }
@@ -543,7 +543,7 @@ public partial class Par2RepairService
         if (verifyResult.Status == Par2VerificationStatus.RepairPossible)
         {
             InvalidateRepairFingerprints(package, primaryPar2);
-            AppLogger.Info($"[Par2RepairService] Paket '{package.Name}': Beschädigte Dateien erkannt, Reparatur möglich. Starte Reparatur mit {verifyResult.AvailableRecoveryBlocks} Paritätsblöcken...");
+            AppLogger.Info($"[Par2RepairService] Repairable damage detected; using {verifyResult.AvailableRecoveryBlocks} recovery blocks.");
             statusCallback?.Invoke(Loc.Format("Status_Par2Repairing", "0"));
 
             var repairResult = await RepairAsync(
@@ -555,13 +555,13 @@ public partial class Par2RepairService
 
             if (repairResult.Success)
             {
-                AppLogger.Info($"[Par2RepairService] Paket '{package.Name}': Reparatur erfolgreich abgeschlossen ({repairResult.RepairedFilesCount} Datei(en) repariert).");
+                AppLogger.Info($"[Par2RepairService] Repair completed; {repairResult.RepairedFilesCount} files repaired.");
                 statusCallback?.Invoke(Loc.Get("Status_Par2Repaired"));
                 return true;
             }
             else
             {
-                AppLogger.Error($"[Par2RepairService] Paket '{package.Name}': Reparatur fehlgeschlagen: {repairResult.ErrorMessage}");
+                AppLogger.Error($"[Par2RepairService] Repair failed: {repairResult.ErrorMessage}");
                 statusCallback?.Invoke(Loc.Format("Status_Par2RepairFailed", repairResult.ErrorMessage ?? string.Empty));
                 return false;
             }
@@ -570,13 +570,13 @@ public partial class Par2RepairService
         if (verifyResult.Status == Par2VerificationStatus.RepairNotPossible)
         {
             var missing = verifyResult.NeededRecoveryBlocks > 0 ? verifyResult.NeededRecoveryBlocks : 1;
-            AppLogger.Warn($"[Par2RepairService] Paket '{package.Name}': Reparatur nicht möglich. Es fehlen {missing} Wiederherstellungsblöcke.");
+            AppLogger.Warn($"[Par2RepairService] Repair unavailable: {missing} recovery blocks are missing.");
             statusCallback?.Invoke(Loc.Format("Status_Par2RepairFailedMissingBlocks", missing));
             return false;
         }
 
         // Failed verification
-        AppLogger.Warn($"[Par2RepairService] Paket '{package.Name}': PAR2-Prüfung fehlgeschlagen: {verifyResult.ErrorMessage}");
+        AppLogger.Warn($"[Par2RepairService] PAR2 verification failed: {verifyResult.ErrorMessage}");
         statusCallback?.Invoke(Loc.Format("Status_Par2VerifyFailed", verifyResult.ErrorMessage ?? string.Empty));
         return false;
     }

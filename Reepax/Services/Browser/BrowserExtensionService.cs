@@ -171,13 +171,13 @@ public class BrowserExtensionService
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[Extensions] Failed to extract archive '{archivePath}': {ex.Message}");
+                    AppLogger.Warn($"[Extensions] Failed to extract archive '{archivePath}'", ex);
                 }
             }
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[Extensions] Error checking for extension archives: {ex.Message}");
+            AppLogger.Warn($"[Extensions] Error checking for extension archives", ex);
         }
     }
 
@@ -337,7 +337,7 @@ public class BrowserExtensionService
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[Extensions] Error reading extension in '{topDir}': {ex.Message}");
+                    AppLogger.Warn($"[Extensions] Error reading extension in '{topDir}'", ex);
                 }
             }
         }
@@ -364,7 +364,7 @@ public class BrowserExtensionService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[Extensions] GetBrowserExtensionsAsync failed: {ex.Message}");
+            AppLogger.Warn($"[Extensions] GetBrowserExtensionsAsync failed", ex);
         }
 
         var folderToIdMap = TryReadProfileExtensionPaths();
@@ -543,7 +543,7 @@ public class BrowserExtensionService
                 else
                 {
                     ext.InstallError = ex.Message;
-                    AppLogger.Warn($"[Extensions] '{ext.Name}' could not be installed: {ex.Message}");
+                    AppLogger.Warn($"[Extensions] '{ext.Name}' could not be installed", ex);
                 }
             }
         }
@@ -562,7 +562,7 @@ public class BrowserExtensionService
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Warn($"[Extensions] Failed to remove orphaned extension: {ex.Message}");
+                        AppLogger.Warn($"[Extensions] Failed to remove orphaned extension", ex);
                     }
                 }
             }
@@ -628,7 +628,7 @@ public class BrowserExtensionService
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[Extensions] Fehler beim Löschen von '{ext.Name}'", ex);
+            AppLogger.Error("[Extensions] Failed to remove the extension", ex);
         }
 
         var states = LoadSavedStates();
@@ -718,7 +718,7 @@ public class BrowserExtensionService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[Extensions] Invalid manifest in '{folderPath}': {ex.Message}");
+            AppLogger.Warn($"[Extensions] Invalid manifest in '{folderPath}'", ex);
             return null;
         }
     }
@@ -987,7 +987,7 @@ public class BrowserExtensionService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[Extensions] Fehler beim Speichern des Aktivierungs-Status: {ex.Message}");
+            AppLogger.Warn("[Extensions] Could not save extension activation state", ex);
         }
     }
 

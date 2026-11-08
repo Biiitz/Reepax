@@ -228,4 +228,61 @@ public class AppLoggerTests : IDisposable
         Assert.Contains("Example.Component.Read()", content);
         Assert.Contains(":line 42", content);
     }
+
+    [Fact]
+    public void Reports_PreserveEveryAggregateBranchAndNestedCauseWithoutLeakingLocations()
+    {
+        var error = new AggregateException("Parallel operation failed",
+            new InvalidOperationException("First branch", DiagnosticPrivacyTests.CreateSensitiveException()),
+            new IOException("Second branch", new ArgumentException("Deep cause")));
+        AppLogger.Error("Operation failed", error);
+        AppLogger.Flush();
+        foreach (string report in new[] { File.ReadAllText(AppLogger.GetCurrentLogFilePath()), CrashLogService.FormatCrashReport("Example", error) })
+        {
+            Assert.Contains("First branch", report);
+            Assert.Contains("Second branch", report);
+            Assert.Contains("Deep cause", report);
+            Assert.Contains("HResult: 0x", report);
+            DiagnosticPrivacyTests.AssertSensitiveDataRemoved(report);
+        }
+    }
+
+    [Fact]
+    public void DiagnosticDates_UseGregorianDatesRegardlessOfUiCulture()
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("th-TH");
+            AppLogger.Info("Invariant date test");
+            AppLogger.Flush();
+            string date = DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Contains(date, Path.GetFileName(AppLogger.GetCurrentLogFilePath()));
+            Assert.Contains("[" + date, File.ReadAllText(AppLogger.GetCurrentLogFilePath()));
+            Assert.Contains("[CRASH REPORT] " + date, CrashLogService.FormatCrashReport("Example", new Exception("Example failure")));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
+    }
+
+    [Fact]
+    public void DisablingLogging_CleansUpAfterQueuedWritesAndDoesNotRecreateFiles()
+    {
+        string? previous = SettingsService.AppDataDirectoryOverride;
+        try
+        {
+            SettingsService.AppDataDirectoryOverride = _testLogsDirectory;
+            AppLogger.LogsDirectory = SettingsService.LogsDirectory;
+            Directory.CreateDirectory(AppLogger.LogsDirectory);
+            using (var locked = new FileStream(AppLogger.GetCurrentLogFilePath(), FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                for (int i = 0; i < 250; i++) AppLogger.Info("Queued diagnostic entry");
+                AppLogger.IsLoggingEnabled = false;
+                AppLogger.CleanupDisabledLogs();
+                AppLogger.Info("This must not be queued");
+            }
+            AppLogger.Flush();
+            Assert.False(Directory.Exists(SettingsService.LogsDirectory));
+        }
+        finally { SettingsService.AppDataDirectoryOverride = previous; }
+    }
 }

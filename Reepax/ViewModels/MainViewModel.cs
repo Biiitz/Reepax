@@ -1083,7 +1083,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Paketordners: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the package folder", ex);
             StatusSummary = Loc.Format("Status_CannotOpenFolder", ex.Message);
         }
     }
@@ -1222,7 +1222,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Fehler beim Öffnen des Dateiordners: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Could not open the file folder", ex);
             StatusSummary = Loc.Format("Status_CannotOpenFolder", ex.Message);
         }
     }
@@ -1242,7 +1242,7 @@ public partial class MainViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[MainViewModel] Fehler beim Kopieren der Item-URL: {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not copy the item URL", ex);
                 StatusSummary = Loc.Format("Status_CopyFailed", ex.Message);
             }
         }
@@ -1265,7 +1265,7 @@ public partial class MainViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[MainViewModel] Fehler beim Kopieren der Paket-URLs: {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not copy the package URLs", ex);
                 StatusSummary = Loc.Format("Status_CopyFailed", ex.Message);
             }
         }
@@ -1319,7 +1319,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Zwischenablage nicht verfügbar: {ex.Message}");
+            AppLogger.Warn("[MainViewModel] Clipboard is unavailable", ex);
             StatusSummary = Loc.Format("Status_ClipboardNotAvailable", ex.Message);
         }
     }
@@ -1347,7 +1347,7 @@ public partial class MainViewModel : ObservableObject
         catch (InvalidOperationException) { }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[MainViewModel] SafeInvoke error: {ex.Message}");
+            AppLogger.Debug($"[MainViewModel] SafeInvoke error", ex);
         }
     }
 
@@ -1374,7 +1374,7 @@ public partial class MainViewModel : ObservableObject
         catch (InvalidOperationException) { }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[MainViewModel] SafeDispatch error: {ex.Message}");
+            AppLogger.Debug($"[MainViewModel] SafeDispatch error", ex);
         }
     }
 
@@ -3448,7 +3448,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[MainViewModel] Background update check failed: {ex.Message}");
+            AppLogger.Debug($"[MainViewModel] Background update check failed", ex);
         }
     }
 
@@ -3482,7 +3482,7 @@ public partial class MainViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"Fehler beim Starten von explorer.exe für Erweiterungsordner: {ex.Message}");
+                AppLogger.Warn("Could not launch the file browser for the extensions folder", ex);
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = dir,
@@ -3492,7 +3492,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            AppLogger.Error("Fehler beim Öffnen des Erweiterungsordners", ex);
+            AppLogger.Error("Could not open the extensions folder", ex);
         }
     }
 

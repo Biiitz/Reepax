@@ -199,7 +199,7 @@ public partial class ArchiveExtractionService
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[ArchiveExtractor] Failed to scan directory '{package.SaveDirectory}': {ex.Message}");
+                AppLogger.Warn($"[ArchiveExtractor] Failed to scan directory '{package.SaveDirectory}'", ex);
             }
         }
 
@@ -363,18 +363,18 @@ public partial class ArchiveExtractionService
                 return false;
             if (package.IsExtracted && !forceReextract && !retryCleanup)
             {
-                AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wurde bereits entpackt. Überspringe.");
+                AppLogger.Info("[ArchiveExtractor] Skipping an already extracted package.");
                 return true;
             }
             if (!force && !package.AutoExtractArchives)
             {
-                AppLogger.Info($"[ArchiveExtractor] Auto-extract ist für Paket '{package.Name}' deaktiviert. Überspringe.");
+                AppLogger.Info("[ArchiveExtractor] Skipping a package with automatic extraction disabled.");
                 return false;
             }
             if (!force && !CanRetryPackagePasswords(package)) return false;
             if (package.IsExtracting || !_extractingPackages.TryAdd(package.Id, true))
             {
-                AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wird bereits entpackt.");
+                AppLogger.Info("[ArchiveExtractor] Package extraction is already running.");
                 return false;
             }
             lock (package.ArchivePasswordState.Sync)
@@ -436,7 +436,7 @@ public partial class ArchiveExtractionService
             var pendingCount = enabledItems.Count(i => !i.IsReadyForPostProcessing);
             if (pendingCount > 0)
             {
-                AppLogger.Info($"[ArchiveExtractor] Paket '{package.Name}' wartet noch auf {pendingCount} unvollständige Datei(en) ({enabledItems.Count - pendingCount}/{enabledItems.Count} abgeschlossen).");
+                AppLogger.Info($"[ArchiveExtractor] Waiting for {pendingCount} incomplete files ({enabledItems.Count - pendingCount}/{enabledItems.Count} completed).");
                 return false;
             }
 
@@ -446,14 +446,14 @@ public partial class ArchiveExtractionService
             {
                 if (string.IsNullOrWhiteSpace(item.SaveFilePath) || !File.Exists(item.SaveFilePath))
                 {
-                    AppLogger.Warn($"[ArchiveExtractor] Paket '{package.Name}' kann noch nicht entpackt werden: Datei '{item.SaveFilePath}' ist noch nicht auf der Festplatte vorhanden.");
+                    AppLogger.Warn($"[ArchiveExtractor] Extraction is waiting for a missing input file: {item.SaveFilePath}");
                     return false;
                 }
 
                 var fileInfo = new FileInfo(item.SaveFilePath);
                 if (fileInfo.Length == 0)
                 {
-                    AppLogger.Warn($"[ArchiveExtractor] Paket '{package.Name}' kann noch nicht entpackt werden: Datei '{item.SaveFilePath}' hat 0 Bytes.");
+                    AppLogger.Warn($"[ArchiveExtractor] Extraction is waiting for an empty input file: {item.SaveFilePath}");
                     return false;
                 }
             }
@@ -523,7 +523,7 @@ public partial class ArchiveExtractionService
 
                     if (!par2Success)
                     {
-                        AppLogger.Warn($"[ArchiveExtractor] PAR2-Prüfung oder Reparatur für Paket '{package.Name}' war nicht erfolgreich. Entpacken abgebrochen.");
+                        AppLogger.Warn("[ArchiveExtractor] Extraction stopped because PAR2 verification or repair did not succeed.");
                         SafeInvoke(() =>
                         {
                             package.SetNextTaskFailed("Par2");
@@ -793,7 +793,7 @@ public partial class ArchiveExtractionService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[ArchiveExtractor] Could not check free disk space for '{targetDirectory}': {ex.Message}");
+            AppLogger.Warn($"[ArchiveExtractor] Could not check free disk space for '{targetDirectory}'", ex);
             return true;
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Channels;
@@ -16,7 +17,8 @@ namespace Reepax.Services.Storage;
 /// </summary>
 public static class AppLogger
 {
-    private readonly record struct LogItem(string? FilePath, string? Content, TaskCompletionSource<bool>? FlushTcs);
+    private readonly record struct LogItem(string? FilePath, string? Content, TaskCompletionSource<bool>? FlushTcs, Action? Cleanup = null);
+    private static readonly object _enqueueLock = new();
 
     private static readonly Channel<LogItem> _logChannel = Channel.CreateUnbounded<LogItem>(new UnboundedChannelOptions
     {
@@ -47,7 +49,7 @@ public static class AppLogger
     public static string GetCurrentLogFilePath()
     {
         var dir = LogsDirectory;
-        return Path.Combine(dir, $"reepax_{DateTime.Now:yyyy-MM-dd}.log");
+        return Path.Combine(dir, "reepax_" + DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ".log");
     }
 
     /// <summary>
@@ -61,11 +63,12 @@ public static class AppLogger
 
         try
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
             var line = FormatLogEntry(timestamp, level, message, ex);
             var logFilePath = GetCurrentLogFilePath();
 
-            _logChannel.Writer.TryWrite(new LogItem(logFilePath, line, null));
+            lock (_enqueueLock)
+                if (IsLoggingEnabled) _logChannel.Writer.TryWrite(new LogItem(logFilePath, line, null));
         }
         catch
         {
@@ -83,6 +86,16 @@ public static class AppLogger
         {
             tcs.Task.Wait(timeoutMs);
         }
+    }
+
+    public static void CleanupDisabledLogs()
+    {
+        // Delete after earlier writes finish, so queued entries cannot recreate removed logs.
+        string logsDirectory = SettingsService.LogsDirectory;
+        string appDataDirectory = SettingsService.AppDataDirectory;
+        lock (_enqueueLock)
+            if (!IsLoggingEnabled) _logChannel.Writer.TryWrite(new LogItem(null, null, null,
+                () => SettingsService.CleanupLogFiles(logsDirectory, appDataDirectory)));
     }
 
     private static async Task ProcessQueueAsync()
@@ -110,7 +123,7 @@ public static class AppLogger
 
             foreach (var item in batch)
             {
-                if (item.FlushTcs != null)
+                if (item.FlushTcs != null || item.Cleanup != null)
                 {
                     if (currentFile != null && sb.Length > 0)
                     {
@@ -118,7 +131,11 @@ public static class AppLogger
                         sb.Clear();
                         currentFile = null;
                     }
-                    pendingFlushTcs.Add(item.FlushTcs);
+                    if (item.Cleanup != null && !IsLoggingEnabled)
+                    {
+                        try { item.Cleanup(); } catch { }
+                    }
+                    if (item.FlushTcs != null) pendingFlushTcs.Add(item.FlushTcs);
                     continue;
                 }
 
@@ -156,19 +173,7 @@ public static class AppLogger
 
         var sb = new StringBuilder();
         sb.Append($"[{timestamp}] [{level}] {message}{Environment.NewLine}");
-        sb.Append($"{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}");
-        if (!string.IsNullOrWhiteSpace(ex.StackTrace))
-        {
-            sb.Append($"{ex.StackTrace}{Environment.NewLine}");
-        }
-        if (ex.InnerException != null)
-        {
-            sb.Append($"---> Inner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}{Environment.NewLine}");
-            if (!string.IsNullOrWhiteSpace(ex.InnerException.StackTrace))
-            {
-                sb.Append($"{ex.InnerException.StackTrace}{Environment.NewLine}");
-            }
-        }
+        DiagnosticExceptionFormatter.Append(sb, ex);
         return DiagnosticPrivacy.Sanitize(sb.ToString());
     }
 
@@ -211,7 +216,7 @@ public static class AppLogger
         // Fallback: If primary log file is locked, write to fallback log file
         try
         {
-            var fallbackPath = Path.Combine(LogsDirectory, $"reepax_fallback_{DateTime.Now:yyyy-MM-dd}.log");
+            var fallbackPath = Path.Combine(Path.GetDirectoryName(filePath)!, "reepax_fallback_" + DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + ".log");
             using var stream = new FileStream(
                 fallbackPath,
                 FileMode.Append,
@@ -232,7 +237,7 @@ public static class AppLogger
     /// <summary>
     /// Logs a debug message.
     /// </summary>
-    public static void Debug(string message) => Log(message, "DEBUG");
+    public static void Debug(string message, Exception? ex = null) => Log(message, "DEBUG", ex);
 
     /// <summary>
     /// Logs an informational message.

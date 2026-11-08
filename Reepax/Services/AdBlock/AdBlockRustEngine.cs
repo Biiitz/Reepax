@@ -154,7 +154,7 @@ public class AdBlockRustEngine : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[AdBlockRustEngine] Failed to load cache file: {ex.Message}");
+                    AppLogger.Warn($"[AdBlockRustEngine] Failed to load cache file", ex);
                 }
             }
 
@@ -226,7 +226,7 @@ public class AdBlockRustEngine : IDisposable
                     }
                     catch (Exception ex)
                     {
-                        AppLogger.Warn($"[AdBlockRustEngine] Failed to fetch filter list from {url}: {ex.Message}");
+                        AppLogger.Warn($"[AdBlockRustEngine] Failed to fetch filter list from {url}", ex);
                     }
                 }
             }
@@ -311,7 +311,7 @@ public class AdBlockRustEngine : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[AdBlockRustEngine] Failed to serialize cache: {ex.Message}");
+                    AppLogger.Warn($"[AdBlockRustEngine] Failed to serialize cache", ex);
                 }
             }
 
@@ -325,7 +325,7 @@ public class AdBlockRustEngine : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[AdBlockRustEngine] Failed to save cache: {ex.Message}");
+                    AppLogger.Warn($"[AdBlockRustEngine] Failed to save cache", ex);
                 }
             }
         });

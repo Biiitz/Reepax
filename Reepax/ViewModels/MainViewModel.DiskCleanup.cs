@@ -402,7 +402,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[MainViewModel] Could not delete dedicated package directory '{package.SaveDirectory}': {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not delete dedicated package directory '{package.SaveDirectory}'", ex);
             }
         }
 
@@ -420,7 +420,7 @@ public partial class MainViewModel
                 catch (Exception ex)
                 {
                     failedPaths.Add(file);
-                    AppLogger.Warn($"[MainViewModel] Could not delete package file {file}: {ex.Message}");
+                    AppLogger.Warn($"[MainViewModel] Could not delete package file {file}", ex);
                 }
             }
 
@@ -464,7 +464,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[MainViewModel] Could not delete empty package directory: {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not delete empty package directory", ex);
             }
         }
 
@@ -483,7 +483,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[MainViewModel] Could not delete extraction directory '{package.ExtractionDirectory}': {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not delete extraction directory '{package.ExtractionDirectory}'", ex);
             }
         }
         failedPaths.UnionWith(trackedFiles.Where(File.Exists));
@@ -505,7 +505,7 @@ public partial class MainViewModel
             catch (Exception ex)
             {
                 failedPaths.Add(file);
-                AppLogger.Warn($"[MainViewModel] Could not delete item file {file}: {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not delete item file {file}", ex);
             }
         }
         if (failedPaths.Count > 0)

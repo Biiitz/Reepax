@@ -140,7 +140,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                Services.Storage.AppLogger.Warn($"[MainWindow] ClipboardMonitor start failed: {ex.Message}");
+                Services.Storage.AppLogger.Warn($"[MainWindow] ClipboardMonitor start failed", ex);
             }
         }
 
@@ -477,7 +477,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Services.Storage.AppLogger.Warn($"Template warm-up notice: {ex.Message}");
+            Services.Storage.AppLogger.Warn($"Template warm-up notice", ex);
         }
     }
 
@@ -720,7 +720,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Services.Storage.AppLogger.Error("[MainWindow] Fehler beim Schließen der Anwendung", ex);
+            Services.Storage.AppLogger.Error("[MainWindow] Failed to close the application", ex);
         }
     }
 
@@ -2423,7 +2423,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[VerifyBinFiles] Fehler beim Starten von '{batPath}'", ex);
+            AppLogger.Error("[VerifyBinFiles] Could not start file verification", ex);
             MessageBox.Show(
                 this,
                 Loc.Format("Dialog_VerifyBinFilesErrorMessage", ex.Message),
@@ -2501,7 +2501,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[OpenPackageFolder] Fehler beim Öffnen von '{dir}'", ex);
+            AppLogger.Error($"[OpenPackageFolder] Could not open directory: {dir}", ex);
             MessageBox.Show(
                 this,
                 Loc.Format("Status_CannotOpenFolder", ex.Message),

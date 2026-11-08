@@ -202,7 +202,7 @@ public partial class MainViewModel
             if (moveToRecycleBin)
                 AppLogger.Warn("[MainViewModel] Could not recycle the selected downloads.");
             else
-                AppLogger.Warn($"[MainViewModel] Could not remove the selected downloads: {ex.Message}");
+                AppLogger.Warn($"[MainViewModel] Could not remove the selected downloads", ex);
             StatusSummary = !moveToRecycleBin && ex is FileCleanupException cleanupFailure
                 ? Loc.Format("Status_CleanupIncomplete", cleanupFailure.RemainingPaths.Count)
                 : Loc.Get(moveToRecycleBin ? "Status_RecycleFailed" : "Status_CleanupFailed");

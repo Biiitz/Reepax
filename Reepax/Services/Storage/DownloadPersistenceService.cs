@@ -746,7 +746,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Erstellen des UI-Snapshots", ex);
+            AppLogger.Error("[DownloadPersistenceService] Could not capture UI state", ex);
         }
 
         if (dtosSnapshot != null)
@@ -961,7 +961,7 @@ public class DownloadPersistenceService : IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[DownloadPersistenceService] Fehler beim Konvertieren eines Pakets in DTO: {ex.Message}");
+                AppLogger.Warn("[DownloadPersistenceService] Could not serialize a package", ex);
             }
         }
 
@@ -1052,7 +1052,7 @@ public class DownloadPersistenceService : IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[DownloadPersistenceService] SafeSnapshotCollection unerwarteter Fehler: {ex.Message}");
+                AppLogger.Warn("[DownloadPersistenceService] Could not snapshot the collection", ex);
                 break;
             }
             finally
@@ -1146,7 +1146,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Speichern der Downloads", ex);
+            AppLogger.Error("[DownloadPersistenceService] Could not save downloads", ex);
         }
     }
 
@@ -1171,7 +1171,7 @@ public class DownloadPersistenceService : IDisposable
         {
             if (!IsTestEnvironment)
             {
-                AppLogger.Warn("[DownloadPersistenceService] Speichern abgebrochen: Initiales Laden ist fehlgeschlagen, leere Liste überschreibt nicht die vorhandenen Daten / Save aborted: Initial load failed, empty list will not overwrite existing data.");
+                AppLogger.Warn("[DownloadPersistenceService] Save aborted: Initial load failed, empty list will not overwrite existing data.");
             }
             return false;
         }
@@ -1229,7 +1229,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Schreiben der Downloads-Datei", ex);
+            AppLogger.Error("[DownloadPersistenceService] Could not write downloads", ex);
             return false;
         }
         finally
@@ -1260,7 +1260,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Speichern des Verlaufs", ex);
+            AppLogger.Error("[DownloadPersistenceService] Could not save history", ex);
         }
     }
 
@@ -1270,7 +1270,7 @@ public class DownloadPersistenceService : IDisposable
         {
             if (!IsTestEnvironment)
             {
-                AppLogger.Warn("[DownloadPersistenceService] Speichern des Verlaufs abgebrochen: Initiales Laden ist fehlgeschlagen, leere Liste überschreibt nicht die vorhandenen Daten / Save history aborted: Initial load failed, empty list will not overwrite existing data.");
+                AppLogger.Warn("[DownloadPersistenceService] Save history aborted: Initial load failed, empty list will not overwrite existing data.");
             }
             return false;
         }
@@ -1328,7 +1328,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Schreiben der Verlaufs-Datei", ex);
+            AppLogger.Error("[DownloadPersistenceService] Could not write history", ex);
             return false;
         }
         finally
@@ -1361,7 +1361,7 @@ public class DownloadPersistenceService : IDisposable
                     raw = ReadFileWithRetry(_historyFilePath);
                     if (string.IsNullOrWhiteSpace(raw) && !IsTestEnvironment)
                     {
-                        AppLogger.Warn("[DownloadPersistenceService] history.json existiert, konnte aber nicht gelesen werden (möglicherweise gesperrt). Versuche Backup... / history.json exists but could not be read (possibly locked). Trying backup...");
+                        AppLogger.Warn("[DownloadPersistenceService] history.json exists but could not be read (possibly locked). Trying backup...");
                     }
                 }
 
@@ -1373,7 +1373,7 @@ public class DownloadPersistenceService : IDisposable
                         loadedFromBak = true;
                         if (!IsTestEnvironment)
                         {
-                            AppLogger.Warn("[DownloadPersistenceService] history.json fehlte oder war unlesbar, erfolgreich aus history.json.bak geladen / history.json was missing or unreadable, successfully loaded from history.json.bak.");
+                            AppLogger.Warn("[DownloadPersistenceService] history.json was missing or unreadable, successfully loaded from history.json.bak.");
                         }
                     }
                 }
@@ -1383,7 +1383,7 @@ public class DownloadPersistenceService : IDisposable
                     _hasHistoryLoadFailed = true;
                     if (!IsTestEnvironment)
                     {
-                        AppLogger.Error("[DownloadPersistenceService] KRITISCHER FEHLER / CRITICAL ERROR: history.json und Backup existieren, konnten aber nicht gelesen werden. / history.json and backup exist but could not be read.");
+                        AppLogger.Error("[DownloadPersistenceService] history.json and backup exist but could not be read.");
                     }
                     return result;
                 }
@@ -1405,7 +1405,7 @@ public class DownloadPersistenceService : IDisposable
             {
                 if (!IsTestEnvironment)
                 {
-                    AppLogger.Error("[DownloadPersistenceService] Fehler beim Deserialisieren des Verlaufs / Error deserializing history", dex);
+                    AppLogger.Error("[DownloadPersistenceService] Error deserializing history", dex);
                 }
 
                 if (!loadedFromBak)
@@ -1427,7 +1427,7 @@ public class DownloadPersistenceService : IDisposable
                                 dtos = JsonSerializer.Deserialize<List<DownloadPackageDto>>(bakJson, _jsonOptions);
                                 if (dtos != null && !IsTestEnvironment)
                                 {
-                                    AppLogger.Warn("[DownloadPersistenceService] Verlauf erfolgreich aus Backup wiederhergestellt / History successfully restored from backup.");
+                                    AppLogger.Warn("[DownloadPersistenceService] History successfully restored from backup.");
                                 }
                             }
                         }
@@ -1624,7 +1624,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Laden des Verlaufs / Error loading history", ex);
+            AppLogger.Error("[DownloadPersistenceService] Error loading history", ex);
             _hasHistoryLoadFailed = true;
         }
 
@@ -1652,7 +1652,7 @@ public class DownloadPersistenceService : IDisposable
                     raw = ReadFileWithRetry(_downloadsFilePath);
                     if (string.IsNullOrWhiteSpace(raw) && !IsTestEnvironment)
                     {
-                        AppLogger.Warn("[DownloadPersistenceService] downloads.json existiert, konnte aber nicht gelesen werden (möglicherweise gesperrt). Versuche Backup... / downloads.json exists but could not be read (possibly locked). Trying backup...");
+                        AppLogger.Warn("[DownloadPersistenceService] downloads.json exists but could not be read (possibly locked). Trying backup...");
                     }
                 }
 
@@ -1664,7 +1664,7 @@ public class DownloadPersistenceService : IDisposable
                         loadedFromBak = true;
                         if (!IsTestEnvironment)
                         {
-                            AppLogger.Warn("[DownloadPersistenceService] downloads.json fehlte oder war unlesbar, erfolgreich aus downloads.json.bak geladen / downloads.json was missing or unreadable, successfully loaded from downloads.json.bak.");
+                            AppLogger.Warn("[DownloadPersistenceService] downloads.json was missing or unreadable, successfully loaded from downloads.json.bak.");
                         }
                     }
                 }
@@ -1674,7 +1674,7 @@ public class DownloadPersistenceService : IDisposable
                     _hasDownloadsLoadFailed = true;
                     if (!IsTestEnvironment)
                     {
-                        AppLogger.Error("[DownloadPersistenceService] KRITISCHER FEHLER / CRITICAL ERROR: downloads.json und Backup existieren, konnten aber nicht gelesen werden. / downloads.json and backup exist but could not be read.");
+                        AppLogger.Error("[DownloadPersistenceService] downloads.json and backup exist but could not be read.");
                     }
                     NotifyUserLoadFailure();
                     return result;
@@ -1697,7 +1697,7 @@ public class DownloadPersistenceService : IDisposable
             {
                 if (!IsTestEnvironment)
                 {
-                    AppLogger.Error("[DownloadPersistenceService] Fehler beim Deserialisieren der Downloads / Error deserializing downloads", dex);
+                    AppLogger.Error("[DownloadPersistenceService] Error deserializing downloads", dex);
                 }
 
                 if (!loadedFromBak)
@@ -1719,7 +1719,7 @@ public class DownloadPersistenceService : IDisposable
                                 dtos = JsonSerializer.Deserialize<List<DownloadPackageDto>>(bakJson, _jsonOptions);
                                 if (dtos != null && !IsTestEnvironment)
                                 {
-                                    AppLogger.Warn("[DownloadPersistenceService] Downloads erfolgreich aus Backup wiederhergestellt / Downloads successfully restored from backup.");
+                                    AppLogger.Warn("[DownloadPersistenceService] Downloads successfully restored from backup.");
                                 }
                             }
                         }
@@ -1989,7 +1989,7 @@ public class DownloadPersistenceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[DownloadPersistenceService] Fehler beim Laden der Downloads / Error loading downloads", ex);
+            AppLogger.Error("[DownloadPersistenceService] Error loading downloads", ex);
             _hasDownloadsLoadFailed = true;
             NotifyUserLoadFailure();
         }

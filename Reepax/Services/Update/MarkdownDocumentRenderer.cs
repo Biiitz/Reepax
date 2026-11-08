@@ -1069,7 +1069,7 @@ public static class MarkdownDocumentRenderer
                             }
                             catch (Exception ex)
                             {
-                                AppLogger.Warn($"[Markdown] Failed to open link {e.Uri}: {ex.Message}");
+                                AppLogger.Warn($"[Markdown] Failed to open link {e.Uri}", ex);
                             }
                             e.Handled = true;
                         };

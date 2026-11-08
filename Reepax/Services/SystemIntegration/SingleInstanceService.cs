@@ -85,7 +85,7 @@ public sealed class SingleInstanceService : IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"Failed to acquire single instance mutex: {ex.Message}");
+                AppLogger.Warn($"Failed to acquire single instance mutex", ex);
                 _hasMutexOwnership = false;
             }
 
@@ -259,7 +259,7 @@ public sealed class SingleInstanceService : IDisposable
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"Could not bring window to foreground: {ex.Message}");
+            AppLogger.Warn($"Could not bring window to foreground", ex);
         }
     }
 

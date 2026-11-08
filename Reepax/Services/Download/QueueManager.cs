@@ -167,7 +167,7 @@ public partial class QueueManager
         }
         catch (Exception ex)
         {
-            Storage.AppLogger.Error("Fehler beim Wiederherstellen der Downloads", ex);
+            Storage.AppLogger.Error("Failed to restore downloads", ex);
         }
 
         Storage.DownloadPersistenceService.Instance.TrackPackages(Packages);
@@ -1649,7 +1649,7 @@ public partial class QueueManager
                         }
                         else
                         {
-                            AppLogger.Error($"[QueueManager] Prüfsummenfehler bei '{item.FileName}' nach {maxRetries} Versuchen: {verification.ErrorMessage}");
+                            AppLogger.Error($"[QueueManager] Checksum verification failed after {maxRetries} attempts: {verification.ErrorMessage}");
                             await ApplyCompletionUpdateAsync(() =>
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
@@ -1667,7 +1667,7 @@ public partial class QueueManager
                         }
                     }
 
-                    AppLogger.Info($"[QueueManager] Datei '{item.FileName}' erfolgreich verifiziert ({verification.Algorithm}: {verification.CalculatedChecksum}).");
+                    AppLogger.Info($"[QueueManager] File verification succeeded ({verification.Algorithm}: {verification.CalculatedChecksum}).");
                 }
 
                 // Mark Item as Completed
@@ -1710,7 +1710,7 @@ public partial class QueueManager
             {
                 if (cancellationToken.IsCancellationRequested)
                     return;
-                AppLogger.Error($"[QueueManager] Fehler bei Download-Abschlussprüfung für '{item.FileName}'", ex);
+                AppLogger.Error("[QueueManager] Download completion verification failed", ex);
                 if (item.IsVerifyingIntegrity)
                 {
                     await ApplyCompletionUpdateAsync(() =>
@@ -1752,6 +1752,7 @@ public partial class QueueManager
     {
         if (item.IsUnavailableForProcessing)
             return;
+        AppLogger.Error($"[QueueManager] Download failed. Item={item.Id}; retry={item.RetryCount}.", ex);
         if (ex is DownloadIntegrityException)
         {
             item.RejectedFiles ??= RejectedDownloadFiles.Capture(item.SaveFilePath, published: false);
@@ -2002,7 +2003,7 @@ public partial class QueueManager
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[QueueManager] Fehler beim Anzeigen der Fertigstellungs-Benachrichtigung für '{package.Name}'", ex);
+            AppLogger.Error("[QueueManager] Could not display the completion notification", ex);
         }
     }
 

@@ -50,7 +50,7 @@ public partial class LinkMetadataResolverService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[LinkMetadataResolver] Could not update package name: {ex.Message}");
+            AppLogger.Warn($"[LinkMetadataResolver] Could not update package name", ex);
         }
     }
 }

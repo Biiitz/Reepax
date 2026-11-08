@@ -115,7 +115,7 @@ public partial class ExtensionOptionsWindow : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error($"[Extensions] Seite von '{_extension.Name}' konnte nicht geöffnet werden", ex);
+            AppLogger.Error("[Extensions] Could not open the extension page", ex);
             Close();
         }
     }

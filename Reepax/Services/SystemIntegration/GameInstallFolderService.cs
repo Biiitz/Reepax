@@ -283,7 +283,7 @@ public static class GameInstallFolderService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[GameInstallFolderService] Zwischenablage konnte nicht gesetzt werden: {ex.Message}");
+            AppLogger.Warn("[GameInstallFolderService] Could not set clipboard text", ex);
         }
 
         return success;

@@ -395,7 +395,7 @@ public partial class AppUpdateService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[AppUpdateService] Error checking for updates: {ex.Message}");
+            AppLogger.Debug($"[AppUpdateService] Error checking for updates", ex);
             return null;
         }
     }

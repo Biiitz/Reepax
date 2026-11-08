@@ -195,7 +195,7 @@ public partial class LinkMetadataResolverService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[LinkMetadataResolver] Konnte Metadaten für '{item.FileName}' ({targetUrl}) nicht auflösen: {ex.Message}");
+            AppLogger.Warn("[LinkMetadataResolver] Could not resolve link metadata", ex);
         }
 
         item.IsMetadataResolved = true;
@@ -291,7 +291,7 @@ public partial class LinkMetadataResolverService
         if (isAttachment || !isHtml)
         {
             SafeInvoke(() => item.DirectDownloadUrl = item.OriginalUrl);
-            AppLogger.Info($"[LinkResolver] Direkter Download erkannt für '{item.FileName}': {targetUrl}");
+            AppLogger.Info($"[LinkResolver] Direct download detected: {targetUrl}");
         }
     }
 

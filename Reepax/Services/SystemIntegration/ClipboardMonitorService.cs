@@ -67,7 +67,7 @@ public sealed class ClipboardMonitorService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[ClipboardMonitor] Failed to attach AddClipboardFormatListener: {ex.Message}");
+                    AppLogger.Warn($"[ClipboardMonitor] Failed to attach AddClipboardFormatListener", ex);
                 }
             }
             else
@@ -157,7 +157,7 @@ public sealed class ClipboardMonitorService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Warn($"[ClipboardMonitor] Error processing clipboard: {ex.Message}");
+                    AppLogger.Warn($"[ClipboardMonitor] Error processing clipboard", ex);
                 }
             });
         });
@@ -222,7 +222,7 @@ public sealed class ClipboardMonitorService : IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed: {ex.Message}");
+                AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed", ex);
                 break;
             }
         }
@@ -267,7 +267,7 @@ public sealed class ClipboardMonitorService : IDisposable
             }
             catch (Exception ex)
             {
-                AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed: {ex.Message}");
+                AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed", ex);
                 break;
             }
         }

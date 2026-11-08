@@ -304,7 +304,7 @@ public partial class UpdateDialog : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[UpdateDialog] Could not open release url: {ex.Message}");
+            AppLogger.Warn($"[UpdateDialog] Could not open release url", ex);
         }
     }
 

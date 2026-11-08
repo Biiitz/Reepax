@@ -78,7 +78,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[MainViewModel] Could not update downloads: {ex.Message}");
+            AppLogger.Warn($"[MainViewModel] Could not update downloads", ex);
         }
     }
 }

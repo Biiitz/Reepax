@@ -30,7 +30,7 @@ public static class AdBlockRustNative
         catch (Exception ex)
         {
             IsAvailable = false;
-            AppLogger.Warn($"[AdBlockRust] Native engine unavailable, falling back to built-in C# engine: {ex.Message}");
+            AppLogger.Warn($"[AdBlockRust] Native engine unavailable, falling back to built-in C# engine", ex);
         }
     }
 
@@ -45,7 +45,7 @@ public static class AdBlockRustNative
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[AdBlockRust] Failed to create engine from rules: {ex.Message}");
+            AppLogger.Warn($"[AdBlockRust] Failed to create engine from rules", ex);
             return IntPtr.Zero;
         }
     }
@@ -59,7 +59,7 @@ public static class AdBlockRustNative
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[AdBlockRust] Failed to deserialize engine: {ex.Message}");
+            AppLogger.Warn($"[AdBlockRust] Failed to deserialize engine", ex);
             return IntPtr.Zero;
         }
     }
@@ -79,7 +79,7 @@ public static class AdBlockRustNative
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[AdBlockRust] Serialization error: {ex.Message}");
+            AppLogger.Warn($"[AdBlockRust] Serialization error", ex);
             return null;
         }
     }

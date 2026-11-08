@@ -835,7 +835,7 @@ public partial class DownloadEngine
         }
         catch (Exception ex)
         {
-            Services.Storage.AppLogger.Warn($"[DownloadEngine] Range probe for '{item.FileName}' failed: {ex.Message}");
+            Services.Storage.AppLogger.Warn($"[DownloadEngine] Range probe for '{item.FileName}' failed", ex);
         }
 
         return (false, 0, null, null);

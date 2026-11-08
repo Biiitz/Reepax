@@ -67,7 +67,7 @@ public partial class SettingsService
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Fehler beim Erstellen der Anwendungsordner", ex);
+                AppLogger.Error("Could not create application directories", ex);
             }
             _settingsFilePath = Path.Combine(AppDataDirectory, "settings.json");
             _backupFilePath = Path.Combine(AppDataDirectory, "settings.json.bak");
@@ -112,7 +112,7 @@ public partial class SettingsService
                 }
                 catch (Exception ex)
                 {
-                    AppLogger.Error("Fehler beim Laden der Einstellungen (Datei möglicherweise korrupt)", ex);
+                    AppLogger.Error("Failed to load settings; the file may be damaged", ex);
 
                     // Retain backup of corrupt settings file for diagnostics/recovery
                     try
@@ -141,13 +141,13 @@ public partial class SettingsService
                             AppSettings.SanitizeSoundSettings(loadedFromBackup);
                             _currentSettings = loadedFromBackup;
                             loadedSuccessfully = true;
-                            AppLogger.Warn("Einstellungen erfolgreich aus Backup wiederhergestellt.");
+                            AppLogger.Warn("Settings successfully restored from backup.");
                         }
                     }
                 }
                 catch (Exception backupEx)
                 {
-                    AppLogger.Error("Fehler beim Wiederherstellen der Einstellungen aus dem Backup", backupEx);
+                    AppLogger.Error("Could not restore settings from backup", backupEx);
                 }
             }
 
@@ -159,7 +159,7 @@ public partial class SettingsService
             {
                 _hasSettingsLoadFailed = true;
                 _currentSettings = new AppSettings();
-                AppLogger.Error("[SettingsService] KRITISCHER FEHLER / CRITICAL ERROR: settings.json oder Backup existiert, konnte aber nicht geladen werden. Speichern wird blockiert, um Datenverlust zu verhindern. / settings.json or backup exists but could not be read. Saving blocked to prevent data loss.");
+                AppLogger.Error("[SettingsService] settings.json or backup exists but could not be read. Saving blocked to prevent data loss.");
                 NotifyUserLoadFailure();
             }
             else
@@ -195,19 +195,22 @@ public partial class SettingsService
     /// Removes rotating logs and crash log files from disk when file logging is disabled.
     /// </summary>
     public static void CleanupLogFiles()
+        => CleanupLogFiles(LogsDirectory, AppDataDirectory);
+
+    internal static void CleanupLogFiles(string logsDirectory, string appDataDirectory)
     {
         try
         {
-            if (Directory.Exists(LogsDirectory))
+            if (Directory.Exists(logsDirectory))
             {
-                Directory.Delete(LogsDirectory, true);
+                Directory.Delete(logsDirectory, true);
             }
         }
         catch { }
 
         try
         {
-            var appDataCrashLog = Path.Combine(AppDataDirectory, "crash.log");
+            var appDataCrashLog = Path.Combine(appDataDirectory, "crash.log");
             if (File.Exists(appDataCrashLog))
             {
                 File.Delete(appDataCrashLog);
@@ -246,7 +249,7 @@ public partial class SettingsService
         }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[SettingsService] Debounced save failed: {ex.Message}");
+            AppLogger.Debug($"[SettingsService] Debounced save failed", ex);
         }
     }
 
@@ -259,7 +262,7 @@ public partial class SettingsService
         {
             if (_hasSettingsLoadFailed && !force && (File.Exists(_settingsFilePath) || File.Exists(_backupFilePath)))
             {
-                AppLogger.Warn("[SettingsService] Speichern abgebrochen: Initiales Laden der Einstellungen ist fehlgeschlagen. Vorhandene Einstellungsdateien werden geschützt und nicht überschrieben. / Save aborted: Initial settings load failed. Existing settings files are protected and will not be overwritten.");
+                AppLogger.Warn("[SettingsService] Save aborted: Initial settings load failed. Existing settings files are protected and will not be overwritten.");
                 return;
             }
 
@@ -301,7 +304,7 @@ public partial class SettingsService
             }
             catch (Exception ex)
             {
-                AppLogger.Error("Fehler beim Speichern der Einstellungen", ex);
+                AppLogger.Error("Could not save settings", ex);
             }
             finally
             {
@@ -414,7 +417,7 @@ public partial class SettingsService
         }
         catch (Exception ex)
         {
-            AppLogger.Debug($"[SettingsService] Roaming migration note: {ex.Message}");
+            AppLogger.Debug($"[SettingsService] Roaming migration note", ex);
             return false;
         }
     }
@@ -512,7 +515,7 @@ public partial class SettingsService
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[SettingsService] Failed to copy directory '{sourceDir}': {ex.Message}");
+            AppLogger.Warn($"[SettingsService] Failed to copy directory '{sourceDir}'", ex);
             return false;
         }
     }
