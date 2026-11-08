@@ -32,6 +32,7 @@ public partial class ArchiveExtractionService
     {
         return Task.Run(async () =>
         {
+            using var keepAwake = SystemIntegration.PowerManagementService.Instance.CreateKeepAwakeScope("Extracting archive");
             Exception? lastFailure = null;
             try
             {
@@ -49,9 +50,11 @@ public partial class ArchiveExtractionService
                     cancellationToken.ThrowIfCancellationRequested();
                     if (pauseEvent?.IsSet == false)
                     {
+                        keepAwake.Suspend();
                         pauseStateChanged?.Invoke(true);
                         statusCallback?.Invoke(Loc.Get("Status_ExtractionPaused"));
                         pauseEvent.Wait(cancellationToken);
+                        keepAwake.Resume();
                         pauseStateChanged?.Invoke(false);
                         statusCallback?.Invoke(Loc.Get("Status_Extracting"));
                     }
@@ -69,7 +72,8 @@ public partial class ArchiveExtractionService
                     using var workspace = new PackageExtractionWorkspace(new[] { targetDirectory });
                     bool success = await ExtractArchiveCoreAsync(archiveFilePath, workspace.GetStagingDirectory(targetDirectory), statusCallback,
                         lowResourceMode, progressCallback == null ? null : pct => progressCallback(Math.Min(pct, 99.0)),
-                        cancellationToken: cancellationToken, pauseEvent: pauseEvent, pauseStateChanged: pauseStateChanged).ConfigureAwait(false);
+                        cancellationToken: cancellationToken, pauseEvent: pauseEvent, pauseStateChanged: pauseStateChanged,
+                        keepAwakeScope: keepAwake).ConfigureAwait(false);
                     if (success)
                     {
                         WaitForProbe();
@@ -152,7 +156,7 @@ public partial class ArchiveExtractionService
                         }, lowResourceMode,
                         progressCallback == null ? null : pct => progressCallback(Math.Min(pct, 99.0)),
                         password, cancellationToken, pauseEvent, pauseStateChanged, isArchiveEncrypted: true,
-                        failureCallback: failure => extractionFailure = failure).ConfigureAwait(false);
+                        failureCallback: failure => extractionFailure = failure, keepAwakeScope: keepAwake).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
                     if (!extracted)
                     {

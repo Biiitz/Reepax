@@ -414,7 +414,7 @@ public partial class ArchiveExtractionService
             linkedCts.Cancel();
 
         var token = linkedCts.Token;
-        SystemIntegration.PowerManagementService.Instance.AcquireKeepAwake($"Extracting package '{package.Name}'");
+        var keepAwake = SystemIntegration.PowerManagementService.Instance.CreateKeepAwakeScope($"Extracting package '{package.Name}'");
 
         bool allSuccess = false;
         try
@@ -548,8 +548,10 @@ public partial class ArchiveExtractionService
                     if (package.ArchivePasswordState.Cancelled) throw new OperationCanceledException(token);
                 if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing)) throw new OperationCanceledException(token);
                 if (pauseEvent.IsSet) return;
+                keepAwake.Suspend();
                 SafeInvoke(() => package.IsExtractionPaused = true);
                 pauseEvent.Wait(token);
+                keepAwake.Resume();
                 SafeInvoke(() => package.IsExtractionPaused = false);
             }
             SafeInvoke(() => package.StatusMessage = Loc.Get("ArchivePasswords_Checking"));
@@ -598,7 +600,7 @@ public partial class ArchiveExtractionService
                         lastOverallReportTicks = now;
                         lastOverallReportedPct = overall;
                         SafeInvoke(() => package.StatusMessage = Loc.Format("Status_ExtractingProgress", overall.ToString("0.00")));
-                    }, token, pauseEvent);
+                    }, token, pauseEvent, keepAwake);
                 if (result == null) break;
                 verified.Add(result);
                 foreach (var item in enabledItems)
@@ -706,7 +708,7 @@ public partial class ArchiveExtractionService
         }
         finally
         {
-            SystemIntegration.PowerManagementService.Instance.ReleaseKeepAwake($"Finished extracting package '{package.Name}'");
+            keepAwake.Dispose();
             if (_packageCts.TryRemove(package.Id, out var removedCts))
             {
                 try { removedCts.Dispose(); } catch { }
@@ -811,7 +813,8 @@ public partial class ArchiveExtractionService
         ManualResetEventSlim? pauseEvent = null,
         Action<bool>? pauseStateChanged = null,
         bool isArchiveEncrypted = false,
-        Action<Exception>? failureCallback = null)
+        Action<Exception>? failureCallback = null,
+        SystemIntegration.PowerManagementService.KeepAwakeScope? keepAwakeScope = null)
     {
         var result = await Task.Run(() =>
         {
@@ -823,11 +826,11 @@ public partial class ArchiveExtractionService
             {
                 if (pauseEvent != null && !pauseEvent.IsSet)
                 {
+                    keepAwakeScope?.Suspend();
                     pauseStateChanged?.Invoke(true);
-                    SystemIntegration.PowerManagementService.Instance.ReleaseKeepAwake($"Paused extracting archive '{Path.GetFileName(archiveFilePath)}'");
                     statusCallback?.Invoke(Loc.Get("Status_ExtractionPaused"));
                     pauseEvent.Wait(cancellationToken);
-                    SystemIntegration.PowerManagementService.Instance.AcquireKeepAwake($"Extracting archive '{Path.GetFileName(archiveFilePath)}'");
+                    keepAwakeScope?.Resume();
                     pauseStateChanged?.Invoke(false);
                     statusCallback?.Invoke(Loc.Get("Status_Extracting"));
                 }

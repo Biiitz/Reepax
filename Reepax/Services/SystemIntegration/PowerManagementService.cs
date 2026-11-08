@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Reepax.Services.Storage;
 
 namespace Reepax.Services.SystemIntegration;
@@ -22,9 +21,6 @@ public sealed class PowerManagementService
         EsAwayModeRequired = 0x00000040,
         EsContinuous = 0x80000000
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern ExecutionState SetThreadExecutionState(ExecutionState esFlags);
 
     [DllImport("PowrProf.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -77,9 +73,17 @@ public sealed class PowerManagementService
     private static extern IntPtr GetCurrentProcess();
 
     private int _keepAwakeCount;
+    private long _requestGeneration;
+    private IDisposable? _keepAwakeRequest;
+    private readonly Func<IDisposable?> _createKeepAwakeRequest;
     private readonly object _lock = new();
 
-    private PowerManagementService() { }
+    private PowerManagementService() : this(() => OperatingSystem.IsWindows() ? WindowsKeepAwakeRequest.Create() : null) { }
+
+    internal PowerManagementService(Func<IDisposable?> createKeepAwakeRequest)
+    {
+        _createKeepAwakeRequest = createKeepAwakeRequest ?? throw new ArgumentNullException(nameof(createKeepAwakeRequest));
+    }
 
     /// <summary>
     /// Enables the SeShutdownPrivilege in the current process access token.
@@ -272,7 +276,10 @@ public sealed class PowerManagementService
     /// <summary>
     /// Gets whether Windows sleep prevention is currently active.
     /// </summary>
-    public bool IsKeepAwakeActive => Volatile.Read(ref _keepAwakeCount) > 0;
+    public bool IsKeepAwakeActive
+    {
+        get { lock (_lock) return _keepAwakeRequest != null; }
+    }
 
     /// <summary>
     /// Acquires a keep-awake request. As long as at least one operation holds a request,
@@ -282,10 +289,19 @@ public sealed class PowerManagementService
     {
         lock (_lock)
         {
-            var count = Interlocked.Increment(ref _keepAwakeCount);
-            if (count == 1)
+            _keepAwakeCount++;
+            if (_keepAwakeRequest == null)
             {
-                ApplyExecutionState(true, reason);
+                try
+                {
+                    _keepAwakeRequest = _createKeepAwakeRequest();
+                    if (_keepAwakeRequest != null)
+                        AppLogger.Info($"[PowerManagement] Windows sleep prevention activated ({reason}).");
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn("[PowerManagement] Failed to activate Windows sleep prevention", ex);
+                }
             }
         }
     }
@@ -298,12 +314,8 @@ public sealed class PowerManagementService
     {
         lock (_lock)
         {
-            var count = Interlocked.Decrement(ref _keepAwakeCount);
-            if (count <= 0)
-            {
-                Interlocked.Exchange(ref _keepAwakeCount, 0);
-                ApplyExecutionState(false, reason);
-            }
+            if (_keepAwakeCount > 0) _keepAwakeCount--;
+            if (_keepAwakeCount == 0) ReleaseRequest(reason);
         }
     }
 
@@ -314,38 +326,59 @@ public sealed class PowerManagementService
     {
         lock (_lock)
         {
-            Interlocked.Exchange(ref _keepAwakeCount, 0);
-            ApplyExecutionState(false, "Application Shutdown");
+            _keepAwakeCount = 0;
+            _requestGeneration++;
+            ReleaseRequest("Application Shutdown");
         }
     }
 
-    private static void ApplyExecutionState(bool enable, string reason)
+    private void ReleaseRequest(string reason)
     {
-        if (OperatingSystem.IsWindows())
+        var request = _keepAwakeRequest;
+        _keepAwakeRequest = null;
+        if (request == null) return;
+        try
         {
-            try
-            {
-                if (enable)
-                {
-                    // ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED
-                    // Prevents sleep while allowing the display to shut down according to user settings
-                    var previous = SetThreadExecutionState(
-                        ExecutionState.EsContinuous |
-                        ExecutionState.EsSystemRequired |
-                        ExecutionState.EsAwayModeRequired);
+            request.Dispose();
+            AppLogger.Info($"[PowerManagement] Windows sleep prevention released ({reason}).");
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Warn("[PowerManagement] Failed to release Windows sleep prevention", ex);
+        }
+    }
 
-                    AppLogger.Info($"[PowerManagement] Windows sleep prevention activated ({reason}). Previous state: 0x{(uint)previous:X8}");
-                }
-                else
-                {
-                    // Restores default power management behavior
-                    var previous = SetThreadExecutionState(ExecutionState.EsContinuous);
-                    AppLogger.Info($"[PowerManagement] Windows sleep prevention released ({reason}). Previous state: 0x{(uint)previous:X8}");
-                }
-            }
-            catch (Exception ex)
+    internal KeepAwakeScope CreateKeepAwakeScope(string reason)
+    {
+        lock (_lock)
+        {
+            var scope = new KeepAwakeScope(this, _requestGeneration, reason);
+            scope.Resume();
+            return scope;
+        }
+    }
+
+    internal sealed class KeepAwakeScope(PowerManagementService owner, long generation, string reason) : IDisposable
+    {
+        private bool _held;
+        private bool _disposed;
+
+        internal void Resume() => SetActive(true);
+        internal void Suspend() => SetActive(false);
+        public void Dispose() => SetActive(false, disposing: true);
+
+        private void SetActive(bool active, bool disposing = false)
+        {
+            lock (owner._lock)
             {
-                AppLogger.Warn($"[PowerManagement] Failed to update execution state", ex);
+                if (_disposed) return;
+                _disposed = disposing;
+                // Cleanup from an older shutdown generation must not release a newer request.
+                if (generation != owner._requestGeneration) return;
+                if (_held == active) return;
+                _held = active;
+                if (active) owner.AcquireKeepAwake(reason);
+                else owner.ReleaseKeepAwake(reason);
             }
         }
     }

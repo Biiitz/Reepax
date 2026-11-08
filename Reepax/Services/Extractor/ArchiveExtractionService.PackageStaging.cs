@@ -40,14 +40,17 @@ public partial class ArchiveExtractionService
 
     private async Task<PreparedPackageArchive?> ExtractPreparedPackageArchiveAsync(
         DownloadPackage package, PreparedPackageArchive prepared, string target,
-        Action<string> status, Action<double> progress, CancellationToken token, ManualResetEventSlim pauseEvent)
+        Action<string> status, Action<double> progress, CancellationToken token, ManualResetEventSlim pauseEvent,
+        SystemIntegration.PowerManagementService.KeepAwakeScope keepAwake)
     {
         void Checkpoint()
         {
             token.ThrowIfCancellationRequested();
             if (pauseEvent.IsSet) return;
+            keepAwake.Suspend();
             SafeInvoke(() => package.IsExtractionPaused = true);
             pauseEvent.Wait(token);
+            keepAwake.Resume();
             SafeInvoke(() => package.IsExtractionPaused = false);
         }
         while (true)
@@ -63,7 +66,8 @@ public partial class ArchiveExtractionService
                     else status(message);
                 }, package.LowResourceExtraction, value => progress(Math.Min(value, 99.0)), prepared.Password,
                 token, pauseEvent, value => SafeInvoke(() => package.IsExtractionPaused = value),
-                isArchiveEncrypted: prepared.Check.IsEncrypted, failureCallback: error => failure = error).ConfigureAwait(false);
+                isArchiveEncrypted: prepared.Check.IsEncrypted, failureCallback: error => failure = error,
+                keepAwakeScope: keepAwake).ConfigureAwait(false);
             Checkpoint();
             if (success)
             {
