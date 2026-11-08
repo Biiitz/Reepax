@@ -793,7 +793,7 @@ public partial class MainViewModel
             foreach (var pkg in Packages)
             {
                 var naturalItems = pkg.Items.OrderBy(i => i.OriginalOrderIndex).ThenBy(i => i.CreatedAt).ToList();
-                SyncOrder(pkg.Items, naturalItems);
+                SyncItemOrder(pkg, naturalItems);
                 if (pkg.ClippedPackages.Count > 1)
                 {
                     var naturalClipped = pkg.ClippedPackages.OrderBy(c => c.CreatedAt).ToList();
@@ -814,7 +814,7 @@ public partial class MainViewModel
         foreach (var pkg in Packages)
         {
             var sortedItems = SortItems(pkg.Items.ToList(), col, dir);
-            SyncOrder(pkg.Items, sortedItems);
+            SyncItemOrder(pkg, sortedItems);
 
             if (pkg.ClippedPackages.Count > 1)
             {
@@ -960,10 +960,19 @@ public partial class MainViewModel
         _ => 0
     };
 
+    private static void SyncItemOrder(DownloadPackage package, IList<DownloadItem> targetOrder)
+    {
+        if (package.Items.SequenceEqual(targetOrder)) return;
+        package.UpdateItems(() => SyncOrder(package.Items, targetOrder));
+    }
+
     public static void SyncOrder<T>(ObservableCollection<T> collection, IList<T> targetOrder)
     {
         for (int targetIndex = 0; targetIndex < targetOrder.Count; targetIndex++)
         {
+            if (targetIndex < collection.Count &&
+                EqualityComparer<T>.Default.Equals(collection[targetIndex], targetOrder[targetIndex]))
+                continue;
             int currentIndex = collection.IndexOf(targetOrder[targetIndex]);
             if (currentIndex >= 0 && targetIndex < collection.Count && currentIndex != targetIndex)
             {

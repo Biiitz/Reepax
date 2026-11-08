@@ -1482,7 +1482,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var pkg in Packages)
             {
                 var sortedItems = SortItems(pkg.Items.ToList(), SortColumn, SortDirection.Value);
-                SyncOrder(pkg.Items, sortedItems);
+                SyncItemOrder(pkg, sortedItems);
             }
         }
 
