@@ -30,9 +30,10 @@ internal static partial class WindowDownloadFlowWorker
         };
         foreach (string name in new[] { "sample-one", "sample-two", "sample-allowed" })
             files[name + ".js"] = Encoding.UTF8.GetBytes("window.ruleProbe = true;");
+        files["sample-one.js?file=example.zip"] = files["sample-one.js"];
         await using var source = new PipelineHttpSource(files,
             responseHeaders: new Dictionary<string, string> { ["Cache-Control"] = "no-store" },
-            contentType: name => name.EndsWith(".js", StringComparison.Ordinal) ? "application/javascript" : "text/html");
+            contentType: name => name.Split('?')[0].EndsWith(".js", StringComparison.Ordinal) ? "application/javascript" : "text/html");
         var browser = new BrowserWindow(1, new DownloadItem { OriginalUrl = source.Url("index.html"), HosterName = "Example" });
         CoreWebView2Environment? environment = null;
         string popupRule = "\n|" + source.Url("sample-popup");
@@ -55,10 +56,12 @@ internal static partial class WindowDownloadFlowWorker
             engine.FilterListFetcherForTesting = _ => Task.FromResult<string?>(rules);
             engine.OnEngineCompiledForTesting = _ => compilations++;
 
-            async Task<bool> Runs(string name)
+            async Task<bool> Runs(string name, string suffix = "")
             {
-                string url = JsonSerializer.Serialize(source.Url(name + ".js"));
-                int before = source.Requests.GetValueOrDefault(name + ".js");
+                string url = JsonSerializer.Serialize(source.Url(name + ".js" + suffix));
+                string requestTarget = name + ".js" + suffix.Split('#')[0];
+                int before = source.Requests.GetValueOrDefault(requestTarget);
+                int blocked = engine.TotalBlockedCount;
                 var result = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new
                 {
                     expression = "new Promise(resolve => { window.ruleProbe = false; const s = document.createElement('script'); s.src = " + url +
@@ -68,7 +71,8 @@ internal static partial class WindowDownloadFlowWorker
                 using var json = JsonDocument.Parse(result);
                 Assert.False(json.RootElement.TryGetProperty("exceptionDetails", out _), result);
                 bool ran = json.RootElement.GetProperty("result").GetProperty("value").GetBoolean();
-                Assert.Equal(before + (ran ? 1 : 0), source.Requests.GetValueOrDefault(name + ".js"));
+                Assert.Equal(before + (ran ? 1 : 0), source.Requests.GetValueOrDefault(requestTarget));
+                if (!ran) Assert.True(engine.TotalBlockedCount > blocked, "The filter must block the script before it reaches the local source.");
                 return ran;
             }
 
@@ -95,11 +99,16 @@ internal static partial class WindowDownloadFlowWorker
             }
 
             Assert.True(await Runs("sample-one"));
+            Assert.True(await Runs("sample-one", "?file=example.zip"));
+            Assert.True(await Runs("sample-one", "#example.zip"));
             Assert.True(await Runs("sample-two"));
             Assert.False(Reepax.Services.Browser.BrowserSecurityGuard.ShouldBlockPopup(source.Url("index.html"), source.Url("sample-popup"), true));
             await ClickUpdate("Browser_Shield_ListsUpdatedNew");
             Assert.Equal(1, compilations);
             Assert.False(await Runs("sample-one"));
+            Assert.False(await Runs("sample-one", "?file=example.zip"));
+            Assert.False(await Runs("sample-one", "#example.zip"));
+            Assert.Equal(source.Url("index.html"), core.Source);
             Assert.True(await Runs("sample-two"));
             Assert.True(await Runs("sample-allowed"));
             int blockedBefore = engine.TotalBlockedCount;

@@ -352,8 +352,8 @@ public class AdBlockRustEngine : IDisposable
         if (string.IsNullOrWhiteSpace(url))
             return false;
 
-        // Never block CAPTCHAs or genuine filehoster downloads
-        if (BrowserSecurityGuard.IsWhitelisted(url) || BrowserSecurityGuard.IsDirectDownloadUrl(url))
+        // Query and fragment names must not exempt resources from network filtering.
+        if (BrowserSecurityGuard.IsWhitelisted(url) || BrowserSecurityGuard.HasDirectDownloadPath(url))
             return false;
 
         // Check if source domain is on user whitelist

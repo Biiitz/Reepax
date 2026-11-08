@@ -54,6 +54,59 @@ public class AdBlockRustEngineTests
     }
 
     [Theory]
+    [InlineData("script")]
+    [InlineData("image")]
+    [InlineData("subdocument")]
+    public void ShouldBlock_DownloadNamesInParametersDoNotExemptBlockedResources(string requestType)
+    {
+        var engine = AdBlockRustEngine.Instance;
+        const string source = "https://source.example.test/page";
+        const string resource = "https://doubleclick.net/sample.js";
+        Assert.True(engine.IsNativeAvailable);
+        Assert.True(engine.ShouldBlock(resource, source, requestType));
+        foreach (string suffix in new[] { "?file=example.zip", "#example.zip", "?mode=sample&next=example.rar" })
+        {
+            string url = resource + suffix;
+            Assert.True(Reepax.Services.Browser.BrowserSecurityGuard.IsDirectDownloadUrl(url));
+            Assert.False(Reepax.Services.Browser.BrowserSecurityGuard.HasDirectDownloadPath(url));
+            Assert.True(engine.ShouldBlock(url, source, requestType));
+        }
+    }
+
+    [Theory]
+    [InlineData("https://doubleclick.net/files/example.zip?token=sample#details")]
+    [InlineData("https://doubleclick.net/download/sample?name=example.zip")]
+    public void ShouldBlock_PreservesDownloadPathExemptions(string url)
+        => Assert.False(AdBlockRustEngine.Instance.ShouldBlock(url, "https://source.example.test/page", "other"));
+
+    [Fact]
+    public void ShouldBlock_ParameterNamesDoNotOverrideUserExemptionsOrTheDisabledSetting()
+    {
+        var engine = AdBlockRustEngine.Instance;
+        const string sourceHost = "exceptions.example.test";
+        const string source = "https://exceptions.example.test/page";
+        const string target = "https://doubleclick.net/sample.js?file=example.zip";
+        bool enabled = engine.IsEnabled;
+        bool whitelisted = engine.IsDomainWhitelisted(sourceHost);
+        try
+        {
+            engine.IsEnabled = true;
+            engine.SetDomainWhitelisted(sourceHost, false);
+            Assert.True(engine.ShouldBlock(target, source, "script"));
+            engine.SetDomainWhitelisted(sourceHost, true);
+            Assert.False(engine.ShouldBlock(target, source, "script"));
+            engine.SetDomainWhitelisted(sourceHost, false);
+            engine.IsEnabled = false;
+            Assert.False(engine.ShouldBlock(target, source, "script"));
+        }
+        finally
+        {
+            engine.IsEnabled = enabled;
+            engine.SetDomainWhitelisted(sourceHost, whitelisted);
+        }
+    }
+
+    [Theory]
     [InlineData("https://rapidgator.net/file/12345/archive.zip")]
     [InlineData("https://ddownload.com/dl/file.rar")]
     [InlineData("https://mega.nz/file/abc#xyz")]

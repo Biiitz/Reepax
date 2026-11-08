@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
 using Reepax.Models;
+using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -137,7 +138,11 @@ public sealed class DownloadUrlIdentityTests
         string root = Directory.CreateTempSubdirectory("UrlIdentity_").FullName;
         var model = new MainViewModel();
         var previous = model.Packages.ToArray();
+        var queue = QueueManager.Instance;
+        bool queueWasRunning = queue.IsRunning;
         model.Packages.Clear();
+        queue.StopQueue();
+        Assert.False(queue.IsRunning);
         var files = new Dictionary<string, byte[]>
         {
             ["Payload.bin?token=Ab1"] = new byte[] { 2, 3, 5 },
@@ -184,7 +189,9 @@ public sealed class DownloadUrlIdentityTests
         }
         finally
         {
+            queue.StopQueue();
             model.Packages.Clear();
+            if (queueWasRunning) queue.StartQueue();
             foreach (var saved in previous) model.Packages.Add(saved);
             Directory.Delete(root, recursive: true);
         }
@@ -215,7 +222,11 @@ public sealed class DownloadUrlIdentityTests
         string root = Directory.CreateTempSubdirectory("UrlEdit_").FullName;
         var model = new MainViewModel();
         var previous = model.Packages.ToArray();
+        var queue = QueueManager.Instance;
+        bool queueWasRunning = queue.IsRunning;
         model.Packages.Clear();
+        queue.StopQueue();
+        Assert.False(queue.IsRunning);
         using var handler = new StaticMetadataHandler();
         using var client = new HttpClient(handler);
         model.MetadataResolver = new LinkMetadataResolverService(client);
@@ -273,7 +284,9 @@ public sealed class DownloadUrlIdentityTests
         finally
         {
             HosterInfo.KnownHosters.Remove(localHost);
+            queue.StopQueue();
             model.Packages.Clear();
+            if (queueWasRunning) queue.StartQueue();
             foreach (var saved in previous) model.Packages.Add(saved);
             Directory.Delete(root, recursive: true);
         }
