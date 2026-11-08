@@ -43,6 +43,17 @@ public class AdBlockRustEngineTests
     }
 
     [Theory]
+    [InlineData("https://doubleclick.net/ad.js?note=hcaptcha.com")]
+    [InlineData("https://doubleclick.net/ad.js#challenges.cloudflare.com")]
+    [InlineData("https://doubleclick.net/hcaptcha.com/ad.js")]
+    [InlineData("https://hcaptcha.com@doubleclick.net/ad.js")]
+    public void ShouldBlock_ChallengeMarkerCannotExemptAnUnrelatedBlockedHost(string url)
+    {
+        var engine = AdBlockRustEngine.Instance;
+        Assert.True(engine.ShouldBlock(url, "https://source.example.test/page", "script", out _));
+    }
+
+    [Theory]
     [InlineData("https://rapidgator.net/file/12345/archive.zip")]
     [InlineData("https://ddownload.com/dl/file.rar")]
     [InlineData("https://mega.nz/file/abc#xyz")]

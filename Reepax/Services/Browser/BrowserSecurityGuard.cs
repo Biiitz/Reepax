@@ -15,18 +15,11 @@ namespace Reepax.Services.Browser;
 /// </summary>
 public static partial class BrowserSecurityGuard
 {
-    private static readonly ConcurrentDictionary<string, byte> _whitelistedDomains = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly List<Regex> _whitelistedUrlPatterns = new();
-    private static readonly object _lock = new();
+    private static readonly (string Host, string Path)[] _challengeRules = InitializeWhitelists();
 
     public static ConcurrentDictionary<string, byte> DynamicallyBlockedRedirectDomains { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    static BrowserSecurityGuard()
-    {
-        InitializeWhitelists();
-    }
-
-    private static void InitializeWhitelists()
+    private static (string Host, string Path)[] InitializeWhitelists()
     {
         // 100% CAPTCHA & Security Challenge Protection - Never Block or Tamper
         var captchaDomains = new[]
@@ -73,10 +66,11 @@ public static partial class BrowserSecurityGuard
             "friendlycaptcha.eu"
         };
 
-        foreach (var cd in captchaDomains)
+        return captchaDomains.Select(entry =>
         {
-            _whitelistedDomains[cd] = 1;
-        }
+            int pathStart = entry.IndexOf('/');
+            return pathStart < 0 ? (entry, string.Empty) : (entry[..pathStart], entry[pathStart..]);
+        }).ToArray();
     }
 
     /// <summary>
@@ -97,24 +91,23 @@ public static partial class BrowserSecurityGuard
             return true;
         }
 
-        // Mandatory Whitelist Fast-Path (<0.005ms)
-        foreach (var white in _whitelistedDomains.Keys)
-        {
-            if (url.Contains(white, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return false;
 
-        lock (_lock)
+        string host = uri.Host.TrimEnd('.');
+        string path = uri.AbsolutePath;
+        foreach (var rule in _challengeRules)
         {
-            foreach (var whitePat in _whitelistedUrlPatterns)
-            {
-                try
-                {
-                    if (whitePat.IsMatch(url))
-                        return true;
-                }
-                catch (RegexMatchTimeoutException) { }
-            }
+            if (!host.EndsWith(rule.Host, StringComparison.OrdinalIgnoreCase) ||
+                (host.Length > rule.Host.Length && host[host.Length - rule.Host.Length - 1] != '.'))
+                continue;
+
+            // Match path boundaries so adjacent names cannot claim a challenge exception.
+            if (rule.Path.Length == 0 || path.Equals(rule.Path, StringComparison.Ordinal) ||
+                (path.StartsWith(rule.Path, StringComparison.Ordinal) &&
+                    path.Length > rule.Path.Length && path[rule.Path.Length] == '/'))
+                return true;
         }
 
         return false;

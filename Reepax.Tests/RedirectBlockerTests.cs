@@ -102,6 +102,51 @@ public class RedirectBlockerTests
         Assert.False(BrowserSecurityGuard.IsWhitelisted(""));
     }
 
+    [Theory]
+    [InlineData("https://other.example.invalid/?note=hcaptcha.com")]
+    [InlineData("https://other.example.invalid/#challenges.cloudflare.com")]
+    [InlineData("https://other.example.invalid/hcaptcha.com/page")]
+    [InlineData("https://hcaptcha.com@other.example.invalid/page")]
+    [InlineData("https://hcaptcha.com.other.example.invalid/page")]
+    [InlineData("https://nothcaptcha.com/page")]
+    [InlineData("https://other.example.invalid/google.com/recaptcha/api.js")]
+    public void ChallengeMarkerOutsideAllowedHost_DoesNotBypassPopupOrRedirectChecks(string url)
+    {
+        const string source = "https://source.example.test/page";
+        Assert.False(BrowserSecurityGuard.IsWhitelisted(url));
+        Assert.True(BrowserSecurityGuard.ShouldBlockPopup(source, url, false));
+        Assert.True(BrowserSecurityGuard.ShouldBlockPopup(source, url, true));
+        Assert.True(BrowserSecurityGuard.ShouldBlockRedirect(source, url, false));
+    }
+
+    [Theory]
+    [InlineData("https://google.com/recaptcha-other/api.js")]
+    [InlineData("https://google.com/other/recaptcha/api.js")]
+    [InlineData("https://google.com/recaptcha/../other")]
+    [InlineData("https://apis.google.com/js/api.js-other")]
+    [InlineData("https://google.com/other?note=/recaptcha")]
+    [InlineData("ftp://hcaptcha.com/resource")]
+    [InlineData("hcaptcha.com/resource")]
+    public void IsWhitelisted_RequiresAnAbsoluteWebUrlAndTheConfiguredPath(string url)
+        => Assert.False(BrowserSecurityGuard.IsWhitelisted(url));
+
+    [Theory]
+    [InlineData("https://HCAPTCHA.COM/resource?note=example#details")]
+    [InlineData("http://child.hcaptcha.com/resource")]
+    [InlineData("https://hcaptcha.com./resource")]
+    [InlineData("https://google.com/recaptcha")]
+    [InlineData("https://www.google.com/recaptcha/enterprise.js?render=example")]
+    [InlineData("https://gstatic.com/recaptcha/releases/example/script.js")]
+    [InlineData("https://apis.google.com/js/api.js?example=1")]
+    [InlineData("https://cloudflare.com/cdn-cgi/challenge-platform/script.js")]
+    public void ChallengeRules_PreserveAllowedHostsPathsAndSubdomains(string url)
+    {
+        const string source = "https://source.example.test/page";
+        Assert.True(BrowserSecurityGuard.IsWhitelisted(url));
+        Assert.False(BrowserSecurityGuard.ShouldBlockPopup(source, url, false));
+        Assert.False(BrowserSecurityGuard.ShouldBlockRedirect(source, url, false));
+    }
+
     [Fact]
     public void ShouldBlockRedirect_BlocksDynamicallyDiscovered30xDomains()
     {

@@ -25,7 +25,9 @@ public sealed partial class BrowserDownloadHandoffTests
     [Theory]
     [InlineData("/popup-query")]
     [InlineData("/popup-fragment")]
-    public Task MisleadingPopupFileName_DoesNotReplacePageOrPreventTheDownload(string endpoint) => RunAsync(async fixture =>
+    [InlineData("/popup-challenge-query")]
+    [InlineData("/popup-challenge-fragment")]
+    public Task MisleadingPopupTarget_DoesNotReplacePageOrPreventTheDownload(string endpoint) => RunAsync(async fixture =>
     {
         SettingsService.Instance.Settings.EnableAdBlocker = true;
         await fixture.LoadAsync(endpoint);
@@ -59,6 +61,29 @@ public sealed partial class BrowserDownloadHandoffTests
         Assert.Equal(1, fixture.ClosedWindows);
         Assert.Equal(1, fixture.OpenedWindows);
         Assert.False(File.Exists(fixture.Item.SaveFilePath + ".part"));
+    });
+
+    [Fact]
+    public Task SpoofedChallengeScriptPopup_IsBlockedWithoutReplacingThePage() => RunAsync(async fixture =>
+    {
+        SettingsService.Instance.Settings.EnableAdBlocker = true;
+        await fixture.LoadAsync("/start");
+        string target = fixture.Source.Url("/popup?note=hcaptcha.com").Replace("127.0.0.1", "localhost");
+        int nativePopups = 0;
+        void Requested(object? sender, CoreWebView2NewWindowRequestedEventArgs args) => nativePopups++;
+        fixture.WebView.CoreWebView2.NewWindowRequested += Requested;
+        try
+        {
+            await fixture.WebView.ExecuteScriptAsync("window.open(" + JsonSerializer.Serialize(target) + ")");
+            Assert.Equal(1, fixture.BlockedPopups);
+            Assert.Equal(0, nativePopups);
+            Assert.Equal("/start", fixture.WebView.Source.AbsolutePath);
+            Assert.Equal(DownloadStatus.InBrowser, fixture.Item.Status);
+            Assert.Equal(0, fixture.ClosedWindows);
+            Assert.Null(fixture.Item.DirectDownloadUrl);
+            Assert.DoesNotContain(fixture.Source.Requests, request => request.Path == "/popup");
+        }
+        finally { fixture.WebView.CoreWebView2.NewWindowRequested -= Requested; }
     });
 
     [Fact]
@@ -489,7 +514,15 @@ internal sealed class BrowserHandoffSource : IAsyncDisposable
                     (endpoint == "/post" && line[0] == "POST") || (endpoint == "/once" && Interlocked.Increment(ref _once) == 1);
                 string body = endpoint == "/start" ? "<p>Choose a download.</p>" : endpoint is "/dl/intermediate" or "/manual"
                     ? $"<button id='{(endpoint == "/manual" ? "download" : "manual-choice")}' onclick=\"window.open('/file')\">Download</button>" : "<p>File request expired.</p>";
-                if (endpoint is "/popup-query" or "/popup-fragment") body = PopupPage(endpoint == "/popup-fragment");
+                string? popupSuffix = endpoint switch
+                {
+                    "/popup-query" => "?file=setup.zip",
+                    "/popup-fragment" => "#setup.rar",
+                    "/popup-challenge-query" => "?note=hcaptcha.com",
+                    "/popup-challenge-fragment" => "#challenges.cloudflare.com",
+                    _ => null
+                };
+                if (popupSuffix != null) body = PopupPage(popupSuffix);
                 byte[] bytes = file ? Bytes : endpoint == "/prepare" ? Encoding.UTF8.GetBytes("{\"url\":\"/file\"}")
                     : Encoding.UTF8.GetBytes("<!doctype html><html><body>" + body + "</body></html>");
                 if (endpoint == "/empty") bytes = [];
@@ -529,9 +562,9 @@ internal sealed class BrowserHandoffSource : IAsyncDisposable
             catch (IOException) { }
         }
     }
-    private string PopupPage(bool fragment)
+    private string PopupPage(string suffix)
     {
-        string popupUrl = Url("/popup" + (fragment ? "#setup.rar" : "?file=setup.zip")).Replace("127.0.0.1", "localhost");
+        string popupUrl = Url("/popup" + suffix).Replace("127.0.0.1", "localhost");
         return $$"""
             <button id='download'>Download</button>
             <script>
