@@ -777,11 +777,11 @@ public partial class MainWindow : Window
         return IntPtr.Zero;
     }
 
-    private void OnClipboardLinksDetected(List<string> urls)
+    private bool OnClipboardLinksDetected(List<string> urls)
     {
-        if (urls == null || urls.Count == 0) return;
-        if (!ViewModel.EnableClipboardMonitor) return;
-        if (!ViewModel.CanOpenAddLinks) return;
+        if (urls == null || urls.Count == 0) return false;
+        if (!ViewModel.EnableClipboardMonitor) return false;
+        if (!ViewModel.CanOpenAddLinks) return false;
 
         var prefill = string.Join(Environment.NewLine, urls);
 
@@ -795,7 +795,7 @@ public partial class MainWindow : Window
         }
 
         Activate();
-        ShowAddLinksDialog(prefill);
+        return ShowAddLinksDialog(prefill);
     }
 
     private void HideTitleBarIcon()
@@ -1099,16 +1099,16 @@ public partial class MainWindow : Window
     }
 
 
-    private void ShowAddLinksDialog(string? prefill = null, DownloadPackage? targetPackage = null)
+    private bool ShowAddLinksDialog(string? prefill = null, DownloadPackage? targetPackage = null)
     {
-        if (ViewModel.SelectedMainTab != AppMainTab.Downloads) return;
+        if (ViewModel.SelectedMainTab != AppMainTab.Downloads) return false;
         if (ViewModel.IsRemovalInProgress)
         {
             ShowAddLinksAfterRemoval(prefill, targetPackage);
-            return;
+            return true;
         }
         if (!ViewModel.CanOpenAddLinks)
-            return;
+            return false;
 
         // Already open dialog: avoid second modal window — append dropped text instead.
         if (_openAddLinksDialog != null)
@@ -1118,7 +1118,7 @@ public partial class MainWindow : Window
                 _openAddLinksDialog.AppendText(prefill);
             }
             _openAddLinksDialog.Activate();
-            return;
+            return true;
         }
 
         var dialog = targetPackage != null
@@ -1148,6 +1148,7 @@ public partial class MainWindow : Window
                     dialog.AutoResolveHostLinks);
             }
         }
+        return true;
     }
 
     private void AddLinks_Click(object sender, RoutedEventArgs e)

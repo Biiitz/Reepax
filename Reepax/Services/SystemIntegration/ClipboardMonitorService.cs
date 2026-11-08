@@ -33,7 +33,7 @@ public sealed class ClipboardMonitorService : IDisposable
 
     private IntPtr _hwnd = IntPtr.Zero;
     private bool _isListening;
-    private Action<List<string>>? _onLinksDetected;
+    private Func<List<string>, bool>? _onLinksDetected;
     private static string? _lastInternalCopiedHash;
     private static DateTime _lastInternalCopiedTime = DateTime.MinValue;
     private string[]? _lastProcessedUrls;
@@ -48,7 +48,7 @@ public sealed class ClipboardMonitorService : IDisposable
     /// <summary>
     /// Attaches the native Windows clipboard format listener to the specified window handle.
     /// </summary>
-    public void Start(IntPtr hwnd, Action<List<string>> onLinksDetected)
+    public void Start(IntPtr hwnd, Func<List<string>, bool> onLinksDetected)
     {
         lock (_lock)
         {
@@ -169,8 +169,19 @@ public sealed class ClipboardMonitorService : IDisposable
             _lastProcessedUrls.SequenceEqual(links, DownloadUrlComparer.Instance)))
             return;
 
-        _lastProcessedUrls = links.ToArray();
-        _onLinksDetected?.Invoke(links);
+        if (_onLinksDetected is not { } handler) return;
+
+        var previous = _lastProcessedUrls;
+        var candidate = links.ToArray();
+        // Reserve during modal reentrancy; rejected handoffs must remain retryable.
+        _lastProcessedUrls = candidate;
+        bool accepted = false;
+        try { accepted = handler(links); }
+        finally
+        {
+            if (!accepted && ReferenceEquals(_lastProcessedUrls, candidate))
+                _lastProcessedUrls = previous;
+        }
     }
 
     /// <summary>

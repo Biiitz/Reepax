@@ -19,6 +19,12 @@ public sealed class WindowDownloadFlowTests
     public async Task MainWindow_ColumnMenuSwitchesFromHeaderToGearWithoutMovingOutsideWindow(string language)
         => await RunWindowWorkerAsync(language, "--column-menu-worker", "Column menu placement passed");
 
+    [Theory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public async Task MainWindow_ClipboardRetriesRejectedLinksAndAppendsOnlyNewLinks(string language)
+        => await RunWindowWorkerAsync(language, "--clipboard-window-worker", "Clipboard handoff passed");
+
     private static async Task RunWindowWorkerAsync(string language, string worker, string success)
     {
         string root = Directory.CreateTempSubdirectory("WindowFlow_").FullName;

@@ -72,7 +72,7 @@ public sealed class DownloadUrlIdentityTests
     {
         using var monitor = (ClipboardMonitorService)Activator.CreateInstance(typeof(ClipboardMonitorService), nonPublic: true)!;
         var detected = new List<string[]>();
-        monitor.Start(new IntPtr(1), links => detected.Add(links.ToArray()));
+        monitor.Start(new IntPtr(1), links => { detected.Add(links.ToArray()); return true; });
         string first = "https://files.example.invalid/payload.bin?token=Ab1";
         string second = "https://files.example.invalid/payload.bin?token=aB1";
 

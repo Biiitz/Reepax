@@ -24,7 +24,7 @@ namespace Reepax.Tests;
 
 internal static class WindowDownloadFlowWorker
 {
-    internal static int Run(string root, string language, bool columnsOnly = false)
+    internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -32,7 +32,7 @@ internal static class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language, columnsOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -44,7 +44,7 @@ internal static class WindowDownloadFlowWorker
         return result;
     }
 
-    private static async Task ExecuteAsync(string root, string language, bool columnsOnly)
+    private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -89,6 +89,12 @@ internal static class WindowDownloadFlowWorker
         {
             main.Show();
             await IdleAsync();
+            if (clipboardOnly)
+            {
+                CheckClipboardHandoffs(main, app);
+                Console.WriteLine("Clipboard handoff passed");
+                return;
+            }
             if (columnsOnly)
             {
                 await CheckColumnMenuAsync(main);
@@ -308,6 +314,83 @@ internal static class WindowDownloadFlowWorker
             Assert.True(menu.IsOpen);
         }
         finally { menu.IsOpen = gearMenu.IsOpen = false; }
+    }
+
+    private static void CheckClipboardHandoffs(MainWindow main, Application app)
+    {
+        var model = (MainViewModel)main.DataContext;
+        bool previousTestEnvironment = Reepax.Services.SystemIntegration.ClipboardMonitorService.IsTestEnvironment;
+        Reepax.Services.SystemIntegration.ClipboardMonitorService.IsTestEnvironment = true;
+        using var monitor = (Reepax.Services.SystemIntegration.ClipboardMonitorService)Activator.CreateInstance(
+            typeof(Reepax.Services.SystemIntegration.ClipboardMonitorService), nonPublic: true)!;
+        var handler = typeof(MainWindow).GetMethod("OnClipboardLinksDetected",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        int deliveries = 0;
+        bool Deliver(List<string> urls)
+        {
+            deliveries++;
+            return (bool?)handler.Invoke(main, new object[] { urls }) == true;
+        }
+        try
+        {
+            monitor.Start(new IntPtr(1), urls => Deliver(urls));
+            for (int state = 0; state < 4; state++)
+            {
+                model.EnableClipboardMonitor = state != 3;
+                model.SelectedMainTab = state == 0 ? AppMainTab.Settings : AppMainTab.Downloads;
+                model.IsBusy = state == 1;
+                model.IsRemovalInProgress = state == 2;
+                string first = $"https://files.example.invalid/sample-{state}.zip";
+                string second = $"https://files.example.invalid/extra-{state}.zip";
+                var urls = Reepax.Services.SystemIntegration.ClipboardMonitorService.ExtractLinksFromData(null, first);
+                Assert.Equal(new[] { first }, urls);
+                int before = deliveries;
+                monitor.DispatchDetectedLinks(urls);
+                Assert.Equal(before + 1, deliveries);
+                Assert.Empty(app.Windows.OfType<AddLinksDialog>());
+                model.SelectedMainTab = AppMainTab.Downloads;
+                model.IsBusy = model.IsRemovalInProgress = false;
+                model.EnableClipboardMonitor = true;
+                AddLinksDialog? observed = null;
+                Exception? failure = null;
+                var watcher = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+                watcher.Tick += (_, _) =>
+                {
+                    var dialog = app.Windows.OfType<AddLinksDialog>().SingleOrDefault();
+                    if (dialog?.IsVisible != true) return;
+                    watcher.Stop();
+                    observed = dialog;
+                    try
+                    {
+                        Assert.Same(main, dialog.Owner);
+                        Assert.Equal(first, dialog.LinksTextBox.Text);
+                        monitor.DispatchDetectedLinks(new() { first });
+                        Assert.Equal(before + 2, deliveries);
+                        monitor.DispatchDetectedLinks(new() { second });
+                        monitor.DispatchDetectedLinks(new() { second });
+                        Assert.Equal(before + 3, deliveries);
+                        Assert.Equal(first + Environment.NewLine + second, dialog.LinksTextBox.Text);
+                        Assert.Single(app.Windows.OfType<AddLinksDialog>());
+                    }
+                    catch (Exception error) { failure = error; }
+                    finally { dialog.Close(); }
+                };
+                watcher.Start();
+                try { monitor.DispatchDetectedLinks(new(urls)); }
+                finally { watcher.Stop(); }
+                if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+                Assert.NotNull(observed);
+                Assert.Empty(app.Windows.OfType<AddLinksDialog>());
+                monitor.DispatchDetectedLinks(new() { second });
+                Assert.Equal(before + 3, deliveries);
+                Assert.Empty(model.Packages);
+            }
+        }
+        finally
+        {
+            model.EnableClipboardMonitor = false;
+            Reepax.Services.SystemIntegration.ClipboardMonitorService.IsTestEnvironment = previousTestEnvironment;
+        }
     }
 
     private sealed record PointPosition(double x, double y);
