@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using Reepax.Models;
+using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
@@ -467,37 +468,103 @@ public class PackageAggregateRefreshTests
         Assert.Contains(nameof(DownloadPackage.DurationFormatted), changed);
     }
 
-    [Fact]
-    public void LanguageChange_RefreshesSummaryForPausedPackages()
+    [Theory]
+    [InlineData("en", "de", false, "Pausiert", "Dateien")]
+    [InlineData("de", "en", false, "Paused", "Files")]
+    [InlineData("en", "de", true, "Übersprungen", "Dateien")]
+    [InlineData("de", "en", true, "Skipped", "Files")]
+    public void LanguageChange_RefreshesPausedStatusesWithoutChangingDownloadData(
+        string language, string nextLanguage, bool disabled, string expectedStatus, string filesLabel)
     {
+        string root = Directory.CreateTempSubdirectory("PausedStatus_").FullName;
+        var previousLanguage = LocalizationService.Instance.CurrentLanguage;
         var viewModel = new MainViewModel();
         var previousPackages = viewModel.Packages.ToArray();
-        var previousLanguage = LocalizationService.Instance.CurrentLanguage;
+        var queue = QueueManager.Instance;
+        bool queueWasRunning = queue.IsRunning;
         try
         {
             viewModel.Packages.Clear();
-            var package = new DownloadPackage { IsCustomName = true, AutoPar2Repair = false };
-            package.Items.Add(new DownloadItem { Status = DownloadStatus.Paused });
+            queue.StopQueue();
+            LocalizationService.Instance.CurrentLanguage = language;
+            var package = new DownloadPackage { Name = "Example", SaveDirectory = root, IsCustomName = true, AutoPar2Repair = false };
+            var item = new DownloadItem
+            {
+                FileName = "example.bin", SaveFilePath = Path.Combine(root, "example.bin"),
+                Status = DownloadStatus.Queued, TotalBytes = 64, DownloadedBytes = 4,
+                ProgressPercentage = 6.25, ElapsedDurationMs = 1234,
+                ExpectedChecksum = new string('A', 64), CalculatedChecksum = new string('B', 64)
+            };
+            byte[] partial = [2, 3, 5, 7], checkpoint = [11, 13, 17];
+            File.WriteAllBytes(item.SaveFilePath + ".part", partial);
+            File.WriteAllBytes(item.SaveFilePath + ".part.segments", checkpoint);
+            package.Items.Add(item);
             viewModel.Packages.Add(package);
-            LocalizationService.Instance.CurrentLanguage = "en";
+            queue.PauseItem(item);
+            if (disabled) item.IsEnabled = false;
             package.RecalculateAggregates(force: true);
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Equal(Loc.Get(disabled ? "Status_Skipped" : "Status_Paused"), item.StatusMessage);
+            Assert.False(package.IsDirty);
+            long revision = package.AggregateInputRevision;
+            double progress = package.ProgressPercentage;
+            long downloaded = package.DownloadedBytes;
+            TimeSpan itemDuration = item.Duration, packageDuration = package.Duration;
+            Guid id = item.Id;
+            string path = item.SaveFilePath;
             var changed = new List<string>();
+            var itemChanged = new List<string>();
             package.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName != null)
                     changed.Add(e.PropertyName);
             };
+            item.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != null) itemChanged.Add(e.PropertyName);
+            };
 
-            LocalizationService.Instance.CurrentLanguage = "de";
-            Assert.Contains("Dateien", package.ItemsCountSummary);
+            LocalizationService.Instance.CurrentLanguage = nextLanguage;
+            Assert.Equal(expectedStatus, item.StatusMessage);
+            Assert.Equal(expectedStatus, package.StatusMessage);
+            Assert.Contains(filesLabel, package.ItemsCountSummary);
             Assert.Contains(nameof(DownloadPackage.ItemsCountSummary), changed);
+            Assert.Contains(nameof(DownloadPackage.StatusMessage), changed);
+            Assert.Contains(nameof(DownloadItem.StatusMessage), itemChanged);
+            Assert.Equal(revision, package.AggregateInputRevision);
+            Assert.False(package.IsDirty);
+
+            package.StatusMessage = "Example package diagnostic";
+            item.StatusMessage = "Example item diagnostic";
+            LocalizationService.Instance.CurrentLanguage = language;
+            viewModel.RecalculateGlobalStats();
+            Assert.Equal("Example package diagnostic", package.StatusMessage);
+            Assert.Equal("Example item diagnostic", item.StatusMessage);
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Equal(DownloadStatus.Paused, package.Status);
+            Assert.Equal(id, item.Id);
+            Assert.Equal(path, item.SaveFilePath);
+            Assert.Equal(64, item.TotalBytes);
+            Assert.Equal(4, item.DownloadedBytes);
+            Assert.Equal(progress, package.ProgressPercentage);
+            Assert.Equal(downloaded, package.DownloadedBytes);
+            Assert.Equal(itemDuration, item.Duration);
+            Assert.Equal(packageDuration, package.Duration);
+            Assert.Equal(new string('A', 64), item.ExpectedChecksum);
+            Assert.Equal(new string('B', 64), item.CalculatedChecksum);
+            Assert.Equal(partial, File.ReadAllBytes(path + ".part"));
+            Assert.Equal(checkpoint, File.ReadAllBytes(path + ".part.segments"));
+            Assert.False(File.Exists(path));
         }
         finally
         {
+            queue.StopQueue();
             viewModel.Packages.Clear();
+            if (queueWasRunning) queue.StartQueue();
             foreach (var package in previousPackages)
                 viewModel.Packages.Add(package);
             LocalizationService.Instance.CurrentLanguage = previousLanguage;
+            Directory.Delete(root, recursive: true);
         }
     }
 

@@ -40,6 +40,15 @@ public class LocalizationService : INotifyPropertyChanged
 
     public string this[string key] => Get(key);
 
+    internal string TranslateKnownText(string text, params string[] keys)
+    {
+        foreach (string key in keys)
+            foreach (var map in _languages.Values)
+                if (map.TryGetValue(key, out var translation) && string.Equals(text, translation, StringComparison.Ordinal))
+                    return Get(key);
+        return text;
+    }
+
     public string Get(string key)
     {
         if (string.IsNullOrEmpty(key))

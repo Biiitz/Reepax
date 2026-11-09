@@ -221,6 +221,10 @@ public partial class DownloadPackage
             _publishedEmptyStatusMessage = Loc.Get("Status_Empty");
             StatusMessage = _publishedEmptyStatusMessage;
         }
+        else if (Status == DownloadStatus.Paused)
+        {
+            StatusMessage = LocalizationService.Instance.TranslateKnownText(StatusMessage, "Status_Paused", "Status_Skipped");
+        }
         PublishSummaryChanges(items.Length, CountEnabledItems(items));
         PublishTimeChanges();
     }

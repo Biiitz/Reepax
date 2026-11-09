@@ -123,6 +123,12 @@ public partial class DownloadItem : ObservableObject
 
     internal void RefreshChecksumVerificationSummary() => OnPropertyChanged(nameof(ChecksumVerificationSummary));
 
+    internal void RefreshPausedStatusMessage()
+    {
+        if (Status == DownloadStatus.Paused)
+            StatusMessage = LocalizationService.Instance.TranslateKnownText(StatusMessage, "Status_Paused", "Status_Skipped");
+    }
+
     partial void OnStatusChanged(DownloadStatus value)
     {
         if (value != DownloadStatus.Downloading) return;

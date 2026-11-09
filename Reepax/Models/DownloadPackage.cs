@@ -673,7 +673,8 @@ public partial class DownloadPackage : ObservableObject
 
     private void Item_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(DownloadItem.ChecksumVerificationSummary)) return;
+        // Display-only changes do not alter aggregate contributions.
+        if (e.PropertyName is nameof(DownloadItem.ChecksumVerificationSummary) or nameof(DownloadItem.StatusMessage)) return;
         if (sender is DownloadItem item && IsProgressProperty(e.PropertyName))
             _progressCache.Update(item);
         else
