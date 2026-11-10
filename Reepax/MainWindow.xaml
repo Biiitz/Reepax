@@ -111,6 +111,13 @@
                     <Path Data="{StaticResource IconPlus}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Header="{loc:Loc Menu_ResetPackageSorting}" ToolTip="{loc:Loc Menu_ResetPackageSorting_ToolTip}"
+                      Command="{Binding DataContext.ResetPackageSortingCommand, Source={x:Reference RootWindow}}"
+                      CommandParameter="{Binding}">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconRefresh}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
             <Separator Background="{DynamicResource BorderDarkBrush}" />
 
             <MenuItem Header="{loc:Loc Menu_CopyAllUrls}" Click="CopyPackageUrls_MenuItem_Click">

@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Reepax.Models;
 using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 
 namespace Reepax.ViewModels;
 
@@ -758,6 +759,44 @@ public partial class MainViewModel
         }
 
         ApplyCurrentSort();
+    }
+
+    private bool CanResetPackageSorting(DownloadPackage? package)
+    {
+        if (package == null || SelectedMainTab != AppMainTab.Downloads || IsBusy || IsRemovalInProgress)
+            return false;
+
+        var packages = GetPackagesForContextAction(package);
+        return packages.Length > 0 && packages.All(entry => !entry.IsEditing &&
+            entry.ItemsSnapshot.All(item => !item.IsUnavailableForProcessing)) &&
+            packages.Any(HasResettableItemOrder);
+    }
+
+    private bool HasResettableItemOrder(DownloadPackage package)
+    {
+        var addedOrder = package.Items.OrderBy(item => item.AddedOrderIndex).ToArray();
+        return !package.Items.SequenceEqual(addedOrder) ||
+            (!string.IsNullOrEmpty(SortColumn) && SortDirection.HasValue &&
+             !package.Items.OrderBy(item => item.OriginalOrderIndex).ThenBy(item => item.CreatedAt).SequenceEqual(addedOrder));
+    }
+
+    [RelayCommand(CanExecute = nameof(CanResetPackageSorting))]
+    private void ResetPackageSorting(DownloadPackage? package)
+    {
+        if (!CanResetPackageSorting(package)) return;
+
+        // Clear the global sort without rearranging unrelated packages.
+        SortColumn = null;
+        SortDirection = null;
+        foreach (var entry in GetPackagesForContextAction(package!))
+        {
+            SyncItemOrder(entry, entry.Items.OrderBy(item => item.AddedOrderIndex).ToArray());
+            for (int index = 0; index < entry.Items.Count; index++)
+                entry.Items[index].OriginalOrderIndex = index + 1;
+        }
+
+        DownloadPersistenceService.Instance.RequestSave();
+        ResetPackageSortingCommand.NotifyCanExecuteChanged();
     }
 
     public void ClearColumnSort()

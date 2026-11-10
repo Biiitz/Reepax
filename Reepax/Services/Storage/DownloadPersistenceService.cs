@@ -39,6 +39,7 @@ public class DownloadItemDto
     public string? Referer { get; set; }
     public bool IsEnabled { get; set; } = true;
     public DateTime CreatedAt { get; set; }
+    public long AddedOrderIndex { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public long ElapsedDurationMs { get; set; }
@@ -878,6 +879,7 @@ public class DownloadPersistenceService : IDisposable
                         Referer = item.Referer,
                         IsEnabled = item.IsEnabled,
                         CreatedAt = item.CreatedAt,
+                        AddedOrderIndex = item.AddedOrderIndex,
                         StartedAt = item.StartedAt,
                         CompletedAt = item.CompletedAt,
                         ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
@@ -1539,6 +1541,7 @@ public class DownloadPersistenceService : IDisposable
                             Referer = itemDto.Referer,
                             IsEnabled = itemDto.IsEnabled,
                             CreatedAt = itemDto.CreatedAt,
+                            AddedOrderIndex = itemDto.AddedOrderIndex,
                             StartedAt = itemDto.StartedAt,
                             CompletedAt = itemDto.CompletedAt,
                             ElapsedDurationMs = itemDto.ElapsedDurationMs,
@@ -1836,6 +1839,7 @@ public class DownloadPersistenceService : IDisposable
                             Referer = itemDto.Referer,
                             IsEnabled = itemDto.IsEnabled,
                             CreatedAt = itemDto.CreatedAt,
+                            AddedOrderIndex = itemDto.AddedOrderIndex,
                             StartedAt = itemDto.StartedAt,
                             CompletedAt = itemDto.CompletedAt,
                             ElapsedDurationMs = itemDto.ElapsedDurationMs,

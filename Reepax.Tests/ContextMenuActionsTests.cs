@@ -313,6 +313,7 @@ public sealed class ContextMenuActionsTests : IDisposable
             Assert.Equal(copy, Loc.Get("Menu_CopyUrl"));
             Assert.Equal(browser, Loc.Get("Menu_OpenInBrowser"));
             Assert.NotEqual("Menu_ChangeDownloadPath", Loc.Get("Menu_ChangeDownloadPath"));
+            Assert.Equal(language == "de" ? "Sortierung zurücksetzen" : "Reset sorting", Loc.Get("Menu_ResetPackageSorting"));
             var project = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax"));
             var xaml = XDocument.Load(Path.Combine(project, "MainWindow.xaml"));
             XNamespace key = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -323,6 +324,8 @@ public sealed class ContextMenuActionsTests : IDisposable
             Assert.DoesNotContain("OpenItemInBrowser_MenuItem_Click", package.ToString());
             Assert.Contains("OpenItemInBrowser_MenuItem_Click", item.ToString());
             Assert.DoesNotContain("ChangeDownloadPath_MenuItem_Click", item.ToString());
+            Assert.Contains("ResetPackageSortingCommand", package.ToString());
+            Assert.DoesNotContain("ResetPackageSortingCommand", item.ToString());
             Assert.DoesNotContain("Menu_CopyOriginalUrl", item.ToString());
         }
         finally { localization.CurrentLanguage = previous; }

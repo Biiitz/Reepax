@@ -596,6 +596,7 @@ public partial class DownloadPackage : ObservableObject
 
     public ObservableCollection<DownloadItem> Items { get; } = new();
     private readonly HashSet<DownloadItem> _hookedItems = new();
+    private long _nextAddedOrderIndex;
 
     public DownloadPackage() : this(true)
     {
@@ -621,6 +622,7 @@ public partial class DownloadPackage : ObservableObject
 
             foreach (DownloadItem item in Items)
             {
+                RegisterAddedOrder(item);
                 item.PackageId = Id;
                 item.PropertyChanged += Item_PropertyChanged;
                 _hookedItems.Add(item);
@@ -641,6 +643,7 @@ public partial class DownloadPackage : ObservableObject
             {
                 foreach (DownloadItem item in e.NewItems)
                 {
+                    RegisterAddedOrder(item);
                     item.PackageId = Id;
                     item.PropertyChanged += Item_PropertyChanged;
                     _hookedItems.Add(item);
@@ -655,6 +658,14 @@ public partial class DownloadPackage : ObservableObject
         Volatile.Write(ref _itemsSnapshot, Items.ToArray());
         Interlocked.Exchange(ref _itemsSnapshotDirty, 0);
         RecalculateAggregates(force: true);
+    }
+
+    private void RegisterAddedOrder(DownloadItem item)
+    {
+        if (item.AddedOrderIndex <= 0)
+            item.AddedOrderIndex = ++_nextAddedOrderIndex;
+        else
+            _nextAddedOrderIndex = Math.Max(_nextAddedOrderIndex, item.AddedOrderIndex);
     }
 
     // Throttle progress-driven RecalculateAggregates to at most once per 300 ms per package

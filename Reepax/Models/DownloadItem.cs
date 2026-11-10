@@ -269,6 +269,7 @@ public partial class DownloadItem : ObservableObject
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public int OriginalOrderIndex { get; set; }
+    public long AddedOrderIndex { get; internal set; }
 
     public void StartDownloadSession()
     {

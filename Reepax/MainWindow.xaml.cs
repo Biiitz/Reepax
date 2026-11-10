@@ -2236,6 +2236,7 @@ public partial class MainWindow : Window
                   ?? ViewModel.Packages.FirstOrDefault(p => p.IsSelected);
 
         menu.DataContext = pkg;
+        ViewModel.ResetPackageSortingCommand.NotifyCanExecuteChanged();
         var retryCleanupItem = menu.Items.OfType<MenuItem>().FirstOrDefault(item => (string?)item.Tag == "RetryArchiveCleanup");
         if (retryCleanupItem != null)
         {
