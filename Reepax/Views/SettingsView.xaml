@@ -10,13 +10,18 @@
     mc:Ignorable="d"
     d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
     Background="{DynamicResource BgDarkBrush}"
-    Foreground="{DynamicResource TextPrimaryBrush}">
+    Foreground="{DynamicResource TextPrimaryBrush}"
+    PreviewKeyDown="SettingsSearch_PreviewKeyDown">
 
     <UserControl.Resources>
         <ResourceDictionary Source="../Themes/SettingsControls.xaml" />
     </UserControl.Resources>
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <!-- Left Category Sidebar -->
             <ColumnDefinition Width="236" />
@@ -25,7 +30,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- ==================== LEFT CATEGORY SIDEBAR ==================== -->
-        <Border Grid.Column="0"
+        <Border Grid.Column="0" Grid.RowSpan="2"
             Background="{DynamicResource SidebarBrush}"
             BorderBrush="{DynamicResource BorderDarkBrush}"
             BorderThickness="0,0,1,0">
@@ -179,13 +184,114 @@
         </Border>
 
         <!-- ==================== RIGHT CONTENT PANE ==================== -->
+        <Border x:Name="SettingsSearchBar" Grid.Column="1" Margin="28,26,0,16" Padding="10,0,4,0" Height="36"
+                HorizontalAlignment="Left" Width="{Binding ActualWidth, ElementName=SettingsContentPanel}"
+                Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource BorderDarkBrush}"
+                BorderThickness="1" CornerRadius="{DynamicResource SubtleCornerRadius}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="About">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="22" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Path Data="{StaticResource IconSearch}" Width="14" Height="14" Stretch="Uniform"
+                      Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" HorizontalAlignment="Left" />
+                <Grid Grid.Column="1">
+                    <TextBlock x:Name="SettingsSearchPlaceholder" Text="{loc:Loc Settings_Search_Placeholder}"
+                               Foreground="{DynamicResource TextMutedBrush}" FontSize="12" VerticalAlignment="Center" IsHitTestVisible="False" />
+                    <TextBox x:Name="SettingsSearchBox" TextChanged="SettingsSearch_TextChanged" MaxLength="256"
+                             Background="Transparent" BorderThickness="0" Padding="0,4" FontSize="12"
+                             Foreground="{DynamicResource TextPrimaryBrush}" CaretBrush="{DynamicResource TextPrimaryBrush}"
+                             VerticalContentAlignment="Center" VerticalAlignment="Stretch"
+                             AutomationProperties.Name="{loc:Loc Settings_Search_Placeholder}"
+                             ToolTip="{loc:Loc Settings_Search_Help}" />
+                </Grid>
+                <Button x:Name="SettingsSearchClearButton" Grid.Column="2" Width="28" Height="26" Padding="6"
+                        Style="{StaticResource SettingsActionButtonStyle}" Visibility="Collapsed"
+                        Click="SettingsSearch_Clear" ToolTip="{loc:Loc Settings_Search_Clear}"
+                        AutomationProperties.Name="{loc:Loc Settings_Search_Clear}">
+                    <Path Data="{StaticResource IconClose}" Width="10" Height="10" Stretch="Uniform" Fill="{DynamicResource TextSecondaryBrush}" />
+                </Button>
+            </Grid>
+        </Border>
+        <Grid x:Name="SettingsSearchResults" Grid.Column="1" Grid.Row="1" Margin="28,0,0,24" Visibility="Collapsed"
+              HorizontalAlignment="Left" Width="{Binding ActualWidth, ElementName=SettingsContentPanel}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <StackPanel Margin="0,0,0,14">
+                <TextBlock x:Name="SettingsSearchStatus" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock x:Name="SettingsSearchEmptyHint" Text="{loc:Loc Settings_Search_EmptyHint}" Margin="0,8,0,0"
+                           FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
+            </StackPanel>
+            <ListBox x:Name="SettingsSearchResultList" Grid.Row="1" BorderThickness="0" Padding="0" Background="Transparent"
+                     HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto" PreviewMouseUp="SettingsSearch_ResultClick"
+                     AutomationProperties.Name="{loc:Loc Settings_Search_ResultsLabel}">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Margin" Value="0,0,0,8" />
+                        <Setter Property="helpers:ControlMotion.PressFeedback" Value="True" />
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <Border x:Name="ResultBorder" Padding="14,12" Background="{DynamicResource BgCardBrush}"
+                                            BorderBrush="{DynamicResource BorderDarkBrush}" BorderThickness="1"
+                                            CornerRadius="{DynamicResource SubtleCornerRadius}">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="ResultBorder" Property="Background" Value="{DynamicResource BgCardAltBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <TextBlock Text="{Binding CategoryName}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4" />
+                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Description}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
         <ScrollViewer x:Name="SettingsContentScrollViewer"
             ScrollChanged="SettingsContentScrollChanged"
-            Grid.Column="1"
+            PreviewMouseDown="SettingsSearchNavigation_Interrupted"
+            PreviewMouseWheel="SettingsSearchNavigation_Interrupted"
+            Grid.Column="1" Grid.Row="1"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto"
             Background="{DynamicResource BgDarkBrush}">
-            <Grid Margin="28,26,28,32" HorizontalAlignment="Stretch">
+            <Grid x:Name="SettingsContentPanel" HorizontalAlignment="Stretch">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Margin" Value="28,0,28,32" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding SelectedSettingsCategory}" Value="About">
+                                <Setter Property="Margin" Value="28,26,28,32" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
 
                 <!-- ******************** CATEGORY 1: GENERAL ******************** -->
                 <StackPanel x:Name="CategoryGeneral"
@@ -196,7 +302,6 @@
                         <TranslateTransform X="0" Y="0" />
                     </StackPanel.RenderTransform>
                     <!-- Language -->
-                    <TextBlock Style="{StaticResource SettingsPageHeadingStyle}" Text="{loc:Loc Settings_Category_General}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingsSectionHeadingStyle}" Text="{loc:Loc Settings_Section_Appearance}" />
@@ -895,7 +1000,6 @@
                     </StackPanel.RenderTransform>
 
                     <!-- Speed limit (MB/s) -->
-                    <TextBlock Style="{StaticResource SettingsPageHeadingStyle}" Text="{loc:Loc Settings_Category_Downloads}" />
                     <Border Style="{StaticResource SettingsCardStyle}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource SettingsSectionHeadingStyle}" Text="{loc:Loc Settings_Section_Transfers}" />
@@ -1521,10 +1625,9 @@
                     <StackPanel.RenderTransform>
                         <TranslateTransform X="0" Y="0" />
                     </StackPanel.RenderTransform>
-                    <TextBlock Style="{StaticResource SettingsPageHeadingStyle}" Text="{loc:Loc Settings_Category_Shortcuts}" />
 
                     <!-- Shortcuts List -->
-                    <ItemsControl ItemsSource="{Binding Shortcuts}">
+                    <ItemsControl x:Name="ShortcutsItems" ItemsSource="{Binding Shortcuts}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Background="{DynamicResource BgCardBrush}"

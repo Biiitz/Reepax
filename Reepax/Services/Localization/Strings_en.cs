@@ -8,6 +8,13 @@ public static class Strings_en
     public static readonly IReadOnlyDictionary<string, string> Map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         // Common
+        ["Settings_Search_Placeholder"] = "Search settings",
+        ["Settings_Search_Help"] = "Search. (Ctrl+F)",
+        ["Settings_Search_Clear"] = "Clear search",
+        ["Settings_Search_ResultsLabel"] = "Settings search results",
+        ["Settings_Search_Results"] = "Results: {0}",
+        ["Settings_Search_NoResults"] = "No matching settings",
+        ["Settings_Search_EmptyHint"] = "Try a shorter part of the setting text, in English or German.",
         ["Overview_Title"] = "Overview",
         ["Overview_Show"] = "Show download overview",
         ["Overview_Help"] = "Choose visible information with the gear. Drag entries to swap their positions; use Ctrl + arrow keys with the keyboard.",

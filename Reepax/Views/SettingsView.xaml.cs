@@ -44,6 +44,8 @@ public partial class SettingsView : UserControl
     private void SettingsView_Loaded(object sender, RoutedEventArgs e)
     {
         HookViewModel();
+        BuildSettingsSearchIndex();
+        Reepax.Services.Localization.LocalizationService.Instance.LanguageChanged += SettingsSearchLanguageChanged;
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
 
@@ -55,14 +57,18 @@ public partial class SettingsView : UserControl
 
     private void SettingsView_Unloaded(object sender, RoutedEventArgs e)
     {
+        CancelSettingsSearchNavigation();
+        Reepax.Services.Localization.LocalizationService.Instance.LanguageChanged -= SettingsSearchLanguageChanged;
         CloseSettingsDropdowns();
         UnhookViewModel();
     }
 
     private void SettingsView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        CancelSettingsSearchNavigation();
         CloseSettingsDropdowns();
         HookViewModel();
+        BuildSettingsSearchIndex();
         UpdateCompletionSoundVolumeVisibility(animate: false);
         UpdateErrorSoundVolumeVisibility(animate: false);
 
@@ -74,6 +80,7 @@ public partial class SettingsView : UserControl
     private void SettingsView_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (!IsVisible) CloseSettingsDropdowns();
+        if (!IsVisible) CancelSettingsSearchNavigation();
         if (IsVisible)
         {
             Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: false)),
@@ -124,6 +131,13 @@ public partial class SettingsView : UserControl
         }
         else if (e.PropertyName == nameof(MainViewModel.SelectedSettingsCategory))
         {
+            if (!_openingSettingsSearchResult)
+            {
+                CancelSettingsSearchNavigation();
+                _openingSettingsSearchResult = true;
+                try { SettingsSearchBox.Clear(); }
+                finally { _openingSettingsSearchResult = false; }
+            }
             CloseSettingsDropdowns();
             Dispatcher.BeginInvoke(new Action(() => UpdateCategoryBranches(animate: true)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
@@ -178,6 +192,12 @@ public partial class SettingsView : UserControl
 
         var transform = (element.RenderTransform as TranslateTransform)
                      ?? (element.RenderTransform = new TranslateTransform()) as TranslateTransform;
+
+        if (_openingSettingsSearchResult && IsSettingsSearchNavigationActive)
+        {
+            ResetCategoryAnimation(element, transform);
+            return;
+        }
 
         if (element.IsVisible)
         {

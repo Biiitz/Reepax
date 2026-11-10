@@ -11,6 +11,7 @@ public sealed class ThemeDefinition : INotifyPropertyChanged
     public bool SupportsCustomAccent { get; }
     public string AccentColor { get; }
     private readonly string _labelKey;
+    internal string LabelKey => _labelKey;
     public string DisplayName => Loc.Get(_labelKey);
     public event PropertyChangedEventHandler? PropertyChanged;
 
