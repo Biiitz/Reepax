@@ -658,7 +658,7 @@ public static class Strings_de
         ["Filter_Failed"] = "Fehler",
 
         // Archive Password Prompt & Management
-        ["Menu_ArchivePasswords"] = "Archivpasswörter…",
+        ["Menu_ArchivePasswords"] = "Archivpasswörter",
         ["Status_ArchivePasswordRequired"] = "Passwort erforderlich — zum Fortsetzen Archivpasswörter öffnen",
         ["Status_ArchivePasswordUnconfirmed"] = "Passwort nicht bestätigt oder Archiv beschädigt — Archivpasswörter prüfen",
         ["ArchivePasswords_Title"] = "Archivpasswörter",
@@ -709,7 +709,7 @@ public static class Strings_de
         ["Settings_ArchivePasswords_UnknownDate"] = "Unbekannt",
         ["Settings_ArchivePasswords_Usage_ToolTip"] = "Wie oft dieses Passwort ausprobiert wurde, einmal pro Archiventpackung gezählt.",
         ["Settings_ArchivePasswords_Success_ToolTip"] = "Anzahl der Archive, die mit diesem Passwort vollständig entpackt wurden.",
-        ["Settings_ArchivePasswords_Placeholder"] = "Neues Passwort eingeben...",
+        ["Settings_ArchivePasswords_Placeholder"] = "Neues Passwort eingeben",
         ["Settings_ArchivePasswords_Remove"] = "Passwort entfernen",
         ["Settings_ArchivePasswords_Copy"] = "Passwort kopieren",
         ["Settings_ArchivePasswords_Copied"] = "Passwort in die Zwischenablage kopiert.",

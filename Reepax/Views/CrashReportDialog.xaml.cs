@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
+using Reepax.Services;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 
@@ -20,6 +21,7 @@ public partial class CrashReportDialog : Window
     public CrashReportDialog(Exception ex, CrashLogResult result, bool isCritical = false)
     {
         InitializeComponent();
+        ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
 
         _logPath = result.PrimaryLogPath ?? string.Empty;
         LogPathTextBox.Text = string.IsNullOrEmpty(_logPath) ? "N/A" : _logPath;

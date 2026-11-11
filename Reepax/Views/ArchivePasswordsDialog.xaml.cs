@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Reepax.Helpers;
 using Reepax.Models;
+using Reepax.Services;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
@@ -27,6 +28,7 @@ public partial class ArchivePasswordsDialog : Window
     {
         _package = package;
         InitializeComponent();
+        ThemeService.ApplyDarkTitleBar(this, ThemeService.Instance.IsDarkMode);
         _passwordRefresh = new CoalescedDispatcherRefresh(() => { if (!_busy && !_closed) RefreshRows(); }, () => Dispatcher);
         ArchiveSelector.DisplayMemberPath = nameof(PackageArchivePasswordTarget.DisplayName);
         ArchiveSelector.ItemsSource = _extractor.GetPackageArchivePasswordTargets(package);
