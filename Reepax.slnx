@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Reepax.Tests/">
+    <Project Path="Reepax.Tests/UpdateProbe/UpdateProbe.csproj" />
+  </Folder>
   <Project Path="Reepax.Tests/Reepax.Tests.csproj" />
   <Project Path="Reepax/Reepax.csproj" />
 </Solution>

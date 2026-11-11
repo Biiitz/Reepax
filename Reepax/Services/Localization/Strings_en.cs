@@ -591,6 +591,8 @@ public static class Strings_en
         ["UpdateDialog_Button_Later"] = "Later",
         ["UpdateDialog_Status_Starting"] = "Starting update download...",
         ["UpdateDialog_Status_Progress"] = "Downloading: {0} / {1} ({2}%)",
+        ["UpdateDialog_Status_PackageProgress"] = "Preparing update: {0}%",
+        ["UpdateDialog_Status_AdditionalFiles"] = "The application's current folder contains additional files or links. Move them to another folder before updating.",
         ["UpdateDialog_Status_ReadyRestarting"] = "Update ready. Restarting Reepax...",
         ["UpdateDialog_Status_Verifying"] = "Verifying integrity and signature...",
         ["UpdateDialog_Status_Failed"] = "Update failed: {0}",

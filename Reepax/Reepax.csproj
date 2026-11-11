@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <StartupObject>Reepax.Program</StartupObject>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>Reepax</AssemblyName>
     <RootNamespace>Reepax</RootNamespace>
@@ -75,6 +76,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Velopack" Version="[1.3.39-g8d2844f]" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
     <PackageReference Include="SharpCompress" Version="[0.50.4-reepax.2]" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.11" />

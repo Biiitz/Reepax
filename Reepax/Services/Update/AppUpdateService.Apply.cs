@@ -131,10 +131,29 @@ public partial class AppUpdateService
         var root = document.RootElement;
         string session = root.GetProperty("Session").GetString()!;
         string executable = Path.GetFullPath(Path.Combine(directory, "Reepax.exe"));
-        if (Guid.TryParseExact(session, "N", out _) && args.Contains("--update-session=" + session) &&
-            root.GetProperty("Version").GetString() == AppCurrentVersion &&
-            string.Equals(root.GetProperty("Executable").GetString(), executable, StringComparison.OrdinalIgnoreCase))
+        bool directLaunch = args.Contains("--update-session=" + session) &&
+            string.Equals(root.GetProperty("Executable").GetString(), executable, StringComparison.OrdinalIgnoreCase);
+        bool transitionLaunch = args.Contains("--legacy-update-bootstrap") &&
+            IsLegacyTransitionStartup(root, directory);
+        if (Guid.TryParseExact(session, "N", out _) && (directLaunch || transitionLaunch) &&
+            root.GetProperty("Version").GetString() == AppCurrentVersion)
             File.WriteAllText(Path.Combine(SettingsService.AppDataDirectory, "update-startup.ready"), session);
+    }
+
+    private static bool IsLegacyTransitionStartup(JsonElement request, string directory)
+    {
+        string current = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        if (!string.Equals(Path.GetFileName(current), "current", StringComparison.OrdinalIgnoreCase)) return false;
+        string parent = Path.GetDirectoryName(current)!;
+        if (!File.Exists(Path.Combine(parent, "Update.exe")) || !File.Exists(Path.Combine(current, "sq.version")) ||
+            !string.Equals(request.GetProperty("Executable").GetString(), Path.Combine(parent, "Reepax.exe"), StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            using var helper = Process.GetProcessById(request.GetProperty("HelperId").GetInt32());
+            return !helper.HasExited && helper.StartTime.ToUniversalTime().Ticks.ToString() == request.GetProperty("HelperStart").GetString();
+        }
+        catch (ArgumentException) { return false; }
     }
 
     internal static void ShowPreviousUpdateResult()

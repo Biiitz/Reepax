@@ -41,7 +41,7 @@ public partial class UpdateDialog : Window
         ChangelogViewer.Document = MarkdownDocumentRenderer.CreateFlowDocument(updateInfo.Changelog);
 
         if (_updateInfo.HasDirectAsset && _updateInfo.TargetDownloadSize > 0 &&
-            _updateInfo.Sha256ChecksumAssetUrl != null)
+            (_updateInfo.IsPackageUpdate || _updateInfo.Sha256ChecksumAssetUrl != null))
         {
             InstallUpdateButton.Visibility = Visibility.Visible;
             ViewOnGitHubButton.Visibility = Visibility.Visible;
@@ -216,7 +216,9 @@ public partial class UpdateDialog : Window
                     UpdateProgressBar.IsIndeterminate = false;
                     double pct = Math.Clamp((double)p.bytesDownloaded / p.totalBytes * 100.0, 0, 100);
                     UpdateProgressBar.Value = pct;
-                    UpdateStatusTextBlock.Text = Loc.Format(
+                    UpdateStatusTextBlock.Text = _updateInfo.IsPackageUpdate
+                        ? Loc.Format("UpdateDialog_Status_PackageProgress", (int)pct)
+                        : Loc.Format(
                         "UpdateDialog_Status_Progress",
                         BytesToHumanReadableConverter.FormatBytes(p.bytesDownloaded),
                         BytesToHumanReadableConverter.FormatBytes(p.totalBytes),
@@ -239,14 +241,13 @@ public partial class UpdateDialog : Window
 
             await Task.Delay(600, _downloadCts.Token);
 
-            string? verifiedHash = _updateInfo.VerifiedSha256 ?? _updateInfo.GetExpectedSha256(_updateInfo.TargetFileName);
             if (Application.Current?.MainWindow?.DataContext is Reepax.ViewModels.MainViewModel viewModel)
                 await viewModel.WaitForRemovalAsync().WaitAsync(_downloadCts.Token);
             _downloadCts.Token.ThrowIfCancellationRequested();
             _isApplying = true;
             LaterButton.IsEnabled = false;
-            bool applied = await Task.Run(() => AppUpdateService.ApplyUpdate(downloadedFile, verifiedHash, _updateInfo.NewVersion));
-            if (!applied) throw new InvalidOperationException(Loc.Get("UpdateDialog_Status_StartFailed"));
+            bool applied = await Task.Run(() => AppUpdateService.Instance.ApplyDownloadedUpdate(_updateInfo, downloadedFile));
+            if (!applied) throw new InvalidOperationException(AppUpdateService.Instance.LastApplyError ?? Loc.Get("UpdateDialog_Status_StartFailed"));
         }
         catch (OperationCanceledException)
         {
@@ -265,7 +266,7 @@ public partial class UpdateDialog : Window
         {
             _isApplying = false;
             LaterButton.IsEnabled = true;
-            if (workspace != null && !_isDownloading) AppUpdateService.DeleteUpdateWorkspace(workspace);
+            if (!_updateInfo.IsPackageUpdate && workspace != null && !_isDownloading) AppUpdateService.DeleteUpdateWorkspace(workspace);
             AppUpdateService.OperationGate.Release();
         }
     }

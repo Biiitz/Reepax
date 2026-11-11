@@ -34,6 +34,11 @@ public class UpdateInfo
     public string? Sha256ChecksumAssetUrl { get; set; }
     public Dictionary<string, string> ExpectedSha256Hashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? VerifiedSha256 { get; set; }
+    internal string AssetFileName { get; set; } = "setup.exe";
+    internal Velopack.UpdateInfo? PackageUpdate { get; set; }
+    internal Velopack.UpdateManager? PackageManager { get; set; }
+    internal IReadOnlyDictionary<string, PackageFileDigest>? PackageFiles { get; set; }
+    public bool IsPackageUpdate => PackageUpdate != null;
 
     public bool HasDirectAsset => !string.IsNullOrEmpty(TargetDownloadUrl);
 
@@ -41,7 +46,7 @@ public class UpdateInfo
 
     public long TargetDownloadSize => SetupAssetSize;
 
-    public string TargetFileName => "setup.exe";
+    public string TargetFileName => AssetFileName;
 
     public string? GetExpectedSha256(string fileName)
     {
@@ -71,10 +76,12 @@ public partial class AppUpdateService
 
     public static Action<string>? ApplyUpdateActionOverride { get; set; }
 
-    public AppUpdateService(HttpClient? httpClient = null, HttpClient? downloadHttpClient = null)
+    public AppUpdateService(HttpClient? httpClient = null, HttpClient? downloadHttpClient = null,
+        Velopack.Locators.IVelopackLocator? packageLocator = null)
     {
         _httpClient = httpClient ?? CreateUpdateClient(TimeSpan.FromSeconds(15));
         _downloadHttpClient = downloadHttpClient ?? CreateUpdateClient(TimeSpan.FromMinutes(20));
+        _packageLocator = packageLocator ?? ReepaxPackageLocator.Instance;
     }
 
     /// Parses an application release version string into components: Year, Month, Patch.
@@ -388,13 +395,16 @@ public partial class AppUpdateService
                 Sha256ChecksumAssetUrl = checksumUrl,
                 ExpectedSha256Hashes = expectedHashes
             };
-            if (!info.HasDirectAsset || info.TargetDownloadSize <= 0 || checksumUrl == null)
+            if (_packageLocator.CurrentlyInstalledVersion != null)
+                await PreparePackageUpdateAsync(info, root, cancellationToken);
+            else if (!info.HasDirectAsset || info.TargetDownloadSize <= 0 || checksumUrl == null)
                 LastCheckStatus = UpdateCheckStatus.Incomplete;
             return info;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
+            LastCheckStatus = UpdateCheckStatus.Failed;
             AppLogger.Debug($"[AppUpdateService] Error checking for updates", ex);
             return null;
         }

@@ -8,6 +8,7 @@ using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
+using Reepax.Services.Update;
 using Reepax.Services.Verification;
 
 namespace Reepax.Tests;
@@ -32,6 +33,25 @@ internal static class RecoveryProcessWorker
             return WindowDownloadFlowWorker.Run(args[1], args[2], filtersOnly: true);
         if (args.Length == 4 && args[0] == "--load-worker")
             return ConcurrentLoadWorker.Run(args[1], int.Parse(args[2]), int.Parse(args[3]));
+        if (args.Length == 6 && args[0] == "--run-update-helper")
+        {
+            SettingsService.AppDataDirectoryOverride = args[1];
+            using var setup = File.OpenRead(args[2]);
+            string hash = Convert.ToHexString(SHA256.HashData(setup));
+            string script = AppUpdateService.GenerateInstallerUpdateScript(0, args[2], args[3], hash, args[4]);
+            File.WriteAllText(args[5], script, new System.Text.UTF8Encoding(true));
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[5])!, "helper.approved"), "approved");
+            using var helper = AppUpdateService.StartUpdateHelper(args[5]) ?? throw new IOException("Could not start the update helper.");
+            try
+            {
+                await helper.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(4));
+                return helper.ExitCode;
+            }
+            finally
+            {
+                if (!helper.HasExited) { helper.Kill(entireProcessTree: true); await helper.WaitForExitAsync(); }
+            }
+        }
         if (args.Length != 7 || args[0] != "--recovery-worker") return 2;
         try
         {

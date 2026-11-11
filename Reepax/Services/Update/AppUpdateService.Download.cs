@@ -77,6 +77,18 @@ public partial class AppUpdateService
     {
         if (!await DownloadGate.WaitAsync(0, cancellationToken))
             throw new InvalidOperationException("An update download is already running.");
+        try
+        {
+            return updateInfo.IsPackageUpdate
+                ? await DownloadPackageUpdateAsync(updateInfo, progress, cancellationToken)
+                : await DownloadAssetAsync(updateInfo, progress, cancellationToken);
+        }
+        finally { DownloadGate.Release(); }
+    }
+
+    private async Task<string> DownloadAssetAsync(UpdateInfo updateInfo,
+        IProgress<(long bytesDownloaded, long totalBytes)>? progress, CancellationToken cancellationToken)
+    {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromMinutes(20));
         cancellationToken = deadline.Token;
@@ -145,7 +157,6 @@ public partial class AppUpdateService
             if (updateDir != null) DeleteUpdateWorkspace(updateDir);
             throw;
         }
-        finally { DownloadGate.Release(); }
     }
 
     private static async Task<byte[]> ReadLimitedAsync(HttpContent content, int maximum, CancellationToken token)

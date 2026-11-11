@@ -324,6 +324,36 @@ public sealed class UpdateReliabilityTests : IDisposable
     }
 
     [Theory]
+    [InlineData("valid", true)]
+    [InlineData("helper", false)]
+    [InlineData("version", false)]
+    [InlineData("path", false)]
+    [InlineData("manifest", false)]
+    [InlineData("argument", false)]
+    public void InstallerTransition_RequiresManagedLayoutAndTheLiveLegacyHelper(string scenario, bool expected)
+    {
+        string current = Directory.CreateDirectory(Path.Combine(_root, "current")).FullName;
+        File.WriteAllText(Path.Combine(_root, "Update.exe"), "updater");
+        if (scenario != "manifest") File.WriteAllText(Path.Combine(current, "sq.version"), "manifest");
+        Directory.CreateDirectory(SettingsService.AppDataDirectory);
+        using var process = Process.GetCurrentProcess();
+        string session = Guid.NewGuid().ToString("N");
+        File.WriteAllText(Path.Combine(SettingsService.AppDataDirectory, "update-startup.json"), JsonSerializer.Serialize(new
+        {
+            Session = session, Version = scenario == "version" ? "0.0.1" : AppUpdateService.AppCurrentVersion,
+            Executable = Path.Combine(_root, scenario == "path" ? "other.exe" : "Reepax.exe"),
+            HelperId = scenario == "helper" ? int.MaxValue : process.Id,
+            HelperStart = process.StartTime.ToUniversalTime().Ticks.ToString()
+        }));
+
+        AppUpdateService.ConfirmUpdateStartup(current, scenario == "argument" ? new[] { "--restart" } : new[] { "--legacy-update-bootstrap" });
+
+        string ready = Path.Combine(SettingsService.AppDataDirectory, "update-startup.ready");
+        Assert.Equal(expected, File.Exists(ready));
+        if (expected) Assert.Equal(session, File.ReadAllText(ready));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Download_ValidatesTheReleaseDigestAgainstItsOwnChecksumFile(bool mismatch)

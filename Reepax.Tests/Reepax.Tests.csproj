@@ -13,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="UpdateProbe\**\*.cs" />
     <ProjectReference Include="..\Reepax\Reepax.csproj" />
     <EmbeddedResource Include="Fixtures\Archives\*" />
     <EmbeddedResource Include="Fixtures\DecoderArchives\*" />

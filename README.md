@@ -46,6 +46,8 @@ Get [**setup.exe**](https://github.com/Biiitz/Reepax/releases/latest/download/se
 
 Reepax currently supports **Windows 10 and 11 on x64 systems**. The release installer includes the .NET runtime. The integrated browser also requires the **WebView2 Runtime** to be installed.
 
+Per-user installations use Velopack for updates. The installer remains compatible with the update button in earlier versions. Updates use a verified delta package when available and fall back to a verified full package when needed. System-wide installations continue to update through the installer.
+
 <h2 align="center">Local data</h2>
 
 Settings, download state, and saved archive passwords are stored on your PC with Windows account protection. Diagnostic file logging can be enabled or disabled in the app settings.

@@ -61,6 +61,8 @@ jobs:
           }
       - name: Run all tests
         run: |
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet test Reepax.slnx -c Release --logger 'trx;LogFileName=tests.trx' --results-directory TestResults --verbosity minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           [xml]$report = Get-Content TestResults/tests.trx
@@ -82,6 +84,33 @@ jobs:
           }
           $version = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path 'dist/Reepax/Reepax.exe')).ProductVersion.Split('+')[0]
           if ($version -ne $env:APP_VERSION) { throw 'Published binary has an unexpected version.' }
+      - name: Retrieve previous package for delta generation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path dist/updates -Force | Out-Null
+          $json = gh api "repos/$env:GH_REPO/releases?per_page=50"
+          if ($LASTEXITCODE -ne 0) { throw 'The previous release could not be checked.' }
+          $previous = $json | ConvertFrom-Json | Where-Object { -not $_.draft -and -not $_.prerelease } |
+            Sort-Object published_at -Descending | Select-Object -First 1
+          if (-not $previous) { return }
+          $previousVersion = $null
+          if (-not [Version]::TryParse($previous.tag_name.TrimStart('v'), [ref]$previousVersion) -or
+              $previousVersion -ge [Version]$env:APP_VERSION) { return }
+          $packages = @($previous.assets | Where-Object name -Match '^Reepax\.Desktop-[0-9][a-zA-Z0-9.\-]*-full\.nupkg$')
+          if ($packages.Count -gt 1) { throw 'The previous full package is ambiguous.' }
+          if ($packages.Count -eq 1) {
+            $asset = $packages[0]
+            gh release download $previous.tag_name --pattern $asset.name --dir dist/updates
+            if ($LASTEXITCODE -ne 0) { throw 'The previous full package could not be downloaded.' }
+            $file = Join-Path dist/updates $asset.name
+            $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset.digest -ne "sha256:$hash" -or $asset.size -ne (Get-Item -LiteralPath $file).Length) { throw 'The previous package failed verification.' }
+          }
+      - name: Build update packages and compatible installer payload
+        run: ./.github/scripts/Build-UpdatePackages.ps1 -Version $env:APP_VERSION
       - name: Install packaging compiler
         run: |
           choco install innosetup -y --no-progress
@@ -97,15 +126,27 @@ jobs:
           $compiler = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
           ./.github/scripts/Test-Installer.ps1 -Compiler $compiler -Version $env:APP_VERSION -TemporaryRoot $env:RUNNER_TEMP
       - name: Generate checksums
+        id: release_assets
         run: |
-          $hash = (Get-FileHash -LiteralPath dist/setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  setup.exe" | Set-Content dist/SHA256SUMS.txt -Encoding utf8NoBOM
+          $packagePrefix = "dist/updates/Reepax.Desktop-$env:VELOPACK_PACKAGE_VERSION"
+          $files = @(
+            'dist/setup.exe'
+            'dist/updates/releases.win.json'
+            "dist/updates/Reepax.Desktop-$env:APP_VERSION-files.json"
+            "$packagePrefix-full.nupkg"
+          )
+          $delta = "$packagePrefix-delta.nupkg"
+          if (Test-Path -LiteralPath $delta -PathType Leaf) { $files += $delta }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($file))"
+          }
+          $lines | Set-Content dist/SHA256SUMS.txt -Encoding utf8NoBOM
+          (@('paths<<EOF') + $files + @('dist/SHA256SUMS.txt', 'EOF')) >> $env:GITHUB_OUTPUT
       - uses: actions/upload-artifact@v4
         with:
           name: release-files
-          path: |
-            dist/setup.exe
-            dist/SHA256SUMS.txt
+          path: ${{ steps.release_assets.outputs.paths }}
           if-no-files-found: error
 
   release:
@@ -134,7 +175,10 @@ jobs:
             gh release create $env:RELEASE_TAG --draft --verify-tag --generate-notes --title $env:RELEASE_TAG
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          gh release upload $env:RELEASE_TAG dist/setup.exe dist/SHA256SUMS.txt --clobber
+          $files = @(Get-ChildItem dist -File -Recurse)
+          if (@($files | Group-Object Name | Where-Object Count -GT 1).Count -ne 0) { throw 'Duplicate release asset names.' }
+          $assetPaths = @($files.FullName)
+          gh release upload $env:RELEASE_TAG @assetPaths --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Draft releases are available through the release list, not the published-tag endpoint.
           $json = gh api "repos/$env:GH_REPO/releases?per_page=100"
@@ -143,10 +187,11 @@ jobs:
           if ($matchingReleases.Count -ne 1) { throw 'The release draft could not be resolved uniquely.' }
           $release = $matchingReleases[0]
           if (-not $release.draft -or $release.prerelease) { throw 'Unexpected release state.' }
-          foreach ($name in @('setup.exe', 'SHA256SUMS.txt')) {
+          foreach ($file in $files) {
+            $name = $file.Name
             $assets = @($release.assets | Where-Object name -CEQ $name)
-            if ($assets.Count -ne 1 -or $assets[0].state -ne 'uploaded' -or $assets[0].size -ne (Get-Item "dist/$name").Length) { throw 'Uploaded release is incomplete.' }
-            $hash = (Get-FileHash -LiteralPath "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($assets.Count -ne 1 -or $assets[0].state -ne 'uploaded' -or $assets[0].size -ne $file.Length) { throw 'Uploaded release is incomplete.' }
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($assets[0].digest -ne "sha256:$hash") { throw 'Uploaded asset digest differs.' }
           }
           gh release edit $env:RELEASE_TAG --draft=false --latest

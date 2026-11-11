@@ -13,6 +13,7 @@ $savedData = Join-Path $root 'user-data-backup'
 $ownsData = $false
 $process = $null
 $install = $null
+$legacy = Join-Path $root "previous application's [directory]"
 try {
     $fullRoot = [IO.Path]::GetFullPath($root)
     $temporaryParent = [IO.Path]::GetFullPath($TemporaryRoot).TrimEnd('\') + '\'
@@ -42,30 +43,39 @@ try {
     if ((Get-FileHash -LiteralPath $settings).Hash -ne $settingsHash -or (Get-Content -LiteralPath $marker).Trim() -ne 'preserve') {
         throw 'Installation changed user data.'
     }
-    foreach ($file in Get-ChildItem dist/Reepax -File -Recurse) {
-        $relative = [IO.Path]::GetRelativePath((Resolve-Path dist/Reepax), $file.FullName)
+    foreach ($file in Get-ChildItem dist/InstallerPayload -File -Recurse) {
+        $relative = [IO.Path]::GetRelativePath((Resolve-Path dist/InstallerPayload), $file.FullName)
         if ((Get-FileHash -LiteralPath $file.FullName).Hash -ne (Get-FileHash -LiteralPath (Join-Path $installed $relative)).Hash) {
             throw 'Installed payload differs from the published application.'
         }
     }
-    $exe = Join-Path $installed 'Reepax.exe'
+    $exe = Join-Path $installed 'current/Reepax.exe'
     if ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion.Split('+')[0] -ne $Version) { throw 'Installed version is incorrect.' }
-    $session = [Guid]::NewGuid().ToString('N')
-    @{ Session = $session; Version = $Version; Executable = $exe; HelperId = $PID;
-       HelperStart = [Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks.ToString() } |
-        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $data 'update-startup.json') -Encoding UTF8
-    $process = Start-Process $exe -ArgumentList "--restart --update-session=$session" -PassThru -WindowStyle Hidden
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    $ready = Join-Path $data 'update-startup.ready'
-    while (-not (Test-Path -LiteralPath $ready) -and -not $process.HasExited -and $timer.Elapsed.TotalSeconds -lt 60) {
-        Start-Sleep -Milliseconds 100
+    New-Item -ItemType Directory -Path $legacy | Out-Null
+    Copy-Item -LiteralPath 'dist/Reepax/Reepax.exe', 'dist/Reepax/Reepax.dll' -Destination $legacy
+    $unrelated = Join-Path $legacy 'user-file.bin'
+    [IO.File]::WriteAllBytes($unrelated, [byte[]](0, 17, 255))
+    $helperPath = Join-Path $root 'apply-update.ps1'
+    $legacyExe = Join-Path $legacy 'Reepax.exe'
+    dotnet Reepax.Tests/bin/Release/net8.0-windows/Reepax.Tests.dll --run-update-helper $data $setup $legacyExe $Version $helperPath
+    if ($LASTEXITCODE -ne 0) { throw 'Legacy installer update failed.' }
+    $result = Get-Content -LiteralPath (Join-Path $data 'update-result.json') -Raw | ConvertFrom-Json
+    if ($result.Status -ne 'success') { throw 'The legacy update helper did not confirm startup.' }
+    $exe = Join-Path $legacy 'current/Reepax.exe'
+    $process = Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe | Select-Object -First 1
+    if (-not $process -or $process.HasExited -or [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion.Split('+')[0] -ne $Version) {
+        throw 'The managed application did not start at the expected version.'
     }
-    if (-not (Test-Path -LiteralPath $ready) -or (Get-Content -LiteralPath $ready -Raw).Trim() -ne $session) {
-        throw 'Installed application did not confirm startup.'
+    if ([Convert]::ToHexString([IO.File]::ReadAllBytes($unrelated)) -ne '0011FF' -or (Get-Content -LiteralPath $marker).Trim() -ne 'preserve') {
+        throw 'The transition changed an unrelated file.'
     }
-    Write-Output 'Installation, reinstallation, user-data preservation, payload integrity and application startup verified.'
+    Write-Output 'Clean installation, repair, legacy update handoff, managed startup and data preservation verified.'
 } finally {
     if ($install -and -not $install.HasExited) { $install.Kill($true); $install.WaitForExit() }
+    if (-not $process) {
+        $expectedExecutable = Join-Path $legacy 'current/Reepax.exe'
+        $process = Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object Path -EQ $expectedExecutable | Select-Object -First 1
+    }
     if ($process -and -not $process.HasExited) {
         $null = $process.CloseMainWindow()
         if (-not $process.WaitForExit(10000)) { $process.Kill(); $process.WaitForExit() }
