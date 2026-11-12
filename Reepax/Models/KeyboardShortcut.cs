@@ -115,6 +115,9 @@ public partial class KeyboardShortcut : ObservableObject
         modifiers = ModifierKeys.None;
         if (string.IsNullOrWhiteSpace(text)) return false;
 
+        // Preserve the explicit unassigned value written by Serialize.
+        if (string.Equals(text.Trim(), nameof(Key.None), StringComparison.OrdinalIgnoreCase)) return true;
+
         var parts = text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var part in parts)
         {

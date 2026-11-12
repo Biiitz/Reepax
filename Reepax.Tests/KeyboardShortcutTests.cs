@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows.Input;
 using Reepax.Models;
 using Reepax.Services.Localization;
 using Reepax.Services.Shortcuts;
+using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Xunit;
 
@@ -111,6 +113,45 @@ public class KeyboardShortcutTests
         Assert.Equal(mods, parsedMods);
     }
 
+    [Theory]
+    [InlineData("None")]
+    [InlineData("none")]
+    [InlineData(" None ")]
+    public void KeyboardShortcut_ParsingExplicitUnassignedValue_PreservesDisabledState(string serialized)
+    {
+        Assert.True(KeyboardShortcut.TryParse(serialized, out var key, out var modifiers));
+        Assert.Equal(Key.None, key);
+        Assert.Equal(ModifierKeys.None, modifiers);
+        Assert.Equal("None", new KeyboardShortcut { Key = key, Modifiers = modifiers }.Serialize());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("UnknownKey")]
+    [InlineData("Control")]
+    [InlineData("Control+None")]
+    [InlineData("None+UnknownKey")]
+    public void KeyboardShortcutManager_InvalidStoredValuesRestoreDefaultsWhileExplicitNoneStaysDisabled(string? invalid)
+    {
+        Assert.False(KeyboardShortcut.TryParse(invalid, out _, out _));
+        var manager = new KeyboardShortcutManager();
+        manager.LoadCustomShortcuts(new Dictionary<string, string>
+        {
+            ["TogglePauseResume"] = "None",
+            ["AddLinks"] = invalid!
+        });
+
+        var disabled = manager.Shortcuts.Single(shortcut => shortcut.Id == "TogglePauseResume");
+        Assert.Equal(Key.None, disabled.Key);
+        Assert.Equal(ModifierKeys.None, disabled.Modifiers);
+        Assert.True(disabled.IsCustomized);
+        Assert.Same(manager.Shortcuts.Single(shortcut => shortcut.Id == "AddLinks"), manager.FindMatch(Key.N, ModifierKeys.Control));
+        Assert.All(manager.Shortcuts.Where(shortcut => shortcut != disabled), shortcut => Assert.False(shortcut.IsCustomized));
+        Assert.Equal("None", Assert.Single(manager.ExportCustomShortcuts()).Value);
+    }
+
     [Fact]
     public void KeyboardShortcutManager_LoadAndExportCustomShortcuts_PreservesCustomizations()
     {
@@ -162,34 +203,82 @@ public class KeyboardShortcutTests
         Assert.Null(noMatch);
     }
 
-    [Fact]
-    public void MainViewModel_FinishRecordingShortcut_ReassignsConflictingShortcuts()
+    [Theory]
+    [InlineData("en")]
+    [InlineData("de")]
+    public void MainViewModel_FinishRecordingShortcut_ReassignsConflictingShortcuts(string language)
     {
-        var vm = new MainViewModel();
-        vm.ResetAllShortcutsCommand.Execute(null);
+        string root = Directory.CreateTempSubdirectory("ShortcutReload_").FullName;
+        var settings = SettingsService.Instance.Settings;
+        var previousCustomShortcuts = settings.CustomShortcuts;
+        var previousBindings = KeyboardShortcutManager.Instance.ExportCustomShortcuts();
+        string previousLanguage = LocalizationService.Instance.CurrentLanguage;
+        try
+        {
+            LocalizationService.Instance.CurrentLanguage = language;
+            var vm = new MainViewModel();
+            vm.ResetAllShortcutsCommand.Execute(null);
+            var pauseResume = vm.Shortcuts.Single(shortcut => shortcut.Id == "TogglePauseResume");
+            var addLinks = vm.Shortcuts.Single(shortcut => shortcut.Id == "AddLinks");
+            var rename = vm.Shortcuts.Single(shortcut => shortcut.Id == "RenameSelected");
+            vm.StartRecordingShortcut(rename);
+            vm.FinishRecordingShortcut(Key.F6, ModifierKeys.Alt);
+            vm.StartRecordingShortcut(addLinks);
+            Assert.Same(addLinks, vm.RecordingShortcut);
+            Assert.True(addLinks.IsRecording);
+            vm.FinishRecordingShortcut(Key.Space, ModifierKeys.Control);
 
-        var pauseResume = vm.Shortcuts.First(s => s.Id == "TogglePauseResume"); // Default: Ctrl+Space
-        var addLinks = vm.Shortcuts.First(s => s.Id == "AddLinks"); // Default: Ctrl+N
+            Assert.Null(vm.RecordingShortcut);
+            Assert.False(addLinks.IsRecording);
+            Assert.Equal(Key.Space, addLinks.Key);
+            Assert.Equal(ModifierKeys.Control, addLinks.Modifiers);
+            Assert.Equal(Key.None, pauseResume.Key);
+            Assert.Equal(ModifierKeys.None, pauseResume.Modifiers);
+            Assert.Equal("None", settings.CustomShortcuts[pauseResume.Id]);
 
-        // Start recording for addLinks and press Ctrl+Space (which belongs to pauseResume)
-        vm.StartRecordingShortcut(addLinks);
-        Assert.Same(addLinks, vm.RecordingShortcut);
-        Assert.True(addLinks.IsRecording);
+            string path = Path.Combine(root, "settings.json");
+            var storage = new SettingsService(path);
+            storage.Settings.DefaultDownloadDirectory = Path.Combine(root, "downloads");
+            storage.Settings.MaxConcurrentDownloads = 7;
+            storage.Settings.CustomShortcuts = new(settings.CustomShortcuts);
+            storage.SaveSettings();
+            var reopened = new SettingsService(path);
+            Assert.False(reopened.HasSettingsLoadFailed);
+            Assert.Equal(storage.Settings.DefaultDownloadDirectory, reopened.Settings.DefaultDownloadDirectory);
+            Assert.Equal(7, reopened.Settings.MaxConcurrentDownloads);
+            var loaded = new KeyboardShortcutManager();
+            loaded.LoadCustomShortcuts(reopened.Settings.CustomShortcuts);
+            var loadedDisabled = loaded.Shortcuts.Single(shortcut => shortcut.Id == pauseResume.Id);
+            Assert.Equal(Key.None, loadedDisabled.Key);
+            Assert.Equal(ModifierKeys.None, loadedDisabled.Modifiers);
+            Assert.Equal(pauseResume.DisplayGesture, loadedDisabled.DisplayGesture);
+            Assert.Equal("AddLinks", loaded.FindMatch(Key.Space, ModifierKeys.Control)?.Id);
+            Assert.Single(loaded.Shortcuts.Where(shortcut => shortcut.Key == Key.Space && shortcut.Modifiers == ModifierKeys.Control));
+            Assert.Equal("RenameSelected", loaded.FindMatch(Key.F6, ModifierKeys.Alt)?.Id);
+            Assert.Null(loaded.FindMatch(Key.N, ModifierKeys.Control));
+            Assert.Equal(storage.Settings.CustomShortcuts.OrderBy(pair => pair.Key), loaded.ExportCustomShortcuts().OrderBy(pair => pair.Key));
+            Assert.All(loaded.Shortcuts.Where(shortcut => shortcut.Id is not ("TogglePauseResume" or "AddLinks" or "RenameSelected")),
+                shortcut => Assert.False(shortcut.IsCustomized));
 
-        vm.FinishRecordingShortcut(Key.Space, ModifierKeys.Control);
-
-        Assert.Null(vm.RecordingShortcut);
-        Assert.False(addLinks.IsRecording);
-        Assert.Equal(Key.Space, addLinks.Key);
-        Assert.Equal(ModifierKeys.Control, addLinks.Modifiers);
-
-        // Previous owner (pauseResume) should have been cleared to avoid duplicate trigger
-        Assert.Equal(Key.None, pauseResume.Key);
-
-        // Reset all
-        vm.ResetAllShortcutsCommand.Execute(null);
-        Assert.Equal(Key.Space, pauseResume.Key);
-        Assert.Equal(Key.N, addLinks.Key);
+            vm.ShortcutManager.LoadCustomShortcuts(reopened.Settings.CustomShortcuts);
+            vm.ResetShortcut(addLinks);
+            Assert.Equal("AddLinks", vm.ShortcutManager.FindMatch(Key.N, ModifierKeys.Control)?.Id);
+            Assert.Equal(Key.None, pauseResume.Key);
+            Assert.Equal("None", settings.CustomShortcuts[pauseResume.Id]);
+            Assert.Equal("RenameSelected", vm.ShortcutManager.FindMatch(Key.F6, ModifierKeys.Alt)?.Id);
+            vm.ResetAllShortcutsCommand.Execute(null);
+            Assert.Equal(Key.Space, pauseResume.Key);
+            Assert.Equal(Key.N, addLinks.Key);
+            Assert.All(vm.Shortcuts, shortcut => Assert.False(shortcut.IsCustomized));
+            Assert.Empty(settings.CustomShortcuts);
+        }
+        finally
+        {
+            KeyboardShortcutManager.Instance.LoadCustomShortcuts(previousBindings);
+            settings.CustomShortcuts = previousCustomShortcuts;
+            LocalizationService.Instance.CurrentLanguage = previousLanguage;
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]
