@@ -10,9 +10,13 @@ $mutexHash = [BitConverter]::ToString($sha.ComputeHash($mutexBytes)).Replace('-'
 $sha.Dispose()
 $mutex = New-Object Threading.Mutex($false, "Local\ReepaxUpdate_$mutexHash")
 $owned = $false
+$stage = 'verification'
+$installerExitCode = $null
+$failureType = $null
 function Write-Result($status) {
     New-Item -ItemType Directory -Path (Split-Path -Parent $resultPath) -Force | Out-Null
-    @{ Status = $status } | ConvertTo-Json | Set-Content -LiteralPath "$resultPath.tmp" -Encoding UTF8
+    @{ Status = $status; Stage = $stage; InstallerExitCode = $installerExitCode; FailureType = $failureType } |
+        ConvertTo-Json | Set-Content -LiteralPath "$resultPath.tmp" -Encoding UTF8
     Move-Item -LiteralPath "$resultPath.tmp" -Destination $resultPath -Force
 }
 try {
@@ -43,6 +47,7 @@ try {
     if ($currentHash -ne $expectedHash) { throw 'Installer integrity check failed.' }
     $signature = Get-AuthenticodeSignature -LiteralPath $setup
     if ($signature.Status -ne 'NotSigned' -and $signature.Status -ne 'Valid') { throw 'Invalid installer signature.' }
+    $stage = 'installation'
     $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /DIR=`"$destination`" /UPDATEHELPER=1" -PassThru -WindowStyle Hidden
     try {
         # The installer may start the application; wait only for the installer itself.
@@ -51,11 +56,13 @@ try {
     } finally { $installer.Dispose() }
     if ($installerExitCode -eq 3010) { Write-Result 'restart-required'; exit 1 }
     if ($installerExitCode -ne 0) { throw 'Installer did not complete successfully.' }
+    $stage = 'installed-files'
     foreach ($file in @($exe, (Join-Path $destination 'Reepax.dll'))) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Installed application is incomplete.' }
         $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($file).ProductVersion
         if (-not $version -or $version.Split('+')[0] -ne $expectedVersion) { throw 'Installed version differs from the expected update.' }
     }
+    $stage = 'startup-confirmation'
     $process = Start-Process -FilePath $exe -WorkingDirectory $destination -ArgumentList "$restartArgs --update-session=$updateSession" -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path -LiteralPath $readyPath) -and -not $process.HasExited -and $timer.Elapsed.TotalSeconds -lt 60) {
@@ -64,10 +71,12 @@ try {
     if (-not (Test-Path -LiteralPath $readyPath) -or (Get-Content -LiteralPath $readyPath -Raw).Trim() -ne $updateSession) {
         throw 'Updated application startup was not confirmed.'
     }
+    $stage = 'cleanup'
     Write-Result 'success'
     Remove-Item -LiteralPath $setup -Force
     exit 0
 } catch {
+    $failureType = $_.Exception.GetType().Name
     if ($owned) { Write-Result 'failed' }
     exit 1
 } finally {

@@ -58,7 +58,16 @@ try {
     $helperPath = Join-Path $root 'apply-update.ps1'
     $legacyExe = Join-Path $legacy 'Reepax.exe'
     dotnet Reepax.Tests/bin/Release/net8.0-windows/Reepax.Tests.dll --run-update-helper $data $setup $legacyExe $Version $helperPath
-    if ($LASTEXITCODE -ne 0) { throw 'Legacy installer update failed.' }
+    if ($LASTEXITCODE -ne 0) {
+        $resultPath = Join-Path $data 'update-result.json'
+        if (Test-Path -LiteralPath $resultPath) {
+            $diagnostic = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+            $stage = if ($diagnostic.Stage -in @('verification', 'installation', 'installed-files', 'startup-confirmation', 'cleanup')) { $diagnostic.Stage } else { 'unknown' }
+            $code = if ($diagnostic.InstallerExitCode -is [long] -or $diagnostic.InstallerExitCode -is [int]) { $diagnostic.InstallerExitCode } else { 'unavailable' }
+            Write-Output "Update failure stage: $stage. Installer exit code: $code."
+        }
+        throw 'Legacy installer update failed.'
+    }
     $result = Get-Content -LiteralPath (Join-Path $data 'update-result.json') -Raw | ConvertFrom-Json
     if ($result.Status -ne 'success') { throw 'The legacy update helper did not confirm startup.' }
     $exe = Join-Path $legacy 'current/Reepax.exe'

@@ -264,6 +264,9 @@ public sealed class UpdateReliabilityTests : IDisposable
         Assert.Contains("/NORESTART", launches[0]);
         Assert.Contains("/DIR=\"" + Path.Combine(_root, "Application") + "\"", launches[0]);
         Assert.Equal(installerExit == 0 ? 2 : 1, launches.Length);
+        using var result = JsonDocument.Parse(File.ReadAllText(Path.Combine(SettingsService.AppDataDirectory, "update-result.json")));
+        Assert.Equal(installerExit, result.RootElement.GetProperty("InstallerExitCode").GetInt32());
+        Assert.Equal(installerExit == 0 ? "cleanup" : "installation", result.RootElement.GetProperty("Stage").GetString());
     }
 
     [Fact]
@@ -365,6 +368,9 @@ public sealed class UpdateReliabilityTests : IDisposable
         Assert.Equal(1, await RunScript(script));
         using var result = JsonDocument.Parse(File.ReadAllText(Path.Combine(SettingsService.AppDataDirectory, "update-result.json")));
         Assert.Equal("failed", result.RootElement.GetProperty("Status").GetString());
+        Assert.Equal(wrongVersion ? "installed-files" : "startup-confirmation", result.RootElement.GetProperty("Stage").GetString());
+        Assert.False(result.RootElement.TryGetProperty("Message", out _));
+        Assert.DoesNotContain(_root, result.RootElement.GetRawText());
         Assert.False(File.Exists(Path.Combine(SettingsService.AppDataDirectory, "update-startup.json")));
     }
 
