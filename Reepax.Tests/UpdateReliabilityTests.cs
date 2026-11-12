@@ -344,6 +344,35 @@ public sealed class UpdateReliabilityTests : IDisposable
     }
 
     [Theory]
+    [InlineData("application")]
+    [InlineData("application's [directory]")]
+    public async Task InstallerScript_RestartsFromDirectoriesWithLiteralSpecialCharacters(string directory)
+    {
+        string destination = Directory.CreateDirectory(Path.Combine(_root, directory)).FullName;
+        string generated = AppUpdateService.GenerateInstallerUpdateScript(0, "unused", "unused");
+        string launch = generated.Split('\n').Single(line => line.TrimStart().StartsWith("$process = Start-Process -FilePath $exe"));
+        string script = $$"""
+            $ErrorActionPreference = 'Stop'
+            $PSDefaultParameterValues = @{ 'Start-Process:WindowStyle' = 'Hidden' }
+            $destination = '{{destination.Replace("'", "''")}}'
+            $compiled = '{{Path.Combine(_root, "launcher.exe").Replace("'", "''")}}'
+            Add-Type -TypeDefinition 'public static class Launcher { public static void Main(string[] args) {} }' -OutputAssembly $compiled -OutputType WindowsApplication
+            $exe = Join-Path $destination 'launcher.exe'
+            [IO.File]::Copy($compiled, $exe)
+            $restartArgs = '--restart'
+            $updateSession = 'example-session'
+            try {
+                {{launch}}
+                $process.WaitForExit()
+                exit $process.ExitCode
+            } catch { Set-Content -LiteralPath ($compiled + '.error') -Value $_.Exception.GetType().Name; exit 1 }
+            """;
+        int result = await RunScript(script);
+        string diagnostic = Path.Combine(_root, "launcher.exe.error");
+        Assert.True(result == 0, File.Exists(diagnostic) ? File.ReadAllText(diagnostic) : "Launcher did not complete successfully.");
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task InstallerScript_RejectsWrongVersionOrMissingStartupConfirmation(bool wrongVersion)

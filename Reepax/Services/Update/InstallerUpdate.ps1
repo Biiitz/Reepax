@@ -63,7 +63,8 @@ try {
         if (-not $version -or $version.Split('+')[0] -ne $expectedVersion) { throw 'Installed version differs from the expected update.' }
     }
     $stage = 'startup-confirmation'
-    $process = Start-Process -FilePath $exe -WorkingDirectory $destination -ArgumentList "$restartArgs --update-session=$updateSession" -PassThru
+    # Windows PowerShell resolves the working directory as a wildcard path.
+    $process = Start-Process -FilePath $exe -WorkingDirectory ([Management.Automation.WildcardPattern]::Escape($destination)) -ArgumentList "$restartArgs --update-session=$updateSession" -PassThru
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path -LiteralPath $readyPath) -and -not $process.HasExited -and $timer.Elapsed.TotalSeconds -lt 60) {
         Start-Sleep -Milliseconds 100
