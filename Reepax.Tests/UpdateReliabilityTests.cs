@@ -372,6 +372,56 @@ public sealed class UpdateReliabilityTests : IDisposable
         Assert.True(result == 0, File.Exists(diagnostic) ? File.ReadAllText(diagnostic) : "Launcher did not complete successfully.");
     }
 
+    [Fact]
+    public async Task InstallerVerificationCleanup_StopsAllOwnedApplicationsAndPreservesOtherProcesses()
+    {
+        string project = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string source = Path.Combine(project, ".github", "scripts", "Test-Installer.ps1");
+        string root = Path.Combine(_root, "InstallerVerification_" + Guid.NewGuid().ToString("N"));
+        string errorPath = Path.Combine(_root, "cleanup-error.txt");
+        string script = $$"""
+            $ErrorActionPreference = 'Stop'
+            trap { [IO.File]::WriteAllText('{{errorPath.Replace("'", "''")}}', $_.Exception.ToString()); exit 1 }
+            $PSDefaultParameterValues = @{ 'Start-Process:WindowStyle' = 'Hidden' }
+            $tokens = $null; $errors = $null
+            $ast = [Management.Automation.Language.Parser]::ParseFile('{{source.Replace("'", "''")}}', [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw 'Invalid verification script.' }
+            $function = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Stop-VerificationApplications' }, $true)
+            if (-not $function) { throw 'Missing verification cleanup.' }
+            . ([scriptblock]::Create($function.Extent.Text))
+            $root = '{{root.Replace("'", "''")}}'
+            $outside = '{{Path.Combine(_root, "outside").Replace("'", "''")}}'
+            $compiled = '{{Path.Combine(_root, "cleanup-probe.exe").Replace("'", "''")}}'
+            Add-Type -TypeDefinition 'public static class CleanupProbe { public static void Main() { System.Threading.Thread.Sleep(-1); } }' -OutputAssembly $compiled -OutputType WindowsApplication
+            $started = @()
+            try {
+                foreach ($directory in @((Join-Path $root 'first'), (Join-Path $root 'second'), $outside)) {
+                    $null = [IO.Directory]::CreateDirectory($directory)
+                    $exe = Join-Path $directory 'Reepax.exe'
+                    [IO.File]::Copy($compiled, $exe)
+                    $application = Start-Process -FilePath $exe -PassThru
+                    $null = $application.Handle
+                    $started += $application
+                }
+                $rejected = $false
+                try { Stop-VerificationApplications $outside } catch { $rejected = $true }
+                if (-not $rejected -or @($started | Where-Object HasExited).Count) { throw 'Unsafe cleanup root was accepted.' }
+                Stop-VerificationApplications $root
+                if (-not $started[0].HasExited -or -not $started[1].HasExited) { throw 'Owned application survived cleanup.' }
+                if ($started[2].HasExited) { throw 'Unrelated application was stopped.' }
+                [IO.Directory]::Delete($root, $true)
+                if (-not [IO.File]::Exists((Join-Path $outside 'Reepax.exe'))) { throw 'Unrelated file was removed.' }
+            } finally {
+                foreach ($application in $started) {
+                    if (-not $application.HasExited) { $application.Kill(); $application.WaitForExit() }
+                    $application.Dispose()
+                }
+            }
+            """;
+        int result = await RunScript(script);
+        Assert.True(result == 0, File.Exists(errorPath) ? DiagnosticPrivacy.Sanitize(File.ReadAllText(errorPath)) : "Cleanup fixture failed.");
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

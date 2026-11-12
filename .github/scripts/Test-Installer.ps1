@@ -4,6 +4,32 @@ param(
     [Parameter(Mandatory)][string]$TemporaryRoot
 )
 $ErrorActionPreference = 'Stop'
+function Stop-VerificationApplications([string]$Root) {
+    $full = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    if ([IO.Path]::GetFileName($full) -notmatch '^InstallerVerification_[0-9a-f]{32}$') { throw 'Invalid verification workspace.' }
+    $prefix = $full + '\'
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        $applications = @(Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object {
+            $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+        })
+        if ($applications.Count -eq 0) { return }
+        foreach ($application in $applications) {
+            try {
+                if (-not $application.HasExited) {
+                    $closing = $application.CloseMainWindow()
+                    if (-not $closing -or -not $application.WaitForExit(10000)) {
+                        $application.Kill()
+                        $application.WaitForExit()
+                    }
+                }
+            } finally { $application.Dispose() }
+        }
+    }
+    if (Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+    }) { throw 'A verification application is still running.' }
+}
+
 if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Installer verification requires a disposable CI runner.' }
 $root = Join-Path $TemporaryRoot ('InstallerVerification_' + [Guid]::NewGuid().ToString('N'))
 $installed = Join-Path $root "application's [directory]"
@@ -81,14 +107,8 @@ try {
     Write-Output 'Clean installation, repair, legacy update handoff, managed startup and data preservation verified.'
 } finally {
     if ($install -and -not $install.HasExited) { $install.Kill($true); $install.WaitForExit() }
-    if (-not $process) {
-        $expectedExecutable = Join-Path $legacy 'current/Reepax.exe'
-        $process = Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object Path -EQ $expectedExecutable | Select-Object -First 1
-    }
-    if ($process -and -not $process.HasExited) {
-        $null = $process.CloseMainWindow()
-        if (-not $process.WaitForExit(10000)) { $process.Kill(); $process.WaitForExit() }
-    }
+    Stop-VerificationApplications $root
+    if ($process) { $process.Dispose() }
     $full = [IO.Path]::GetFullPath($root)
     $parent = [IO.Path]::GetFullPath($TemporaryRoot).TrimEnd('\') + '\'
     if (-not $full.StartsWith($parent, [StringComparison]::OrdinalIgnoreCase) -or
