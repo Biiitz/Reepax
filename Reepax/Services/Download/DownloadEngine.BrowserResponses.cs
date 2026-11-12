@@ -80,6 +80,7 @@ public partial class DownloadEngine
                     await VerifyBrowserPrefixAsync(response, part, existing, token);
                     checkpoint.SourceKey = key;
                     checkpoint.EntityTag = GetStrongEntityTag(response);
+                    checkpoint.ResponseSourceKey = checkpoint.EntityTag == null ? null : GetResponseSourceKey(response, key);
                 }
                 // Ignore metadata size hints when the original response has no length header.
                 item.TotalBytes = response.Content.Headers.ContentLength ?? 0;

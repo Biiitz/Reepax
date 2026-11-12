@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -229,7 +230,8 @@ public partial class DialogUiTests
             {
                 FileName = $"payload-{index}.bin", SaveFilePath = Path.Combine(_directory.FullName, $"payload-{index}.bin"),
                 DirectDownloadUrl = $"https://example.com/{index}", IsCustomName = true,
-                TotalBytes = Data.Length, Status = DownloadStatus.Paused
+                TotalBytes = Data.Length, Status = DownloadStatus.Paused,
+                ExpectedChecksum = Convert.ToHexString(SHA256.HashData(Data))
             }).ToArray();
             if (connections > 1)
             {

@@ -226,6 +226,7 @@ public sealed class LocalDownloadIntegrityTests : IDisposable
         using var client = new HttpClient(handler);
         var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = connections };
         var item = Item(path, data.Length);
+        item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(data));
         await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
         Assert.Equal(DownloadStatus.Completed, item.Status);
         Assert.Equal(1, requests);
@@ -374,6 +375,7 @@ public sealed class LocalDownloadIntegrityTests : IDisposable
         using var client = new HttpClient(handler);
         var engine = new DownloadEngine(client);
         var item = Item(path, 0);
+        item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(data));
         await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(DownloadStatus.Failed, item.Status);
         Assert.True(File.Exists(path + ".part.segments"));

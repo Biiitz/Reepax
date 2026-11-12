@@ -30,6 +30,11 @@ public partial class DownloadEngine
         Encoding.UTF8.GetBytes(new Uri(url, UriKind.Absolute)
             .GetComponents(UriComponents.HttpRequestUrl, UriFormat.UriEscaped))));
 
+    private static string GetResponseSourceKey(HttpResponseMessage response, string requestSourceKey) =>
+        response.RequestMessage?.RequestUri is { IsAbsoluteUri: true, Scheme: "http" or "https" } address
+            ? GetSourceKey(address.AbsoluteUri)
+            : requestSourceKey;
+
     internal static bool HasMatchingSourceCheckpoint(string filePath, string? directUrl)
     {
         if (!Uri.TryCreate(directUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
@@ -41,6 +46,9 @@ public partial class DownloadEngine
     private static string? GetStrongEntityTag(HttpResponseMessage response) =>
         response.Headers.ETag is { IsWeak: false } tag ? tag.ToString() : null;
 
+    private static bool CanCombineResponses(DownloadItem item, string? entityTag) =>
+        entityTag != null || !string.IsNullOrWhiteSpace(item.ExpectedChecksum);
+
     private static bool MatchesSource(DownloadItem item, SegmentFileState state) =>
         state.SourceKey == null || string.Equals(state.SourceKey, GetSourceKey(item), StringComparison.Ordinal);
 
@@ -50,8 +58,12 @@ public partial class DownloadEngine
             request.Headers.IfRange = new RangeConditionHeaderValue(EntityTagHeaderValue.Parse(state.EntityTag));
     }
 
-    private static bool MatchesRepresentation(HttpResponseMessage response, SegmentFileState state) =>
-        state.EntityTag == null || string.Equals(state.EntityTag, GetStrongEntityTag(response), StringComparison.Ordinal);
+    private static bool MatchesRepresentation(HttpResponseMessage response, SegmentFileState state, DownloadItem item) =>
+        state.EntityTag == null ||
+        (string.Equals(state.EntityTag, GetStrongEntityTag(response), StringComparison.Ordinal) &&
+         (!string.IsNullOrWhiteSpace(item.ExpectedChecksum) ||
+          string.Equals(GetResponseSourceKey(response, state.SourceKey!),
+              state.ResponseSourceKey ?? state.SourceKey, StringComparison.Ordinal)));
 
     private static bool HasEncodedContent(HttpResponseMessage response) =>
         response.Content.Headers.ContentEncoding.Any(encoding => !encoding.Equals("identity", StringComparison.OrdinalIgnoreCase));
@@ -190,8 +202,10 @@ public partial class DownloadEngine
             TotalBytes = state.IsUnknownLength ? Math.Max(1, segments[0].Done) : state.TotalBytes,
             IsUnknownLength = state.IsUnknownLength,
             IsSequential = state.IsSequential,
+            IsSingleResponse = state.IsSingleResponse,
             EntityTag = state.EntityTag,
             SourceKey = state.SourceKey,
+            ResponseSourceKey = state.ResponseSourceKey,
             Segments = segments
         };
     }

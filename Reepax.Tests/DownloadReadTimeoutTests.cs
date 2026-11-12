@@ -21,6 +21,7 @@ public sealed class DownloadReadTimeoutTests : IDisposable
 
     private DownloadItem Item(int connections)
     {
+        const string url = "https://example.com/payload.bin";
         string path = Path.Combine(_directory.FullName, "payload.bin");
         if (connections > 1)
         {
@@ -28,6 +29,8 @@ public sealed class DownloadReadTimeoutTests : IDisposable
             File.WriteAllText(path + ".part.segments", JsonSerializer.Serialize(new
             {
                 TotalBytes = Data.Length,
+                EntityTag = "\"v1\"",
+                SourceKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(url))),
                 Segments = Enumerable.Range(0, connections).Select(i => new
                 {
                     Start = i * (long)Data.Length / connections,
@@ -37,7 +40,7 @@ public sealed class DownloadReadTimeoutTests : IDisposable
             }));
         }
         return new DownloadItem { FileName = "payload.bin", SaveFilePath = path, IsCustomName = true,
-            DirectDownloadUrl = "https://example.com/payload.bin", TotalBytes = Data.Length, Status = DownloadStatus.Paused };
+            DirectDownloadUrl = url, TotalBytes = Data.Length, Status = DownloadStatus.Paused };
     }
 
     private static HttpResponseMessage Response(HttpRequestMessage request, Stream stream)
@@ -144,14 +147,6 @@ public sealed class DownloadReadTimeoutTests : IDisposable
             if (switched) response.Headers.ETag = new EntityTagHeaderValue("\"v2\"");
             return Task.FromResult(response);
         }));
-        if (connections > 1 && changedVersion)
-        {
-            string metadata = item.SaveFilePath + ".part.segments";
-            var state = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(metadata))!;
-            state["EntityTag"] = "\"v1\"";
-            state["SourceKey"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(item.DirectDownloadUrl!)));
-            File.WriteAllText(metadata, state.ToJsonString());
-        }
         var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = connections, NetworkReadTimeout = TimeSpan.FromMilliseconds(150) };
         await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(DownloadStatus.Completed, item.Status);

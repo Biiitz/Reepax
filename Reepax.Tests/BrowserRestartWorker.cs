@@ -58,7 +58,9 @@ internal static class BrowserRestartWorker
         fixture.Item.FileName = "download.bin";
         fixture.Item.SaveFilePath = Path.Combine(fixture.Package.SaveDirectory, fixture.Item.FileName);
         fixture.Item.OriginalUrl = new Uri(new Uri(url), "/start").AbsoluteUri;
-        fixture.Item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(root, "download.bin"))));
+        string expectedFile = Path.Combine(root, "download.bin");
+        if (File.Exists(expectedFile))
+            fixture.Item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(expectedFile)));
         await fixture.NavigateThroughAsync("/start", "location.href=" + JsonSerializer.Serialize(fixture.Item.OriginalUrl));
         await fixture.WebView.ExecuteScriptAsync("location.href=" + JsonSerializer.Serialize(url));
         string part = fixture.Item.SaveFilePath + ".part";

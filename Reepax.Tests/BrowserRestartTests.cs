@@ -7,14 +7,15 @@ namespace Reepax.Tests;
 public sealed partial class ProcessRecoveryTests
 {
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task BrowserDownload_ResumesAfterProcessRestartWithoutOpeningAnotherBrowser(bool entityTag)
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task BrowserDownload_ResumesAfterProcessRestartWithoutOpeningAnotherBrowser(bool entityTag, bool hasChecksum)
     {
         PrepareDestination();
         await using var source = new BrowserHandoffSource(512 * 1024) { HoldBody = true, IncludeEntityTag = entityTag };
         byte[] original = source.Bytes.ToArray();
-        File.WriteAllBytes(Path.Combine(_directory.FullName, "download.bin"), original);
+        if (hasChecksum) File.WriteAllBytes(Path.Combine(_directory.FullName, "download.bin"), original);
         int browserProcess;
         long savedBytes;
         await using (var child = new RecoveryChildProcess(_directory.FullName, "browser-save", "none", source.Url("/resume"), 1))
@@ -40,9 +41,13 @@ public sealed partial class ProcessRecoveryTests
         {
             var restored = Assert.Single(Assert.Single(storage.LoadDownloads()).Items);
             Assert.Equal(source.Url("/resume"), restored.DirectDownloadUrl);
+            Assert.Equal(hasChecksum, !string.IsNullOrWhiteSpace(restored.ExpectedChecksum));
             Assert.Contains("example_session=ready", restored.Cookies);
             Assert.EndsWith("/start", restored.Referer);
         }
+        if (!entityTag && !hasChecksum)
+            for (int index = 0; index < source.Bytes.Length; index++) source.Bytes[index] ^= 0x55;
+        byte[] current = source.Bytes.ToArray();
         await using (var child = new RecoveryChildProcess(_directory.FullName, "browser-recover", "none", source.Url("/resume"), 1))
         {
             var recovered = await child.ReceiveAsync();
@@ -53,20 +58,20 @@ public sealed partial class ProcessRecoveryTests
             Assert.True(recovered.Notified);
             Assert.Equal(savedBytes, recovered.ResumedFrom);
             Assert.Equal(original.Length, recovered.Downloaded);
-            Assert.Equal(Convert.ToHexString(SHA256.HashData(original)), recovered.Checksum, ignoreCase: true);
+            Assert.Equal(Convert.ToHexString(SHA256.HashData(current)), recovered.Checksum, ignoreCase: true);
         }
         var requests = source.Requests.Where(request => request.Path == "/resume").ToArray();
         Assert.Equal(2, requests.Length);
         Assert.True(requests[0].Browser);
         Assert.Equal("", requests[0].Range);
         Assert.False(requests[1].Browser);
-        Assert.Equal($"bytes={savedBytes}-", requests[1].Range);
+        Assert.Equal(entityTag || hasChecksum ? $"bytes={savedBytes}-" : "", requests[1].Range);
         Assert.Equal(entityTag ? "\"sample-v1\"" : "", requests[1].IfRange);
         Assert.Equal(requests[0].UserAgent, requests[1].UserAgent);
         Assert.Contains("example_session=ready", requests[1].Cookie);
         Assert.Equal(requests[0].Referer, requests[1].Referer);
         Assert.Single(source.Requests.Where(request => request.Path == "/start"));
-        Assert.Equal(original, File.ReadAllBytes(final));
+        Assert.Equal(current, File.ReadAllBytes(final));
         Assert.False(File.Exists(final + ".part"));
         Assert.False(File.Exists(final + ".part.segments"));
         AssertUnaffected();

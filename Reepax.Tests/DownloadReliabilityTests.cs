@@ -10,6 +10,7 @@ using System.Text.Json;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
 using Xunit;
 
@@ -48,20 +49,25 @@ public class DownloadReliabilityTests : IDisposable
     [InlineData("changed-partial")]
     [InlineData("missing-tag")]
     [InlineData("different-source")]
+    [InlineData("same-redirect")]
+    [InlineData("different-redirect")]
     [InlineData("uncommitted-tail")]
     public async Task SequentialResume_UsesPersistedVersionAndNeverMixesRepresentations(string scenario)
     {
         var oldData = Payload(3);
         var newData = Payload(71);
         var item = CreateItem();
+        bool redirect = scenario is "same-redirect" or "different-redirect";
         using var pausedStream = new PausingStream(oldData);
-        using (var firstClient = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
+        using (var firstClient = new HttpClient(new CookieRedirectHandler(new TestMockHttpMessageHandler((request, _) =>
         {
+            if (redirect && request.RequestUri!.AbsolutePath == "/payload.bin")
+                return Task.FromResult(RedirectTo("/first.bin"));
             Assert.Equal("identity", Assert.Single(request.Headers.AcceptEncoding).Value);
             var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(pausedStream) };
             response.Headers.ETag = new EntityTagHeaderValue("\"v1\"");
             return Task.FromResult(response);
-        })))
+        }))))
         {
             var firstEngine = new DownloadEngine(firstClient);
             Task first = firstEngine.ResumeDownloadAsync(item);
@@ -82,11 +88,13 @@ public class DownloadReliabilityTests : IDisposable
             using var tail = new FileStream(partPath, FileMode.Append, FileAccess.Write);
             tail.Write(new byte[] { 255, 255, 255 });
         }
-        bool changed = scenario is not ("same" or "uncommitted-tail");
+        bool changed = scenario is not ("same" or "same-redirect" or "uncommitted-tail");
         byte[] expected = changed ? newData : oldData;
         int requests = 0;
-        using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
+        using var client = new HttpClient(new CookieRedirectHandler(new TestMockHttpMessageHandler((request, _) =>
         {
+            if (redirect && request.RequestUri!.AbsolutePath == "/payload.bin")
+                return Task.FromResult(RedirectTo(changed ? "/second.bin" : "/first.bin"));
             Interlocked.Increment(ref requests);
             var range = request.Headers.Range?.Ranges.Single();
             if (range != null)
@@ -95,18 +103,178 @@ public class DownloadReliabilityTests : IDisposable
                 Assert.Equal("\"v1\"", request.Headers.IfRange?.EntityTag?.ToString());
                 Assert.NotEqual("different-source", scenario);
                 if (scenario == "changed-full") return Task.FromResult(Response(expected, tag: "\"v2\""));
-                return Task.FromResult(Response(expected, range.From, tag: scenario == "missing-tag" ? null : changed ? "\"v2\"" : "\"v1\""));
+                return Task.FromResult(Response(expected, range.From,
+                    tag: scenario == "missing-tag" ? null : changed && scenario != "different-redirect" ? "\"v2\"" : "\"v1\""));
             }
             Assert.Null(request.Headers.IfRange);
             return Task.FromResult(Response(expected, tag: "\"v2\""));
-        }));
+        })));
         await new DownloadEngine(client).ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(DownloadStatus.Completed, item.Status);
         Assert.Equal(expected, File.ReadAllBytes(item.SaveFilePath!));
-        Assert.Equal(scenario is "changed-partial" or "missing-tag" ? 2 : 1, requests);
+        Assert.Equal(scenario is "changed-partial" or "missing-tag" or "different-redirect" ? 2 : 1, requests);
         Assert.False(File.Exists(partPath));
         Assert.False(File.Exists(partPath + ".segments"));
         Assert.Empty(_directory.GetFiles("*.tmp"));
+    }
+
+    private static HttpResponseMessage RedirectTo(string path)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.TemporaryRedirect);
+        response.Headers.Location = new Uri(path, UriKind.Relative);
+        return response;
+    }
+
+    [Fact]
+    public async Task SegmentedTransfer_DoesNotShareAnETagAcrossRedirectTargets()
+    {
+        byte[] original = Payload(3, 8 * 1024 * 1024);
+        byte[] current = Payload(71, original.Length);
+        var item = CreateItem();
+        int fullRequests = 0;
+        using var client = new HttpClient(new CookieRedirectHandler(new TestMockHttpMessageHandler((request, _) =>
+        {
+            var range = request.Headers.Range?.Ranges.Single();
+            string path = request.RequestUri!.AbsolutePath;
+            if (path == "/payload.bin") return Task.FromResult(RedirectTo(range?.From == 0 ? "/first.bin" : "/second.bin"));
+            if (range == null) Interlocked.Increment(ref fullRequests);
+            return Task.FromResult(Response(path == "/first.bin" ? original : current, range?.From, range?.To, "\"v1\""));
+        })));
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 4 };
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Equal(current, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(1, fullRequests);
+        Assert.False(File.Exists(item.SaveFilePath + ".part"));
+        Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SequentialResume_WithoutETagRequiresAWholeFileChecksum(bool hasChecksum)
+    {
+        var original = Payload(3);
+        var current = hasChecksum ? original : Payload(71);
+        var item = CreateItem();
+        if (hasChecksum) item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(current));
+        using var stream = new PausingStream(original);
+        using (var firstClient = new HttpClient(new TestMockHttpMessageHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) }))))
+        {
+            var firstEngine = new DownloadEngine(firstClient);
+            Task transfer = firstEngine.ResumeDownloadAsync(item);
+            try { await stream.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+            finally { await firstEngine.PauseAllAsync(); await transfer.WaitAsync(TimeSpan.FromSeconds(10)); }
+        }
+
+        string part = item.SaveFilePath + ".part";
+        long committed = DownloadPersistenceService.GetSegmentedDownloadedBytes(item.SaveFilePath)!.Value;
+        Assert.InRange(committed, 1, original.Length - 1);
+        Assert.Equal(original[..(int)committed], File.ReadAllBytes(part));
+        var ranges = new List<long?>();
+        using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
+        {
+            var range = request.Headers.Range?.Ranges.Single();
+            ranges.Add(range?.From);
+            return Task.FromResult(Response(current, range?.From, range?.To));
+        }));
+        var engine = new DownloadEngine(client);
+        int completions = 0;
+        engine.DownloadCompleted += _ => completions++;
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(current, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(hasChecksum ? committed : null, Assert.Single(ranges));
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Equal(1, completions);
+        Assert.False(File.Exists(part));
+        Assert.False(File.Exists(part + ".segments"));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task SegmentedTransfer_WithoutETagRequiresAWholeFileChecksum(bool saved, bool hasChecksum)
+    {
+        var original = Payload(3, 8 * 1024 * 1024);
+        var current = hasChecksum ? original : Payload(71, original.Length);
+        var item = CreateItem();
+        if (hasChecksum) item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(current));
+        string part = item.SaveFilePath + ".part";
+        int half = original.Length / 2;
+        if (saved)
+        {
+            var bytes = new byte[original.Length];
+            original.AsSpan(0, half).CopyTo(bytes);
+            File.WriteAllBytes(part, bytes);
+            File.WriteAllText(part + ".segments", JsonSerializer.Serialize(new
+            {
+                TotalBytes = original.Length,
+                Segments = new[]
+                {
+                    new { Start = 0, End = half - 1, Done = half },
+                    new { Start = half, End = original.Length - 1, Done = 0 }
+                }
+            }));
+        }
+
+        var ranges = new System.Collections.Concurrent.ConcurrentBag<long?>();
+        using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
+        {
+            var range = request.Headers.Range?.Ranges.Single();
+            ranges.Add(range?.From);
+            var bytes = range?.From == 0 ? original : current;
+            return Task.FromResult(Response(bytes, range?.From, range?.To));
+        }));
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 4 };
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(current, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Equal(saved ? new long?[] { hasChecksum ? half : null } : [null, 0], ranges.OrderBy(value => value).ToArray());
+        Assert.False(File.Exists(part));
+        Assert.False(File.Exists(part + ".segments"));
+    }
+
+    [Fact]
+    public async Task SequentialResume_When416ReportsAShorterRepresentation_RestartsFromZero()
+    {
+        var original = Payload(3);
+        var current = Payload(71, 8192);
+        var item = CreateItem();
+        using var stream = new PausingStream(original);
+        using (var firstClient = new HttpClient(new TestMockHttpMessageHandler((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) };
+            response.Headers.ETag = EntityTagHeaderValue.Parse("\"v1\"");
+            return Task.FromResult(response);
+        })))
+        {
+            var firstEngine = new DownloadEngine(firstClient);
+            Task transfer = firstEngine.ResumeDownloadAsync(item);
+            try { await stream.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+            finally { await firstEngine.PauseAllAsync(); await transfer.WaitAsync(TimeSpan.FromSeconds(10)); }
+        }
+        Assert.Equal(current.Length, DownloadPersistenceService.GetSegmentedDownloadedBytes(item.SaveFilePath));
+        var ranges = new List<long?>();
+        using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
+        {
+            var range = request.Headers.Range?.Ranges.Single();
+            ranges.Add(range?.From);
+            if (range == null) return Task.FromResult(Response(current, tag: "\"v2\""));
+            var response = new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable);
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(current.Length);
+            return Task.FromResult(response);
+        }));
+        await new DownloadEngine(client).ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(current, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(new long?[] { current.Length, null }, ranges);
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.False(File.Exists(item.SaveFilePath + ".part.segments"));
     }
 
     [Theory]
@@ -189,10 +357,12 @@ public class DownloadReliabilityTests : IDisposable
     {
         var data = Payload(29);
         var item = CreateItem();
-        if (partial) File.WriteAllBytes(item.SaveFilePath + ".part", data.Take(17).ToArray());
+        if (partial) await SaveVersionedPrefixAsync(item, data, 17);
         using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
         {
-            var response = Response(data, request.Headers.Range?.Ranges.Single().From);
+            var range = request.Headers.Range?.Ranges.Single();
+            Assert.Equal(partial ? 17L : null, range?.From);
+            var response = Response(data, range?.From, tag: "\"v1\"");
             response.Headers.TryAddWithoutValidation(header, Digest(header == "Content-Digest" && partial ? data.Skip(17).ToArray() : data));
             return Task.FromResult(response);
         }));
@@ -261,7 +431,7 @@ public class DownloadReliabilityTests : IDisposable
     {
         var data = Payload(67);
         var item = CreateItem();
-        if (resume) File.WriteAllBytes(item.SaveFilePath + ".part", data.Take(17).ToArray());
+        if (resume) await SaveVersionedPrefixAsync(item, data, 17);
         using var encoded = new MemoryStream();
         using (Stream compressor = encoding switch
         {
@@ -362,6 +532,35 @@ public class DownloadReliabilityTests : IDisposable
         if (!conflicting) Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PartialResponse_WithUnknownTotalRequiresWholeFileChecksum(bool hasDigest)
+    {
+        var item = CreateItem();
+        byte[] data = Payload(5, 8192);
+        using var client = new HttpClient(new TestMockHttpMessageHandler((request, _) =>
+        {
+            Assert.Null(request.Headers.Range);
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
+            {
+                Content = new ByteArrayContent(data)
+            };
+            response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, data.Length - 1);
+            if (hasDigest) response.Headers.TryAddWithoutValidation("Repr-Digest", Digest(data));
+            return Task.FromResult(response);
+        }));
+        var engine = new DownloadEngine(client);
+        int completions = 0;
+        engine.DownloadCompleted += _ => completions++;
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(hasDigest ? DownloadStatus.Completed : DownloadStatus.Failed, item.Status);
+        Assert.Equal(hasDigest ? 1 : 0, completions);
+        if (hasDigest) Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
+        else Assert.False(File.Exists(item.SaveFilePath));
+    }
+
     [Fact]
     public async Task SingleConnection_WhenBodyExceedsDeclaredLength_DoesNotPublishACompletedFile()
     {
@@ -385,7 +584,23 @@ public class DownloadReliabilityTests : IDisposable
         _directory.Delete(recursive: true);
     }
 
-    private sealed class PausingStream(byte[] bytes) : MemoryStream(bytes, writable: false)
+    private static async Task SaveVersionedPrefixAsync(DownloadItem item, byte[] data, int length)
+    {
+        using var stream = new PausingStream(data, length);
+        using var client = new HttpClient(new TestMockHttpMessageHandler((_, _) =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(stream) };
+            response.Headers.ETag = EntityTagHeaderValue.Parse("\"v1\"");
+            return Task.FromResult(response);
+        }));
+        var engine = new DownloadEngine(client);
+        Task transfer = engine.ResumeDownloadAsync(item);
+        try { await stream.Blocked.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
+        finally { await engine.PauseAllAsync(); await transfer.WaitAsync(TimeSpan.FromSeconds(10)); }
+        Assert.Equal(length, DownloadPersistenceService.GetSegmentedDownloadedBytes(item.SaveFilePath));
+    }
+
+    private sealed class PausingStream(byte[] bytes, int prefixLength = 8192) : MemoryStream(bytes, writable: false)
     {
         internal TaskCompletionSource Blocked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private bool _sentPrefix;
@@ -394,7 +609,7 @@ public class DownloadReliabilityTests : IDisposable
             if (!_sentPrefix)
             {
                 _sentPrefix = true;
-                return await base.ReadAsync(buffer[..Math.Min(buffer.Length, 8192)], cancellationToken);
+                return await base.ReadAsync(buffer[..Math.Min(buffer.Length, prefixLength)], cancellationToken);
             }
             Blocked.TrySetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);

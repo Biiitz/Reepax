@@ -338,6 +338,11 @@ public partial class DownloadEngine
                     await ExecuteSingleConnectionWithRetriesAsync(item, tempFilePath, cancellationToken, null, segState);
                     return;
                 }
+                if (!CanCombineResponses(item, segState.EntityTag))
+                {
+                    await ExecuteSingleConnectionWithRetriesAsync(item, tempFilePath, cancellationToken, null, null, restart: true);
+                    return;
+                }
                 try
                 {
                     await ExecuteChunkedDownloadAsync(item, segState, tempFilePath, segMetaPath, cancellationToken);
@@ -371,7 +376,7 @@ public partial class DownloadEngine
                 if (existingBytes == 0)
                 {
                     var probe = await ProbeRangeSupportAsync(item, cancellationToken);
-                    if (probe.IsSupported && probe.TotalBytes >= MinBytesForChunking)
+                    if (probe.IsSupported && probe.TotalBytes >= MinBytesForChunking && CanCombineResponses(item, probe.EntityTag))
                     {
                         int segmentCount = (int)Math.Clamp(
                             Math.Min(MaxConnectionsPerDownload, probe.TotalBytes / MinSegmentBytes),
@@ -379,7 +384,8 @@ public partial class DownloadEngine
 
                         segState = CreateSegments(probe.TotalBytes, segmentCount);
                         segState.EntityTag = probe.EntityTag;
-                        if (segState.EntityTag != null) segState.SourceKey = GetSourceKey(item);
+                        segState.SourceKey = GetSourceKey(item);
+                        segState.ResponseSourceKey = probe.ResponseSourceKey;
 
                         // Adopt filename from Content-Disposition of probe response
                         if (!item.IsCustomName &&
@@ -521,6 +527,11 @@ public partial class DownloadEngine
             else existingBytes = committed;
         }
 
+        long expectedTotal = checkpoint?.IsUnknownLength == true ? 0 : checkpoint?.TotalBytes ?? item.TotalBytes;
+        bool canCombine = CanCombineResponses(item, checkpoint?.EntityTag);
+        bool completeSingleResponse = checkpoint?.IsSingleResponse == true && expectedTotal > 0 && existingBytes == expectedTotal;
+        if (!canCombine && !completeSingleResponse) existingBytes = 0;
+
         using var checkpointLifetime = new SegmentIntegrityLifetime(checkpoint?.Segments ?? new());
         if (checkpoint != null && existingBytes > 0)
         {
@@ -530,13 +541,13 @@ public partial class DownloadEngine
             segment.Done = existingBytes = segment.Integrity.Snapshot().Length;
         }
 
-        long expectedTotal = checkpoint?.IsUnknownLength == true ? 0 : checkpoint?.TotalBytes ?? item.TotalBytes;
         // Finalize a fully committed transfer after a transient final move failure.
         if (existingBytes > 0 && expectedTotal > 0 && existingBytes == expectedTotal)
         {
             await FinalizeCompletedPartFileAsync(item, tempFilePath, destinationPath, existingBytes, expectedTotal, cancellationToken);
             return;
         }
+        if (!canCombine) existingBytes = 0;
 
         using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
         ApplyRequestHeaders(request, item);
@@ -553,37 +564,27 @@ public partial class DownloadEngine
         if (existingBytes > 0 &&
             (HasEncodedContent(response) || (checkpoint != null &&
                 (response.StatusCode == HttpStatusCode.PreconditionFailed ||
-                 (response.StatusCode == HttpStatusCode.PartialContent && !MatchesRepresentation(response, checkpoint))))))
+                 (response.StatusCode == HttpStatusCode.PartialContent && !MatchesRepresentation(response, checkpoint, item))))))
         {
             response.Dispose();
             await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, null, restart: true);
             return;
         }
 
-        if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+        if (existingBytes > 0 && response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
         {
-            long? remoteTotal = response.Content.Headers.ContentRange?.Length;
-            if (existingBytes > 0 &&
-                ((remoteTotal.HasValue && remoteTotal.Value > 0 && existingBytes == remoteTotal.Value) ||
-                 (expectedTotal > 0 && existingBytes == expectedTotal)))
+            var range = response.Content.Headers.ContentRange;
+            if (expectedTotal == 0 && range is { HasRange: false } && range.Length == existingBytes &&
+                string.Equals(range.Unit, "bytes", StringComparison.OrdinalIgnoreCase) &&
+                (!string.IsNullOrWhiteSpace(item.ExpectedChecksum) ||
+                 (checkpoint?.EntityTag != null && MatchesRepresentation(response, checkpoint, item))))
             {
                 await FinalizeCompletedPartFileAsync(item, tempFilePath, destinationPath, existingBytes, existingBytes, cancellationToken);
                 return;
             }
 
-            // Range invalid or file changed on server, restart file
-            existingBytes = 0;
-            if (File.Exists(tempFilePath))
-            {
-                Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(tempFilePath);
-            }
-
-            using var freshRequest = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
-            ApplyRequestHeaders(freshRequest, item);
-
-            using var freshResponse = await _httpClient.SendAsync(freshRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            freshResponse.EnsureSuccessStatusCode();
-            await ProcessResponseStreamAsync(item, freshResponse, tempFilePath, destinationPath, cancellationToken, 0, buffer);
+            response.Dispose();
+            await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, null, restart: true);
             return;
         }
 
@@ -714,9 +715,11 @@ public partial class DownloadEngine
     {
         public long TotalBytes { get; set; }
         public bool IsSequential { get; set; }
+        public bool IsSingleResponse { get; set; }
         public bool IsUnknownLength { get; set; }
         public string? EntityTag { get; set; }
         public string? SourceKey { get; set; }
+        public string? ResponseSourceKey { get; set; }
         public List<SegmentState> Segments { get; set; } = new();
     }
 
@@ -810,14 +813,15 @@ public partial class DownloadEngine
     /// Probes via HTTP range (bytes=0-0) if the server supports partial content,
     /// retrieving total size and filename.
     /// </summary>
-    private async Task<(bool IsSupported, long TotalBytes, string? FileName, string? EntityTag)> ProbeRangeSupportAsync(DownloadItem item, CancellationToken cancellationToken)
+    private async Task<(bool IsSupported, long TotalBytes, string? FileName, string? EntityTag, string? ResponseSourceKey)>
+        ProbeRangeSupportAsync(DownloadItem item, CancellationToken cancellationToken)
     {
         try
         {
             // Only HTTP(S) is probeable (not blob: etc.)
             if (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) ||
                 !item.DirectDownloadUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                return (false, 0, null, null);
+                return (false, 0, null, null, null);
 
             using var request = new HttpRequestMessage(HttpMethod.Get, item.DirectDownloadUrl);
             request.Headers.Range = new RangeHeaderValue(0, 0);
@@ -829,8 +833,11 @@ public partial class DownloadEngine
                 var range = ValidateContentRange(response, 0);
                 ApplyResponseDigest(response, item);
                 if (range.Length is > 0)
-                    return (true, range.Length.Value,
-                        ExtractContentDispositionFileName(response), GetStrongEntityTag(response));
+                {
+                    string? entityTag = GetStrongEntityTag(response);
+                    return (true, range.Length.Value, ExtractContentDispositionFileName(response), entityTag,
+                        entityTag == null ? null : GetResponseSourceKey(response, GetSourceKey(item)));
+                }
             }
         }
         catch (Exception ex)
@@ -838,7 +845,7 @@ public partial class DownloadEngine
             Services.Storage.AppLogger.Warn($"[DownloadEngine] Range probe for '{item.FileName}' failed", ex);
         }
 
-        return (false, 0, null, null);
+        return (false, 0, null, null, null);
     }
 
     /// <summary>
@@ -1058,7 +1065,7 @@ public partial class DownloadEngine
 
                     if (HasEncodedContent(response))
                         throw new RangeNotSupportedException("Encoded responses cannot be assembled as byte ranges.");
-                    if (!MatchesRepresentation(response, state)) throw new RepresentationChangedException();
+                    if (!MatchesRepresentation(response, state, item)) throw new RepresentationChangedException();
                     long responseEnd = ValidateContentRange(response, rangeStart, state.TotalBytes).To!.Value;
                     ApplyResponseDigest(response, item);
                     using var stream = new NetworkReadTimeoutStream(await response.Content.ReadAsStreamAsync(cancellationToken), NetworkReadTimeout, cancellationToken);
@@ -1227,6 +1234,9 @@ public partial class DownloadEngine
         }
         if (encoded) totalBytes = 0;
         ApplyResponseDigest(response, item);
+        if (response.StatusCode == HttpStatusCode.PartialContent && response.Content.Headers.ContentRange?.Length == null &&
+            string.IsNullOrWhiteSpace(item.ExpectedChecksum))
+            throw new InvalidDataException("The partial response does not establish the total file size.");
 
         // Try extracting Content-Disposition filename with sanitization & fallback
         string? extractedFileName = ExtractContentDispositionFileName(response);
@@ -1297,10 +1307,18 @@ public partial class DownloadEngine
                     checkpoint.IsUnknownLength = totalBytes <= 0;
                     checkpoint.Segments[0].LocalHashes = new();
                     checkpoint.IsSequential = true;
+                    checkpoint.IsSingleResponse = true;
                     checkpoint.EntityTag = entityTag;
                     checkpoint.SourceKey = sourceKey ?? GetSourceKey(item);
+                    if (entityTag != null)
+                        checkpoint.ResponseSourceKey = GetResponseSourceKey(response, checkpoint.SourceKey);
                     SaveSegmentState(checkpointPath, checkpoint, required: true);
                 }
+            }
+            else if (checkpoint != null)
+            {
+                // Browser handoff has already compared the prefix against this response.
+                checkpoint.IsSingleResponse = browserPause != null;
             }
             if (checkpoint != null && totalBytes > 0)
             {

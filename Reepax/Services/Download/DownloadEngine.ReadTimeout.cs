@@ -27,20 +27,21 @@ public partial class DownloadEngine
         : IOException(Loc.Get("Error_DownloadReadTimeout"), inner);
 
     private async Task ExecuteSingleConnectionWithRetriesAsync(DownloadItem item, string tempFilePath,
-        CancellationToken cancellationToken, byte[]? buffer, SegmentFileState? checkpoint)
+        CancellationToken cancellationToken, byte[]? buffer, SegmentFileState? checkpoint, bool restart = false)
     {
         for (int attempt = 0; ; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, checkpoint);
+                await ExecuteSingleConnectionCoreAsync(item, tempFilePath, cancellationToken, buffer, checkpoint, restart);
                 return;
             }
             catch (DownloadReadTimeoutException) when (attempt < 2 && !cancellationToken.IsCancellationRequested)
             {
                 tempFilePath = item.SaveFilePath + ".part";
                 checkpoint = LoadSegmentState(tempFilePath + ".segments");
+                restart = false;
                 await Task.Delay(Random.Shared.Next(400, 1200), cancellationToken);
             }
         }

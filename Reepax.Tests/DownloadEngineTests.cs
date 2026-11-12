@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -105,7 +106,8 @@ public class DownloadEngineTests
             var item = new DownloadItem
             {
                 FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
-                Status = DownloadStatus.Paused, TotalBytes = data.Length, IsCustomName = true
+                Status = DownloadStatus.Paused, TotalBytes = data.Length, IsCustomName = true,
+                ExpectedChecksum = WholeFileChecksum(data)
             };
             int completed = 0;
             engine.DownloadCompleted += _ => completed++;
@@ -163,7 +165,8 @@ public class DownloadEngineTests
             var item = new DownloadItem
             {
                 FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
-                Status = DownloadStatus.Paused, TotalBytes = data.Length, IsCustomName = true
+                Status = DownloadStatus.Paused, TotalBytes = data.Length, IsCustomName = true,
+                ExpectedChecksum = WholeFileChecksum(data)
             };
             await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(DownloadStatus.Completed, item.Status);
@@ -200,7 +203,8 @@ public class DownloadEngineTests
             var item = new DownloadItem
             {
                 FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
-                Status = DownloadStatus.Paused, TotalBytes = 128 * 1024, IsCustomName = true
+                Status = DownloadStatus.Paused, TotalBytes = 128 * 1024, IsCustomName = true,
+                ExpectedChecksum = WholeFileChecksum(new byte[128 * 1024])
             };
             await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(DownloadStatus.Failed, item.Status);
@@ -256,7 +260,7 @@ public class DownloadEngineTests
             var item = new DownloadItem
             {
                 FileName = "payload.bin", SaveFilePath = path, DirectDownloadUrl = "https://example.com/payload.bin",
-                Status = DownloadStatus.Paused, IsCustomName = true
+                Status = DownloadStatus.Paused, IsCustomName = true, ExpectedChecksum = WholeFileChecksum(data)
             };
             await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(DownloadStatus.Completed, item.Status);
@@ -268,6 +272,8 @@ public class DownloadEngineTests
         }
         finally { DeleteIntegrityDirectory(directory); }
     }
+
+    private static string WholeFileChecksum(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
     private static void DeleteIntegrityDirectory(DirectoryInfo directory)
     {
@@ -392,6 +398,7 @@ public class DownloadEngineTests
             bool receivedRangeHeader = false;
             long requestedRangeFrom = 0;
 
+            item.ExpectedChecksum = WholeFileChecksum(initial500.Concat(remaining500).ToArray());
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null && req.Headers.Range.Ranges.Count > 0)
@@ -481,6 +488,7 @@ public class DownloadEngineTests
             var remaining500 = new byte[500];
             Array.Fill(remaining500, (byte)'B');
 
+            item.ExpectedChecksum = WholeFileChecksum(initial500.Concat(remaining500).ToArray());
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 var response = new HttpResponseMessage(HttpStatusCode.PartialContent)
@@ -638,6 +646,7 @@ public class DownloadEngineTests
             bool resumeRequested = false;
             long resumeFrom = -1;
 
+            item.ExpectedChecksum = WholeFileChecksum(fullData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null && req.Headers.Range.Ranges.Count > 0)
@@ -751,6 +760,7 @@ public class DownloadEngineTests
             var full1000 = new byte[1000];
             Array.Fill(full1000, (byte)'C');
 
+            item.ExpectedChecksum = WholeFileChecksum(full1000);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 var response = new HttpResponseMessage(HttpStatusCode.OK)
@@ -829,6 +839,7 @@ public class DownloadEngineTests
             Array.Fill(full1000, (byte)'D');
 
             int requestCount = 0;
+            item.ExpectedChecksum = WholeFileChecksum(full1000);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 requestCount++;
@@ -1209,6 +1220,7 @@ public class DownloadEngineTests
             };
 
             var remainingData = Encoding.UTF8.GetBytes("PART2");
+            item.ExpectedChecksum = WholeFileChecksum(Encoding.UTF8.GetBytes("PART1_PART2"));
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 Assert.NotNull(req.Headers.Range);
@@ -1386,6 +1398,7 @@ public class DownloadEngineTests
                 testData[i] = (byte)(i % 251);
 
             int rangeRequests = 0;
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -1463,6 +1476,7 @@ public class DownloadEngineTests
             for (int i = 0; i < testData.Length; i++)
                 testData[i] = (byte)(i % 251);
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -1569,6 +1583,7 @@ public class DownloadEngineTests
                 Status = DownloadStatus.Paused
             };
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -1813,6 +1828,7 @@ public class DownloadEngineTests
             int rangeAttempts = 0;
             int fallbackRequests = 0;
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -1893,6 +1909,7 @@ public class DownloadEngineTests
             int segmentAttempts = 0;
             int fallbackRequests = 0;
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 // Probe request: range bytes=0-0
@@ -2154,6 +2171,7 @@ public class DownloadEngineTests
             int segmentAttempts = 0;
             int fallbackRequests = 0;
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 // Probe request: range bytes=0-0
@@ -2265,6 +2283,7 @@ public class DownloadEngineTests
             int rangeAttempts = 0;
             int fallbackRequests = 0;
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -2425,6 +2444,7 @@ public class DownloadEngineTests
             for (int i = 0; i < testData.Length; i++)
                 testData[i] = (byte)((i * 31) % 256);
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -2518,6 +2538,7 @@ public class DownloadEngineTests
                             Content = new ByteArrayContent(new byte[1])
                         };
                         probeRes.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(0, 0, totalLength);
+                        probeRes.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"fixture-v1\"");
                         return probeRes;
                     }
 
@@ -2543,6 +2564,7 @@ public class DownloadEngineTests
                         Content = new ByteArrayContent(slice)
                     };
                     res.Content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(from, to, totalLength);
+                    res.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue("\"fixture-v1\"");
                     return res;
                 }
 
@@ -2669,6 +2691,7 @@ public class DownloadEngineTests
             };
 
             // Mock handler: segment requests fail with network error mentioning host dl416
+            item.ExpectedChecksum = WholeFileChecksum(File.ReadAllBytes(partFile));
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 throw new HttpRequestException("No connection could be made because the target machine actively refused it. (dl416.example.com:443)");
@@ -2768,6 +2791,7 @@ public class DownloadEngineTests
             int fullDownloadRequests = 0;
             int requestedSegmentCount = 0;
 
+            item.ExpectedChecksum = WholeFileChecksum(testData);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
@@ -2973,6 +2997,7 @@ public class DownloadEngineTests
             };
 
             int httpRequests = 0;
+            item.ExpectedChecksum = WholeFileChecksum(payload);
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 Interlocked.Increment(ref httpRequests);
