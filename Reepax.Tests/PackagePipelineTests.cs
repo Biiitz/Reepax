@@ -1,6 +1,8 @@
 using System.IO;
 using Reepax.Models;
+using Reepax.Services.Download;
 using Reepax.Services.Extractor;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
@@ -10,6 +12,108 @@ namespace Reepax.Tests;
 
 public sealed class PackagePipelineTests
 {
+    [Theory]
+    [InlineData("existing", "intact")]
+    [InlineData("existing", "repairable")]
+    [InlineData("imported", "intact")]
+    [InlineData("imported", "repairable")]
+    [InlineData("new", "intact")]
+    [InlineData("new", "repairable")]
+    public async Task LocalDownload_UsesPackagePar2OptionWhenGlobalDefaultIsDisabled(string origin, string scenario)
+    {
+        var settings = SettingsService.Instance.Settings;
+        await using var fixture = await PackagePipelineFixture.CreateAsync(scenario, createPackage: directory =>
+        {
+            if (origin == "existing")
+            {
+                var existing = PackageGrouper.CreatePackage("Example package", [], directory, autoExtractArchives: true);
+                settings.AutoPar2Repair = false;
+                return existing;
+            }
+
+            settings.AutoPar2Repair = false;
+            if (origin == "new")
+                return PackageGrouper.CreatePackage("Example package", [], directory, autoExtractArchives: true);
+
+            string exported = PackageExportImportService.ExportToJson(new DownloadPackage
+            {
+                Name = "Example package", AutoExtractArchives = true, AutoPar2Repair = true
+            });
+            return PackageExportImportService.ImportFromJson(exported);
+        });
+
+        bool repairEnabled = origin != "new";
+        bool shouldExtract = repairEnabled || scenario == "intact";
+        Assert.False(settings.AutoPar2Repair);
+        Assert.Equal(repairEnabled, fixture.Package.AutoPar2Repair);
+        await fixture.DownloadRepairFilesAsync();
+        await fixture.DownloadArchiveAsync();
+        Assert.Equal(shouldExtract, await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(30)));
+        if (repairEnabled)
+            Assert.Equal(NextTaskStepState.Done, Assert.Single(fixture.Package.NextTaskSteps, step => step.Key == "Par2").State);
+        else
+            Assert.DoesNotContain(fixture.Package.NextTaskSteps, step => step.Key == "Par2");
+
+        Assert.Equal(repairEnabled ? fixture.OriginalArchive : fixture.ServedArchive, File.ReadAllBytes(fixture.Archive.SaveFilePath!));
+        Assert.Equal(shouldExtract ? fixture.Payload : fixture.PreviousOutput, File.ReadAllBytes(fixture.OutputPath));
+        Assert.Equal(shouldExtract, fixture.Package.IsFullyCompleted);
+        Assert.Equal(shouldExtract, fixture.Package.HasCompletedNotified);
+        if (shouldExtract)
+        {
+            await fixture.CountdownStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.All(fixture.Package.NextTaskSteps, step => Assert.Equal(NextTaskStepState.Done, step.State));
+            Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(fixture.Package));
+            QueueManager.Instance.NotifyPackageCompletionIfEligible(fixture.Package);
+        }
+        fixture.EvaluateCompletion();
+        Assert.Equal(shouldExtract ? 1 : 0, fixture.NotificationCount);
+        Assert.Equal(shouldExtract ? 1 : 0, fixture.CountdownCount);
+        Assert.False(PostDownloadActionService.Instance.IsCountdownActive);
+        Assert.Empty(fixture.EarlyCompletion);
+        Assert.Equal(1, fixture.Source.Requests["archive.zip"]);
+        fixture.AssertUnaffectedFiles();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreviouslySkippedPar2_RemainsPendingAfterReloadUntilExplicitReextraction(bool history)
+    {
+        await using var fixture = await PackagePipelineFixture.CreateAsync("intact");
+        SettingsService.Instance.Settings.AutoPar2Repair = false;
+        fixture.AutoStartExtraction = false;
+        await fixture.DownloadRepairFilesAsync();
+        await fixture.DownloadArchiveAsync();
+
+        // Recreate the state saved by the old extraction path.
+        File.WriteAllBytes(fixture.OutputPath, fixture.Payload);
+        fixture.Package.SetNextTaskDone("Extract");
+        fixture.Package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
+        Assert.Equal(NextTaskStepState.Pending, Assert.Single(fixture.Package.NextTaskSteps, step => step.Key == "Par2").State);
+        using var storage = new DownloadPersistenceService(Path.Combine(fixture.Package.SaveDirectory, "downloads.json"));
+        if (history) storage.SaveHistory([fixture.Package], sync: true);
+        else storage.SaveDownloads([fixture.Package], sync: true);
+        File.WriteAllBytes(fixture.OutputPath, fixture.PreviousOutput);
+        var restored = Assert.Single(history ? storage.LoadHistory() : storage.LoadDownloads());
+
+        Assert.True(restored.IsExtracted);
+        Assert.True(restored.AutoPar2Repair);
+        Assert.False(restored.IsFullyCompleted);
+        Assert.Equal(NextTaskStepState.Pending, Assert.Single(restored.NextTaskSteps, step => step.Key == "Par2").State);
+        Assert.Equal(NextTaskStepState.Done, Assert.Single(restored.NextTaskSteps, step => step.Key == "Extract").State);
+        Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(restored));
+        Assert.Equal(fixture.PreviousOutput, File.ReadAllBytes(fixture.OutputPath));
+        Assert.False(restored.IsFullyCompleted);
+        Assert.Equal(0, fixture.CountdownCount);
+
+        Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(restored, force: true, forceReextract: true));
+        Assert.True(restored.IsFullyCompleted);
+        Assert.All(restored.NextTaskSteps, step => Assert.Equal(NextTaskStepState.Done, step.State));
+        Assert.Equal(fixture.Payload, File.ReadAllBytes(fixture.OutputPath));
+        Assert.Equal(fixture.OriginalArchive, File.ReadAllBytes(fixture.Archive.SaveFilePath!));
+        fixture.AssertUnaffectedFiles();
+    }
+
     [Fact]
     public async Task LocalDownload_FailedPublicationBlocksCompletionUntilSuccessfulRetry()
     {

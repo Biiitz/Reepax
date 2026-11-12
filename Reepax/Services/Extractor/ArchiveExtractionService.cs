@@ -488,7 +488,7 @@ public partial class ArchiveExtractionService
             });
 
             // 6b. Automatic PAR2 verification and repair before extraction
-            if (!reuseRepair && package.AutoPar2Repair && SettingsService.Instance.Settings.AutoPar2Repair)
+            if (!reuseRepair && package.AutoPar2Repair)
             {
                 token.ThrowIfCancellationRequested();
                 if (Verification.Par2RepairService.Instance.HasPar2Files(package, out _))

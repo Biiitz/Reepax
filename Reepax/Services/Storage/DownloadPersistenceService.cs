@@ -1585,11 +1585,7 @@ public class DownloadPersistenceService : IDisposable
 
                 if (isAllDone && package.AutoExtractArchives)
                 {
-                    package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
-                    foreach (var step in package.NextTaskSteps)
-                    {
-                        step.State = NextTaskStepState.Done;
-                    }
+                    RestoreCompletedExtractionSteps(package, pkgDto);
                 }
                 else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) &&
                          Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(pkgDto.StatusMessage))
@@ -1632,6 +1628,18 @@ public class DownloadPersistenceService : IDisposable
         }
 
         return result;
+    }
+
+    private static void RestoreCompletedExtractionSteps(DownloadPackage package, DownloadPackageDto savedPackage)
+    {
+        // An extraction result does not override an explicitly unfinished PAR2 step.
+        bool par2Incomplete = savedPackage.NextTaskSteps?.Any(step => step.Key == "Par2" && step.State != NextTaskStepState.Done) == true;
+        package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
+        foreach (var step in package.NextTaskSteps)
+        {
+            if (step.Key != "Par2" || !par2Incomplete)
+                step.State = NextTaskStepState.Done;
+        }
     }
 
     public List<DownloadPackage> LoadDownloads()
@@ -1951,11 +1959,7 @@ public class DownloadPersistenceService : IDisposable
 
                 if (isAllDone && package.AutoExtractArchives)
                 {
-                    package.StatusMessage = Loc.Get("Status_CompletedAndExtracted");
-                    foreach (var step in package.NextTaskSteps)
-                    {
-                        step.State = NextTaskStepState.Done;
-                    }
+                    RestoreCompletedExtractionSteps(package, pkgDto);
                 }
                 else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) &&
                          Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(pkgDto.StatusMessage))

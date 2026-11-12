@@ -108,12 +108,13 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         _actions.StateChanged += ActionStateChanged;
     }
 
-    internal static async Task<PackagePipelineFixture> CreateAsync(string scenario, bool encrypted = false, int payloadLength = 16 * 1024)
+    internal static async Task<PackagePipelineFixture> CreateAsync(string scenario, bool encrypted = false,
+        int payloadLength = 16 * 1024, Func<string, DownloadPackage>? createPackage = null)
     {
         var fixture = new PackagePipelineFixture();
         try
         {
-            await fixture.InitializeAsync(scenario, encrypted, payloadLength);
+            await fixture.InitializeAsync(scenario, encrypted, payloadLength, createPackage);
             return fixture;
         }
         catch
@@ -123,7 +124,7 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         }
     }
 
-    private async Task InitializeAsync(string scenario, bool encrypted, int payloadLength)
+    private async Task InitializeAsync(string scenario, bool encrypted, int payloadLength, Func<string, DownloadPackage>? createPackage)
     {
         string originals = Path.Combine(_root, "source");
         string downloads = Path.Combine(_root, "downloads");
@@ -160,11 +161,12 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
             .ToDictionary(path => Path.GetFileName(path), File.ReadAllBytes);
         files.Add("archive.zip", ServedArchive);
         _source = new PipelineHttpSource(files);
-        Package = new DownloadPackage
+        Package = createPackage?.Invoke(downloads) ?? new DownloadPackage
         {
             Name = "Example package", IsCustomName = true, SaveDirectory = downloads,
             AutoExtractArchives = true, AutoPar2Repair = true, IsEnabled = true
         };
+        Package.SaveDirectory = downloads;
         foreach (var (name, bytes) in files)
         {
             var item = new DownloadItem
