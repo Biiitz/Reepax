@@ -253,13 +253,13 @@ public partial class Par2RepairService
             };
         }
 
-        var workingDir = Path.GetDirectoryName(par2FilePath) ?? Environment.CurrentDirectory;
-        var fileName = Path.GetFileName(par2FilePath);
+        par2FilePath = Path.GetFullPath(par2FilePath);
+        var workingDir = Path.GetDirectoryName(par2FilePath)!;
 
         var psi = new ProcessStartInfo
         {
             FileName = exePath,
-            Arguments = $"v -q \"{fileName}\"",
+            ArgumentList = { "v", "-q", par2FilePath },
             WorkingDirectory = workingDir,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -350,12 +350,17 @@ public partial class Par2RepairService
     /// <summary>
     /// Repairs damaged files using available recovery packets via 'par2 r'.
     /// </summary>
-    public async Task<Par2RepairResult> RepairAsync(
+    public Task<Par2RepairResult> RepairAsync(
         string par2FilePath,
         bool purgeBackups = true,
         Action<string>? statusCallback = null,
         Action<double>? progressCallback = null,
         CancellationToken ct = default)
+        => RepairCoreAsync(par2FilePath, purgeBackups, statusCallback, progressCallback, ct);
+
+    private async Task<Par2RepairResult> RepairCoreAsync(
+        string par2FilePath, bool purgeBackups, Action<string>? statusCallback, Action<double>? progressCallback,
+        CancellationToken ct, DownloadPackage? package = null)
     {
         var exePath = ResolvePar2ExecutablePath();
         if (string.IsNullOrEmpty(exePath))
@@ -376,13 +381,13 @@ public partial class Par2RepairService
             };
         }
 
-        var workingDir = Path.GetDirectoryName(par2FilePath) ?? Environment.CurrentDirectory;
-        var fileName = Path.GetFileName(par2FilePath);
+        par2FilePath = Path.GetFullPath(par2FilePath);
+        var workingDir = Path.GetDirectoryName(par2FilePath)!;
 
         var psi = new ProcessStartInfo
         {
             FileName = exePath,
-            Arguments = $"r -q \"{fileName}\"",
+            ArgumentList = { "r", "-q" },
             WorkingDirectory = workingDir,
             UseShellExecute = false,
             CreateNoWindow = true,
@@ -395,12 +400,26 @@ public partial class Par2RepairService
         var outputBuilder = new StringBuilder();
         RepairBackupScope? backups = null;
         IDisposable? repairLease = null;
+        PackageRepairInput? repairInput = null;
         bool repairStopped = true;
 
         try
         {
             repairLease = await EnterRepairDirectoryAsync(workingDir, ct);
-            backups = RepairBackupScope.Capture(par2FilePath);
+            if (package != null)
+            {
+                repairInput = await Task.Run(() => PackageRepairInput.Open(par2FilePath, workingDir, ct), ct);
+                if (repairInput == null) return UnconfirmedRepairTargets();
+            }
+            if (repairInput is { RecoveryVolumes.Length: > 0 })
+                psi.ArgumentList.Add("-B" + workingDir);
+            psi.ArgumentList.Add(repairInput?.IndexPath ?? par2FilePath);
+            if (repairInput != null)
+            {
+                foreach (string volume in repairInput.RecoveryVolumes)
+                    psi.ArgumentList.Add(volume);
+            }
+
             using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
             process.OutputDataReceived += (_, e) =>
@@ -423,9 +442,22 @@ public partial class Par2RepairService
                 }
             };
 
-            ct.ThrowIfCancellationRequested();
-            process.Start();
-            repairStopped = false;
+            using (package == null ? null : await PackagePathOperationGate.Instance.EnterAsync(ct))
+            {
+                if (package != null)
+                {
+                    var affected = await ConfirmRepairTargetsAsync(package, workingDir, repairInput!.Targets, ct);
+                    if (affected == null) return UnconfirmedRepairTargets();
+                    ct.ThrowIfCancellationRequested();
+                    foreach (var item in affected)
+                        item.CalculatedChecksum = null;
+                }
+
+                backups = RepairBackupScope.Capture(par2FilePath, repairInput?.Targets);
+                ct.ThrowIfCancellationRequested();
+                process.Start();
+                repairStopped = false;
+            }
 
             try
             {
@@ -494,6 +526,10 @@ public partial class Par2RepairService
                 ErrorMessage = "PAR2-Reparatur abgebrochen."
             };
         }
+        catch (Exception ex) when (package != null && ex is InvalidDataException or DecoderFallbackException)
+        {
+            return UnconfirmedRepairTargets();
+        }
         catch (Exception ex)
         {
             if (repairStopped)
@@ -509,6 +545,7 @@ public partial class Par2RepairService
         finally
         {
             backups?.Dispose();
+            repairInput?.Dispose();
             repairLease?.Dispose();
         }
     }
@@ -542,16 +579,16 @@ public partial class Par2RepairService
 
         if (verifyResult.Status == Par2VerificationStatus.RepairPossible)
         {
-            InvalidateRepairFingerprints(package, primaryPar2);
             AppLogger.Info($"[Par2RepairService] Repairable damage detected; using {verifyResult.AvailableRecoveryBlocks} recovery blocks.");
             statusCallback?.Invoke(Loc.Format("Status_Par2Repairing", "0"));
 
-            var repairResult = await RepairAsync(
+            var repairResult = await RepairCoreAsync(
                 primaryPar2,
                 purgeBackups: true,
                 statusCallback,
                 pct => progressCallback?.Invoke(pct),
-                ct);
+                ct,
+                package);
 
             if (repairResult.Success)
             {
@@ -581,30 +618,8 @@ public partial class Par2RepairService
         return false;
     }
 
-    private void InvalidateRepairFingerprints(DownloadPackage package, string parityPath)
-    {
-        string directory = Path.GetDirectoryName(Path.GetFullPath(parityPath))!;
-        HashSet<string>? targets = null;
-        try
-        {
-            targets = RepairBackupScope.ReadRepairTargets(parityPath, directory).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OverflowException)
-        {
-            AppLogger.Warn("[Par2RepairService] Repair metadata could not identify cached fingerprints.");
-        }
-        string prefix = Path.TrimEndingDirectorySeparator(directory) + Path.DirectorySeparatorChar;
-        foreach (var item in package.ItemsSnapshot)
-        {
-            if (string.IsNullOrWhiteSpace(item.SaveFilePath) || IsPar2File(item.SaveFilePath)) continue;
-            string path;
-            try { path = Path.GetFullPath(item.SaveFilePath); }
-            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { continue; }
-            // Unknown metadata invalidates nearby caches without blocking native repair.
-            if (targets is { Count: > 0 } ? targets.Contains(path) : path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                item.CalculatedChecksum = null;
-        }
-    }
+    private static Par2RepairResult UnconfirmedRepairTargets()
+        => new() { ErrorMessage = Loc.Get("Status_Par2RepairUnconfirmedTargets") };
 
     public static void ParseVerificationOutput(string output, int exitCode, Par2VerifyResult result)
     {

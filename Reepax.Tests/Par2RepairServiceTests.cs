@@ -1,11 +1,15 @@
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Download;
+using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -501,6 +505,160 @@ You need 4 more recovery blocks to be able to repair.
             LocalizationService.Instance.CurrentLanguage = previousLanguage;
             Directory.Delete(directory, true);
         }
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task PackageRepair_WithForeignTarget_PreservesBothPackagesAndAllowsRetry(bool manual, bool volumeMetadata)
+    {
+        string directory = Directory.CreateTempSubdirectory("SharedPar2_").FullName;
+        var queue = QueueManager.Instance;
+        bool previousTestMode = DownloadPersistenceService.IsTestEnvironment;
+        var package = new DownloadPackage
+        {
+            Name = "Example archive", SaveDirectory = directory, AutoExtractArchives = true,
+            AutoPar2Repair = true, DeleteArchiveAfterExtraction = false
+        };
+        var other = new DownloadPackage { Name = "Example neighbor", SaveDirectory = directory };
+        try
+        {
+            DownloadPersistenceService.IsTestEnvironment = true;
+            var viewModel = manual ? new MainViewModel() : null;
+            string archive = Path.Combine(directory, "archive.zip");
+            using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
+            using (var entry = zip.CreateEntry("payload.bin").Open())
+                entry.Write(Encoding.UTF8.GetBytes("example archive content"));
+            byte[] original = File.ReadAllBytes(archive);
+            byte[] damaged = original.ToArray();
+            damaged[40] ^= 0x5a;
+            string neighbor = Path.Combine(directory, "neighbor.bin");
+            byte[] expectedNeighbor = Enumerable.Range(1, 80).Select(index => (byte)index).ToArray();
+            byte[] actualNeighbor = Enumerable.Repeat((byte)255, expectedNeighbor.Length).ToArray();
+            byte[] independentBackup = Encoding.UTF8.GetBytes("independent backup");
+            File.WriteAllBytes(neighbor, expectedNeighbor);
+            string parity = await CreateParityAsync(directory, archive, neighbor);
+            if (volumeMetadata) RemoveFileDescriptions(parity);
+            File.WriteAllBytes(archive, damaged);
+            File.WriteAllBytes(neighbor, actualNeighbor);
+            File.WriteAllBytes(neighbor + ".1", independentBackup);
+
+            DownloadItem archiveItem = AddCompletedItem(package, archive);
+            DownloadItem neighborItem = AddCompletedItem(other, neighbor);
+            AddCompletedItem(package, parity);
+            package.EnsureNextTaskSteps();
+            queue.Packages.Add(package);
+            queue.Packages.Add(other);
+
+            async Task RunAsync()
+            {
+                if (viewModel != null)
+                    await viewModel.Par2RepairPackageCommand.ExecuteAsync(package);
+                else
+                    await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package);
+            }
+
+            string? archiveHash = archiveItem.CalculatedChecksum;
+            string? neighborHash = neighborItem.CalculatedChecksum;
+            await RunAsync();
+            Assert.Equal(actualNeighbor, File.ReadAllBytes(neighbor));
+            Assert.Equal(damaged, File.ReadAllBytes(archive));
+            Assert.Equal(independentBackup, File.ReadAllBytes(neighbor + ".1"));
+            Assert.False(File.Exists(neighbor + ".2"));
+            Assert.Equal(archiveHash, archiveItem.CalculatedChecksum);
+            Assert.Equal(neighborHash, neighborItem.CalculatedChecksum);
+            Assert.False(package.IsExtracted);
+            Assert.Contains(package.NextTaskSteps, step => step.Key == "Par2" && step.State == NextTaskStepState.Failed);
+            Assert.Empty(Par2RepairService.Instance.GetActiveRepairs());
+
+            string superseded = Directory.CreateDirectory(Path.Combine(directory, "superseded")).FullName;
+            foreach (string path in Directory.GetFiles(directory, "*.par2"))
+                File.Move(path, Path.Combine(superseded, Path.GetFileName(path)));
+            File.WriteAllBytes(archive, original);
+            await CreateParityAsync(directory, archive);
+            if (volumeMetadata) File.WriteAllBytes(parity, []);
+            File.WriteAllBytes(archive, damaged);
+            await RunAsync();
+
+            Assert.Equal(original, File.ReadAllBytes(archive));
+            Assert.Equal(actualNeighbor, File.ReadAllBytes(neighbor));
+            Assert.Equal(independentBackup, File.ReadAllBytes(neighbor + ".1"));
+            Assert.Equal(neighborHash, neighborItem.CalculatedChecksum);
+            Assert.Null(archiveItem.CalculatedChecksum);
+            Assert.Contains(package.NextTaskSteps, step => step.Key == "Par2" && step.State == NextTaskStepState.Done);
+            Assert.Equal(!manual, package.IsExtracted);
+        }
+        finally
+        {
+            queue.Packages.Remove(other);
+            queue.Packages.Remove(package);
+            DownloadPersistenceService.IsTestEnvironment = previousTestMode;
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    public async Task PackageRepair_RepairsMissingVolumeOnlyWithinPackageScope(bool dedicated, bool listed, bool repaired)
+    {
+        string directory = Directory.CreateTempSubdirectory(dedicated ? "ReepaxPkg_" : "SharedPar2_").FullName;
+        try
+        {
+            string first = Path.Combine(directory, "Archivé.7z.001");
+            string second = Path.Combine(directory, "Archivé.7z.002");
+            byte[] firstBytes = Enumerable.Range(0, 80).Select(index => (byte)index).ToArray();
+            byte[] secondBytes = Enumerable.Range(80, 80).Select(index => (byte)index).ToArray();
+            File.WriteAllBytes(first, firstBytes);
+            File.WriteAllBytes(second, secondBytes);
+            string index = await CreateParityAsync(directory, first, second);
+            File.Delete(index);
+            string parity = Directory.GetFiles(directory, "*.par2").First();
+            var package = new DownloadPackage { Name = "Example package", SaveDirectory = directory };
+            AddCompletedItem(package, first);
+            if (listed) AddCompletedItem(package, second);
+            AddCompletedItem(package, parity);
+            File.Delete(second);
+
+            var service = new Par2RepairService();
+            Assert.Equal(Par2VerificationStatus.RepairPossible, (await service.VerifyAsync(parity)).Status);
+            Assert.Equal(repaired, await service.ProcessPackagePar2Async(package));
+            Assert.Equal(firstBytes, File.ReadAllBytes(first));
+            Assert.Equal(repaired, File.Exists(second));
+            if (repaired) Assert.Equal(secondBytes, File.ReadAllBytes(second));
+            Assert.Empty(service.GetActiveRepairs());
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    private static void RemoveFileDescriptions(string path)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        using var stream = File.Create(path);
+        for (int offset = 0; offset < bytes.Length;)
+        {
+            int length = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(offset + 8, 8)));
+            if (!bytes.AsSpan(offset + 48, 16).SequenceEqual("PAR 2.0\0FileDesc"u8))
+                stream.Write(bytes.AsSpan(offset, length));
+            offset += length;
+        }
+    }
+
+    private static DownloadItem AddCompletedItem(DownloadPackage package, string path)
+    {
+        var item = new DownloadItem
+        {
+            PackageId = package.Id, FileName = Path.GetFileName(path), SaveFilePath = path, Status = DownloadStatus.Completed,
+            TotalBytes = new FileInfo(path).Length, DownloadedBytes = new FileInfo(path).Length,
+            CalculatedChecksum = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))
+        };
+        package.Items.Add(item);
+        return item;
     }
 
     [Theory]

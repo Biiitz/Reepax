@@ -8,7 +8,7 @@ namespace Reepax.ViewModels;
 
 public partial class MainViewModel
 {
-    private static bool IsCleanupDirectory(DownloadPackage package, string? path, IEnumerable<DownloadPackage>? packages, bool protectOtherPaths)
+    internal static bool IsCleanupDirectory(DownloadPackage package, string? path, IEnumerable<DownloadPackage>? packages, bool protectOtherPaths)
     {
         if (!IsDedicatedPackageDirectory(package, path, packages))
             return false;
@@ -55,7 +55,7 @@ public partial class MainViewModel
         return paths;
     }
 
-    private static IEnumerable<string> GetItemCandidatePaths(DownloadItem item, string? fallbackDirectory)
+    internal static IEnumerable<string> GetItemCandidatePaths(DownloadItem item, string? fallbackDirectory)
     {
         var bases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(item.SaveFilePath))

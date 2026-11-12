@@ -510,6 +510,7 @@ public static class Strings_de
         ["Status_Par2Intact"] = "PAR2: Alle Dateien intakt",
         ["Status_Par2Repaired"] = "PAR2: Erfolgreich repariert",
         ["Status_Par2RepairFailed"] = "PAR2-Reparatur fehlgeschlagen: {0}",
+        ["Status_Par2RepairUnconfirmedTargets"] = "Für die Ziele des Wiederherstellungssatzes konnte die Paketzugehörigkeit nicht bestätigt werden.",
         ["Status_Par2RepairFailedMissingBlocks"] = "PAR2: Reparatur nicht möglich ({0} Blöcke fehlen)",
         ["Status_Par2VerifyFailed"] = "PAR2-Prüfung fehlgeschlagen: {0}",
         ["Status_NoPar2FilesFound"] = "Keine PAR2-Dateien für dieses Paket gefunden.",

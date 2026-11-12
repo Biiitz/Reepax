@@ -1,7 +1,5 @@
-using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using Microsoft.Win32.SafeHandles;
 using Reepax.Services.Storage;
 
@@ -77,22 +75,17 @@ public partial class Par2RepairService
         private static bool TryGetIdentity(SafeFileHandle file, out FileIdentity identity)
             => GetFileInformationByHandleEx(file, 18, out identity, (uint)Marshal.SizeOf<FileIdentity>());
 
-        internal static RepairBackupScope Capture(string par2FilePath)
+        internal static RepairBackupScope Capture(string par2FilePath, IReadOnlyCollection<string>? authorizedTargets = null)
         {
             var scope = new RepairBackupScope();
             try
             {
                 var directory = Path.GetDirectoryName(Path.GetFullPath(par2FilePath))!;
-                foreach (var original in ReadRepairTargets(par2FilePath, directory))
+                foreach (var original in authorizedTargets ?? ReadRepairTargets(par2FilePath, directory))
                 {
                     if (!File.Exists(original) || HasReparsePoint(original))
                         continue;
-                    var index = 1;
-                    string backup;
-                    do
-                    {
-                        backup = original + "." + (index++).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    } while (Path.Exists(backup));
+                    string backup = GetBackupPath(original);
                     var handle = File.OpenHandle(original, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     if (TryGetIdentity(handle, out var identity))
                         scope._candidates.Add((original, backup, handle, identity));
@@ -106,6 +99,17 @@ public partial class Par2RepairService
                 AppLogger.Warn($"[Par2RepairService] Backup tracking unavailable", ex);
             }
             return scope;
+        }
+
+        internal static string GetBackupPath(string original)
+        {
+            var index = 1;
+            string backup;
+            do
+            {
+                backup = original + "." + (index++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            } while (Path.Exists(backup));
+            return backup;
         }
 
         internal void Restore() => Process(restore: true);
@@ -142,89 +146,12 @@ public partial class Par2RepairService
             }
         }
 
-        private static bool HasReparsePoint(string path)
-        {
-            for (string? current = path; current != null; current = Path.GetDirectoryName(current))
-            {
-                if (Path.Exists(current) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
-                    return true;
-            }
-            return false;
-        }
-
-        internal static IEnumerable<string> ReadRepairTargets(string par2FilePath, string directory)
+        private static string[] ReadRepairTargets(string par2FilePath, string directory)
         {
             using var stream = File.OpenRead(par2FilePath);
-            var header = new byte[64];
-            var descriptions = new Dictionary<(string Set, string Id), string>();
-            var recoverable = new HashSet<(string Set, string Id)>();
-            var sets = new HashSet<string>();
-            while (stream.Position < stream.Length)
-            {
-                stream.ReadExactly(header);
-                if (!header.AsSpan(0, 8).SequenceEqual("PAR2\0PKT"u8))
-                    return Array.Empty<string>();
-                var length = BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(8, 8));
-                if (length < 64 || length % 4 != 0 || length > (ulong)(stream.Length - stream.Position) + 64)
-                    return Array.Empty<string>();
-                var type = header.AsSpan(48, 16);
-                var isMain = type.SequenceEqual("PAR 2.0\0Main\0\0\0\0"u8);
-                var isDescription = type.SequenceEqual("PAR 2.0\0FileDesc"u8);
-                if (!isMain && !isDescription)
-                {
-                    stream.Seek((long)length - 64, SeekOrigin.Current);
-                    continue;
-                }
-                // Unknown or excessive metadata never authorizes backup removal.
-                if (length > 16 * 1024 * 1024)
-                    return Array.Empty<string>();
-                var body = new byte[(int)length - 64];
-                stream.ReadExactly(body);
-                using var hash = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
-                hash.AppendData(header, 32, 32);
-                hash.AppendData(body);
-                if (!hash.GetHashAndReset().AsSpan().SequenceEqual(header.AsSpan(16, 16)))
-                    continue;
-                var set = Convert.ToHexString(header.AsSpan(32, 16));
-                if (isMain)
-                {
-                    if (body.Length < 12 || (body.Length - 12) % 16 != 0)
-                        return Array.Empty<string>();
-                    var count = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(8, 4));
-                    if (count > (body.Length - 12) / 16)
-                        return Array.Empty<string>();
-                    sets.Add(set);
-                    for (var i = 0; i < count; i++)
-                        recoverable.Add((set, Convert.ToHexString(body.AsSpan(12 + i * 16, 16))));
-                }
-                else if (body.Length > 56)
-                {
-                    var name = new System.Text.UTF8Encoding(false, true).GetString(body, 56, body.Length - 56).TrimEnd('\0');
-                    var id = (set, Convert.ToHexString(body.AsSpan(0, 16)));
-                    if (descriptions.TryGetValue(id, out var previous) && previous != name)
-                        return Array.Empty<string>();
-                    descriptions[id] = name;
-                }
-            }
-            if (sets.Count != 1)
-                return Array.Empty<string>();
-
-            var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var id in recoverable)
-            {
-                if (!descriptions.TryGetValue(id, out var name))
-                    continue;
-                var parts = name.Replace('\\', '/').Split('/');
-                if (Path.IsPathRooted(name) || parts.Any(part => string.IsNullOrWhiteSpace(part) ||
-                    part is "." or ".." || part.EndsWith(' ') || part.EndsWith('.') ||
-                    part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0))
-                    continue;
-                var path = Path.GetFullPath(Path.Combine(directory, name));
-                var prefix = Path.EndsInDirectorySeparator(directory) ? directory : directory + Path.DirectorySeparatorChar;
-                if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    targets.Add(path);
-            }
-            return targets;
+            var metadata = new RepairMetadata();
+            metadata.Read(stream, CancellationToken.None);
+            return metadata.IsComplete ? metadata.GetTargets(directory) : [];
         }
     }
 }

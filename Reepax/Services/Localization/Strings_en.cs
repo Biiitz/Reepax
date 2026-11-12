@@ -510,6 +510,7 @@ public static class Strings_en
         ["Status_Par2Intact"] = "PAR2: All files intact",
         ["Status_Par2Repaired"] = "PAR2: Successfully repaired",
         ["Status_Par2RepairFailed"] = "PAR2 repair failed: {0}",
+        ["Status_Par2RepairUnconfirmedTargets"] = "The recovery set contains targets that could not be confirmed for this package.",
         ["Status_Par2RepairFailedMissingBlocks"] = "PAR2: Repair not possible ({0} blocks missing)",
         ["Status_Par2VerifyFailed"] = "PAR2 verification failed: {0}",
         ["Status_NoPar2FilesFound"] = "No PAR2 files found for this package.",
