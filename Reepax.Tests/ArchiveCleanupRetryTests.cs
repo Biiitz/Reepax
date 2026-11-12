@@ -209,6 +209,7 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
     [InlineData("en", true)]
     public async Task ManualOrGlobalCleanupFailure_UsesLocalizedStatusAndRemainsVisible(string language, bool global)
     {
+        var viewModel = new MainViewModel();
         LocalizationService.Instance.CurrentLanguage = language;
         var package = CreatePackage();
         package.AutoExtractArchives = false;
@@ -223,8 +224,13 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
         Assert.Equal(Loc.Format("Status_ArchiveCleanupFailed", package.PendingArchiveCleanup!.Files.Length), package.StatusMessage);
         package.RecalculateAggregates(force: true);
         Assert.Equal(NextTaskStepState.Failed, package.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
-        Assert.Equal(Loc.Format("Status_ArchiveCleanupFailed", package.PendingArchiveCleanup.Files.Length), package.StatusMessage);
-        await new MainViewModel().RetryArchiveCleanupAsync(package);
+        string diagnostic = Loc.Format("Status_ArchiveCleanupFailed", package.PendingArchiveCleanup.Files.Length);
+        Assert.Equal(diagnostic, package.StatusMessage);
+        LocalizationService.Instance.CurrentLanguage = language == "de" ? "en" : "de";
+        Assert.Equal(diagnostic, package.StatusMessage);
+        Assert.Equal(NextTaskStepState.Failed, package.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
+        Assert.True(File.Exists(archive));
+        await viewModel.RetryArchiveCleanupAsync(package);
         Assert.False(package.HasPendingArchiveCleanup);
         Assert.Equal(Loc.Get("Status_CompletedAndExtracted"), package.StatusMessage);
     }

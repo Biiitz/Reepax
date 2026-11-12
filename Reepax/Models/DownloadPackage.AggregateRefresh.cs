@@ -225,6 +225,11 @@ public partial class DownloadPackage
         {
             StatusMessage = LocalizationService.Instance.TranslateKnownText(StatusMessage, "Status_Paused", "Status_Skipped");
         }
+        else if (Status == DownloadStatus.Completed)
+        {
+            StatusMessage = LocalizationService.Instance.TranslateKnownText(StatusMessage,
+                "Status_Completed", "Status_CompletedAndExtracted", "Status_CompletedExtractionError");
+        }
         PublishSummaryChanges(items.Length, CountEnabledItems(items));
         PublishTimeChanges();
     }

@@ -1679,7 +1679,7 @@ public partial class QueueManager
                         item.CalculatedChecksum = verification.CalculatedChecksum;
                     }
                     item.Status = DownloadStatus.Completed;
-                    item.StatusMessage = Loc.Get("Status_Completed");
+                    item.StatusMessage = item.GetCompletedStatusMessage();
                     item.SpeedBytesPerSecond = 0;
                     item.RemainingSeconds = 0;
                     item.CurrentSlot = null;

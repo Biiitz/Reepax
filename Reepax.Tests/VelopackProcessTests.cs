@@ -98,9 +98,9 @@ public sealed class VelopackProcessTests
                     Assert.Equal(scenario != "full", paths.Any(path => path.EndsWith("-delta.nupkg")));
                     Assert.Equal(scenario != "delta", paths.Any(path => path.EndsWith("-full.nupkg")));
                     var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    using var watcher = new FileSystemWatcher(installed, "report.json") { EnableRaisingEvents = true };
+                    using var watcher = new FileSystemWatcher(installed, Path.GetFileName(report) + ".ready");
                     watcher.Created += (_, _) => ready.TrySetResult();
-                    watcher.Renamed += (_, _) => ready.TrySetResult();
+                    watcher.EnableRaisingEvents = true;
                     Assert.True(service.ApplyDownloadedUpdate(info!, package));
                     Assert.Equal(1, shutdowns);
                     await ready.Task.WaitAsync(TimeSpan.FromSeconds(45));

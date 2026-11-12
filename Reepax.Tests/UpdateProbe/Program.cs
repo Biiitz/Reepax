@@ -9,4 +9,6 @@ if (string.IsNullOrEmpty(report)) return 2;
 string version = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];
 File.WriteAllText(report + ".tmp", JsonSerializer.Serialize(new { Version = version, Arguments = args }));
 File.Move(report + ".tmp", report, overwrite: true);
+// Signal after the report rename has completed.
+File.WriteAllText(report + ".ready", string.Empty);
 return 0;

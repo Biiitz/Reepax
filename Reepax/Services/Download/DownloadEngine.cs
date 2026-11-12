@@ -1558,7 +1558,7 @@ public partial class DownloadEngine
             item.SpeedBytesPerSecond = 0;
             item.RemainingSeconds = 0;
             item.Status = DownloadStatus.Completed;
-            item.StatusMessage = Loc.Get("Status_Completed");
+            item.StatusMessage = item.GetCompletedStatusMessage();
             item.CompletedAt = completedAt;
         }
         ApplyCompletedState();

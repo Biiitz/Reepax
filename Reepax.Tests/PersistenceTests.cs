@@ -554,6 +554,56 @@ public class PersistenceTests
         }
     }
 
+    [Theory]
+    [InlineData("en", "de", false)]
+    [InlineData("de", "en", false)]
+    [InlineData("en", "de", true)]
+    [InlineData("de", "en", true)]
+    public void Persistence_RestoresGenericExtractionErrorInTheCurrentLanguage(string language, string nextLanguage, bool history)
+    {
+        var localization = LocalizationService.Instance;
+        string previousLanguage = localization.CurrentLanguage;
+        var root = Directory.CreateTempSubdirectory("LocalizedExtractionError_");
+        try
+        {
+            localization.CurrentLanguage = language;
+            var package = new DownloadPackage
+            {
+                Name = "Example", SaveDirectory = root.FullName, IsCustomName = true,
+                AutoExtractArchives = true, AutoPar2Repair = false
+            };
+            package.Items.Add(new DownloadItem
+            {
+                PackageId = package.Id, FileName = "example.zip",
+                SaveFilePath = Path.Combine(root.FullName, "example.zip"),
+                Status = DownloadStatus.Completed, TotalBytes = 4, DownloadedBytes = 4
+            });
+            package.SetNextTaskFailed("Extract");
+            string originalMessage = Loc.Get("Status_CompletedExtractionError");
+            package.StatusMessage = originalMessage;
+            using var storage = new DownloadPersistenceService(Path.Combine(root.FullName, "downloads.json"));
+            if (history) storage.SaveHistory([package], sync: true);
+            else storage.SaveDownloads([package], sync: true);
+
+            localization.CurrentLanguage = nextLanguage;
+            var restored = Assert.Single(history ? storage.LoadHistory() : storage.LoadDownloads());
+            Assert.Equal(Loc.Get("Status_CompletedExtractionError"), restored.StatusMessage);
+            Assert.Equal(NextTaskStepState.Failed, Assert.Single(restored.NextTaskSteps).State);
+            Assert.False(restored.IsFullyCompleted);
+            Assert.False(restored.IsExtracted);
+
+            package.RecalculateAggregates(force: true);
+            Assert.Equal(originalMessage, package.StatusMessage);
+            package.RefreshLocalizedAggregateText();
+            Assert.Equal(Loc.Get("Status_CompletedExtractionError"), package.StatusMessage);
+        }
+        finally
+        {
+            localization.CurrentLanguage = previousLanguage;
+            root.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void Persistence_RestoresPartialNextTaskStepState()
     {

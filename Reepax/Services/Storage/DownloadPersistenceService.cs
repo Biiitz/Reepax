@@ -1592,10 +1592,8 @@ public class DownloadPersistenceService : IDisposable
                 {
                     package.StatusMessage = pkgDto.StatusMessage;
                 }
-                else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) && 
-                         (pkgDto.StatusMessage == Loc.Get("Status_CompletedExtractionError") || 
-                          pkgDto.StatusMessage == "Entpackfehler" || 
-                          pkgDto.StatusMessage == "Extraction error"))
+                else if (LocalizationService.Instance.IsKnownText(pkgDto.StatusMessage, "Status_CompletedExtractionError") ||
+                         pkgDto.StatusMessage is "Entpackfehler" or "Extraction error")
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
                 }
@@ -1888,7 +1886,7 @@ public class DownloadPersistenceService : IDisposable
                         if (itemDto.Status == DownloadStatus.Completed)
                         {
                             item.Status = DownloadStatus.Completed;
-                            item.StatusMessage = Loc.Get("Status_Completed");
+                            item.StatusMessage = item.GetCompletedStatusMessage();
                             item.ProgressPercentage = 100.0;
                             if (item.TotalBytes > 0 && item.DownloadedBytes < item.TotalBytes)
                             {
@@ -1966,10 +1964,8 @@ public class DownloadPersistenceService : IDisposable
                 {
                     package.StatusMessage = pkgDto.StatusMessage;
                 }
-                else if (!string.IsNullOrWhiteSpace(pkgDto.StatusMessage) && 
-                         (pkgDto.StatusMessage == Loc.Get("Status_CompletedExtractionError") || 
-                          pkgDto.StatusMessage == "Entpackfehler" || 
-                          pkgDto.StatusMessage == "Extraction error"))
+                else if (LocalizationService.Instance.IsKnownText(pkgDto.StatusMessage, "Status_CompletedExtractionError") ||
+                         pkgDto.StatusMessage is "Entpackfehler" or "Extraction error")
                 {
                     package.StatusMessage = Loc.Get("Status_CompletedExtractionError");
                 }

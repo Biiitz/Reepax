@@ -941,7 +941,7 @@ public partial class DownloadPackage : ObservableObject
             else if (StatusMessage != Loc.Get("Status_CompletedAndExtracted") &&
                      StatusMessage != "Fertig & Entpackt" &&
                      StatusMessage != "Completed & Extracted" &&
-                     StatusMessage != Loc.Get("Status_CompletedExtractionError") &&
+                     !LocalizationService.Instance.IsKnownText(StatusMessage, "Status_CompletedExtractionError") &&
                      !NextTaskSteps.Any(step => step.Key == "Cleanup" && step.State == NextTaskStepState.Failed) &&
                      !Services.Extractor.ExtractionErrorClassifier.IsExtractionErrorStatus(StatusMessage) &&
                      !RequiresArchivePassword &&

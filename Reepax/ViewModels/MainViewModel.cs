@@ -561,7 +561,7 @@ public partial class MainViewModel : ObservableObject
                     package.RefreshLocalizedAggregateText();
                     foreach (var item in package.Items.ToArray())
                     {
-                        item.RefreshPausedStatusMessage();
+                        item.RefreshLocalizedStatusMessage();
                         item.RefreshChecksumVerificationSummary();
                         item.RefreshDownloadFailure();
                     }

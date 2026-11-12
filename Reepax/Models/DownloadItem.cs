@@ -123,10 +123,14 @@ public partial class DownloadItem : ObservableObject
 
     internal void RefreshChecksumVerificationSummary() => OnPropertyChanged(nameof(ChecksumVerificationSummary));
 
-    internal void RefreshPausedStatusMessage()
+    internal string GetCompletedStatusMessage() => Loc.Get(IsEnabled ? "Status_Completed" : "Status_Skipped");
+
+    internal void RefreshLocalizedStatusMessage()
     {
         if (Status == DownloadStatus.Paused)
             StatusMessage = LocalizationService.Instance.TranslateKnownText(StatusMessage, "Status_Paused", "Status_Skipped");
+        else if (Status == DownloadStatus.Completed)
+            StatusMessage = LocalizationService.Instance.TranslateKnownText(StatusMessage, "Status_Completed", "Status_Skipped");
     }
 
     partial void OnStatusChanged(DownloadStatus value)
@@ -451,13 +455,14 @@ public partial class DownloadItem : ObservableObject
             }
             StatusMessage = Loc.Get("Status_Skipped");
         }
-        else
+        else if (Status != DownloadStatus.Completed)
         {
-            if (Status != DownloadStatus.Completed)
-            {
-                Status = DownloadStatus.Paused;
-                StatusMessage = Loc.Get("Status_Paused");
-            }
+            Status = DownloadStatus.Paused;
+            StatusMessage = Loc.Get("Status_Paused");
+        }
+        else if (LocalizationService.Instance.IsKnownText(StatusMessage, "Status_Skipped"))
+        {
+            StatusMessage = GetCompletedStatusMessage();
         }
 
         Services.Storage.DownloadPersistenceService.Instance.RequestSave();

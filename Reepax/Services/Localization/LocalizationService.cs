@@ -43,10 +43,17 @@ public class LocalizationService : INotifyPropertyChanged
     internal string TranslateKnownText(string text, params string[] keys)
     {
         foreach (string key in keys)
-            foreach (var map in _languages.Values)
-                if (map.TryGetValue(key, out var translation) && string.Equals(text, translation, StringComparison.Ordinal))
-                    return Get(key);
+            if (IsKnownText(text, key))
+                return Get(key);
         return text;
+    }
+
+    internal bool IsKnownText(string? text, string key)
+    {
+        foreach (var map in _languages.Values)
+            if (map.TryGetValue(key, out var translation) && string.Equals(text, translation, StringComparison.Ordinal))
+                return true;
+        return false;
     }
 
     public string Get(string key)

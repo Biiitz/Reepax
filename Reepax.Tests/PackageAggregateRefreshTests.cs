@@ -1,13 +1,18 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.ViewModels;
 using Xunit;
 using Xunit.Abstractions;
@@ -565,6 +570,174 @@ public class PackageAggregateRefreshTests
                 viewModel.Packages.Add(package);
             LocalizationService.Instance.CurrentLanguage = previousLanguage;
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("en", "de", false, "Fertiggestellt", "Fertiggestellt")]
+    [InlineData("de", "en", false, "Completed", "Completed")]
+    [InlineData("en", "de", true, "Fertiggestellt", "Fertig & Entpackt")]
+    [InlineData("de", "en", true, "Completed", "Completed & Extracted")]
+    public async Task LanguageChange_RefreshesCompletedStatusesWithoutChangingDownloadData(
+        string language, string nextLanguage, bool extract, string itemText, string packageText)
+    {
+        var localization = LocalizationService.Instance;
+        string previousLanguage = localization.CurrentLanguage;
+        var viewModel = new MainViewModel();
+        var queue = QueueManager.Instance;
+        var previousPackages = viewModel.Packages.ToArray();
+        bool queueWasRunning = queue.IsRunning;
+        var previousExtractor = queue.ExtractPackageAsync;
+        var settings = SettingsService.Instance.Settings;
+        var previousSettings = (settings.EnableChecksumVerification, settings.EnableCompletionNotifications,
+            settings.EnableCompletionSound, settings.DeleteArchiveAfterExtraction, settings.MoveArchiveToRecycleBin,
+            settings.PostDownloadAction);
+        var root = Directory.CreateTempSubdirectory("CompletedStatus_");
+        Task<bool>? extraction = null;
+        try
+        {
+            viewModel.Packages.Clear();
+            queue.StopQueue();
+            settings.EnableChecksumVerification = true;
+            settings.EnableCompletionNotifications = false;
+            settings.EnableCompletionSound = false;
+            settings.DeleteArchiveAfterExtraction = false;
+            settings.MoveArchiveToRecycleBin = false;
+            settings.PostDownloadAction = PostDownloadAction.None;
+            localization.CurrentLanguage = language;
+
+            byte[] payload = [2, 3, 5, 7];
+            string filePath = Path.Combine(root.FullName, extract ? "example.zip" : "example.bin");
+            string outputPath = Path.Combine(root.FullName, "payload.bin");
+            if (extract)
+            {
+                using var archive = ZipFile.Open(filePath, ZipArchiveMode.Create);
+                using var entry = archive.CreateEntry("payload.bin").Open();
+                entry.Write(payload);
+            }
+            else File.WriteAllBytes(filePath, payload);
+            byte[] bytes = File.ReadAllBytes(filePath);
+            string checksum = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            var package = new DownloadPackage
+            {
+                Name = "Example", SaveDirectory = root.FullName, IsCustomName = true,
+                AutoExtractArchives = extract, AutoPar2Repair = false
+            };
+            var item = new DownloadItem
+            {
+                PackageId = package.Id, FileName = Path.GetFileName(filePath), SaveFilePath = filePath,
+                Status = DownloadStatus.Downloading, TotalBytes = bytes.Length, DownloadedBytes = bytes.Length,
+                ProgressPercentage = 100, ExpectedChecksum = checksum, ElapsedDurationMs = 1234
+            };
+            package.Items.Add(item);
+            viewModel.Packages.Add(package);
+            int extractions = 0, notifications = 0;
+            queue.ExtractPackageAsync = value =>
+            {
+                extractions++;
+                return extraction = previousExtractor(value);
+            };
+            var packageChanges = new ConcurrentQueue<string?>();
+            var itemChanges = new ConcurrentQueue<string?>();
+            package.PropertyChanged += (_, e) =>
+            {
+                packageChanges.Enqueue(e.PropertyName);
+                if (e.PropertyName == nameof(DownloadPackage.IsNewlyCompleted) && package.IsNewlyCompleted)
+                    System.Threading.Interlocked.Increment(ref notifications);
+            };
+            item.PropertyChanged += (_, e) => itemChanges.Enqueue(e.PropertyName);
+
+            await queue.HandleDownloadCompleted(item).WaitAsync(TimeSpan.FromSeconds(10));
+            if (extract)
+                Assert.True(await Assert.IsAssignableFrom<Task<bool>>(extraction).WaitAsync(TimeSpan.FromSeconds(10)));
+            package.RefreshStatistics();
+            Assert.True(package.IsFullyCompleted);
+            Assert.True(package.HasCompletedNotified);
+            Assert.Equal(1, notifications);
+            Assert.Equal(checksum, item.CalculatedChecksum);
+            Assert.Equal(Loc.Get("Status_Completed"), item.StatusMessage);
+            Assert.Equal(Loc.Get(extract ? "Status_CompletedAndExtracted" : "Status_Completed"), package.StatusMessage);
+            var itemData = (item.Id, item.PackageId, item.SaveFilePath, item.TotalBytes, item.DownloadedBytes,
+                item.ProgressPercentage, item.Duration, item.ExpectedChecksum, item.CalculatedChecksum, item.CompletedAt);
+            var packageData = (package.Id, package.SaveDirectory, package.TotalBytes, package.DownloadedBytes,
+                package.ProgressPercentage, package.Duration, package.CompletedAt, package.IsExtracted);
+            var steps = package.NextTaskSteps.Select(step => (step.Key, step.State)).ToArray();
+            long revision = package.AggregateInputRevision;
+            packageChanges.Clear();
+            itemChanges.Clear();
+
+            localization.CurrentLanguage = nextLanguage;
+
+            Assert.Equal(itemText, item.StatusMessage);
+            Assert.Equal(packageText, package.StatusMessage);
+            Assert.Contains(nameof(DownloadItem.StatusMessage), itemChanges);
+            Assert.Contains(nameof(DownloadPackage.StatusMessage), packageChanges);
+            Assert.Equal(revision, package.AggregateInputRevision);
+            Assert.False(package.IsDirty);
+            Assert.Equal(steps, package.NextTaskSteps.Select(step => (step.Key, step.State)).ToArray());
+
+            item.StatusMessage = "Example item diagnostic";
+            package.StatusMessage = extract ? Loc.Format("Status_ExtractionFailed", "Example diagnostic") : "Example package diagnostic";
+            string diagnostic = package.StatusMessage;
+            localization.CurrentLanguage = language;
+            viewModel.RecalculateGlobalStats();
+            Assert.Equal("Example item diagnostic", item.StatusMessage);
+            Assert.Equal(diagnostic, package.StatusMessage);
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(DownloadStatus.Completed, package.Status);
+            Assert.Equal(itemData, (item.Id, item.PackageId, item.SaveFilePath, item.TotalBytes, item.DownloadedBytes,
+                item.ProgressPercentage, item.Duration, item.ExpectedChecksum, item.CalculatedChecksum, item.CompletedAt));
+            Assert.Equal(packageData, (package.Id, package.SaveDirectory, package.TotalBytes, package.DownloadedBytes,
+                package.ProgressPercentage, package.Duration, package.CompletedAt, package.IsExtracted));
+            Assert.Equal(bytes, File.ReadAllBytes(filePath));
+            if (extract) Assert.Equal(payload, File.ReadAllBytes(outputPath));
+
+            item.IsEnabled = false;
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(Loc.Get("Status_Skipped"), item.StatusMessage);
+            localization.CurrentLanguage = nextLanguage;
+            string skippedAfterSwitch = item.StatusMessage;
+            using var storage = new DownloadPersistenceService(Path.Combine(root.FullName, "downloads.json"));
+            storage.SaveDownloads([package], sync: true);
+            var restored = Assert.Single(Assert.Single(storage.LoadDownloads()).Items);
+            Assert.False(restored.IsEnabled);
+            Assert.Equal(DownloadStatus.Completed, restored.Status);
+            item.IsEnabled = true;
+            string skipped = Loc.Get("Status_Skipped");
+            string statusAfterReenable = item.StatusMessage;
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal(checksum, item.CalculatedChecksum);
+
+            void DisableDuringVerification(object? sender, PropertyChangedEventArgs change)
+            {
+                if (change.PropertyName == nameof(DownloadItem.StatusMessage) && item.StatusMessage == Loc.Get("Status_VerifyingChecksum"))
+                    item.IsEnabled = false;
+            }
+            item.PropertyChanged += DisableDuringVerification;
+            try { await queue.HandleDownloadCompleted(item).WaitAsync(TimeSpan.FromSeconds(10)); }
+            finally { item.PropertyChanged -= DisableDuringVerification; }
+            Assert.False(item.IsEnabled);
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Equal((skipped, skipped, itemText, skipped),
+                (skippedAfterSwitch, restored.StatusMessage, statusAfterReenable, item.StatusMessage));
+            Assert.Equal(checksum, item.CalculatedChecksum);
+            Assert.Equal(bytes, File.ReadAllBytes(filePath));
+            Assert.Equal(extract ? 1 : 0, extractions);
+            Assert.Equal(1, notifications);
+            Assert.False(PostDownloadActionService.Instance.IsCountdownActive);
+        }
+        finally
+        {
+            queue.StopQueue();
+            queue.ExtractPackageAsync = previousExtractor;
+            viewModel.Packages.Clear();
+            localization.CurrentLanguage = previousLanguage;
+            if (queueWasRunning) queue.StartQueue();
+            foreach (var package in previousPackages)
+                viewModel.Packages.Add(package);
+            (settings.EnableChecksumVerification, settings.EnableCompletionNotifications, settings.EnableCompletionSound,
+                settings.DeleteArchiveAfterExtraction, settings.MoveArchiveToRecycleBin, settings.PostDownloadAction) = previousSettings;
+            root.Delete(recursive: true);
         }
     }
 
