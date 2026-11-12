@@ -40,12 +40,18 @@ internal static class RecoveryProcessWorker
             using (var setup = File.OpenRead(args[2]))
                 hash = Convert.ToHexString(SHA256.HashData(setup));
             string script = AppUpdateService.GenerateInstallerUpdateScript(0, args[2], args[3], hash, args[4]);
+            string installerLog = args[5] + ".installer.log";
+            script = "$installerLogPath = '" + installerLog.Replace("'", "''") + "'\n" +
+                script.Replace(" /UPDATEHELPER=1\" -PassThru", " /UPDATEHELPER=1 /LOG=`\"$installerLogPath`\"\" -PassThru");
             File.WriteAllText(args[5], script, new System.Text.UTF8Encoding(true));
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[5])!, "helper.approved"), "approved");
             using var helper = AppUpdateService.StartUpdateHelper(args[5]) ?? throw new IOException("Could not start the update helper.");
             try
             {
                 await helper.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(4));
+                if (helper.ExitCode != 0 && File.Exists(installerLog))
+                    foreach (string line in File.ReadLines(installerLog).TakeLast(40))
+                        Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(line));
                 return helper.ExitCode;
             }
             finally

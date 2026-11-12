@@ -59,22 +59,10 @@ jobs:
             $process = Start-Process $bootstrapper -ArgumentList '/silent /install' -PassThru -Wait -WindowStyle Hidden
             if ($process.ExitCode -ne 0 -or -not (Get-ChildItem "$runtimeRoot/*/msedgewebview2.exe" -ErrorAction SilentlyContinue)) { throw 'Browser runtime is unavailable.' }
           }
-      - name: Run all tests
+      - name: Build installer verification worker
         run: |
-          dotnet tool restore
+          dotnet build Reepax.Tests/Reepax.Tests.csproj -c Release --verbosity minimal
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet test Reepax.slnx -c Release --logger 'trx;LogFileName=tests.trx' --results-directory TestResults --verbosity minimal
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          [xml]$report = Get-Content TestResults/tests.trx
-          $counts = $report.TestRun.ResultSummary.Counters
-          if ([int]$counts.total -eq 0 -or [int]$counts.executed -ne [int]$counts.total -or [int]$counts.passed -ne [int]$counts.total) { throw 'Every test must execute and pass.' }
-      - name: Save test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: TestResults/**/*.trx
-          if-no-files-found: warn
       - name: Publish application
         run: |
           dotnet publish Reepax/Reepax.csproj -c Release -r win-x64 --self-contained true -p:Version=$env:APP_VERSION -p:AssemblyVersion=$env:ASSEMBLY_VERSION -p:FileVersion=$env:ASSEMBLY_VERSION -o dist/Reepax
@@ -125,6 +113,22 @@ jobs:
         run: |
           $compiler = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
           ./.github/scripts/Test-Installer.ps1 -Compiler $compiler -Version $env:APP_VERSION -TemporaryRoot $env:RUNNER_TEMP
+      - name: Run all tests
+        run: |
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test Reepax.slnx -c Release --logger 'trx;LogFileName=tests.trx' --results-directory TestResults --verbosity minimal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          [xml]$report = Get-Content TestResults/tests.trx
+          $counts = $report.TestRun.ResultSummary.Counters
+          if ([int]$counts.total -eq 0 -or [int]$counts.executed -ne [int]$counts.total -or [int]$counts.passed -ne [int]$counts.total) { throw 'Every test must execute and pass.' }
+      - name: Save test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
       - name: Generate checksums
         id: release_assets
         run: |
