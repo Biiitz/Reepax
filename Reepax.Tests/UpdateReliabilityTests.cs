@@ -254,7 +254,8 @@ public sealed class UpdateReliabilityTests : IDisposable
             function Start-Process { param($FilePath, $ArgumentList, $WorkingDirectory, [switch]$PassThru, [switch]$Wait)
                 Add-Content -LiteralPath (Join-Path $sessionDir 'launches.txt') -Value $ArgumentList
                 if ($FilePath -eq $exe) { Set-Content -LiteralPath $readyPath -Value $updateSession }
-                return [pscustomobject]@{ ExitCode = INSTALLER_EXIT; HasExited = $true }
+                return [pscustomobject]@{ ExitCode = INSTALLER_EXIT; HasExited = $true } |
+                    Add-Member ScriptMethod WaitForExit {} -PassThru | Add-Member ScriptMethod Dispose {} -PassThru
             }
             $setup = $source
             """.Replace("INSTALLER_EXIT", installerExit.ToString()));
@@ -263,6 +264,80 @@ public sealed class UpdateReliabilityTests : IDisposable
         Assert.Contains("/NORESTART", launches[0]);
         Assert.Contains("/DIR=\"" + Path.Combine(_root, "Application") + "\"", launches[0]);
         Assert.Equal(installerExit == 0 ? 2 : 1, launches.Length);
+    }
+
+    [Fact]
+    public async Task InstallerScript_CompletesWhileTheInstallersStartedApplicationRemainsRunning()
+    {
+        string eventId = Guid.NewGuid().ToString("N");
+        string readyName = "Local\\UpdateChildReady_" + eventId;
+        string stopName = "Local\\UpdateChildStop_" + eventId;
+        using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, readyName);
+        using var stop = new EventWaitHandle(false, EventResetMode.ManualReset, stopName);
+        string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+        File.WriteAllText(Path.Combine(_root, "child.ps1"), $$"""
+            $ready = [Threading.EventWaitHandle]::OpenExisting('{{readyName}}')
+            $stop = [Threading.EventWaitHandle]::OpenExisting('{{stopName}}')
+            try {
+                $PID | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'child.pid')
+                $null = $ready.Set(); $null = $stop.WaitOne()
+            }
+            finally { $ready.Dispose(); $stop.Dispose() }
+            """);
+        File.WriteAllText(Path.Combine(_root, "installer.ps1"), $$"""
+            $child = Start-Process -FilePath '{{shell.Replace("'", "''")}}' -ArgumentList "-NoProfile -NonInteractive -File `"$PSScriptRoot\child.ps1`"" -PassThru -WindowStyle Hidden
+            $ready = [Threading.EventWaitHandle]::OpenExisting('{{readyName}}')
+            try { if (-not $ready.WaitOne(15000)) { exit 2 } }
+            finally { $ready.Dispose() }
+            exit 0
+            """);
+        string setup = Path.Combine(_root, "setup.exe");
+        File.WriteAllText(setup, "installer fixture");
+        File.WriteAllText(Path.Combine(_root, "helper.approved"), "approved");
+        string installed = Directory.CreateDirectory(Path.Combine(_root, "Application")).FullName;
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Reepax.exe"), Path.Combine(installed, "Reepax.exe"));
+        File.Copy(typeof(AppUpdateService).Assembly.Location, Path.Combine(installed, "Reepax.dll"));
+        string script = AppUpdateService.GenerateInstallerUpdateScript(0, setup, Path.Combine(installed, "Reepax.exe"), Hash(File.ReadAllBytes(setup)));
+        script = script.Replace("$setup = $source", $$"""
+            function Get-AuthenticodeSignature { param($LiteralPath) return [pscustomobject]@{ Status = 'NotSigned' } }
+            function Start-Process { param($FilePath, $ArgumentList, $WorkingDirectory, [switch]$PassThru, [switch]$Wait)
+                if ($FilePath -eq $source) {
+                    return Microsoft.PowerShell.Management\Start-Process -FilePath '{{shell.Replace("'", "''")}}' -ArgumentList "-NoProfile -NonInteractive -File `"$sessionDir\installer.ps1`"" -PassThru -Wait:$Wait -WindowStyle Hidden
+                }
+                Set-Content -LiteralPath $readyPath -Value $updateSession
+                return [pscustomobject]@{ HasExited = $true }
+            }
+            $setup = $source
+            """);
+        Process? child = null;
+        Task<int> running = RunScript(script);
+        try
+        {
+            Assert.True(ready.WaitOne(TimeSpan.FromSeconds(15)), "The installer's application did not start.");
+            child = Process.GetProcessById(int.Parse(File.ReadAllText(Path.Combine(_root, "child.pid"))));
+            _ = child.SafeHandle;
+            Assert.Equal(0, await running.WaitAsync(TimeSpan.FromSeconds(15)));
+            Assert.False(child.HasExited);
+            using var result = JsonDocument.Parse(File.ReadAllText(Path.Combine(SettingsService.AppDataDirectory, "update-result.json")));
+            Assert.Equal("success", result.RootElement.GetProperty("Status").GetString());
+            Assert.False(File.Exists(setup));
+        }
+        finally
+        {
+            stop.Set();
+            try { await running; }
+            finally
+            {
+                if (child != null)
+                {
+                    try
+                    {
+                        if (!child.WaitForExit(10000)) { child.Kill(entireProcessTree: true); await child.WaitForExitAsync(); }
+                    }
+                    finally { child.Dispose(); }
+                }
+            }
+        }
     }
 
     [Theory]
@@ -282,7 +357,8 @@ public sealed class UpdateReliabilityTests : IDisposable
         script = script.Replace("$setup = $source", """
             function Get-AuthenticodeSignature { param($LiteralPath) return [pscustomobject]@{ Status = 'NotSigned' } }
             function Start-Process { param($FilePath, $ArgumentList, $WorkingDirectory, [switch]$PassThru, [switch]$Wait)
-                return [pscustomobject]@{ ExitCode = 0; HasExited = $true }
+                return [pscustomobject]@{ ExitCode = 0; HasExited = $true } |
+                    Add-Member ScriptMethod WaitForExit {} -PassThru | Add-Member ScriptMethod Dispose {} -PassThru
             }
             $setup = $source
             """);

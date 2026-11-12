@@ -36,8 +36,9 @@ internal static class RecoveryProcessWorker
         if (args.Length == 6 && args[0] == "--run-update-helper")
         {
             SettingsService.AppDataDirectoryOverride = args[1];
-            using var setup = File.OpenRead(args[2]);
-            string hash = Convert.ToHexString(SHA256.HashData(setup));
+            string hash;
+            using (var setup = File.OpenRead(args[2]))
+                hash = Convert.ToHexString(SHA256.HashData(setup));
             string script = AppUpdateService.GenerateInstallerUpdateScript(0, args[2], args[3], hash, args[4]);
             File.WriteAllText(args[5], script, new System.Text.UTF8Encoding(true));
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[5])!, "helper.approved"), "approved");

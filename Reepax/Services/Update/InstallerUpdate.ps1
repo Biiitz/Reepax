@@ -43,9 +43,14 @@ try {
     if ($currentHash -ne $expectedHash) { throw 'Installer integrity check failed.' }
     $signature = Get-AuthenticodeSignature -LiteralPath $setup
     if ($signature.Status -ne 'NotSigned' -and $signature.Status -ne 'Valid') { throw 'Invalid installer signature.' }
-    $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /DIR=`"$destination`" /UPDATEHELPER=1" -PassThru -Wait
-    if ($installer.ExitCode -eq 3010) { Write-Result 'restart-required'; exit 1 }
-    if ($installer.ExitCode -ne 0) { throw 'Installer did not complete successfully.' }
+    $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /DIR=`"$destination`" /UPDATEHELPER=1" -PassThru -WindowStyle Hidden
+    try {
+        # The installer may start the application; wait only for the installer itself.
+        $installer.WaitForExit()
+        $installerExitCode = $installer.ExitCode
+    } finally { $installer.Dispose() }
+    if ($installerExitCode -eq 3010) { Write-Result 'restart-required'; exit 1 }
+    if ($installerExitCode -ne 0) { throw 'Installer did not complete successfully.' }
     foreach ($file in @($exe, (Join-Path $destination 'Reepax.dll'))) {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'Installed application is incomplete.' }
         $version = [Diagnostics.FileVersionInfo]::GetVersionInfo($file).ProductVersion
