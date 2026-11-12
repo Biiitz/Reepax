@@ -97,6 +97,13 @@ function InstallManagedLayout: Boolean;
 var
   Installation, DataPath: String;
 begin
+  // Released helpers wait for all installer descendants and require a flat update.
+  if (ExpandConstant('{param:UPDATEHELPER|0}') = '1') and
+    (ExpandConstant('{param:MANAGEDUPDATE|0}') <> '1') then
+  begin
+    Result := False;
+    Exit;
+  end;
   Installation := UpperCase(AddBackslash(ExpandConstant('{app}')));
   DataPath := UpperCase(AddBackslash(ExpandConstant('{localappdata}\{#MyAppName}')));
   Result := not IsAdminInstallMode and (Pos(Installation, DataPath) <> 1) and (Pos(DataPath, Installation) <> 1);

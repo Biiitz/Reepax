@@ -33,16 +33,23 @@ internal static class RecoveryProcessWorker
             return WindowDownloadFlowWorker.Run(args[1], args[2], filtersOnly: true);
         if (args.Length == 4 && args[0] == "--load-worker")
             return ConcurrentLoadWorker.Run(args[1], int.Parse(args[2]), int.Parse(args[3]));
-        if (args.Length == 6 && args[0] == "--run-update-helper")
+        if ((args.Length == 6 || (args.Length == 7 && args[6] == "--released-helper")) && args[0] == "--run-update-helper")
         {
             SettingsService.AppDataDirectoryOverride = args[1];
             string hash;
             using (var setup = File.OpenRead(args[2]))
                 hash = Convert.ToHexString(SHA256.HashData(setup));
             string script = AppUpdateService.GenerateInstallerUpdateScript(0, args[2], args[3], hash, args[4]);
+            if (args.Length == 7)
+            {
+                using var resource = typeof(RecoveryProcessWorker).Assembly.GetManifestResourceStream(
+                    "Reepax.Tests.Fixtures.Updates.InstallerUpdate.26.11.1.ps1")!;
+                using var reader = new StreamReader(resource);
+                script = script[..script.IndexOf("$setup = $source", StringComparison.Ordinal)] + reader.ReadToEnd();
+            }
             string installerLog = args[5] + ".installer.log";
             script = "$installerLogPath = '" + installerLog.Replace("'", "''") + "'\n" +
-                script.Replace(" /UPDATEHELPER=1\" -PassThru", " /UPDATEHELPER=1 /LOG=`\"$installerLogPath`\"\" -PassThru");
+                script.Replace(" /UPDATEHELPER=1", " /UPDATEHELPER=1 /LOG=`\"$installerLogPath`\"");
             File.WriteAllText(args[5], script, new System.Text.UTF8Encoding(true));
             File.WriteAllText(Path.Combine(Path.GetDirectoryName(args[5])!, "helper.approved"), "approved");
             using var helper = AppUpdateService.StartUpdateHelper(args[5]) ?? throw new IOException("Could not start the update helper.");

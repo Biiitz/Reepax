@@ -48,7 +48,7 @@ try {
     $signature = Get-AuthenticodeSignature -LiteralPath $setup
     if ($signature.Status -ne 'NotSigned' -and $signature.Status -ne 'Valid') { throw 'Invalid installer signature.' }
     $stage = 'installation'
-    $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /DIR=`"$destination`" /UPDATEHELPER=1" -PassThru -WindowStyle Hidden
+    $installer = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /RESTARTEXITCODE=3010 /NOCLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /SP- /DIR=`"$destination`" /UPDATEHELPER=1 /MANAGEDUPDATE=1" -PassThru -WindowStyle Hidden
     try {
         # The installer may start the application; wait only for the installer itself.
         $installer.WaitForExit()

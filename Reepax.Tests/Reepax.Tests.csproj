@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Reepax\Reepax.csproj" />
     <EmbeddedResource Include="Fixtures\Archives\*" />
     <EmbeddedResource Include="Fixtures\DecoderArchives\*" />
+    <EmbeddedResource Include="Fixtures\Updates\*.ps1" />
     <Content Include="xunit.runner.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

@@ -46,6 +46,7 @@ public class AppUpdateServiceTests
         Assert.Contains("/SUPPRESSMSGBOXES", script);
         Assert.Contains("/NORESTART", script);
         Assert.Contains("/UPDATEHELPER=1", script);
+        Assert.Contains("/MANAGEDUPDATE=1", script);
         Assert.Contains("--restart", script);
         Assert.Contains("$procId = 1234", script);
         Assert.Contains("Wait-Process -Id $procId", script);

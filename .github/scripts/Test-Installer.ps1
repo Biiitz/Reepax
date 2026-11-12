@@ -54,7 +54,7 @@ try {
     & $Compiler /Q /DUpdateSmokeTest=1 "/DMyAppVersion=$Version" "/O$root" installer/Reepax.iss
     if ($LASTEXITCODE -ne 0) { throw 'Verification installer compilation failed.' }
     $setup = Join-Path $root 'setup.exe'
-    $arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /NOICONS /UPDATEHELPER=1 /DIR=`"$installed`""
+    $arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /NOICONS /UPDATEHELPER=1 /MANAGEDUPDATE=1 /DIR=`"$installed`""
     $install = Start-Process $setup -ArgumentList $arguments -PassThru -WindowStyle Hidden
     if (-not $install.WaitForExit(180000) -or $install.ExitCode -ne 0) { throw 'Clean installation failed.' }
     $settings = Join-Path $data 'settings.json'
@@ -77,34 +77,50 @@ try {
     }
     $exe = Join-Path $installed 'current/Reepax.exe'
     if ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion.Split('+')[0] -ne $Version) { throw 'Installed version is incorrect.' }
-    New-Item -ItemType Directory -Path $legacy | Out-Null
-    Copy-Item -LiteralPath 'dist/Reepax/Reepax.exe', 'dist/Reepax/Reepax.dll' -Destination $legacy
-    $unrelated = Join-Path $legacy 'user-file.bin'
-    [IO.File]::WriteAllBytes($unrelated, [byte[]](0, 17, 255))
-    $helperPath = Join-Path $root 'apply-update.ps1'
-    $legacyExe = Join-Path $legacy 'Reepax.exe'
-    dotnet Reepax.Tests/bin/Release/net8.0-windows/Reepax.Tests.dll --run-update-helper $data $setup $legacyExe $Version $helperPath
-    if ($LASTEXITCODE -ne 0) {
-        $resultPath = Join-Path $data 'update-result.json'
-        if (Test-Path -LiteralPath $resultPath) {
-            $diagnostic = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
-            $stage = if ($diagnostic.Stage -in @('verification', 'installation', 'installed-files', 'startup-confirmation', 'cleanup')) { $diagnostic.Stage } else { 'unknown' }
-            $code = if ($diagnostic.InstallerExitCode -is [long] -or $diagnostic.InstallerExitCode -is [int]) { $diagnostic.InstallerExitCode } else { 'unavailable' }
-            Write-Output "Update failure stage: $stage. Installer exit code: $code."
+    foreach ($releasedHelper in @($true, $false)) {
+        $destination = if ($releasedHelper) { Join-Path $root 'released-application' } else { $legacy }
+        $session = Join-Path $root $(if ($releasedHelper) { 'released-helper' } else { 'current-helper' })
+        New-Item -ItemType Directory -Path $destination, $session | Out-Null
+        Copy-Item -LiteralPath 'dist/Reepax/Reepax.exe', 'dist/Reepax/Reepax.dll' -Destination $destination
+        $unrelated = Join-Path $destination 'user-file.bin'
+        [IO.File]::WriteAllBytes($unrelated, [byte[]](0, 17, 255))
+        $sessionSetup = Join-Path $session 'setup.exe'
+        Copy-Item -LiteralPath $setup -Destination $sessionSetup
+        $helperPath = Join-Path $session 'apply-update.ps1'
+        $legacyExe = Join-Path $destination 'Reepax.exe'
+        $workerArguments = @('--run-update-helper', $data, $sessionSetup, $legacyExe, $Version, $helperPath)
+        if ($releasedHelper) { $workerArguments += '--released-helper' }
+        dotnet Reepax.Tests/bin/Release/net8.0-windows/Reepax.Tests.dll @workerArguments
+        if ($LASTEXITCODE -ne 0) {
+            $resultPath = Join-Path $data 'update-result.json'
+            if (Test-Path -LiteralPath $resultPath) {
+                $diagnostic = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+                $stage = if ($diagnostic.Stage -in @('verification', 'installation', 'installed-files', 'startup-confirmation', 'cleanup')) { $diagnostic.Stage } else { 'unknown' }
+                $code = if ($diagnostic.InstallerExitCode -is [long] -or $diagnostic.InstallerExitCode -is [int]) { $diagnostic.InstallerExitCode } else { 'unavailable' }
+                Write-Output "Update failure stage: $stage. Installer exit code: $code. Released helper: $releasedHelper."
+            }
+            throw 'Legacy installer update failed.'
         }
-        throw 'Legacy installer update failed.'
+        $result = Get-Content -LiteralPath (Join-Path $data 'update-result.json') -Raw | ConvertFrom-Json
+        if ($result.Status -ne 'success') { throw 'The legacy update helper did not confirm startup.' }
+        $exe = if ($releasedHelper) { $legacyExe } else { Join-Path $destination 'current/Reepax.exe' }
+        $process = Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe | Select-Object -First 1
+        if (-not $process -or $process.HasExited -or [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion.Split('+')[0] -ne $Version) {
+            throw 'The updated application did not start at the expected version.'
+        }
+        $expectedPayload = if ($releasedHelper) { 'dist/Reepax' } else { 'dist/InstallerPayload' }
+        foreach ($file in @('Reepax.exe', 'Reepax.dll')) {
+            if ((Get-FileHash -LiteralPath (Join-Path $expectedPayload $file)).Hash -ne
+                (Get-FileHash -LiteralPath (Join-Path $destination $file)).Hash) { throw 'The updated payload is incorrect.' }
+        }
+        if ([Convert]::ToHexString([IO.File]::ReadAllBytes($unrelated)) -ne '0011FF' -or
+            (Get-Content -LiteralPath $marker).Trim() -ne 'preserve') { throw 'The transition changed an unrelated file.' }
+        Stop-VerificationApplications $root
+        $process.Dispose()
+        $process = $null
+        Write-Output "Update startup and data preservation verified. Released helper: $releasedHelper."
     }
-    $result = Get-Content -LiteralPath (Join-Path $data 'update-result.json') -Raw | ConvertFrom-Json
-    if ($result.Status -ne 'success') { throw 'The legacy update helper did not confirm startup.' }
-    $exe = Join-Path $legacy 'current/Reepax.exe'
-    $process = Get-Process -Name Reepax -ErrorAction SilentlyContinue | Where-Object Path -EQ $exe | Select-Object -First 1
-    if (-not $process -or $process.HasExited -or [Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion.Split('+')[0] -ne $Version) {
-        throw 'The managed application did not start at the expected version.'
-    }
-    if ([Convert]::ToHexString([IO.File]::ReadAllBytes($unrelated)) -ne '0011FF' -or (Get-Content -LiteralPath $marker).Trim() -ne 'preserve') {
-        throw 'The transition changed an unrelated file.'
-    }
-    Write-Output 'Clean installation, repair, legacy update handoff, managed startup and data preservation verified.'
+    Write-Output 'Clean installation, repair, released and current update helpers, managed startup and data preservation verified.'
 } finally {
     if ($install -and -not $install.HasExited) { $install.Kill($true); $install.WaitForExit() }
     Stop-VerificationApplications $root
