@@ -44,7 +44,8 @@ public sealed class RepositoryPrivacyTests
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         string directory = Path.Combine(root, "Reepax.Tests", "Fixtures");
-        string[] files = Directory.GetFiles(directory, "*", SearchOption.AllDirectories)
+        string[] files = new[] { "Archives", "DecoderArchives" }
+            .SelectMany(name => Directory.GetFiles(Path.Combine(directory, name), "*", SearchOption.AllDirectories))
             .Where(path => !path.Contains(".part", StringComparison.Ordinal) || path.EndsWith(".part1.rar", StringComparison.Ordinal)).ToArray();
         Assert.NotEmpty(files);
         foreach (string file in files)
@@ -60,6 +61,19 @@ public sealed class RepositoryPrivacyTests
                 Assert.False(PersonalPath.IsMatch(Encoding.UTF8.GetString(payload)), "Archive payload contains a personal path.");
                 Assert.False(PersonalPath.IsMatch(Encoding.Unicode.GetString(payload)), "Archive payload contains a personal path.");
             }
+        }
+    }
+
+    [Fact]
+    public void UpdateHelperFixtures_DoNotContainPersonalPaths()
+    {
+        string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        string[] files = Directory.GetFiles(Path.Combine(root, "Reepax.Tests", "Fixtures", "Updates"), "*.ps1");
+        Assert.NotEmpty(files);
+        foreach (string file in files)
+        {
+            Assert.False(PersonalPath.IsMatch(Path.GetRelativePath(root, file)), "Update fixture contains a personal path.");
+            Assert.False(PersonalPath.IsMatch(File.ReadAllText(file)), "Update fixture contains a personal source path.");
         }
     }
 }
