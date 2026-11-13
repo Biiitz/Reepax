@@ -2978,7 +2978,7 @@ public partial class MainWindow : Window
 
         bool isDownloadsTab = ViewModel.SelectedMainTab == AppMainTab.Downloads;
 
-        // 3. Match against dynamic keyboard shortcuts
+        // Match against dynamic keyboard shortcuts
         var matched = ViewModel.ShortcutManager.FindMatch(key, modifiers);
         if (matched != null)
         {
@@ -3101,22 +3101,6 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     return;
             }
-        }
-
-        // 4. Explicit fallback for F2 Rename even if shortcut manager didn't match
-        if (isDownloadsTab && key == Key.F2 && modifiers == ModifierKeys.None)
-        {
-            HandleRenameSelected();
-            e.Handled = true;
-            return;
-        }
-
-        // 5. Explicit fallback for Delete / Back even if shortcut manager didn't match
-        if (isDownloadsTab && (key == Key.Delete || key == Key.Back) && modifiers == ModifierKeys.None)
-        {
-            HandleDeleteSelected();
-            e.Handled = true;
-            return;
         }
     }
 

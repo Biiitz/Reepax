@@ -87,7 +87,7 @@ public static class Strings_en
         // Toolbar
         ["Toolbar_StartAll_ToolTip"] = "Start / Resume all downloads",
         ["Toolbar_PauseAll_ToolTip"] = "Pause all active downloads",
-        ["Toolbar_DeleteSelected_ToolTip"] = "Delete selected package or item (Del)",
+        ["Toolbar_DeleteSelected_ToolTip"] = "Delete selected package or item",
         ["Toolbar_ExpandAll_ToolTip"] = "Expand all packages",
         ["Toolbar_CollapseAll_ToolTip"] = "Collapse all packages",
         ["Toolbar_ClearCompleted_ToolTip"] = "Remove completed downloads from list",
@@ -113,7 +113,7 @@ public static class Strings_en
         ["Col_Customize_ToolTip"] = "Customize columns",
 
         // Package & Item Context Menus & Tooltips
-        ["Menu_Rename"] = "Rename (F2)",
+        ["Menu_Rename"] = "Rename",
         ["Menu_OpenPackageFolder"] = "Open Package",
         ["Menu_ShowInExplorer"] = "Show in folder",
         ["Status_PackageFolderOpened"] = "Package folder opened: {0}",
@@ -137,7 +137,7 @@ public static class Strings_en
         ["Menu_CreateGameInstallFolder"] = "Create folder & copy path",
         ["Common_Recommended_Parentheses"] = "(Recommended)",
         ["Menu_CopyAllUrls"] = "Copy all URLs",
-        ["Menu_DeletePackage"] = "Delete package (Del)",
+        ["Menu_DeletePackage"] = "Delete package",
         ["Menu_DoubleClickRename_ToolTip"] = "Double-click to rename",
         ["Menu_CopyUrl"] = "Copy URL",
         ["Menu_ChangeDownloadPath"] = "Change path",
@@ -152,7 +152,7 @@ public static class Strings_en
         ["Menu_OpenInBrowser"] = "Open in browser",
         ["Status_NoBrowserLinks"] = "No web links are available for the selected files.",
         ["Status_BrowserLinksOpened"] = "Opened {0} of {1} links in the default browser.",
-        ["Menu_DeleteItem"] = "Delete item (Del)",
+        ["Menu_DeleteItem"] = "Delete item",
         ["Menu_Retry"] = "Try again",
         ["Menu_Resume"] = "Resume",
         ["Menu_Pause"] = "Pause",

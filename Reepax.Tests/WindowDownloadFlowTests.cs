@@ -28,6 +28,12 @@ public sealed class WindowDownloadFlowTests
     [Theory]
     [InlineData("en")]
     [InlineData("de")]
+    public async Task MainWindow_RenameAndDeleteFollowActiveKeyboardShortcuts(string language)
+        => await RunWindowWorkerAsync(language, "--shortcut-window-worker", "Window shortcuts passed");
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("de")]
     public async Task Browser_FilterListButtonUpdatesRealRequestsAndPreservesRulesOnFailure(string language)
         => await RunWindowWorkerAsync(language, "--filter-update-worker",
             Environment.GetEnvironmentVariable("REEPAX_LIVE_FILTER_CHECK") == "1" && language == "en"

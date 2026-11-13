@@ -87,7 +87,7 @@ public static class Strings_de
         // Toolbar
         ["Toolbar_StartAll_ToolTip"] = "Alle Downloads starten / fortsetzen",
         ["Toolbar_PauseAll_ToolTip"] = "Alle aktiven Downloads pausieren",
-        ["Toolbar_DeleteSelected_ToolTip"] = "Ausgewähltes Paket oder Eintrag löschen (Taste: Entf)",
+        ["Toolbar_DeleteSelected_ToolTip"] = "Ausgewähltes Paket oder Eintrag löschen",
         ["Toolbar_ExpandAll_ToolTip"] = "Alle Pakete aufklappen",
         ["Toolbar_CollapseAll_ToolTip"] = "Alle Pakete zuklappen",
         ["Toolbar_ClearCompleted_ToolTip"] = "Fertiggestellte Downloads aus der Liste entfernen",
@@ -113,7 +113,7 @@ public static class Strings_de
         ["Col_Customize_ToolTip"] = "Spalten anpassen",
 
         // Package & Item Context Menus & Tooltips
-        ["Menu_Rename"] = "Umbenennen (F2)",
+        ["Menu_Rename"] = "Umbenennen",
         ["Menu_OpenPackageFolder"] = "Open Package",
         ["Menu_ShowInExplorer"] = "Im Ordner anzeigen",
         ["Status_PackageFolderOpened"] = "Paketordner geöffnet: {0}",
@@ -137,7 +137,7 @@ public static class Strings_de
         ["Menu_CreateGameInstallFolder"] = "ordner erstellen & Pfad kopieren",
         ["Common_Recommended_Parentheses"] = "(Empfohlen)",
         ["Menu_CopyAllUrls"] = "Alle URLs kopieren",
-        ["Menu_DeletePackage"] = "Paket löschen (Entf)",
+        ["Menu_DeletePackage"] = "Paket löschen",
         ["Menu_DoubleClickRename_ToolTip"] = "Doppelklick zum Umbenennen",
         ["Menu_CopyUrl"] = "URL kopieren",
         ["Menu_ChangeDownloadPath"] = "Pfad ändern",
@@ -152,7 +152,7 @@ public static class Strings_de
         ["Menu_OpenInBrowser"] = "Im Browser öffnen",
         ["Status_NoBrowserLinks"] = "Für die ausgewählten Dateien sind keine Weblinks verfügbar.",
         ["Status_BrowserLinksOpened"] = "{0} von {1} Links im Standardbrowser geöffnet.",
-        ["Menu_DeleteItem"] = "Eintrag löschen (Entf)",
+        ["Menu_DeleteItem"] = "Eintrag löschen",
         ["Menu_Retry"] = "Noch mal neu versuchen",
         ["Menu_Resume"] = "Fortsetzen",
         ["Menu_Pause"] = "Pausieren",

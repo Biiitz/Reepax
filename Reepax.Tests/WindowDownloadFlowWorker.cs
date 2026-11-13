@@ -24,7 +24,8 @@ namespace Reepax.Tests;
 
 internal static partial class WindowDownloadFlowWorker
 {
-    internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false, bool filtersOnly = false)
+    internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false,
+        bool filtersOnly = false, bool shortcutsOnly = false)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -32,7 +33,7 @@ internal static partial class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -44,7 +45,8 @@ internal static partial class WindowDownloadFlowWorker
         return result;
     }
 
-    private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly, bool filtersOnly)
+    private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly,
+        bool filtersOnly, bool shortcutsOnly)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -89,6 +91,12 @@ internal static partial class WindowDownloadFlowWorker
         {
             main.Show();
             await IdleAsync();
+            if (shortcutsOnly)
+            {
+                await CheckWindowShortcutsAsync(main, model, root);
+                Console.WriteLine("Window shortcuts passed");
+                return;
+            }
             if (filtersOnly)
             {
                 environment = await CheckFilterUpdatesAsync(language);
