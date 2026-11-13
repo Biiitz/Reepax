@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
@@ -12,6 +13,137 @@ namespace Reepax.Tests;
 
 public sealed class PackagePipelineTests
 {
+    [Fact]
+    public async Task LocalDownload_PlainFilesCompleteWithoutExtractionAndReleaseGlobalAction()
+    {
+        byte[] data = [1, 3, 5, 7];
+        await using var fixture = await PackagePipelineFixture.CreateForFilesAsync(new Dictionary<string, byte[]>
+        {
+            ["first.bin"] = data,
+            ["second.txt"] = data
+        });
+        var package = fixture.Package;
+        package.DeleteArchiveAfterExtraction = true;
+        var alreadyComplete = new DownloadPackage { HasCompletedNotified = true };
+        alreadyComplete.Items.Add(new DownloadItem { FileName = "other.txt", Status = DownloadStatus.Completed });
+        QueueManager.Instance.Packages.Add(alreadyComplete);
+
+        await fixture.DownloadFileAsync(package.Items[0]);
+        Assert.False(package.IsFullyCompleted);
+        Assert.Equal(0, fixture.NotificationCount);
+        Assert.Equal(0, fixture.CountdownCount);
+        await fixture.DownloadFileAsync(package.Items[1]);
+
+        Assert.True(package.AreDownloadsCompleted);
+        Assert.True(package.IsFullyCompleted);
+        Assert.False(package.IsExtracted);
+        Assert.False(package.HasNextTasks);
+        Assert.Empty(package.NextTaskSteps);
+        Assert.Equal(Loc.Get("Status_Completed"), package.StatusMessage);
+        Assert.False(fixture.HasPendingExtraction);
+        foreach (var item in package.Items)
+        {
+            Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
+            Assert.Equal(item.ExpectedChecksum, item.CalculatedChecksum, ignoreCase: true);
+        }
+        await fixture.CountdownStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        QueueManager.Instance.NotifyPackageCompletionIfEligible(package);
+        fixture.EvaluateCompletion();
+        Assert.Equal(1, fixture.NotificationCount);
+        Assert.Equal(1, fixture.CountdownCount);
+        Assert.Empty(fixture.EarlyCompletion);
+        Assert.False(PostDownloadActionService.Instance.IsCountdownActive);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LocalDownload_UsesFinalArchiveNameOrDirectoryCompanion(bool responseNamesArchive)
+    {
+        byte[] payload = [1, 3, 5, 7];
+        using var memory = new MemoryStream();
+        using (var archive = new ZipArchive(memory, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = archive.CreateEntry("result.bin").Open())
+            entry.Write(payload);
+        byte[] zip = memory.ToArray();
+        await using var fixture = await PackagePipelineFixture.CreateForFilesAsync(
+            new Dictionary<string, byte[]> { ["download.bin"] = responseNamesArchive ? zip : payload },
+            responseNamesArchive ? new Dictionary<string, string> { ["Content-Disposition"] = "attachment; filename=example.zip" } : null);
+        string archivePath = Path.Combine(fixture.Package.SaveDirectory, "example.zip");
+        if (!responseNamesArchive)
+            File.WriteAllBytes(archivePath, zip);
+
+        var item = Assert.Single(fixture.Package.Items);
+        await fixture.DownloadFileAsync(item);
+        Assert.Equal(responseNamesArchive ? "example.zip" : "download.bin", item.FileName);
+        Assert.True(await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.True(fixture.Package.IsFullyCompleted);
+        Assert.True(fixture.Package.IsExtracted);
+        Assert.Equal(payload, File.ReadAllBytes(Path.Combine(fixture.Package.SaveDirectory, "result.bin")));
+        Assert.Equal(zip, File.ReadAllBytes(archivePath));
+        Assert.Equal(1, fixture.NotificationCount);
+    }
+
+    [Fact]
+    public async Task QueueRestart_ExtractsCompanionAddedAfterPlainFileCompleted()
+    {
+        byte[] payload = [2, 4, 6, 8];
+        await using var fixture = await PackagePipelineFixture.CreateForFilesAsync(
+            new Dictionary<string, byte[]> { ["download.bin"] = payload });
+        var package = fixture.Package;
+        await fixture.DownloadFileAsync(Assert.Single(package.Items));
+        Assert.True(package.IsFullyCompleted);
+        Assert.Empty(package.NextTaskSteps);
+
+        var queue = QueueManager.Instance;
+        queue.StopQueue();
+        using (var archive = ZipFile.Open(Path.Combine(package.SaveDirectory, "companion.zip"), ZipArchiveMode.Create))
+        using (var output = archive.CreateEntry("companion.txt").Open())
+            output.Write(payload);
+
+        queue.StartQueue();
+        Assert.True(await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.True(package.IsExtracted);
+        Assert.Equal(payload, File.ReadAllBytes(Path.Combine(package.SaveDirectory, "companion.txt")));
+        Assert.Equal(1, fixture.NotificationCount);
+    }
+
+    [Theory]
+    [InlineData("plain.txt", false)]
+    [InlineData("missing.zip", true)]
+    [InlineData("example.7z.002", true)]
+    [InlineData("empty.zip", true)]
+    public void Reload_LegacyPendingExtractionIsKeptOnlyForExpectedArchives(string fileName, bool expectsExtraction)
+    {
+        string directory = Directory.CreateTempSubdirectory("ExtractionReload_").FullName;
+        try
+        {
+            using var storage = new DownloadPersistenceService(Path.Combine(directory, "downloads.json"));
+            storage.SaveDownloadsFromDtos([new DownloadPackageDto
+            {
+                Id = Guid.NewGuid(), Name = "Example package", SaveDirectory = directory, IsCustomName = true,
+                AutoExtractArchives = true, DeleteArchiveAfterExtraction = true, Status = DownloadStatus.Completed,
+                NextTaskSteps = [new() { Key = "Extract" }, new() { Key = "Cleanup" }],
+                Items = [new() { FileName = fileName, SaveFilePath = Path.Combine(directory, fileName),
+                    IsEnabled = true, Status = DownloadStatus.Completed, TotalBytes = 4, DownloadedBytes = 4 }]
+            }], sync: true);
+            if (fileName.EndsWith(".002", StringComparison.Ordinal))
+                File.WriteAllBytes(Path.Combine(directory, fileName), [1, 3, 5, 7]);
+            if (fileName == "empty.zip")
+                File.WriteAllBytes(Path.Combine(directory, fileName), []);
+
+            var package = Assert.Single(storage.LoadDownloads());
+            Assert.Equal(!expectsExtraction, package.IsFullyCompleted);
+            Assert.Equal(!expectsExtraction, package.HasCompletedNotified);
+            Assert.False(package.IsNewlyCompleted);
+            Assert.False(package.IsExtracted);
+            Assert.Equal(expectsExtraction, package.NextTaskSteps.Any(step => step.Key == "Extract" && step.State == NextTaskStepState.Pending));
+            Assert.Equal(expectsExtraction, PostDownloadActionService.CheckHasActiveWork([package]));
+            Assert.False(ArchiveExtractionService.Instance.CanExtractPackage(package));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     [Theory]
     [InlineData("existing", "intact")]
     [InlineData("existing", "repairable")]

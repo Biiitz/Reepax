@@ -386,9 +386,8 @@ You need 4 more recovery blocks to be able to repair.
             var item = new DownloadItem { PackageId = package.Id, FileName = "payload.bin", SaveFilePath = file,
                 Status = DownloadStatus.Completed, TotalBytes = original.Length, DownloadedBytes = original.Length,
                 ExpectedChecksum = expected, CalculatedChecksum = expected };
-            package.Items.Add(item);
-            package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "data.par2", SaveFilePath = parity,
-                Status = DownloadStatus.Completed, TotalBytes = new FileInfo(parity).Length });
+            package.AddItems([item, new DownloadItem { PackageId = package.Id, FileName = "data.par2", SaveFilePath = parity,
+                Status = DownloadStatus.Completed, TotalBytes = new FileInfo(parity).Length }]);
             package.EnsureNextTaskSteps();
             package.SetNextTaskDone("Extract");
             package.SetNextTaskDone("Par2");
@@ -516,6 +515,8 @@ You need 4 more recovery blocks to be able to repair.
         string directory = Directory.CreateTempSubdirectory("SharedPar2_").FullName;
         var queue = QueueManager.Instance;
         bool previousTestMode = DownloadPersistenceService.IsTestEnvironment;
+        var settings = SettingsService.Instance.Settings;
+        var previousCleanup = (settings.DeleteArchiveAfterExtraction, settings.MoveArchiveToRecycleBin);
         var package = new DownloadPackage
         {
             Name = "Example archive", SaveDirectory = directory, AutoExtractArchives = true,
@@ -525,6 +526,8 @@ You need 4 more recovery blocks to be able to repair.
         try
         {
             DownloadPersistenceService.IsTestEnvironment = true;
+            settings.DeleteArchiveAfterExtraction = false;
+            settings.MoveArchiveToRecycleBin = false;
             var viewModel = manual ? new MainViewModel() : null;
             string archive = Path.Combine(directory, "archive.zip");
             using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
@@ -593,6 +596,7 @@ You need 4 more recovery blocks to be able to repair.
         {
             queue.Packages.Remove(other);
             queue.Packages.Remove(package);
+            (settings.DeleteArchiveAfterExtraction, settings.MoveArchiveToRecycleBin) = previousCleanup;
             DownloadPersistenceService.IsTestEnvironment = previousTestMode;
             Directory.Delete(directory, true);
         }

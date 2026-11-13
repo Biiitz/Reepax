@@ -249,7 +249,7 @@ public partial class DownloadPackage : ObservableObject
         }
     }
 
-    public bool HasNextTasks => AutoExtractArchives;
+    public bool HasNextTasks => AutoExtractArchives && (NextTaskSteps.Count > 0 || !AreDownloadsCompleted);
 
     public bool HasPar2Files()
     {
@@ -260,7 +260,7 @@ public partial class DownloadPackage : ObservableObject
     {
         get
         {
-            if (!AutoExtractArchives) return string.Empty;
+            if (!HasNextTasks) return string.Empty;
 
             var parts = new System.Collections.Generic.List<string>();
             if (AutoPar2Repair && HasPar2Files())
@@ -286,7 +286,7 @@ public partial class DownloadPackage : ObservableObject
     {
         get
         {
-            if (!AutoExtractArchives) return string.Empty;
+            if (!HasNextTasks) return string.Empty;
 
             var sb = new System.Text.StringBuilder();
             sb.AppendLine(Loc.Get("NextTask_TooltipHeader"));
@@ -324,8 +324,14 @@ public partial class DownloadPackage : ObservableObject
     /// </summary>
     public void EnsureNextTaskSteps()
     {
-        bool par2Active = AutoPar2Repair && HasPar2Files();
-        var signature = $"{HasPendingArchiveCleanup}|{PendingArchiveCleanup?.RecycleArchives}|{AutoExtractArchives}|{LowResourceExtraction}|{DeleteArchiveAfterExtraction}|{MoveArchiveToRecycleBin}|{AutoPar2Repair}|{par2Active}|{Loc.Get("NextTask_Extract")}|{Loc.Get("NextTask_Par2Repair")}";
+        bool par2Active = AutoExtractArchives && AutoPar2Repair && HasPar2Files();
+        var extraction = Services.Extractor.ArchiveExtractionService.Instance;
+        // Resolve applicability only after all enabled downloads have finished verification.
+        bool extractActive = AutoExtractArchives && (par2Active || IsExtracted || IsExtracting || RequiresArchivePassword ||
+            HasPendingArchiveCleanup || !AreDownloadsCompleted ||
+            NextTaskSteps.Any(step => step.Key == "Extract" && step.State != NextTaskStepState.Pending) ||
+            extraction.HasExtractableArchives(this) || extraction.HasArchiveInSaveDirectory(SaveDirectory));
+        var signature = $"{HasPendingArchiveCleanup}|{PendingArchiveCleanup?.RecycleArchives}|{AutoExtractArchives}|{extractActive}|{LowResourceExtraction}|{DeleteArchiveAfterExtraction}|{MoveArchiveToRecycleBin}|{AutoPar2Repair}|{par2Active}|{Loc.Get("NextTask_Extract")}|{Loc.Get("NextTask_Par2Repair")}";
         if (signature == _lastStepSignature)
             return;
         _lastStepSignature = signature;
@@ -333,7 +339,7 @@ public partial class DownloadPackage : ObservableObject
         var existingStates = NextTaskSteps.ToDictionary(s => s.Key, s => s.State);
 
         NextTaskSteps.Clear();
-        if (!AutoExtractArchives)
+        if (!extractActive)
         {
             if (IsExtracted || (existingStates.TryGetValue("Extract", out var preservedState) && preservedState == NextTaskStepState.Done))
             {
@@ -346,6 +352,7 @@ public partial class DownloadPackage : ObservableObject
             }
             if (HasPendingArchiveCleanup)
                 NextTaskSteps.Add(CreatePendingCleanupStep(existingStates));
+            NotifyNextTaskPresentationChanged();
             return;
         }
 
@@ -390,6 +397,14 @@ public partial class DownloadPackage : ObservableObject
                 State = existingStates.TryGetValue("Cleanup", out var clState) ? clState : NextTaskStepState.Pending
             });
         }
+        NotifyNextTaskPresentationChanged();
+    }
+
+    private void NotifyNextTaskPresentationChanged()
+    {
+        OnPropertyChanged(nameof(HasNextTasks));
+        OnPropertyChanged(nameof(NextTaskSummary));
+        OnPropertyChanged(nameof(NextTaskTooltip));
     }
 
     /// <summary>Resets all steps to pending (e.g. on rerun).</summary>

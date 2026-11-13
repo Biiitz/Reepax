@@ -52,6 +52,22 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
     internal PipelineHttpSource Source => _source!;
     internal bool AutoStartExtraction { get; set; } = true;
 
+    internal static async Task<PackagePipelineFixture> CreateForFilesAsync(IReadOnlyDictionary<string, byte[]> files,
+        IReadOnlyDictionary<string, string>? headers = null)
+    {
+        var fixture = new PackagePipelineFixture();
+        try
+        {
+            fixture.InitializeDownloads(files, headers: headers);
+            return fixture;
+        }
+        catch
+        {
+            await fixture.DisposeAsync();
+            throw;
+        }
+    }
+
     private PackagePipelineFixture()
     {
         Engine = new DownloadEngine(_client) { MaxConnectionsPerDownload = 1 };
@@ -127,9 +143,7 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
     private async Task InitializeAsync(string scenario, bool encrypted, int payloadLength, Func<string, DownloadPackage>? createPackage)
     {
         string originals = Path.Combine(_root, "source");
-        string downloads = Path.Combine(_root, "downloads");
         Directory.CreateDirectory(originals);
-        Directory.CreateDirectory(downloads);
         var random = new Random(731);
         Payload = new byte[payloadLength];
         random.NextBytes(Payload);
@@ -160,7 +174,14 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         var files = Directory.GetFiles(originals, "*.par2").OrderBy(path => path)
             .ToDictionary(path => Path.GetFileName(path), File.ReadAllBytes);
         files.Add("archive.zip", ServedArchive);
-        _source = new PipelineHttpSource(files);
+        InitializeDownloads(files, scenario, createPackage);
+    }
+
+    private void InitializeDownloads(IReadOnlyDictionary<string, byte[]> files, string scenario = "intact",
+        Func<string, DownloadPackage>? createPackage = null, IReadOnlyDictionary<string, string>? headers = null)
+    {
+        string downloads = Directory.CreateDirectory(Path.Combine(_root, "downloads")).FullName;
+        _source = new PipelineHttpSource(files, responseHeaders: headers);
         Package = createPackage?.Invoke(downloads) ?? new DownloadPackage
         {
             Name = "Example package", IsCustomName = true, SaveDirectory = downloads,
@@ -172,7 +193,7 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
             var item = new DownloadItem
             {
                 PackageId = Package.Id, FileName = name, SaveFilePath = Path.Combine(downloads, name),
-                OriginalUrl = Source.Url(name), DirectDownloadUrl = Source.Url(name), IsCustomName = true,
+                OriginalUrl = Source.Url(name), DirectDownloadUrl = Source.Url(name), IsCustomName = headers == null,
                 TotalBytes = bytes.Length, Status = DownloadStatus.Queued, IsEnabled = true,
                 ExpectedChecksum = name != "archive.zip" || scenario is "intact" or "checksum-rejected" ? Hash(name == "archive.zip" ? OriginalArchive : bytes) : null
             };
@@ -245,6 +266,14 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
 
     internal bool HasPendingExtraction => _extractions.Reader.TryPeek(out _);
 
+    internal async Task DownloadFileAsync(DownloadItem item)
+    {
+        var download = Engine.ResumeDownloadAsync(item);
+        _operations.Add(download);
+        await download.WaitAsync(TimeSpan.FromSeconds(30));
+        await _completions[item.Id].WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
     internal void EvaluateCompletion() => _actions.Evaluate(_queue.Packages);
 
     internal Task<bool> RetryExtractionAsync()
@@ -275,8 +304,9 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
     {
         try
         {
-            if (!Package.CheckIsFullyCompleted() || !File.ReadAllBytes(OutputPath).SequenceEqual(Payload) ||
-                !File.ReadAllBytes(Archive.SaveFilePath!).SequenceEqual(OriginalArchive))
+            if (!Package.CheckIsFullyCompleted() ||
+                (Archive != null && (!File.ReadAllBytes(OutputPath).SequenceEqual(Payload) ||
+                 !File.ReadAllBytes(Archive.SaveFilePath!).SequenceEqual(OriginalArchive))))
                 EarlyCompletion.Enqueue(stage);
         }
         catch (IOException) { EarlyCompletion.Enqueue(stage); }

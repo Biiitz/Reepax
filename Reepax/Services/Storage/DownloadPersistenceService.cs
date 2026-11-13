@@ -1562,21 +1562,7 @@ public class DownloadPersistenceService : IDisposable
                 // Historical packages are already completed; prevent re-triggering completion notification
                 package.HasCompletedNotified = true;
 
-                package.AddItems(items);
-
-                // Restore NextTaskStep states
-                if (pkgDto.NextTaskSteps != null && pkgDto.NextTaskSteps.Count > 0)
-                {
-                    foreach (var stepDto in pkgDto.NextTaskSteps)
-                    {
-                        var step = package.NextTaskSteps.FirstOrDefault(s => s.Key == stepDto.Key);
-                        if (step != null)
-                        {
-                            // If app was closed or crashed while running, restore as Pending so it can be resumed
-                            step.State = stepDto.State == NextTaskStepState.Running ? NextTaskStepState.Pending : stepDto.State;
-                        }
-                    }
-                }
+                RestorePackageItemsAndSteps(package, pkgDto, items);
 
                 bool isAllDone = (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)) ||
                                  pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
@@ -1637,6 +1623,26 @@ public class DownloadPersistenceService : IDisposable
         {
             if (step.Key != "Par2" || !par2Incomplete)
                 step.State = NextTaskStepState.Done;
+        }
+    }
+
+    private static void RestorePackageItemsAndSteps(DownloadPackage package, DownloadPackageDto savedPackage, List<DownloadItem> items)
+    {
+        // Keep prior extraction results even if the archive no longer exists.
+        var extract = savedPackage.NextTaskSteps?.FirstOrDefault(step => step.Key == "Extract");
+        package.IsExtracted = savedPackage.IsExtracted ||
+            savedPackage.StatusMessage is "Fertig & Entpackt" or "Completed & Extracted" ||
+            savedPackage.StatusMessage == Loc.Get("Status_CompletedAndExtracted");
+        if (extract?.State is NextTaskStepState.Done or NextTaskStepState.Failed)
+            package.NextTaskSteps.Add(new NextTaskStep { Key = "Extract", State = extract.State });
+        package.AddItems(items);
+
+        if (savedPackage.NextTaskSteps == null) return;
+        foreach (var savedStep in savedPackage.NextTaskSteps)
+        {
+            var step = package.NextTaskSteps.FirstOrDefault(step => step.Key == savedStep.Key);
+            if (step != null)
+                step.State = savedStep.State == NextTaskStepState.Running ? NextTaskStepState.Pending : savedStep.State;
         }
     }
 
@@ -1919,36 +1925,15 @@ public class DownloadPersistenceService : IDisposable
                     }
                 }
 
-                // Mark already completed packages as notified so RecalculateAggregates does not trigger completion notification
-                if (pkgDto.Items != null && pkgDto.Items.Count > 0 && pkgDto.Items.Where(i => i.IsEnabled).All(i => i.Status == DownloadStatus.Completed))
-                {
-                    bool extractionDone = !package.AutoExtractArchives ||
-                                          pkgDto.IsExtracted ||
-                                          (pkgDto.NextTaskSteps != null && pkgDto.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)) ||
-                                          pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
-                                          pkgDto.StatusMessage == "Fertig & Entpackt" ||
-                                          pkgDto.StatusMessage == "Completed & Extracted";
-                    if (extractionDone)
-                    {
-                        package.HasCompletedNotified = true;
-                    }
-                }
-
-                package.AddItems(items);
-
-                // Restore NextTaskStep states
-                if (pkgDto.NextTaskSteps != null && pkgDto.NextTaskSteps.Count > 0)
-                {
-                    foreach (var stepDto in pkgDto.NextTaskSteps)
-                    {
-                        var step = package.NextTaskSteps.FirstOrDefault(s => s.Key == stepDto.Key);
-                        if (step != null)
-                        {
-                            // If app was closed or crashed while running, restore as Pending so it can be resumed
-                            step.State = stepDto.State == NextTaskStepState.Running ? NextTaskStepState.Pending : stepDto.State;
-                        }
-                    }
-                }
+                bool wasNotified = pkgDto.Items?.Any(item => item.IsEnabled) == true &&
+                    pkgDto.Items.Where(item => item.IsEnabled).All(item => item.Status == DownloadStatus.Completed) &&
+                    (!package.AutoExtractArchives || pkgDto.IsExtracted ||
+                     pkgDto.NextTaskSteps?.All(step => step.State == NextTaskStepState.Done) == true ||
+                     pkgDto.StatusMessage is "Fertig & Entpackt" or "Completed & Extracted" ||
+                     pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted"));
+                // Suppress notifications while the items and their saved extraction states are restored.
+                package.HasCompletedNotified = true;
+                RestorePackageItemsAndSteps(package, pkgDto, items);
 
                 bool isAllDone = (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.All(s => s.State == NextTaskStepState.Done)) ||
                                  pkgDto.StatusMessage == Loc.Get("Status_CompletedAndExtracted") ||
@@ -1981,10 +1966,7 @@ public class DownloadPersistenceService : IDisposable
                                       (package.NextTaskSteps.Count > 0 && package.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Done)) ||
                                       isAllDone;
 
-                if (package.CheckIsFullyCompleted())
-                {
-                    package.HasCompletedNotified = true;
-                }
+                package.HasCompletedNotified = wasNotified || package.CheckIsFullyCompleted();
 
                 result.Add(package);
             }

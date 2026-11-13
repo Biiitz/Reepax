@@ -454,7 +454,7 @@ public class PostDownloadActionTests : IDisposable
     private static DownloadPackage CreateCompletedPackage()
     {
         var package = new DownloadPackage { Name = "Example package", AutoExtractArchives = true, IsEnabled = true };
-        package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "payload.bin", Status = DownloadStatus.Completed,
+        package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = "payload.zip", Status = DownloadStatus.Completed,
             TotalBytes = 100, DownloadedBytes = 100, IsEnabled = true });
         package.EnsureNextTaskSteps();
         package.SetNextTaskDone("Extract");

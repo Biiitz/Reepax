@@ -475,9 +475,8 @@ public partial class QueueManager
             if (!pkg.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing) &&
                 pkg.AutoExtractArchives &&
                 !pkg.IsExtracted &&
-                pkg.Items.Count > 0 &&
                 pkg.AreDownloadsCompleted &&
-                pkg.NextTaskSteps.Any(s => s.Key == "Extract" && s.State == NextTaskStepState.Pending) &&
+                !pkg.NextTaskSteps.Any(s => s.Key == "Extract" && s.State != NextTaskStepState.Pending) &&
                 !Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(pkg.Id) &&
                 Extractor.ArchiveExtractionService.Instance.CanExtractPackage(pkg))
             {

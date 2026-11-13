@@ -58,10 +58,25 @@ public partial class ArchiveExtractionService
     /// </summary>
     public bool HasExtractableArchives(DownloadPackage? package)
     {
-        if (package == null || package.Items == null)
-            return false;
+        return package?.ItemsSnapshot.Any(i => i.IsEnabled && (IsArchiveFile(i.SaveFilePath) || IsArchiveFile(i.FileName))) == true;
+    }
 
-        return package.Items.Any(i => i.IsEnabled && (IsArchiveFile(i.SaveFilePath) || IsArchiveFile(i.FileName)));
+    internal bool HasArchiveInSaveDirectory(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory)) return false;
+        try
+        {
+            return Directory.EnumerateFiles(directory).Any(IsArchiveFile);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A failed scan cannot establish that extraction is unnecessary.
+            return true;
+        }
     }
 
     public bool IsPrimaryArchivePart(string filePath)
@@ -475,6 +490,7 @@ public partial class ArchiveExtractionService
                 package.NextTaskSteps.Any(step => step.Key == "Par2" && step.State == NextTaskStepState.Done);
             SafeInvoke(() =>
             {
+                package.EnsureNextTaskSteps();
                 if (package.NextTaskSteps.All(s => s.Key != "Extract"))
                 {
                     package.NextTaskSteps.Add(new NextTaskStep
