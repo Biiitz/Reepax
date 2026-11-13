@@ -145,7 +145,13 @@ public partial class DialogUiTests
     {
         RunInSta(() => WithAsciiWindow((window, _) =>
         {
-            var logo = new TechnicalLogo { Width = 280, Height = 280, IsActive = true, EnableAnimation = false };
+            TimeSpan firstDelay = TimeSpan.FromMilliseconds(100);
+            TimeSpan repeatDelay = TimeSpan.FromSeconds(12);
+            int scheduled = 0;
+            var logo = new TechnicalLogo(() => ++scheduled == 1 ? firstDelay : repeatDelay)
+            {
+                Width = 280, Height = 280, IsActive = true, EnableAnimation = false
+            };
             window.Content = logo;
             window.UpdateLayout();
             PumpAscii(TimeSpan.FromMilliseconds(40));
@@ -154,14 +160,15 @@ public partial class DialogUiTests
             Assert.False(logo.IsAnimating);
             if (SystemParameters.ClientAreaAnimation)
             {
-                Assert.InRange(logo.NextShineDelay.TotalSeconds, 7, 16);
-                PumpAscii(logo.NextShineDelay + TimeSpan.FromMilliseconds(150));
+                Assert.Equal(firstDelay, logo.NextShineDelay);
+                WaitForAnimationState(() => logo.ShineStarts > 0);
                 Assert.Equal(1, logo.ShineStarts);
-                PumpAscii(TimeSpan.FromMilliseconds(1000));
+                WaitForAnimationState(() => !logo.IsAnimating);
                 Assert.False(logo.IsAnimating);
-                Assert.InRange(logo.NextShineDelay.TotalSeconds, 7, 16);
+                Assert.True(logo.IsShineScheduled);
+                Assert.Equal(repeatDelay, logo.NextShineDelay);
                 logo.BeginShine();
-                PumpAscii(TimeSpan.FromMilliseconds(100));
+                WaitForAnimationState(() => logo.ShineProgress > 0.01);
                 Assert.InRange(logo.ShineProgress, 0.01, 0.99);
             }
             logo.Visibility = Visibility.Collapsed;

@@ -20,6 +20,7 @@ public sealed class TechnicalLogo : FrameworkElement
     private static readonly Brush ScanBrush = CreateScanBrush();
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _shineTimer;
+    private readonly Func<TimeSpan> _createShineDelay;
     private readonly Stopwatch _clock = new();
     private readonly LogoOutlineArt _art = LogoOutlineArt.Default;
     private Window? _window;
@@ -40,8 +41,11 @@ public sealed class TechnicalLogo : FrameworkElement
     public bool IsActive { get => (bool)GetValue(IsActiveProperty); set => SetValue(IsActiveProperty, value); }
     public bool EnableAnimation { get => (bool)GetValue(EnableAnimationProperty); set => SetValue(EnableAnimationProperty, value); }
 
-    public TechnicalLogo()
+    public TechnicalLogo() : this(CreateShineDelay) { }
+
+    internal TechnicalLogo(Func<TimeSpan> createShineDelay)
     {
+        _createShineDelay = createShineDelay;
         SetResourceReference(ForegroundProperty, "BackdropLogoBrush");
         Focusable = false;
         IsHitTestVisible = false;
@@ -128,7 +132,7 @@ public sealed class TechnicalLogo : FrameworkElement
         {
             if (!_shineTimer.IsEnabled)
             {
-                _shineTimer.Interval = CreateShineDelay();
+                _shineTimer.Interval = _createShineDelay();
                 _shineTimer.Start();
             }
         }

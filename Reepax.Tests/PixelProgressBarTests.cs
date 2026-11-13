@@ -297,12 +297,12 @@ public partial class DialogUiTests
                 bar.BeginShimmer();
                 Assert.False(bar.IsShimmerScheduled);
                 Assert.True(bar.HasAnimatedProperties);
-                WaitForPixelAnimation(() => bar.ShimmerProgress >= 0.35);
+                WaitForAnimationState(() => bar.ShimmerProgress >= 0.35);
                 var highlighted = RenderPixelProgress(bar, 60);
                 Assert.False(original.SequenceEqual(highlighted));
                 for (int index = 3; index < original.Length; index += 4)
                     Assert.Equal(original[index], highlighted[index]);
-                WaitForPixelAnimation(() => !bar.HasAnimatedProperties);
+                WaitForAnimationState(() => !bar.HasAnimatedProperties);
                 Assert.True(bar.IsShimmerScheduled);
                 Assert.Equal(original, RenderPixelProgress(bar, 60));
                 bar.BeginShimmer();
@@ -344,8 +344,9 @@ public partial class DialogUiTests
         });
     }
 
-    private static void WaitForPixelAnimation(Func<bool> condition)
+    private static void WaitForAnimationState(Func<bool> condition)
     {
+        if (condition()) return;
         var frame = new System.Windows.Threading.DispatcherFrame();
         var timeout = System.Diagnostics.Stopwatch.StartNew();
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
@@ -353,7 +354,7 @@ public partial class DialogUiTests
         timer.Start();
         try { System.Windows.Threading.Dispatcher.PushFrame(frame); }
         finally { timer.Stop(); }
-        Assert.True(condition(), "The pixel animation did not reach the expected state.");
+        Assert.True(condition(), "The animation did not reach the expected state.");
     }
 
     [Theory]

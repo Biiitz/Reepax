@@ -23,6 +23,7 @@ public sealed class PostDownloadActionService
     public static PostDownloadActionService Instance => _instance.Value;
 
     private readonly object _lock = new();
+    private readonly TimeSpan _countdownInterval;
     private bool _hadActiveWork;
     private CancellationTokenSource? _countdownCts;
     private bool _isCountdownActive;
@@ -79,7 +80,9 @@ public sealed class PostDownloadActionService
     public event Action? CountdownFinished;
     public event Action<bool>? CountdownCancelled;
 
-    private PostDownloadActionService() { }
+    private PostDownloadActionService() : this(TimeSpan.FromSeconds(1)) { }
+
+    internal PostDownloadActionService(TimeSpan countdownInterval) => _countdownInterval = countdownInterval;
 
     /// <summary>
     /// Evaluates whether all currently active downloads and extractions have finished.
@@ -265,7 +268,7 @@ public sealed class PostDownloadActionService
 
                         if (i > 0)
                         {
-                            await Task.Delay(1000, token).ConfigureAwait(false);
+                            await Task.Delay(_countdownInterval, token).ConfigureAwait(false);
                         }
                     }
 

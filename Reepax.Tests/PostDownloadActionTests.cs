@@ -383,9 +383,10 @@ public class PostDownloadActionTests : IDisposable
     [InlineData(true)]
     public async Task Countdown_RechecksCurrentPackagesBeforeFinishingWithoutAnotherEvaluation(bool addFailure)
     {
-        var service = PostDownloadActionService.Instance;
+        var service = new PostDownloadActionService(TimeSpan.FromMilliseconds(20));
         var packages = new List<DownloadPackage> { CreateCompletedPackage() };
         var outcome = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ticks = new List<int>();
         bool reachedBoundary = false;
         async Task OnUiAsync(Action action)
         {
@@ -401,6 +402,7 @@ public class PostDownloadActionTests : IDisposable
         }
         void Tick(int seconds)
         {
+            ticks.Add(seconds);
             if (seconds != 0) return;
             reachedBoundary = true;
             if (!addFailure) return;
@@ -431,6 +433,7 @@ public class PostDownloadActionTests : IDisposable
 
             Assert.Equal(!addFailure, await outcome.Task.WaitAsync(TimeSpan.FromSeconds(20)));
             Assert.True(reachedBoundary);
+            Assert.Equal(Enumerable.Range(0, 11).Reverse(), ticks);
             Assert.Equal(addFailure ? 2 : 1, packages.Count);
             Assert.False(service.IsCountdownActive);
             Assert.Equal(addFailure ? PostDownloadAction.Sleep : PostDownloadAction.None, service.CurrentAction);
