@@ -19,7 +19,9 @@ public sealed class BrowserScriptTestHost : IAsyncLifetime
     private readonly string _root = Path.Combine(Path.GetTempPath(), "BrowserScriptCase_" + Guid.NewGuid().ToString("N"));
     private readonly TaskCompletionSource<Dispatcher> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Thread _thread;
+    private readonly bool _enableExtensions;
     private Dispatcher _dispatcher = null!;
+    private CoreWebView2Environment? _environment;
     private CoreWebView2Controller _controller = null!;
     private nint _window;
     internal CoreWebView2 Core => _controller.CoreWebView2;
@@ -27,8 +29,11 @@ public sealed class BrowserScriptTestHost : IAsyncLifetime
     internal List<string> NativePopups { get; } = new();
     internal bool BlockPopups { get; set; } = true;
 
-    public BrowserScriptTestHost()
+    public BrowserScriptTestHost() : this(false) { }
+
+    internal BrowserScriptTestHost(bool enableExtensions)
     {
+        _enableExtensions = enableExtensions;
         _thread = new Thread(() =>
         {
             _ready.SetResult(Dispatcher.CurrentDispatcher);
@@ -49,9 +54,13 @@ public sealed class BrowserScriptTestHost : IAsyncLifetime
             ShowWindow(_window, 4);
             var pages = Path.Combine(_root, "Pages");
             Directory.CreateDirectory(pages);
-            var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(_root, "Profile"),
-                new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding" });
-            _controller = await environment.CreateCoreWebView2ControllerAsync(_window);
+            _environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(_root, "Profile"),
+                new CoreWebView2EnvironmentOptions
+                {
+                    AreBrowserExtensionsEnabled = _enableExtensions,
+                    AdditionalBrowserArguments = "--disable-background-timer-throttling --disable-renderer-backgrounding"
+                });
+            _controller = await _environment.CreateCoreWebView2ControllerAsync(_window);
             _controller.Bounds = new Rectangle(0, 0, 800, 600);
             _controller.IsVisible = true;
             Core.SetVirtualHostNameToFolderMapping("page.example.test", pages, CoreWebView2HostResourceAccessKind.DenyCors);
@@ -105,19 +114,46 @@ public sealed class BrowserScriptTestHost : IAsyncLifetime
     internal async Task<T> EvaluateAsync<T>(string expression)
         => JsonSerializer.Deserialize<T>(await Core.ExecuteScriptAsync(expression))!;
 
+    internal async Task ReopenControllerAsync()
+    {
+        await CloseControllerAsync();
+        _controller = await _environment!.CreateCoreWebView2ControllerAsync(_window);
+    }
+
+    private async Task CloseControllerAsync()
+    {
+        if (_controller == null || _environment == null) return;
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void BrowserExited(object? sender, CoreWebView2BrowserProcessExitedEventArgs args) => exited.TrySetResult();
+        _environment.BrowserProcessExited += BrowserExited;
+        try
+        {
+            _controller.Close();
+            _controller = null!;
+            await exited.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            _environment.BrowserProcessExited -= BrowserExited;
+        }
+    }
+
     public async Task DisposeAsync()
     {
-        await OnUi(() =>
+        try
         {
-            _controller?.Close();
-            if (_window != 0) DestroyWindow(_window);
-            return Task.CompletedTask;
-        });
-        _dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
-        _thread.Join(TimeSpan.FromSeconds(10));
-        try { Directory.Delete(_root, true); }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
+            await OnUi(async () =>
+            {
+                try { await CloseControllerAsync(); }
+                finally { if (_window != 0) DestroyWindow(_window); }
+            });
+        }
+        finally
+        {
+            _dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+            _thread.Join(TimeSpan.FromSeconds(10));
+            if (Directory.Exists(_root)) Directory.Delete(_root, true);
+        }
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

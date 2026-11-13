@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -20,6 +19,9 @@ public class BrowserExtensionInfo
 
     /// <summary>Folder name = stable key for activation state.</summary>
     public string FolderName { get; set; } = string.Empty;
+
+    internal string? ArchiveName { get; set; }
+    internal string? ArchiveHash { get; set; }
 
     public string Name { get; set; } = string.Empty;
 
@@ -77,8 +79,12 @@ public class ExtensionSavedState
 {
     public bool IsEnabled { get; set; } = true;
     public string? ExtensionId { get; set; }
+    public string? ArchiveName { get; set; }
+    public string? ArchiveHash { get; set; }
+    public Dictionary<string, string>? RemovedArchives { get; set; }
+    public bool RemovalPending { get; set; }
 }
-public class BrowserExtensionService
+public partial class BrowserExtensionService
 {
     private static readonly Lazy<BrowserExtensionService> _instance = new(() => new BrowserExtensionService());
     public static BrowserExtensionService Instance => _instance.Value;
@@ -116,7 +122,7 @@ public class BrowserExtensionService
                folder.Contains("popup", StringComparison.OrdinalIgnoreCase);
     }
 
-    private BrowserExtensionService()
+    internal BrowserExtensionService()
     {
         try
         {
@@ -130,112 +136,6 @@ public class BrowserExtensionService
     }
 
     /// <summary>
-    /// Extracts any dropped .zip or .crx archives in the extensions directory into folders.
-    /// </summary>
-    private static void ExtractArchives(string extensionsDir)
-    {
-        try
-        {
-            if (!Directory.Exists(extensionsDir))
-                return;
-
-            var zipFiles = Directory.GetFiles(extensionsDir, "*.zip");
-            var crxFiles = Directory.GetFiles(extensionsDir, "*.crx");
-            var allArchives = zipFiles.Concat(crxFiles).ToArray();
-
-            foreach (var archivePath in allArchives)
-            {
-                try
-                {
-                    var baseName = Path.GetFileNameWithoutExtension(archivePath);
-                    if (string.IsNullOrWhiteSpace(baseName))
-                        continue;
-
-                    var targetDir = Path.Combine(extensionsDir, baseName);
-                    // If target directory already exists and contains files, do not re-extract
-                    if (Directory.Exists(targetDir) && Directory.EnumerateFileSystemEntries(targetDir).Any())
-                        continue;
-
-                    Directory.CreateDirectory(targetDir);
-
-                    if (archivePath.EndsWith(".crx", StringComparison.OrdinalIgnoreCase))
-                    {
-                        ExtractCrx(archivePath, targetDir);
-                    }
-                    else
-                    {
-                        ZipFile.ExtractToDirectory(archivePath, targetDir, overwriteFiles: true);
-                    }
-
-                    AppLogger.Info($"[Extensions] Extracted archive '{Path.GetFileName(archivePath)}' to '{targetDir}'");
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[Extensions] Failed to extract archive '{archivePath}'", ex);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[Extensions] Error checking for extension archives", ex);
-        }
-    }
-
-    /// <summary>
-    /// Unpacks a Chrome CRX archive (CRX2/CRX3) by locating the inner zip archive stream.
-    /// </summary>
-    private static void ExtractCrx(string crxPath, string targetDir)
-    {
-        using var stream = File.OpenRead(crxPath);
-        
-        long zipOffset = -1;
-        var buffer = new byte[8192];
-        long totalRead = 0;
-        int bytesRead;
-
-        byte[] magic = { 0x50, 0x4B, 0x03, 0x04 };
-        int magicIndex = 0;
-
-        while ((bytesRead = stream.Read(buffer, 0, buffer.Length)) > 0 && totalRead < 1024 * 1024)
-        {
-            for (int i = 0; i < bytesRead; i++)
-            {
-                if (buffer[i] == magic[magicIndex])
-                {
-                    magicIndex++;
-                    if (magicIndex == magic.Length)
-                    {
-                        zipOffset = totalRead + i - magic.Length + 1;
-                        break;
-                    }
-                }
-                else
-                {
-                    magicIndex = (buffer[i] == magic[0]) ? 1 : 0;
-                }
-            }
-
-            if (zipOffset != -1)
-                break;
-
-            totalRead += bytesRead;
-        }
-
-        if (zipOffset == -1)
-        {
-            // Fallback: try standard zip
-            stream.Position = 0;
-            using var regularZip = new ZipArchive(stream, ZipArchiveMode.Read);
-            regularZip.ExtractToDirectory(targetDir, overwriteFiles: true);
-            return;
-        }
-
-        stream.Position = zipOffset;
-        using var zipArchive = new ZipArchive(stream, ZipArchiveMode.Read);
-        zipArchive.ExtractToDirectory(targetDir, overwriteFiles: true);
-    }
-
-    /// <summary>
     /// Finds the directory containing manifest.json within topDir (either topDir itself or a subdirectory).
     /// </summary>
     private static string? FindExtensionFolder(string topDir)
@@ -245,7 +145,12 @@ public class BrowserExtensionService
 
         try
         {
-            var manifestFiles = Directory.GetFiles(topDir, "manifest.json", SearchOption.AllDirectories)
+            var manifestFiles = Directory.EnumerateFiles(topDir, "manifest.json", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    AttributesToSkip = FileAttributes.ReparsePoint,
+                    MatchCasing = MatchCasing.CaseInsensitive
+                })
                 .Where(p =>
                 {
                     var relative = Path.GetRelativePath(topDir, p);
@@ -271,23 +176,31 @@ public class BrowserExtensionService
     /// <summary>
     /// Rescans the extensions folder (e.g. after the user adds folders or archives).
     /// </summary>
-    public void Scan()
-    {
-        ExtractArchives(ExtensionsDirectory);
+    internal void Scan() => Scan(LoadSavedStates());
 
+    private void Scan(Dictionary<string, ExtensionSavedState> savedStates)
+    {
         var found = new List<BrowserExtensionInfo>();
-        var savedStates = LoadSavedStates();
-        var profileMap = TryReadProfileExtensionPaths();
 
         try
         {
+            ExtractArchives(savedStates);
             if (!Directory.Exists(ExtensionsDirectory))
+            {
+                Extensions = found;
                 return;
+            }
 
             foreach (var topDir in Directory.GetDirectories(ExtensionsDirectory))
             {
                 try
                 {
+                    var topDirName = Path.GetFileName(topDir);
+                    if (topDirName.StartsWith(ArchiveWorkPrefix, StringComparison.OrdinalIgnoreCase) ||
+                        (File.GetAttributes(topDir) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+                    if (savedStates.TryGetValue(topDirName, out var state) && state.RemovalPending)
+                        continue;
                     var extensionFolder = FindExtensionFolder(topDir);
                     if (extensionFolder == null)
                         continue;
@@ -300,34 +213,21 @@ public class BrowserExtensionService
                     if (info == null)
                         continue;
 
-                    var topDirName = Path.GetFileName(topDir);
                     info.FolderName = topDirName;
+                    if (state != null)
+                    {
+                        info.ArchiveName = state.ArchiveName;
+                        info.ArchiveHash = state.ArchiveHash;
+                    }
 
-                    if (savedStates.TryGetValue(topDirName, out var state))
+                    if (state != null)
                     {
                         info.IsEnabled = state.IsEnabled;
-                        if (!string.IsNullOrWhiteSpace(state.ExtensionId))
-                        {
-                            info.InstalledExtensionId = state.ExtensionId;
-                        }
                     }
-                    else if (savedStates.TryGetValue(info.Name, out var stateByName))
+                    else if (state == null && savedStates.TryGetValue(info.Name, out var stateByName) &&
+                        !stateByName.RemovalPending && stateByName.RemovedArchives == null)
                     {
                         info.IsEnabled = stateByName.IsEnabled;
-                        if (!string.IsNullOrWhiteSpace(stateByName.ExtensionId))
-                        {
-                            info.InstalledExtensionId = stateByName.ExtensionId;
-                        }
-                    }
-
-                    // Fallback to profile preferences mapping if extension ID not yet known
-                    if (string.IsNullOrWhiteSpace(info.InstalledExtensionId))
-                    {
-                        var normPath = Path.GetFullPath(info.FolderPath).TrimEnd('\\', '/');
-                        if (profileMap.TryGetValue(normPath, out var profId))
-                        {
-                            info.InstalledExtensionId = profId;
-                        }
                     }
 
                     if (!found.Any(e => string.Equals(e.FolderPath, info.FolderPath, StringComparison.OrdinalIgnoreCase)))
@@ -347,295 +247,6 @@ public class BrowserExtensionService
         }
 
         Extensions = found;
-    }
-
-    /// <summary>
-    /// Installs all enabled extensions into the specified WebView2 profile.
-    /// Extension settings automatically persist in the profile's user data directory.
-    /// </summary>
-    public async Task InstallIntoProfileAsync(CoreWebView2Profile profile)
-    {
-        Scan();
-
-        IReadOnlyList<CoreWebView2BrowserExtension>? existing = null;
-        try
-        {
-            existing = await profile.GetBrowserExtensionsAsync();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Warn($"[Extensions] GetBrowserExtensionsAsync failed", ex);
-        }
-
-        var folderToIdMap = TryReadProfileExtensionPaths();
-        var states = LoadSavedStates();
-        bool stateChanged = false;
-        var matchedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var ext in Extensions)
-        {
-            // 1. Resolve ID from profile mapping if missing
-            if (string.IsNullOrWhiteSpace(ext.InstalledExtensionId) &&
-                folderToIdMap.TryGetValue(Path.GetFullPath(ext.FolderPath).TrimEnd('\\', '/'), out var mappedId))
-            {
-                ext.InstalledExtensionId = mappedId;
-            }
-
-            CoreWebView2BrowserExtension? alreadyInstalled = null;
-
-            if (existing != null)
-            {
-                // Match by known ID
-                if (!string.IsNullOrWhiteSpace(ext.InstalledExtensionId))
-                {
-                    alreadyInstalled = existing.FirstOrDefault(e =>
-                        string.Equals(e.Id, ext.InstalledExtensionId, StringComparison.OrdinalIgnoreCase));
-                }
-
-                // Match by Name, ShortName, FolderName
-                if (alreadyInstalled == null)
-                {
-                    alreadyInstalled = existing.FirstOrDefault(e =>
-                        !matchedIds.Contains(e.Id) &&
-                        !string.IsNullOrWhiteSpace(e.Name) && (
-                            string.Equals(e.Name, ext.Name, StringComparison.OrdinalIgnoreCase) ||
-                            (!string.IsNullOrWhiteSpace(ext.ShortName) && string.Equals(e.Name, ext.ShortName, StringComparison.OrdinalIgnoreCase)) ||
-                            string.Equals(e.Name, ext.FolderName, StringComparison.OrdinalIgnoreCase) ||
-                            ext.Name.Contains(e.Name, StringComparison.OrdinalIgnoreCase) ||
-                            e.Name.Contains(ext.Name, StringComparison.OrdinalIgnoreCase)));
-                }
-
-                // If folderToIdMap had an ID, try matching that
-                if (alreadyInstalled == null && !string.IsNullOrWhiteSpace(ext.InstalledExtensionId))
-                {
-                    alreadyInstalled = existing.FirstOrDefault(e =>
-                        string.Equals(e.Id, ext.InstalledExtensionId, StringComparison.OrdinalIgnoreCase));
-                }
-            }
-
-            if (!ext.IsEnabled)
-            {
-                if (alreadyInstalled != null)
-                {
-                    matchedIds.Add(alreadyInstalled.Id);
-                    ext.InstalledExtensionId = alreadyInstalled.Id;
-                    ext.NativeExtension = alreadyInstalled;
-                    try { await alreadyInstalled.EnableAsync(false); } catch { }
-
-                    if (!states.TryGetValue(ext.FolderName, out var st))
-                    {
-                        st = new ExtensionSavedState();
-                        states[ext.FolderName] = st;
-                    }
-                    st.IsEnabled = false;
-                    st.ExtensionId = alreadyInstalled.Id;
-                    stateChanged = true;
-                }
-                continue;
-            }
-
-            if (alreadyInstalled != null)
-            {
-                matchedIds.Add(alreadyInstalled.Id);
-                ext.InstalledExtensionId = alreadyInstalled.Id;
-                ext.NativeExtension = alreadyInstalled;
-                ext.InstallError = null;
-
-                if (!string.IsNullOrWhiteSpace(alreadyInstalled.Name) &&
-                    !alreadyInstalled.Name.StartsWith("__MSG_", StringComparison.Ordinal))
-                {
-                    ext.Name = alreadyInstalled.Name;
-                }
-
-                if (!alreadyInstalled.IsEnabled)
-                {
-                    try { await alreadyInstalled.EnableAsync(true); } catch { }
-                }
-
-                if (!states.TryGetValue(ext.FolderName, out var st))
-                {
-                    st = new ExtensionSavedState();
-                    states[ext.FolderName] = st;
-                }
-                st.IsEnabled = true;
-                st.ExtensionId = alreadyInstalled.Id;
-                stateChanged = true;
-
-                AppLogger.Info($"[Extensions] '{ext.Name}' already installed (ID: {alreadyInstalled.Id})");
-                continue;
-            }
-
-            // Not yet registered in profile -> install it
-            try
-            {
-                var installed = await profile.AddBrowserExtensionAsync(ext.FolderPath);
-                ext.InstalledExtensionId = installed.Id;
-                ext.NativeExtension = installed;
-                ext.InstallError = null;
-                matchedIds.Add(installed.Id);
-
-                if (!string.IsNullOrWhiteSpace(installed.Name) &&
-                    !installed.Name.StartsWith("__MSG_", StringComparison.Ordinal))
-                {
-                    ext.Name = installed.Name;
-                }
-
-                if (!states.TryGetValue(ext.FolderName, out var st))
-                {
-                    st = new ExtensionSavedState();
-                    states[ext.FolderName] = st;
-                }
-                st.IsEnabled = true;
-                st.ExtensionId = installed.Id;
-                stateChanged = true;
-
-                AppLogger.Info($"[Extensions] '{ext.Name}' installed (ID: {installed.Id})");
-            }
-            catch (Exception ex)
-            {
-                // If AddBrowserExtensionAsync threw because the extension already exists, recover it
-                CoreWebView2BrowserExtension? fallbackMatch = null;
-                try
-                {
-                    var reExisting = await profile.GetBrowserExtensionsAsync();
-                    var reMap = TryReadProfileExtensionPaths();
-                    if (reMap.TryGetValue(Path.GetFullPath(ext.FolderPath).TrimEnd('\\', '/'), out var recoveredId))
-                    {
-                        fallbackMatch = reExisting?.FirstOrDefault(e => string.Equals(e.Id, recoveredId, StringComparison.OrdinalIgnoreCase));
-                    }
-
-                    if (fallbackMatch == null && reExisting != null)
-                    {
-                        fallbackMatch = reExisting.FirstOrDefault(e => !matchedIds.Contains(e.Id));
-                    }
-                }
-                catch { }
-
-                if (fallbackMatch != null)
-                {
-                    matchedIds.Add(fallbackMatch.Id);
-                    ext.InstalledExtensionId = fallbackMatch.Id;
-                    ext.NativeExtension = fallbackMatch;
-                    ext.InstallError = null;
-
-                    if (!string.IsNullOrWhiteSpace(fallbackMatch.Name) &&
-                        !fallbackMatch.Name.StartsWith("__MSG_", StringComparison.Ordinal))
-                    {
-                        ext.Name = fallbackMatch.Name;
-                    }
-
-                    if (!fallbackMatch.IsEnabled && ext.IsEnabled)
-                    {
-                        try { await fallbackMatch.EnableAsync(true); } catch { }
-                    }
-
-                    if (!states.TryGetValue(ext.FolderName, out var st))
-                    {
-                        st = new ExtensionSavedState();
-                        states[ext.FolderName] = st;
-                    }
-                    st.IsEnabled = ext.IsEnabled;
-                    st.ExtensionId = fallbackMatch.Id;
-                    stateChanged = true;
-
-                    AppLogger.Info($"[Extensions] Recovered existing installation for '{ext.Name}' (ID: {fallbackMatch.Id})");
-                }
-                else
-                {
-                    ext.InstallError = ex.Message;
-                    AppLogger.Warn($"[Extensions] '{ext.Name}' could not be installed", ex);
-                }
-            }
-        }
-
-        // Remove any orphaned extensions from profile that no longer exist on disk
-        if (existing != null)
-        {
-            foreach (var profileExt in existing)
-            {
-                if (!matchedIds.Contains(profileExt.Id))
-                {
-                    try
-                    {
-                        AppLogger.Info($"[Extensions] Removing orphaned profile extension '{profileExt.Name}' ({profileExt.Id})");
-                        await profileExt.RemoveAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        AppLogger.Warn($"[Extensions] Failed to remove orphaned extension", ex);
-                    }
-                }
-            }
-        }
-
-        if (stateChanged)
-        {
-            SaveSavedStates(states);
-        }
-    }
-
-    /// <summary>
-    /// Enables/disables an extension — immediately at runtime (if installed)
-    /// and persistently via folder name.
-    /// </summary>
-    public void SetEnabled(BrowserExtensionInfo ext, bool enabled)
-    {
-        ext.IsEnabled = enabled;
-
-        try
-        {
-            _ = ext.NativeExtension?.EnableAsync(enabled);
-        }
-        catch { }
-
-        var states = LoadSavedStates();
-        if (!states.TryGetValue(ext.FolderName, out var state))
-        {
-            state = new ExtensionSavedState();
-            states[ext.FolderName] = state;
-        }
-        state.IsEnabled = enabled;
-        if (!string.IsNullOrWhiteSpace(ext.InstalledExtensionId))
-        {
-            state.ExtensionId = ext.InstalledExtensionId;
-        }
-        SaveSavedStates(states);
-    }
-
-    /// <summary>
-    /// Completely removes an extension (from profile and deletes directory).
-    /// </summary>
-    public void Remove(BrowserExtensionInfo ext)
-    {
-        try
-        {
-            _ = ext.NativeExtension?.RemoveAsync();
-        }
-        catch { }
-
-        try
-        {
-            if (Directory.Exists(ext.FolderPath))
-            {
-                Directory.Delete(ext.FolderPath, recursive: true);
-            }
-
-            var topFolder = Path.Combine(ExtensionsDirectory, ext.FolderName);
-            if (Directory.Exists(topFolder) && !string.Equals(topFolder, ext.FolderPath, StringComparison.OrdinalIgnoreCase))
-            {
-                Directory.Delete(topFolder, recursive: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("[Extensions] Failed to remove the extension", ex);
-        }
-
-        var states = LoadSavedStates();
-        states.Remove(ext.FolderName);
-        SaveSavedStates(states);
-
-        Extensions.Remove(ext);
     }
 
     public static BrowserExtensionInfo? ParseManifest(string folderPath, string manifestPath)
@@ -880,60 +491,6 @@ public class BrowserExtensionService
         return value;
     }
 
-    /// <summary>
-    /// Reads the WebView2 profile's Preferences / Secure Preferences files to discover
-    /// mappings from extension folder path to extension ID.
-    /// </summary>
-    internal static Dictionary<string, string> TryReadProfileExtensionPaths()
-    {
-        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            var baseDir = SettingsService.WebView2Directory;
-            if (!Directory.Exists(baseDir))
-                return result;
-
-            var defaultDirs = Directory.GetDirectories(baseDir, "Default", SearchOption.AllDirectories);
-            foreach (var defDir in defaultDirs)
-            {
-                foreach (var prefFile in new[] { "Secure Preferences", "Preferences" })
-                {
-                    var fullPath = Path.Combine(defDir, prefFile);
-                    if (!File.Exists(fullPath))
-                        continue;
-
-                    try
-                    {
-                        using var stream = File.Open(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                        using var doc = JsonDocument.Parse(stream, _tolerantJsonOptions);
-                        if (doc.RootElement.TryGetProperty("extensions", out var extObj) &&
-                            extObj.TryGetProperty("settings", out var settingsObj) &&
-                            settingsObj.ValueKind == JsonValueKind.Object)
-                        {
-                            foreach (var prop in settingsObj.EnumerateObject())
-                            {
-                                var id = prop.Name;
-                                if (prop.Value.TryGetProperty("path", out var pathProp))
-                                {
-                                    var path = pathProp.GetString();
-                                    if (!string.IsNullOrWhiteSpace(path))
-                                    {
-                                        var norm = Path.GetFullPath(path).TrimEnd('\\', '/');
-                                        result[norm] = id;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                }
-            }
-        }
-        catch { }
-
-        return result;
-    }
-
     internal static Dictionary<string, ExtensionSavedState> LoadSavedStates()
     {
         try
@@ -964,6 +521,14 @@ public class BrowserExtensionService
                                 state.ExtensionId = extId.GetString();
                             else if (prop.Value.TryGetProperty("extensionId", out var extIdLower))
                                 state.ExtensionId = extIdLower.GetString();
+                            if (prop.Value.TryGetProperty(nameof(ExtensionSavedState.ArchiveName), out var archiveName))
+                                state.ArchiveName = archiveName.GetString();
+                            if (prop.Value.TryGetProperty(nameof(ExtensionSavedState.ArchiveHash), out var archiveHash))
+                                state.ArchiveHash = archiveHash.GetString();
+                            if (prop.Value.TryGetProperty(nameof(ExtensionSavedState.RemovedArchives), out var removed))
+                                state.RemovedArchives = removed.Deserialize<Dictionary<string, string>>();
+                            if (prop.Value.TryGetProperty(nameof(ExtensionSavedState.RemovalPending), out var pending))
+                                state.RemovalPending = pending.GetBoolean();
 
                             dict[prop.Name] = state;
                         }
@@ -977,17 +542,31 @@ public class BrowserExtensionService
         return new Dictionary<string, ExtensionSavedState>(StringComparer.OrdinalIgnoreCase);
     }
 
-    internal static void SaveSavedStates(Dictionary<string, ExtensionSavedState> states)
+    internal static bool SaveSavedStates(Dictionary<string, ExtensionSavedState> states)
     {
+        string temporary = StateFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             var json = JsonSerializer.Serialize(states, new JsonSerializerOptions { WriteIndented = true });
             var encryptedData = SecureAppDataStorage.EncryptString(json);
-            File.WriteAllText(StateFilePath, encryptedData);
+            using (var stream = File.Open(temporary, FileMode.CreateNew, FileAccess.Write))
+            using (var writer = new StreamWriter(stream))
+                writer.Write(encryptedData);
+            File.Move(temporary, StateFilePath, overwrite: true);
+            return true;
         }
         catch (Exception ex)
         {
             AppLogger.Warn("[Extensions] Could not save extension activation state", ex);
+            return false;
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLogger.Warn("[Extensions] Could not clean up temporary state", ex);
+            }
         }
     }
 

@@ -41,7 +41,6 @@ public partial class BrowserWindowController : IDisposable
     // their settings persist across windows and sessions.
     private static CoreWebView2Environment? _sharedEnvironment;
     private static readonly SemaphoreSlim _sharedEnvLock = new(1, 1);
-    private static readonly SemaphoreSlim _extensionsLock = new(1, 1);
 
     public int WindowId => _windowId;
     public bool IsInitialized => _isInitialized;
@@ -135,7 +134,6 @@ public partial class BrowserWindowController : IDisposable
             if (_isDisposed) return;
 
             // Install / synchronize extensions into shared profile
-            await _extensionsLock.WaitAsync();
             try
             {
                 await BrowserExtensionService.Instance.InstallIntoProfileAsync(_webView.CoreWebView2.Profile);
@@ -143,10 +141,6 @@ public partial class BrowserWindowController : IDisposable
             catch (Exception ex)
             {
                 AppLogger.Warn($"[Extensions] Installation failed", ex);
-            }
-            finally
-            {
-                _extensionsLock.Release();
             }
 
             if (_isDisposed) return;

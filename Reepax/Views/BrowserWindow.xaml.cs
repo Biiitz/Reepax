@@ -296,9 +296,18 @@ public partial class BrowserWindow : Window
         {
             Header = ext.IsEnabled ? Services.Localization.Loc.Get("Browser_ExtensionDisable") : Services.Localization.Loc.Get("Browser_ExtensionEnable")
         };
-        toggleItem.Click += (_, _) =>
+        toggleItem.Click += async (_, _) =>
         {
-            BrowserExtensionService.Instance.SetEnabled(ext, !ext.IsEnabled);
+            try
+            {
+                await BrowserExtensionService.Instance.SetEnabledAsync(ext, !ext.IsEnabled);
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn("[Extensions] Could not change extension activation", ex);
+                System.Windows.MessageBox.Show(this, Services.Localization.Loc.Get("Browser_ExtensionActionFailed"),
+                    Services.Localization.Loc.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
             PopulateExtensions();
         };
         menu.Items.Add(toggleItem);
@@ -325,14 +334,23 @@ public partial class BrowserWindow : Window
         menu.Items.Add(new Separator());
 
         var removeItem = new MenuItem { Header = Services.Localization.Loc.Get("Browser_ExtensionRemove") };
-        removeItem.Click += (_, _) =>
+        removeItem.Click += async (_, _) =>
         {
             if (ConfirmDialog.Show(Services.Localization.Loc.Get("Dialog_RemoveExtensionTitle"),
                     Services.Localization.Loc.Format("Dialog_RemoveExtensionMessage", ext.Name),
                     Services.Localization.Loc.Get("Common_Yes"),
                     Services.Localization.Loc.Get("Common_No")))
             {
-                BrowserExtensionService.Instance.Remove(ext);
+                try
+                {
+                    await BrowserExtensionService.Instance.RemoveAsync(ext);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn("[Extensions] Could not remove extension", ex);
+                    System.Windows.MessageBox.Show(this, Services.Localization.Loc.Get("Browser_ExtensionActionFailed"),
+                        Services.Localization.Loc.Get("Common_Error"), MessageBoxButton.OK, MessageBoxImage.Error);
+                }
                 PopulateExtensions();
             }
         };
