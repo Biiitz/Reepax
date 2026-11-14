@@ -25,7 +25,7 @@ namespace Reepax.Tests;
 internal static partial class WindowDownloadFlowWorker
 {
     internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false,
-        bool filtersOnly = false, bool shortcutsOnly = false)
+        bool filtersOnly = false, bool shortcutsOnly = false, string? packageRestartStage = null)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -33,7 +33,7 @@ internal static partial class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly, packageRestartStage).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -46,7 +46,7 @@ internal static partial class WindowDownloadFlowWorker
     }
 
     private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly,
-        bool filtersOnly, bool shortcutsOnly)
+        bool filtersOnly, bool shortcutsOnly, string? packageRestartStage)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -82,6 +82,11 @@ internal static partial class WindowDownloadFlowWorker
         app.Resources = (ResourceDictionary)XamlReader.Parse(resources.ToString());
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         LocalizationService.Instance.CurrentLanguage = language;
+        if (packageRestartStage != null)
+        {
+            await CheckPackageRestartAsync(root, packageRestartStage);
+            return;
+        }
         await using var source = new BrowserHandoffSource();
         var main = new MainWindow { ShowActivated = false, ShowInTaskbar = false };
         var model = (MainViewModel)main.DataContext;

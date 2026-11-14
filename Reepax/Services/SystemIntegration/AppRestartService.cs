@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -109,28 +108,7 @@ public static class AppRestartService
             return;
         }
 
-        // Preserve existing arguments and append the restart flag.
-        var cmdArgs = Environment.GetCommandLineArgs();
-        var psi = new ProcessStartInfo
-        {
-            FileName = exePath,
-            UseShellExecute = false,
-            WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
-        };
-
-        if (cmdArgs.Length > 1)
-        {
-            for (int i = 1; i < cmdArgs.Length; i++)
-            {
-                var arg = cmdArgs[i];
-                if (!string.Equals(arg, "--restart", StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(arg, "--activate", StringComparison.OrdinalIgnoreCase))
-                {
-                    psi.ArgumentList.Add(arg);
-                }
-            }
-        }
-        psi.ArgumentList.Add("--restart");
+        var psi = CreateStartInfo(exePath, Environment.GetCommandLineArgs());
 
         // 6. Release single instance mutex & IPC so the new instance can acquire ownership without race condition
         try
@@ -165,5 +143,30 @@ public static class AppRestartService
         catch { }
 
         Environment.Exit(0);
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string executable, string[] commandLine)
+    {
+        var start = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory
+        };
+
+        // A framework-dependent launch through dotnet still needs the application assembly.
+        if (string.Equals(Path.GetFileNameWithoutExtension(executable), "dotnet", StringComparison.OrdinalIgnoreCase) &&
+            commandLine.Length > 0 && Path.GetExtension(commandLine[0]).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(commandLine[0]);
+
+        // Forward window startup options, but do not replay file opens or update handshakes.
+        foreach (string argument in commandLine.Skip(1))
+        {
+            if (string.Equals(argument, "--minimized", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(argument, "--autostart", StringComparison.OrdinalIgnoreCase))
+                start.ArgumentList.Add(argument);
+        }
+        start.ArgumentList.Add("--restart");
+        return start;
     }
 }

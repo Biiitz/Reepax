@@ -15,6 +15,22 @@ namespace Reepax.Tests;
 [Collection("SharedQueue")]
 public class AppRestartTests
 {
+    [Theory]
+    [InlineData("Reepax.exe", false)]
+    [InlineData("dotnet.exe", true)]
+    public void RestartStartInfo_PreservesStartupOptionsAndDropsOneTimeRequests(string executable, bool hosted)
+    {
+        string entryPoint = hosted ? "Reepax.dll" : executable;
+        var start = AppRestartService.CreateStartInfo(executable,
+            [entryPoint, "example package.repx", "legacy.sdlr", "--RESTART", "--activate",
+                "--update-session=example", "--legacy-update-bootstrap", "--MINIMIZED", "--autostart"]);
+        string[] startupOptions = ["--MINIMIZED", "--autostart", "--restart"];
+        Assert.Equal(executable, start.FileName);
+        Assert.False(start.UseShellExecute);
+        Assert.Equal(AppContext.BaseDirectory, start.WorkingDirectory);
+        Assert.Equal(hosted ? [entryPoint, ..startupOptions] : startupOptions, start.ArgumentList);
+    }
+
     [Fact]
     public void AppRestartService_Restart_PausesAllActiveAndQueuedDownloads()
     {
