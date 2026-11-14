@@ -71,6 +71,7 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<DownloadPackage> Packages => _queueManager.Packages;
     public ObservableCollection<DownloadPackage> RootPackages { get; } = new();
+    internal bool IsDownloadDragInProgress { get; set; }
 
     [ObservableProperty]
     private string _searchFilterText = string.Empty;
@@ -1441,6 +1442,39 @@ public partial class MainViewModel : ObservableObject
     public void RefreshRootPackages()
     {
         var roots = Packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
+        SynchronizeRootPackages(roots);
+
+        if (!string.IsNullOrEmpty(SortColumn) && SortDirection.HasValue)
+        {
+            foreach (var pkg in Packages)
+            {
+                var sortedItems = SortItems(pkg.Items.ToList(), SortColumn, SortDirection.Value);
+                SyncItemOrder(pkg, sortedItems);
+            }
+        }
+
+        OnPropertyChanged(nameof(HasDownloads));
+        OnPropertyChanged(nameof(IsDownloadsEmpty));
+    }
+
+    private bool RefreshStatusFilteredRoots(DownloadPackage[] packages)
+    {
+        if (!IsStatusFilterActive || _isReorderingPackages || IsDownloadDragInProgress)
+            return false;
+
+        var matches = packages.Where(p => !p.IsClipped && MatchesFilter(p)).ToList();
+        // Compare membership without reapplying sort keys that change with progress.
+        if (matches.Count == RootPackages.Count &&
+            (matches.SequenceEqual(RootPackages, ReferenceEqualityComparer.Instance) ||
+             new HashSet<DownloadPackage>(matches, ReferenceEqualityComparer.Instance).SetEquals(RootPackages)))
+            return false;
+
+        SynchronizeRootPackages(matches);
+        return true;
+    }
+
+    private void SynchronizeRootPackages(List<DownloadPackage> roots)
+    {
         var targetPackages = new HashSet<DownloadPackage>(roots, ReferenceEqualityComparer.Instance);
         var retainedPackages = new HashSet<DownloadPackage>(ReferenceEqualityComparer.Instance);
 
@@ -1477,18 +1511,6 @@ public partial class MainViewModel : ObservableObject
                 RootPackages.Move(RootPackages.IndexOf(targetPkg), targetIndex);
             }
         }
-
-        if (!string.IsNullOrEmpty(SortColumn) && SortDirection.HasValue)
-        {
-            foreach (var pkg in Packages)
-            {
-                var sortedItems = SortItems(pkg.Items.ToList(), SortColumn, SortDirection.Value);
-                SyncItemOrder(pkg, sortedItems);
-            }
-        }
-
-        OnPropertyChanged(nameof(HasDownloads));
-        OnPropertyChanged(nameof(IsDownloadsEmpty));
     }
 
     /// <summary>
@@ -3230,7 +3252,8 @@ public partial class MainViewModel : ObservableObject
         OverallSpeedText = FormatSpeed(stats.Speed);
         OverallActiveDownloadsText = Loc.Format("StatusBar_OverallActiveDownloads", stats.ActiveDownloads, stats.TotalDownloads);
         OverallProgressText = Loc.Format("StatusBar_OverallProgress", (int)Math.Round(OverallProgressPercentage));
-        Overview.Refresh();
+        bool filterMembershipChanged = RefreshStatusFilteredRoots(packageSnapshot);
+        Overview.Refresh(force: filterMembershipChanged && Overview.Scope == DownloadOverviewScope.Filtered);
 
         UpdateDriveSpace();
         PostDownloadActionService.Instance.Evaluate(Packages);

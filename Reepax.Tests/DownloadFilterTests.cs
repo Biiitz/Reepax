@@ -195,11 +195,12 @@ public class DownloadFilterTests : IDisposable
     public void StatusFilter_FailedStepDoesNotHideOtherActiveWork(bool verifying)
     {
         var package = new DownloadPackage { AutoExtractArchives = true, AutoPar2Repair = false };
-        var item = new DownloadItem { FileName = "payload.bin", Status = DownloadStatus.Completed,
+        var item = new DownloadItem { FileName = "payload.zip", Status = DownloadStatus.Completed,
             TotalBytes = 100, DownloadedBytes = 100 };
         package.Items.Add(item);
         package.EnsureNextTaskSteps();
         package.SetNextTaskFailed("Extract");
+        Assert.Equal(NextTaskStepState.Failed, Assert.Single(package.NextTaskSteps, step => step.Key == "Extract").State);
         package.StatusMessage = "Verifying checksum failed";
         if (verifying) item.IsVerifyingIntegrity = true;
         else item.Status = DownloadStatus.Downloading;
@@ -425,6 +426,117 @@ public class DownloadFilterTests : IDisposable
         Assert.Equal(2, _viewModel.RootPackages.Count);
         Assert.Equal("Beta Update", _viewModel.RootPackages[0].Name);
         Assert.Equal("Alpha Update", _viewModel.RootPackages[1].Name);
+    }
+
+    [Theory]
+    [InlineData(DownloadStatusFilter.Running, DownloadStatus.Downloading)]
+    [InlineData(DownloadStatusFilter.Paused, DownloadStatus.Paused)]
+    [InlineData(DownloadStatusFilter.Failed, DownloadStatus.Failed)]
+    public void ActiveStatusFilter_UpdatesWhenClippedChildChangesStatus(DownloadStatusFilter filter, DownloadStatus status)
+    {
+        var parent = new DownloadPackage { Name = "Example parent", IsSelected = true };
+        var child = new DownloadPackage { Name = "Example child" };
+        var item = new DownloadItem { FileName = "example.bin", TotalBytes = 100 };
+        child.Items.Add(item);
+        _viewModel.Packages.Add(parent);
+        _viewModel.Packages.Add(child);
+        _viewModel.ClipPackage(child, parent);
+        _viewModel.SearchFilterText = "child";
+        _viewModel.SelectedStatusFilter = filter;
+        Assert.Empty(_viewModel.RootPackages);
+
+        item.Status = status;
+        _viewModel.RecalculateGlobalStats();
+        Assert.Same(parent, Assert.Single(_viewModel.RootPackages));
+        Assert.Same(child, Assert.Single(parent.ClippedPackages));
+        Assert.True(parent.IsSelected);
+
+        item.Status = DownloadStatus.Queued;
+        _viewModel.RecalculateGlobalStats();
+        Assert.Empty(_viewModel.RootPackages);
+        Assert.Same(child, Assert.Single(parent.ClippedPackages));
+        Assert.True(parent.IsSelected);
+    }
+
+    [Fact]
+    public void RunningFilter_UpdatesWhenExtractionStepEnds()
+    {
+        var package = new DownloadPackage { Name = "Example archive", AutoExtractArchives = true };
+        package.Items.Add(new DownloadItem { FileName = "example.zip", TotalBytes = 100 });
+        package.EnsureNextTaskSteps();
+        var extraction = Assert.Single(package.NextTaskSteps, step => step.Key == "Extract");
+        extraction.State = NextTaskStepState.Running;
+        _viewModel.Packages.Add(package);
+        _viewModel.SelectedStatusFilter = DownloadStatusFilter.Running;
+        Assert.Same(package, Assert.Single(_viewModel.RootPackages));
+
+        extraction.State = NextTaskStepState.Done;
+        _viewModel.RecalculateGlobalStats();
+        Assert.Empty(_viewModel.RootPackages);
+    }
+
+    [Fact]
+    public void ActiveStatusFilter_DoesNotResortWhenOnlyProgressChanges()
+    {
+        var first = new DownloadPackage { Name = "First" };
+        var firstItem = new DownloadItem { Status = DownloadStatus.Downloading, TotalBytes = 100, DownloadedBytes = 50 };
+        first.Items.Add(firstItem);
+        var second = new DownloadPackage { Name = "Second", IsSelected = true };
+        var secondItem = new DownloadItem { Status = DownloadStatus.Downloading, TotalBytes = 100, DownloadedBytes = 10 };
+        second.Items.Add(secondItem);
+        _viewModel.Packages.Add(second);
+        _viewModel.Packages.Add(first);
+        _viewModel.SelectedStatusFilter = DownloadStatusFilter.Running;
+        _viewModel.ToggleColumnSort("Progress");
+        Assert.Equal(new[] { first, second }, _viewModel.RootPackages);
+
+        int changes = 0;
+        _viewModel.RootPackages.CollectionChanged += (_, _) => changes++;
+        secondItem.DownloadedBytes = 80;
+        _viewModel.RecalculateGlobalStats();
+
+        Assert.True(second.ProgressPercentage > first.ProgressPercentage);
+        Assert.Equal(new[] { first, second }, _viewModel.RootPackages);
+        Assert.Equal(0, changes);
+        Assert.True(second.IsSelected);
+    }
+
+    [Fact]
+    public void ActiveStatusFilter_DefersMembershipChangesDuringDragAndKeepsSortOrder()
+    {
+        var moved = new DownloadPackage { Name = "Example B", IsSelected = true };
+        var retained = new DownloadPackage { Name = "Example C" };
+        var entering = new DownloadPackage { Name = "Example A" };
+        var movedItem = new DownloadItem { FileName = "moved.bin", Status = DownloadStatus.Paused };
+        var retainedItem = new DownloadItem { FileName = "retained.bin", Status = DownloadStatus.Paused };
+        var enteringItem = new DownloadItem { FileName = "entering.bin" };
+        moved.Items.Add(movedItem);
+        retained.Items.Add(retainedItem);
+        entering.Items.Add(enteringItem);
+        _viewModel.Packages.Add(retained);
+        _viewModel.Packages.Add(moved);
+        _viewModel.Packages.Add(entering);
+        _viewModel.SelectedStatusFilter = DownloadStatusFilter.Paused;
+        _viewModel.ToggleColumnSort("Name");
+        Assert.Equal(new[] { moved, retained }, _viewModel.RootPackages);
+
+        _viewModel.IsDownloadDragInProgress = true;
+        movedItem.Status = DownloadStatus.Queued;
+        enteringItem.Status = DownloadStatus.Paused;
+        _viewModel.RecalculateGlobalStats();
+        Assert.Equal(new[] { moved, retained }, _viewModel.RootPackages);
+
+        _viewModel.MovePackageAfter(moved, retained);
+        _viewModel.IsDownloadDragInProgress = false;
+        _viewModel.RecalculateGlobalStats();
+        Assert.Equal(new[] { retained, entering }, _viewModel.RootPackages);
+        Assert.True(moved.IsSelected);
+
+        _viewModel.ToggleColumnSort("Name");
+        retainedItem.Status = DownloadStatus.Queued;
+        movedItem.Status = DownloadStatus.Paused;
+        _viewModel.RecalculateGlobalStats();
+        Assert.Equal(new[] { entering, moved }, _viewModel.RootPackages);
     }
 
     [Fact]

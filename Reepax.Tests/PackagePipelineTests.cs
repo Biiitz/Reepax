@@ -7,12 +7,51 @@ using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
+using Reepax.ViewModels;
 using Xunit;
 
 namespace Reepax.Tests;
 
 public sealed class PackagePipelineTests
 {
+    [Fact]
+    public async Task LocalDownload_EntersCompletedFilterAndUpdatesFilteredOverview()
+    {
+        byte[] bytes = [2, 4, 6, 8];
+        await using var fixture = await PackagePipelineFixture.CreateForFilesAsync(
+            new Dictionary<string, byte[]> { ["download.bin"] = bytes });
+        var model = new MainViewModel();
+        var previousFilter = model.SelectedStatusFilter;
+        var previousScope = model.Overview.Scope;
+        bool wasOverviewShown = model.Overview.IsShown;
+        try
+        {
+            model.SelectedStatusFilter = DownloadStatusFilter.Completed;
+            model.Overview.IsShown = true;
+            model.Overview.Scope = DownloadOverviewScope.Filtered;
+            model.Overview.SetPresentationActive(true);
+            Assert.Empty(model.RootPackages);
+            Assert.Equal(Loc.Format("Overview_Compact", 0, 0), model.Overview.CompactSummary);
+
+            var package = fixture.Package;
+            var item = Assert.Single(package.Items);
+            await fixture.DownloadFileAsync(item);
+            Assert.True(package.IsFullyCompleted);
+            Assert.Equal(bytes, File.ReadAllBytes(item.SaveFilePath!));
+
+            model.RecalculateGlobalStats();
+            Assert.Same(package, Assert.Single(model.RootPackages));
+            Assert.Equal(Loc.Format("Overview_Compact", 1, 0), model.Overview.CompactSummary);
+        }
+        finally
+        {
+            model.Overview.SetPresentationActive(false);
+            model.Overview.Scope = previousScope;
+            model.Overview.IsShown = wasOverviewShown;
+            model.SelectedStatusFilter = previousFilter;
+        }
+    }
+
     [Fact]
     public async Task LocalDownload_PlainFilesCompleteWithoutExtractionAndReleaseGlobalAction()
     {

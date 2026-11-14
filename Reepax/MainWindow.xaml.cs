@@ -1437,11 +1437,13 @@ public partial class MainWindow : Window
                 _draggedPackages = pkgsToDrag;
                 data.SetData("Reepax.DownloadPackageList", pkgsToDrag);
 
+                ViewModel.IsDownloadDragInProgress = true;
                 DragDrop.DoDragDrop(sender as DependencyObject ?? this, data, DragDropEffects.Move);
             }
             finally
             {
                 DownloadRowsList.StopAutoScroll();
+                ViewModel.IsDownloadDragInProgress = false;
                 _isDraggingPackage = false;
                 _draggedPackage = null;
                 _draggedPackages = null;
@@ -1936,11 +1938,13 @@ public partial class MainWindow : Window
                 _draggedItems = itemsToDrag;
                 data.SetData("Reepax.DownloadItemList", itemsToDrag);
 
+                ViewModel.IsDownloadDragInProgress = true;
                 DragDrop.DoDragDrop(sender as DependencyObject ?? this, data, DragDropEffects.Move);
             }
             finally
             {
                 DownloadRowsList.StopAutoScroll();
+                ViewModel.IsDownloadDragInProgress = false;
                 _isDraggingItem = false;
                 _draggedItem = null;
                 _draggedItems = null;

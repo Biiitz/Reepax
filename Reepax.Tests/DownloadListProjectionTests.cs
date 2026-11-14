@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Reepax.Helpers;
 using Reepax.Models;
+using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Xunit;
 using Xunit.Abstractions;
@@ -110,6 +111,69 @@ public partial class DownloadListVirtualizationTests
             {
                 source.RootVisual = null;
                 ((DownloadListView)list).Packages = null;
+            }
+        });
+    }
+
+    [Fact]
+    public void Projection_StatusFilterRemovalKeepsRetainedRowsSelectionAndScrollOffset()
+    {
+        RunInSta(() =>
+        {
+            bool previousTestMode = DownloadPersistenceService.IsTestEnvironment;
+            DownloadPersistenceService.IsTestEnvironment = true;
+            var model = new MainViewModel();
+            var previousPackages = model.Packages.ToArray();
+            var previousFilter = model.SelectedStatusFilter;
+            try
+            {
+                model.Packages.Clear();
+                var retained = CreateProjectionPackage(100);
+                var leaving = new DownloadPackage { Status = DownloadStatus.Paused };
+                model.Packages.Add(retained);
+                model.Packages.Add(leaving);
+                model.SelectedStatusFilter = DownloadStatusFilter.Paused;
+
+                var (viewer, list) = CreateList(model.RootPackages, useFullTemplates: true);
+                using var source = new HwndSource(new HwndSourceParameters("StatusFilterViewportProbe")
+                {
+                    Width = 600, Height = 280, PositionX = -32000, PositionY = -32000,
+                    WindowStyle = unchecked((int)0x80000000)
+                });
+                try
+                {
+                    source.RootVisual = list;
+                    Layout(list);
+                    viewer.ScrollToVerticalOffset(300);
+                    Layout(list);
+                    double offset = viewer.VerticalOffset;
+                    Assert.True(offset > 0);
+                    var retainedRow = Assert.IsType<DownloadListRow>(list.Items[1]);
+                    var retainedFile = Assert.IsType<DownloadItem>(retainedRow.Model);
+                    Assert.True(retainedFile.IsSelected);
+                    Assert.Same(leaving, Assert.IsType<DownloadListRow>(list.Items[^1]).Model);
+
+                    leaving.Status = DownloadStatus.Completed;
+                    model.RecalculateGlobalStats();
+                    Layout(list);
+
+                    Assert.DoesNotContain(list.Items.Cast<DownloadListRow>(), row => ReferenceEquals(row.Model, leaving));
+                    Assert.Same(retainedRow, list.Items[1]);
+                    Assert.True(retainedFile.IsSelected);
+                    Assert.Equal(offset, viewer.VerticalOffset, 3);
+                }
+                finally
+                {
+                    source.RootVisual = null;
+                    ((DownloadListView)list).Packages = null;
+                }
+            }
+            finally
+            {
+                model.Packages.Clear();
+                model.SelectedStatusFilter = previousFilter;
+                foreach (var package in previousPackages) model.Packages.Add(package);
+                DownloadPersistenceService.IsTestEnvironment = previousTestMode;
             }
         });
     }
