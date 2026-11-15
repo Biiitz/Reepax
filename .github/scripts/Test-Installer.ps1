@@ -54,9 +54,12 @@ try {
     & $Compiler /Q /DUpdateSmokeTest=1 "/DMyAppVersion=$Version" "/O$root" installer/Reepax.iss
     if ($LASTEXITCODE -ne 0) { throw 'Verification installer compilation failed.' }
     $setup = Join-Path $root 'setup.exe'
-    $arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /NOICONS /UPDATEHELPER=1 /MANAGEDUPDATE=1 /DIR=`"$installed`""
-    $install = Start-Process $setup -ArgumentList $arguments -PassThru -WindowStyle Hidden
+    $arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS /UPDATEHELPER=1 /MANAGEDUPDATE=1 /DIR=`"$installed`""
+    $install = Start-Process $setup -ArgumentList "$arguments /ALLUSERS" -PassThru -WindowStyle Hidden
     if (-not $install.WaitForExit(180000) -or $install.ExitCode -ne 0) { throw 'Clean installation failed.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $installed 'current/Reepax.exe'))) {
+        throw 'The installer did not use the per-user layout when passed /ALLUSERS.'
+    }
     $settings = Join-Path $data 'settings.json'
     Set-Content -LiteralPath $settings -Value '{"Language":"en","MinimizeToTrayOnClose":false}' -Encoding UTF8
     $settingsHash = (Get-FileHash -LiteralPath $settings).Hash

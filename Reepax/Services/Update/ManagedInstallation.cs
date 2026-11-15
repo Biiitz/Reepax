@@ -28,7 +28,7 @@ internal sealed class ReepaxPackageLocator(IProcessImpl? process = null) : Windo
 
 internal static class ManagedInstallation
 {
-    internal const string InstallerRegistryId = "{B729352A-3D28-444F-A1BC-535A0F507F62}_is1";
+    private const string InstallerRegistryId = "{B729352A-3D28-444F-A1BC-535A0F507F62}}_is1";
 
     internal static void RefreshRegistration(ReepaxPackageLocator location, string version)
     {
@@ -45,7 +45,8 @@ internal static class ManagedInstallation
     {
         using var installer = entries.OpenSubKey(InstallerRegistryId, writable: true);
         if (!MatchesInstallation(installer, installation)) return;
-        installer!.SetValue("DisplayVersion", version);
+        installer!.SetValue("DisplayName", "Reepax");
+        installer.SetValue("DisplayVersion", version);
         using var package = entries.OpenSubKey(AppUpdateService.PackageId, writable: true);
         if (MatchesInstallation(package, installation)) package!.SetValue("SystemComponent", 1, RegistryValueKind.DWord);
     }

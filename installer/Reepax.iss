@@ -6,13 +6,17 @@
 #define MyAppURL "https://github.com/Biiitz/Reepax"
 #define MyAppExeName "Reepax.exe"
 
-[Setup]
 #ifdef UpdateSmokeTest
-AppId={{B48F27AE-C302-45B9-9865-D9DA33D59410}}
+#define MyAppId "{B48F27AE-C302-45B9-9865-D9DA33D59410}}"
+#else
+#define MyAppId "{B729352A-3D28-444F-A1BC-535A0F507F62}}"
+#endif
+
+[Setup]
+AppId={#"{" + MyAppId}
+#ifdef UpdateSmokeTest
 Uninstallable=no
 CreateUninstallRegKey=no
-#else
-AppId={{B729352A-3D28-444F-A1BC-535A0F507F62}}
 #endif
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -33,6 +37,7 @@ DisableFinishedPage=no
 OutputDir=..\dist
 OutputBaseFilename=setup
 SetupIconFile=..\Reepax\Assets\app.ico
+UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 Compression=lzma2/ultra64
@@ -40,7 +45,6 @@ SolidCompression=yes
 WizardStyle=modern
 
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog commandline
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
@@ -88,10 +92,25 @@ german.UpdateStartFailed=Die aktualisierte Anwendung konnte nicht gestartet werd
 english.UpdateStartFailed=The updated application could not be started.
 german.UpdateStartTimeout=Die aktualisierte Anwendung hat den Start nicht bestätigt.
 english.UpdateStartTimeout=The updated application did not confirm startup.
+german.MachineInstallationFound=Reepax ist für alle Benutzer installiert. Deinstalliere diese Version zuerst und behalte dabei deine Benutzerdaten. Starte danach dieses Setup erneut. Die neue Installation gilt nur für dein Benutzerkonto.
+english.MachineInstallationFound=Reepax is installed for all users. Uninstall that version first and choose to keep your user data. Then run this setup again to install Reepax for your account.
 
 [Code]
+const
+  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1';
+
 var
   ShouldDeleteAppData: Boolean;
+
+function InitializeSetup: Boolean;
+begin
+  Result := not (RegKeyExists(HKLM64, UninstallKey) or RegKeyExists(HKLM32, UninstallKey));
+  if not Result then
+  begin
+    Log('An existing all-users installation must be uninstalled first.');
+    SuppressibleMsgBox(CustomMessage('MachineInstallationFound'), mbError, MB_OK, IDOK);
+  end;
+end;
 
 function InstallManagedLayout: Boolean;
 var

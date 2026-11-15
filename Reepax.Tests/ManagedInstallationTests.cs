@@ -16,8 +16,9 @@ public sealed class ManagedInstallationTests
         try
         {
             using var entries = Registry.CurrentUser.CreateSubKey(keyName);
-            using var installer = entries.CreateSubKey(ManagedInstallation.InstallerRegistryId);
+            using var installer = entries.CreateSubKey("{B729352A-3D28-444F-A1BC-535A0F507F62}}_is1");
             installer.SetValue("InstallLocation", installation + Path.DirectorySeparatorChar);
+            installer.SetValue("DisplayName", "Reepax 26.11.1");
             installer.SetValue("DisplayVersion", "26.11.1");
             installer.SetValue("UninstallString", "existing-uninstaller");
             using var duplicate = entries.CreateSubKey(AppUpdateService.PackageId);
@@ -25,6 +26,7 @@ public sealed class ManagedInstallationTests
 
             ManagedInstallation.RefreshRegistration(entries, installation, "26.11.2");
 
+            Assert.Equal("Reepax", installer.GetValue("DisplayName"));
             Assert.Equal("26.11.2", installer.GetValue("DisplayVersion"));
             Assert.Equal("existing-uninstaller", installer.GetValue("UninstallString"));
             Assert.Equal(matching ? 1 : null, duplicate.GetValue("SystemComponent"));
