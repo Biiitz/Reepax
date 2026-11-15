@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.Versioning;
 using Microsoft.Win32;
 using Velopack;
 using Velopack.Locators;
@@ -26,6 +27,7 @@ internal sealed class ReepaxPackageLocator(IProcessImpl? process = null) : Windo
     }
 }
 
+[SupportedOSPlatform("windows")]
 internal static class ManagedInstallation
 {
     private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
