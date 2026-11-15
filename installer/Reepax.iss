@@ -1,6 +1,6 @@
 #define MyAppName "Reepax"
 #ifndef MyAppVersion
-#define MyAppVersion "26.11.2"
+#define MyAppVersion "26.11.3"
 #endif
 #define MyAppPublisher "Biiitz"
 #define MyAppURL "https://github.com/Biiitz/Reepax"
