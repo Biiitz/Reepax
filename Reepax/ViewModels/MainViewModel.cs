@@ -821,23 +821,9 @@ public partial class MainViewModel : ObservableObject
 
     public bool CanTogglePauseResume => SelectedMainTab == AppMainTab.Downloads && (CanPauseAll || CanStartAll);
 
-    public bool CanDeleteSelected
-    {
-        get
-        {
-            if (SelectedMainTab != AppMainTab.Downloads || IsRemovalInProgress) return false;
-            if (SelectedPackage != null || SelectedItem != null) return true;
-            foreach (var p in Packages)
-            {
-                if (p.IsSelected) return true;
-                foreach (var i in p.Items)
-                {
-                    if (i.IsSelected) return true;
-                }
-            }
-            return false;
-        }
-    }
+    public bool CanDeleteSelected => SelectedMainTab == AppMainTab.Downloads && !IsRemovalInProgress &&
+        EnumerateVisiblePackages().Any(package => package.IsSelected || ReferenceEquals(SelectedPackage, package) ||
+            package.IsExpanded && package.Items.Any(item => item.IsSelected || ReferenceEquals(SelectedItem, item)));
 
     [RelayCommand(CanExecute = nameof(CanTogglePauseResume))]
     public void TogglePauseResume()
@@ -3412,11 +3398,12 @@ public partial class MainViewModel : ObservableObject
     public void SelectAll()
     {
         if (SelectedMainTab != AppMainTab.Downloads) return;
-        foreach (var pkg in Packages)
+        foreach (var pkg in EnumerateVisiblePackages())
         {
             pkg.IsSelected = true;
-            foreach (var item in pkg.Items)
-                item.IsSelected = true;
+            if (pkg.IsExpanded)
+                foreach (var item in pkg.Items)
+                    item.IsSelected = true;
         }
         DeleteSelectedCommand.NotifyCanExecuteChanged();
     }

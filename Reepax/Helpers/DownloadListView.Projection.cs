@@ -1,8 +1,33 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Reepax.Models;
 
 namespace Reepax.Helpers;
+
+internal static class DownloadListProjection
+{
+    internal static IEnumerable<DownloadPackage> GetChildPackages(DownloadPackage package) =>
+        package.IsClipped ? Enumerable.Empty<DownloadPackage>() : package.ClippedPackages;
+
+    internal static IEnumerable<DownloadPackage> EnumeratePackages(IEnumerable<DownloadPackage> roots)
+    {
+        var seen = new HashSet<DownloadPackage>();
+        foreach (var rootOrChild in Walk(roots))
+            yield return rootOrChild;
+
+        IEnumerable<DownloadPackage> Walk(IEnumerable<DownloadPackage> packages)
+        {
+            foreach (var package in packages)
+            {
+                if (!seen.Add(package)) continue;
+                yield return package;
+                foreach (var child in Walk(GetChildPackages(package)))
+                    yield return child;
+            }
+        }
+    }
+}
 
 public sealed partial class DownloadListView
 {

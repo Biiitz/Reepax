@@ -15,6 +15,7 @@ internal static partial class WindowDownloadFlowWorker
 {
     private static async Task CheckWindowShortcutsAsync(MainWindow window, MainViewModel model, string root)
     {
+        await CheckFilteredDeletionAsync(window, model, root);
         string directory = Directory.CreateDirectory(Path.Combine(root, "example")).FullName;
         byte[] contents = [2, 4, 6, 8];
         var package = new DownloadPackage { Name = "Example package", SaveDirectory = directory, IsCustomName = true };
@@ -142,6 +143,100 @@ internal static partial class WindowDownloadFlowWorker
         finally
         {
             ConfirmDialog.ShowDialogOverrideForTesting = null;
+        }
+    }
+
+    private static async Task CheckFilteredDeletionAsync(MainWindow window, MainViewModel model, string root)
+    {
+        string path = Path.Combine(root, "hidden.bin");
+        byte[] contents = [3, 7, 11];
+        File.WriteAllBytes(path, contents);
+        var package = new DownloadPackage { Name = "Hidden package", SaveDirectory = root };
+        package.Items.Add(new DownloadItem { FileName = "hidden.bin", SaveFilePath = path, Status = DownloadStatus.Paused });
+        model.Packages.Add(package);
+        string shownPath = Path.Combine(root, "shown.bin");
+        File.WriteAllBytes(shownPath, contents);
+        var shown = new DownloadPackage { Name = "Shown package", SaveDirectory = root };
+        var shownFile = new DownloadItem { FileName = "shown.bin", SaveFilePath = shownPath, Status = DownloadStatus.Paused };
+        shown.Items.Add(shownFile);
+        var list = Assert.IsAssignableFrom<ItemsControl>(window.FindName("DownloadRowsList"));
+        var select = model.Shortcuts.Single(shortcut => shortcut.Id == "SelectAll");
+        Assert.Equal("SelectAll", model.ShortcutManager.FindMatch(Key.A, ModifierKeys.Control)?.Id);
+        int confirmations = 0;
+        bool confirmed = false;
+        model.CleanupConfirmationOverride = _ =>
+        {
+            confirmations++;
+            return (confirmed, false, false);
+        };
+        try
+        {
+            select.Key = Key.F8;
+            select.Modifiers = ModifierKeys.None;
+            model.SearchFilterText = "No matching download";
+            await IdleAsync();
+            Assert.Empty(list.Items);
+            Assert.True(Press(list, Key.F8));
+            Assert.True(Press(list, Key.Delete));
+            await model.WaitForRemovalAsync();
+            Assert.Equal(0, confirmations);
+            Assert.False(package.IsSelected);
+            Assert.False(Assert.Single(package.Items).IsSelected);
+            Assert.Same(package, Assert.Single(model.Packages));
+            Assert.Equal(contents, File.ReadAllBytes(path));
+
+            model.SearchFilterText = string.Empty;
+            model.Packages.Add(shown);
+            model.SelectPackageFromPointer(package, controlPressed: false, wasSelected: false);
+            model.SelectItemFromPointer(shownFile, controlPressed: true, wasSelected: false);
+            model.SearchFilterText = "Shown";
+            shown.IsExpanded = false;
+            await IdleAsync();
+            var toolbar = Descendants<Button>(window).Single(button => ReferenceEquals(button.Command, model.DeleteSelectedCommand));
+            Assert.False(toolbar.IsEnabled);
+            Assert.True(Press(list, Key.Delete));
+            await model.WaitForRemovalAsync();
+            Assert.Equal(0, confirmations);
+
+            shown.IsExpanded = true;
+            await IdleAsync();
+            Assert.True(toolbar.IsEnabled);
+            ClickDeleteMenu("PackageContextMenu", "Menu_DeletePackage", package);
+            await model.WaitForRemovalAsync();
+            Assert.Equal(0, confirmations);
+
+            Invoke(toolbar);
+            await UntilAsync(() => confirmations == 1);
+            await model.WaitForRemovalAsync();
+            Assert.Equal(contents, File.ReadAllBytes(shownPath));
+
+            confirmed = true;
+            ClickDeleteMenu("ItemContextMenu", "Menu_DeleteItem", shownFile);
+            await model.WaitForRemovalAsync();
+            Assert.Equal(2, confirmations);
+            Assert.Same(package, Assert.Single(model.Packages));
+            Assert.True(package.IsSelected);
+            Assert.Equal(contents, File.ReadAllBytes(path));
+            Assert.Equal(contents, File.ReadAllBytes(shownPath));
+        }
+        finally
+        {
+            select.Key = select.DefaultKey;
+            select.Modifiers = select.DefaultModifiers;
+            model.CleanupConfirmationOverride = null;
+            model.DeselectAll();
+            model.Packages.Remove(package);
+            model.Packages.Remove(shown);
+            model.SearchFilterText = string.Empty;
+        }
+
+        void ClickDeleteMenu(string menuKey, string headerKey, object target)
+        {
+            var menu = Assert.IsType<ContextMenu>(window.FindResource(menuKey));
+            var delete = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, Loc.Get(headerKey)));
+            delete.DataContext = target;
+            try { delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); }
+            finally { delete.ClearValue(FrameworkElement.DataContextProperty); }
         }
     }
 

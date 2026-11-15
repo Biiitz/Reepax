@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         InitializePackageDoubleClick();
+        DownloadRowsList.RowsChanged += () => ViewModel.DeleteSelectedCommand.NotifyCanExecuteChanged();
         DownloadRowsList.SelectionPaintRequested += row =>
         {
             if (row.Model is DownloadItem item)
@@ -2598,18 +2599,7 @@ public partial class MainWindow : Window
     {
         var package = GetPackageFromSender(sender);
         if (package != null)
-        {
-            if (package.IsSelected)
-            {
-                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
-                if (totalSelected > 1)
-                {
-                    HandleDeleteSelected();
-                    return;
-                }
-            }
-            _ = ViewModel.RemovePackage(package);
-        }
+            _ = ViewModel.DeleteFromDownloadListAsync(contextPackage: package);
     }
 
     private void RetryItem_MenuItem_Click(object sender, RoutedEventArgs e)
@@ -2802,18 +2792,7 @@ public partial class MainWindow : Window
     {
         var item = GetItemFromSender(sender);
         if (item != null)
-        {
-            if (item.IsSelected)
-            {
-                int totalSelected = ViewModel.Packages.Count(p => p.IsSelected) + ViewModel.Packages.SelectMany(p => p.Items).Count(i => i.IsSelected);
-                if (totalSelected > 1)
-                {
-                    HandleDeleteSelected();
-                    return;
-                }
-            }
-            _ = ViewModel.RemoveItem(item);
-        }
+            _ = ViewModel.DeleteFromDownloadListAsync(contextItem: item);
     }
 
     private async void OpenSettings_Click(object sender, RoutedEventArgs e)

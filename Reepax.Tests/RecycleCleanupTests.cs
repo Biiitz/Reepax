@@ -176,6 +176,113 @@ public sealed class RecycleCleanupTests : IDisposable
         Assert.Equal(2, _moved.Count);
     }
 
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(true, true, false)]
+    public async Task FilteredSelection_ProtectsPreviouslySelectedHiddenPackagesAndFiles(
+        bool confirmed, bool deleteFiles, bool recycleFiles)
+    {
+        var shown = AddPackage("Shown group", "Shown group");
+        var shownFile = AddFile(shown, "sample.bin", "shown");
+        var attached = AddPackage("Attached group", "Attached group");
+        var attachedFile = AddFile(attached, "sample.bin", "attached");
+        _model.ClipPackage(attached, shown);
+        shown.IsExpanded = false;
+        var hidden = AddPackage("Hidden group", "Hidden group");
+        var hiddenFile = AddFile(hidden, "sample.bin", "hidden");
+        var hiddenAttached = AddPackage("Hidden attachment", "Hidden attachment");
+        var hiddenAttachedFile = AddFile(hiddenAttached, "sample.bin", "hidden attachment");
+        _model.ClipPackage(hiddenAttached, hidden);
+
+        _model.SelectPackageFromPointer(hidden, controlPressed: false, wasSelected: false);
+        _model.SelectItemFromPointer(hiddenAttachedFile, controlPressed: true, wasSelected: false);
+        _model.SearchFilterText = "Shown";
+        Assert.Same(shown, Assert.Single(_model.RootPackages));
+        _model.SelectAll();
+        Assert.True(shown.IsSelected);
+        Assert.False(shownFile.IsSelected);
+        Assert.True(attached.IsSelected);
+        Assert.True(attachedFile.IsSelected);
+        Assert.True(hidden.IsSelected);
+        Assert.True(hiddenAttachedFile.IsSelected);
+        Assert.False(hiddenFile.IsSelected);
+        Assert.False(hiddenAttached.IsSelected);
+
+        int confirmations = 0;
+        string? offeredOption = null;
+        _model.CleanupConfirmationOverride = option =>
+        {
+            confirmations++;
+            offeredOption = option;
+            return (confirmed, deleteFiles, recycleFiles);
+        };
+        await _model.DeleteSelected();
+
+        Assert.Equal(1, confirmations);
+        Assert.Equal(Loc.Format("Dialog_DeleteMultipleOptionFiles",
+            Reepax.Converters.BytesToHumanReadableConverter.FormatBytes(13)), offeredOption);
+        Assert.Equal(!confirmed, _model.Packages.Contains(shown));
+        Assert.Equal(!confirmed, _model.Packages.Contains(attached));
+        if (confirmed && deleteFiles)
+        {
+            Assert.False(File.Exists(shownFile.SaveFilePath));
+            Assert.False(File.Exists(attachedFile.SaveFilePath));
+        }
+        else
+        {
+            Assert.Equal("shown", File.ReadAllText(shownFile.SaveFilePath!));
+            Assert.Equal("attached", File.ReadAllText(attachedFile.SaveFilePath!));
+        }
+        if (confirmed && deleteFiles && recycleFiles)
+        {
+            Assert.Equal(2, _moved.Count);
+            Assert.Equal("shown", File.ReadAllText(Path.Combine(
+                _moved.Single(move => move.Source == shown.SaveDirectory).Destination, "sample.bin")));
+            Assert.Equal("attached", File.ReadAllText(Path.Combine(
+                _moved.Single(move => move.Source == attached.SaveDirectory).Destination, "sample.bin")));
+        }
+        else
+        {
+            Assert.Empty(_moved);
+        }
+        Assert.Contains(hidden, _model.Packages);
+        Assert.Contains(hiddenAttached, _model.Packages);
+        Assert.Equal("hidden", File.ReadAllText(hiddenFile.SaveFilePath!));
+        Assert.Equal("hidden attachment", File.ReadAllText(hiddenAttachedFile.SaveFilePath!));
+    }
+
+    [Fact]
+    public async Task DeleteSelected_RechecksVisibilityAfterConfirmation()
+    {
+        var package = AddPackage("TargetFolder");
+        var item = AddFile(package, "data.bin");
+        item.Status = DownloadStatus.Paused;
+        _model.SelectItemFromPointer(item, controlPressed: false, wasSelected: false);
+        Assert.True(_model.CanDeleteSelected);
+        var previousFilter = _model.SelectedStatusFilter;
+        int confirmations = 0;
+        _model.CleanupConfirmationOverride = _ =>
+        {
+            confirmations++;
+            _model.SelectedStatusFilter = DownloadStatusFilter.Completed;
+            return (true, true, false);
+        };
+
+        try
+        {
+            await _model.DeleteSelected();
+
+            Assert.Equal(1, confirmations);
+            Assert.False(_model.CanDeleteSelected);
+            Assert.Contains(package, _model.Packages);
+            Assert.Contains(item, package.Items);
+            Assert.Equal("content", File.ReadAllText(item.SaveFilePath!));
+        }
+        finally { _model.SelectedStatusFilter = previousFilter; }
+    }
+
     [Fact]
     public async Task Package_PermanentChoiceDoesNotInvokeRecycling()
     {

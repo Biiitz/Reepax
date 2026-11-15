@@ -33,6 +33,7 @@ public sealed partial class DownloadListView : ItemsControl
     }
 
     internal ScrollViewer? ScrollViewer => Template?.FindName("PART_ScrollViewer", this) as ScrollViewer;
+    internal event Action? RowsChanged;
 
     public DownloadListView()
     {
@@ -141,11 +142,8 @@ public sealed partial class DownloadListView : ItemsControl
             }
 
             // Attached packages remain visible when the parent's files are collapsed.
-            if (!package.IsClipped)
-            {
-                foreach (var child in package.ClippedPackages)
-                    AppendPackage(child);
-            }
+            foreach (var child in DownloadListProjection.GetChildPackages(package))
+                AppendPackage(child);
             var last = next[^1];
             last.EndingPackages.Add(package);
             _packageEnds.Add(package, last);
@@ -170,6 +168,7 @@ public sealed partial class DownloadListView : ItemsControl
             _rowCache.Remove(model);
 
         SynchronizeRows(next);
+        RowsChanged?.Invoke();
     }
 }
 

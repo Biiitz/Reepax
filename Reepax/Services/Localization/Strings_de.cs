@@ -247,7 +247,7 @@ public static class Strings_de
         ["Shortcut_RenameSelected_Title"] = "Auswahl umbenennen",
         ["Shortcut_RenameSelected_Desc"] = "Benennt das markierte Paket oder die markierte Datei um.",
         ["Shortcut_SelectAll_Title"] = "Alles auswählen",
-        ["Shortcut_SelectAll_Desc"] = "Wählt alle Pakete und Dateien in der Downloadliste aus.",
+        ["Shortcut_SelectAll_Desc"] = "Wählt alle sichtbaren Pakete und Dateien in der Downloadliste aus.",
         ["Shortcut_DeselectAll_Title"] = "Auswahl aufheben",
         ["Shortcut_DeselectAll_Desc"] = "Hebt jegliche Markierung in der Downloadliste auf.",
         ["Shortcut_StartAll_Title"] = "Alle Downloads starten",

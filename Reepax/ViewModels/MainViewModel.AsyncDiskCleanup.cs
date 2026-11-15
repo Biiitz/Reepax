@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Reepax.Converters;
+using Reepax.Helpers;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
@@ -57,22 +58,57 @@ public partial class MainViewModel
         => item == null ? Task.CompletedTask : RemoveSelectionAsync(Array.Empty<DownloadPackage>(), new[] { item }, deleteFilesFromDisk);
 
     [RelayCommand(CanExecute = nameof(CanDeleteSelected))]
-    public Task DeleteSelected()
+    public Task DeleteSelected() => DeleteFromDownloadListAsync();
+
+    private IEnumerable<DownloadPackage> EnumerateVisiblePackages() => DownloadListProjection.EnumeratePackages(RootPackages);
+
+    internal Task DeleteFromDownloadListAsync(DownloadPackage? contextPackage = null, DownloadItem? contextItem = null)
     {
         if (SelectedMainTab != AppMainTab.Downloads || IsRemovalInProgress)
             return Task.CompletedTask;
 
-        var packages = Packages.Where(package => package.IsSelected).Distinct().ToList();
-        if (packages.Count == 0 && SelectedPackage != null && SelectedItem == null)
-            packages.Add(SelectedPackage);
-        var items = Packages.Where(package => !packages.Contains(package))
+        var visible = EnumerateVisiblePackages().ToArray();
+        var visibleItems = visible.Where(package => package.IsExpanded).SelectMany(package => package.Items);
+        if (contextPackage != null)
+        {
+            if (!visible.Contains(contextPackage)) return Task.CompletedTask;
+            if (!contextPackage.IsSelected)
+                return RemoveSelectionAsync([contextPackage], [], null, visibleOnly: true);
+        }
+        if (contextItem != null)
+        {
+            if (!visibleItems.Contains(contextItem)) return Task.CompletedTask;
+            if (!contextItem.IsSelected)
+                return RemoveSelectionAsync([], [contextItem], null, visibleOnly: true);
+        }
+
+        var packages = visible.Where(package => package.IsSelected).ToList();
+        var items = visible.Where(package => package.IsExpanded && !package.IsSelected)
             .SelectMany(package => package.Items).Where(item => item.IsSelected).Distinct().ToList();
-        if (packages.Count == 0 && items.Count == 0 && SelectedItem != null)
-            items.Add(SelectedItem);
-        return RemoveSelectionAsync(packages, items, null);
+        if (packages.Count == 0 && items.Count == 0)
+        {
+            if (SelectedItem is { } item && visibleItems.Contains(item))
+                items.Add(item);
+            else if (SelectedPackage is { } package && visible.Contains(package))
+                packages.Add(package);
+        }
+        return RemoveSelectionAsync(packages, items, null, visibleOnly: true);
     }
 
-    private async Task RemoveSelectionAsync(IReadOnlyCollection<DownloadPackage> selectedPackages, IReadOnlyCollection<DownloadItem> selectedItems, bool? deleteFilesFromDisk)
+    private bool AreRemovalTargetsVisible(IReadOnlyCollection<DownloadPackage> packages, IReadOnlyCollection<DownloadItem> items)
+    {
+        if (SelectedMainTab != AppMainTab.Downloads) return false;
+
+        var visible = EnumerateVisiblePackages().ToHashSet();
+        if (!packages.All(visible.Contains)) return false;
+        if (items.Count == 0) return true;
+
+        var visibleItems = visible.Where(package => package.IsExpanded).SelectMany(package => package.Items).ToHashSet();
+        return items.All(visibleItems.Contains);
+    }
+
+    private async Task RemoveSelectionAsync(IReadOnlyCollection<DownloadPackage> selectedPackages, IReadOnlyCollection<DownloadItem> selectedItems,
+        bool? deleteFilesFromDisk, bool visibleOnly = false)
     {
         if (IsRemovalInProgress || selectedPackages.Count + selectedItems.Count == 0)
             return;
@@ -101,6 +137,8 @@ public partial class MainViewModel
                     await DiskCleanupRunner(() => preview.Scan());
                     ApplyHealedPaths(preview, affectedPackages);
                 }
+                if (visibleOnly && !AreRemovalTargetsVisible(selectedPackages, selectedItems))
+                    return;
                 if (!ConfirmCleanup(preview, selectedPackages, selectedItems, out deleteFiles, out moveToRecycleBin))
                     return;
                 if (deleteFiles && preview.HasUnconfirmedPaths)
@@ -113,6 +151,9 @@ public partial class MainViewModel
                     }
                 }
             }
+
+            if (visibleOnly && !AreRemovalTargetsVisible(selectedPackages, selectedItems))
+                return;
 
             var completionStop = _queueManager.StopCompletionsForRemovalAsync(targets);
             reserved = true;
