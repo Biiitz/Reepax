@@ -77,10 +77,10 @@ public sealed class DownloadUrlIdentityTests
         string first = "https://files.example.invalid/payload.bin?token=Ab1";
         string second = "https://files.example.invalid/payload.bin?token=aB1";
 
-        monitor.DispatchDetectedLinks(new List<string> { first });
-        monitor.DispatchDetectedLinks(new List<string> { "HTTPS://FILES.EXAMPLE.INVALID/payload.bin?token=Ab1" });
-        monitor.DispatchDetectedLinks(new List<string> { second });
-        monitor.DispatchDetectedLinks(new List<string> { second });
+        monitor.DispatchDetectedLinks(new List<string> { first }, 1);
+        monitor.DispatchDetectedLinks(new List<string> { "HTTPS://FILES.EXAMPLE.INVALID/payload.bin?token=Ab1" }, 1);
+        monitor.DispatchDetectedLinks(new List<string> { second }, 2);
+        monitor.DispatchDetectedLinks(new List<string> { second }, 2);
 
         Assert.Equal(2, detected.Count);
         Assert.Equal(new[] { first }, detected[0]);

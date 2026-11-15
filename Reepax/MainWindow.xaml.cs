@@ -795,7 +795,7 @@ public partial class MainWindow : Window
         }
 
         Activate();
-        return ShowAddLinksDialog(prefill);
+        return ShowAddLinksDialog(prefill, skipExistingLinks: true);
     }
 
     private void HideTitleBarIcon()
@@ -1099,7 +1099,7 @@ public partial class MainWindow : Window
     }
 
 
-    private bool ShowAddLinksDialog(string? prefill = null, DownloadPackage? targetPackage = null)
+    private bool ShowAddLinksDialog(string? prefill = null, DownloadPackage? targetPackage = null, bool skipExistingLinks = false)
     {
         if (ViewModel.SelectedMainTab != AppMainTab.Downloads) return false;
         if (ViewModel.IsRemovalInProgress)
@@ -1115,7 +1115,7 @@ public partial class MainWindow : Window
         {
             if (!string.IsNullOrWhiteSpace(prefill))
             {
-                _openAddLinksDialog.AppendText(prefill);
+                _openAddLinksDialog.AppendText(prefill, skipExistingLinks);
             }
             _openAddLinksDialog.Activate();
             return true;

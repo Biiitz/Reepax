@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -444,7 +445,7 @@ public partial class AddLinksDialog : Window
     /// Appends additional text (e.g. from repeated drag & drop while dialog is open)
     /// to the link textbox.
     /// </summary>
-    public void AppendText(string text)
+    public void AppendText(string text, bool skipExistingLinks = false)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
@@ -452,6 +453,14 @@ public partial class AddLinksDialog : Window
         var extracted = LinkExtractor.ExtractLinks(text, fileHostersOnly: true);
         if (extracted.Count == 0)
             extracted = LinkExtractor.ExtractLinks(text, fileHostersOnly: false);
+
+        if (skipExistingLinks)
+        {
+            var existing = new HashSet<string>(LinkExtractor.ExtractLinks(LinksTextBox.Text, fileHostersOnly: false)
+                .Select(link => link.Url), DownloadUrlComparer.Instance);
+            extracted.RemoveAll(link => !existing.Add(link.Url));
+            if (extracted.Count == 0) return;
+        }
 
         var normalized = extracted.Count > 0
             ? string.Join(Environment.NewLine, extracted.Select(l => l.Url))

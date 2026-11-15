@@ -14,6 +14,21 @@ public sealed class ClipboardDispatchTests : IDisposable
     public ClipboardDispatchTests() => ClipboardMonitorService.IsTestEnvironment = true;
 
     [Fact]
+    public void NewCopyOfSameLink_IsDeliveredAfterPreviousHandoffEnds()
+    {
+        var received = new List<string>();
+        _monitor.Start(new IntPtr(1), links => { received.Add(Assert.Single(links)); return true; });
+
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new(), 2);
+        _monitor.DispatchDetectedLinks(new() { First }, 3);
+        _monitor.DispatchDetectedLinks(new() { First }, 3);
+
+        Assert.Equal(new[] { First, First }, received);
+    }
+
+    [Fact]
     public void RejectedHandoff_CanBeRetriedAndPreservesPreviousDuplicateProtection()
     {
         bool acceptSecond = false;
@@ -24,14 +39,13 @@ public sealed class ClipboardDispatchTests : IDisposable
             return links[0] != Second || acceptSecond;
         }
         _monitor.Start(new IntPtr(1), links => Accept(links));
-        _monitor.DispatchDetectedLinks(new() { First });
-        _monitor.DispatchDetectedLinks(new() { Second });
-        _monitor.DispatchDetectedLinks(new());
-        _monitor.DispatchDetectedLinks(new() { First });
-        _monitor.DispatchDetectedLinks(new() { Second });
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new() { Second }, 2);
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new() { Second }, 2);
         acceptSecond = true;
-        _monitor.DispatchDetectedLinks(new() { Second });
-        _monitor.DispatchDetectedLinks(new() { Second });
+        _monitor.DispatchDetectedLinks(new() { Second }, 2);
+        _monitor.DispatchDetectedLinks(new() { Second }, 2);
         Assert.Equal(new[] { First, Second, Second, Second }, received);
     }
 
@@ -45,26 +59,26 @@ public sealed class ClipboardDispatchTests : IDisposable
             return true;
         }
         _monitor.Start(new IntPtr(1), links => Accept(links));
-        Assert.Throws<InvalidOperationException>(() => _monitor.DispatchDetectedLinks(new() { First }));
-        _monitor.DispatchDetectedLinks(new() { First });
-        _monitor.DispatchDetectedLinks(new() { First });
+        Assert.Throws<InvalidOperationException>(() => _monitor.DispatchDetectedLinks(new() { First }, 1));
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
         Assert.Equal(2, attempts);
     }
 
     [Fact]
-    public void NestedHandoff_SuppressesBurstsAndKeepsTheLatestAcceptedSet()
+    public void NestedHandoff_SuppressesBurstsAndKeepsTheLatestAcceptedChange()
     {
         var received = new List<string>();
         bool Accept(List<string> links)
         {
             received.Add(Assert.Single(links));
-            _monitor.DispatchDetectedLinks(new(links));
-            if (links[0] == First) _monitor.DispatchDetectedLinks(new() { Second });
+            _monitor.DispatchDetectedLinks(new(links), links[0] == First ? 1u : 2u);
+            if (links[0] == First) _monitor.DispatchDetectedLinks(new() { Second }, 2);
             return true;
         }
         _monitor.Start(new IntPtr(1), links => Accept(links));
-        _monitor.DispatchDetectedLinks(new() { First });
-        _monitor.DispatchDetectedLinks(new() { Second });
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new() { Second }, 2);
         Assert.Equal(new[] { First, Second }, received);
     }
 
@@ -75,14 +89,15 @@ public sealed class ClipboardDispatchTests : IDisposable
         int attempts = 0;
         bool Accept(List<string> links) { attempts++; return accepted; }
         _monitor.Start(new IntPtr(1), links => Accept(links));
-        _monitor.DispatchDetectedLinks(new() { First });
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
         _monitor.Stop();
         Assert.False(_monitor.IsListening);
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
         accepted = true;
         _monitor.Start(new IntPtr(1), links => Accept(links));
         Assert.True(_monitor.IsListening);
-        _monitor.DispatchDetectedLinks(new() { First });
-        _monitor.DispatchDetectedLinks(new() { First });
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
+        _monitor.DispatchDetectedLinks(new() { First }, 1);
         Assert.Equal(2, attempts);
     }
 

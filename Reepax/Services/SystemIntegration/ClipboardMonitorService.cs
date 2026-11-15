@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,12 +30,15 @@ public sealed class ClipboardMonitorService : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
 
+    [DllImport("user32.dll")]
+    private static extern uint GetClipboardSequenceNumber();
+
     private IntPtr _hwnd = IntPtr.Zero;
     private bool _isListening;
     private Func<List<string>, bool>? _onLinksDetected;
-    private static string? _lastInternalCopiedHash;
-    private static DateTime _lastInternalCopiedTime = DateTime.MinValue;
-    private string[]? _lastProcessedUrls;
+    private sealed record InternalCopy(uint Sequence, string Hash);
+    private static InternalCopy? _lastInternalCopy;
+    private uint _lastProcessedSequence;
     private readonly object _lock = new();
 
     public static bool IsTestEnvironment { get; set; } = DownloadPersistenceService.IsTestEnvironment;
@@ -104,37 +106,29 @@ public sealed class ClipboardMonitorService : IDisposable
     /// Registers text that was placed onto the clipboard by Reepax itself (e.g. Copy Link, Copy Path),
     /// preventing the clipboard monitor from self-triggering.
     /// </summary>
-    public static void RegisterInternalCopy(string? text)
+    public static void RegisterInternalCopy(string? text) => RegisterInternalCopy(text, GetClipboardSequenceNumber());
+
+    internal static void RegisterInternalCopy(string? text, uint sequence)
     {
-        if (string.IsNullOrEmpty(text)) return;
-        _lastInternalCopiedHash = ComputeTextHash(text);
-        _lastInternalCopiedTime = DateTime.UtcNow;
+        if (sequence == 0 || string.IsNullOrEmpty(text)) return;
+        Volatile.Write(ref _lastInternalCopy, new InternalCopy(sequence, ComputeTextHash(text)));
     }
 
     /// <summary>
-    /// Checks whether the supplied text matches a recent internal copy operation.
+    /// Checks whether this clipboard change came from an internal copy operation.
     /// </summary>
-    public static bool IsInternalCopy(string? text)
-    {
-        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(_lastInternalCopiedHash))
-            return false;
+    public static bool IsInternalCopy(string? text) => IsInternalCopy(text, GetClipboardSequenceNumber());
 
-        // Internal copy suppression expires after 3 seconds
-        if ((DateTime.UtcNow - _lastInternalCopiedTime).TotalSeconds > 3)
-        {
-            _lastInternalCopiedHash = null;
-            return false;
-        }
-
-        return string.Equals(_lastInternalCopiedHash, ComputeTextHash(text), StringComparison.Ordinal);
-    }
+    internal static bool IsInternalCopy(string? text, uint sequence) =>
+        !string.IsNullOrEmpty(text) && Volatile.Read(ref _lastInternalCopy) is { } copy &&
+        sequence == copy.Sequence && string.Equals(copy.Hash, ComputeTextHash(text), StringComparison.Ordinal);
 
     /// <summary>
     /// Processes a clipboard update message (WM_CLIPBOARDUPDATE) safely on the UI dispatcher.
     /// </summary>
     public void ProcessClipboardChange()
     {
-        if (!SettingsService.Instance.Settings.EnableClipboardMonitor)
+        if (!_isListening || !SettingsService.Instance.Settings.EnableClipboardMonitor)
             return;
 
         // Run with a short debounce to allow the copying application to finish writing all clipboard formats
@@ -149,11 +143,12 @@ public sealed class ClipboardMonitorService : IDisposable
             {
                 try
                 {
-                    if (!SettingsService.Instance.Settings.EnableClipboardMonitor)
+                    if (!_isListening || !SettingsService.Instance.Settings.EnableClipboardMonitor)
                         return;
 
-                    var links = await ExtractLinksFromClipboardAsync();
-                    DispatchDetectedLinks(links);
+                    var (sequence, links) = await ReadClipboardLinksAsync(GetClipboardSequenceNumber, ReadClipboardData);
+                    if (SettingsService.Instance.Settings.EnableClipboardMonitor && sequence == GetClipboardSequenceNumber())
+                        DispatchDetectedLinks(links, sequence);
                 }
                 catch (Exception ex)
                 {
@@ -163,24 +158,22 @@ public sealed class ClipboardMonitorService : IDisposable
         });
     }
 
-    internal void DispatchDetectedLinks(List<string> links)
+    internal void DispatchDetectedLinks(List<string> links, uint sequence)
     {
-        if (links.Count == 0 || (_lastProcessedUrls != null &&
-            _lastProcessedUrls.SequenceEqual(links, DownloadUrlComparer.Instance)))
+        if (!_isListening || sequence == 0 || sequence == _lastProcessedSequence || links.Count == 0)
             return;
 
         if (_onLinksDetected is not { } handler) return;
 
-        var previous = _lastProcessedUrls;
-        var candidate = links.ToArray();
+        uint previous = _lastProcessedSequence;
         // Reserve during modal reentrancy; rejected handoffs must remain retryable.
-        _lastProcessedUrls = candidate;
+        _lastProcessedSequence = sequence;
         bool accepted = false;
         try { accepted = handler(links); }
         finally
         {
-            if (!accepted && ReferenceEquals(_lastProcessedUrls, candidate))
-                _lastProcessedUrls = previous;
+            if (!accepted && _lastProcessedSequence == sequence)
+                _lastProcessedSequence = previous;
         }
     }
 
@@ -188,46 +181,32 @@ public sealed class ClipboardMonitorService : IDisposable
     /// Safely extracts all valid URLs from the Windows clipboard, checking both HTML and plain text formats.
     /// Retries asynchronously if the clipboard is temporarily locked by another application without blocking the UI dispatcher.
     /// </summary>
-    public static async Task<List<string>> ExtractLinksFromClipboardAsync(int maxRetries = 3)
+    public static async Task<List<string>> ExtractLinksFromClipboardAsync(int maxRetries = 3) =>
+        (await ReadClipboardLinksAsync(GetClipboardSequenceNumber, ReadClipboardData, maxRetries)).Links;
+
+    internal static async Task<(uint Sequence, List<string> Links)> ReadClipboardLinksAsync(
+        Func<uint> getSequence, Func<(string? Html, string? Text)> readData, int maxRetries = 3)
     {
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
             try
             {
-                string? html = null;
-                string? text = null;
-
-                if (Clipboard.ContainsData(DataFormats.Html))
-                {
-                    html = Clipboard.GetData(DataFormats.Html) as string;
-                }
-
-                if (Clipboard.ContainsText())
-                {
-                    text = Clipboard.GetText();
-                }
-
-                // If this matches an internal Reepax copy operation, suppress
-                if (IsInternalCopy(text) || IsInternalCopy(html))
-                {
-                    return new List<string>();
-                }
-
-                return ExtractLinksFromData(html, text);
+                if (TryReadClipboardLinks(getSequence, readData) is { } snapshot)
+                    return snapshot;
             }
             catch (COMException) when (attempt < maxRetries - 1)
             {
-                // CLIPBRD_E_CANT_OPEN: another process holds the clipboard momentarily
-                await Task.Delay(30);
+                // Another process may temporarily hold the clipboard.
             }
             catch (Exception ex)
             {
                 AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed", ex);
                 break;
             }
+            if (attempt < maxRetries - 1) await Task.Delay(30);
         }
 
-        return new List<string>();
+        return (0, []);
     }
 
     /// <summary>
@@ -239,40 +218,42 @@ public sealed class ClipboardMonitorService : IDisposable
         {
             try
             {
-                string? html = null;
-                string? text = null;
-
-                if (Clipboard.ContainsData(DataFormats.Html))
-                {
-                    html = Clipboard.GetData(DataFormats.Html) as string;
-                }
-
-                if (Clipboard.ContainsText())
-                {
-                    text = Clipboard.GetText();
-                }
-
-                // If this matches an internal Reepax copy operation, suppress
-                if (IsInternalCopy(text) || IsInternalCopy(html))
-                {
-                    return new List<string>();
-                }
-
-                return ExtractLinksFromData(html, text);
+                if (TryReadClipboardLinks(GetClipboardSequenceNumber, ReadClipboardData) is { } snapshot)
+                    return snapshot.Links;
             }
             catch (COMException) when (attempt < maxRetries - 1)
             {
-                // CLIPBRD_E_CANT_OPEN: another process holds the clipboard momentarily
-                Thread.Sleep(30);
+                // Another process may temporarily hold the clipboard.
             }
             catch (Exception ex)
             {
                 AppLogger.Warn($"[ClipboardMonitor] Clipboard read failed", ex);
                 break;
             }
+            if (attempt < maxRetries - 1) Thread.Sleep(30);
         }
 
-        return new List<string>();
+        return [];
+    }
+
+    private static (string? Html, string? Text) ReadClipboardData()
+    {
+        var data = Clipboard.GetDataObject();
+        return (data?.GetData(DataFormats.Html) as string, data?.GetData(DataFormats.UnicodeText) as string);
+    }
+
+    private static (uint Sequence, List<string> Links)? TryReadClipboardLinks(
+        Func<uint> getSequence, Func<(string? Html, string? Text)> readData)
+    {
+        uint sequence = getSequence();
+        if (sequence == 0) return (0, []);
+
+        var (html, text) = readData();
+        // Rendering a delayed format can also change the sequence during a read.
+        if (sequence != getSequence()) return null;
+
+        return (sequence, IsInternalCopy(text, sequence) || IsInternalCopy(html, sequence)
+            ? [] : ExtractLinksFromData(html, text));
     }
 
     /// <summary>

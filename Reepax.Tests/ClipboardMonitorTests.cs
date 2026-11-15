@@ -70,16 +70,43 @@ https://rapidgator.net/file/3/part3.rar
     }
 
     [Fact]
-    public void RegisterInternalCopy_PreventsSelfTriggering()
+    public async Task RegisterInternalCopy_OnlySuppressesTheClipboardChangeWrittenByReepax()
     {
-        string copiedLink = "https://rapidgator.net/file/9999/internal.rar";
+        const string copiedLink = "https://files.example.invalid/internal.zip";
+        const uint sequence = 2001;
 
-        Assert.False(ClipboardMonitorService.IsInternalCopy(copiedLink));
+        Assert.False(ClipboardMonitorService.IsInternalCopy(copiedLink, sequence));
 
-        ClipboardMonitorService.RegisterInternalCopy(copiedLink);
+        ClipboardMonitorService.RegisterInternalCopy(copiedLink, sequence);
 
-        Assert.True(ClipboardMonitorService.IsInternalCopy(copiedLink));
-        Assert.False(ClipboardMonitorService.IsInternalCopy("https://rapidgator.net/file/9999/other.rar"));
+        Assert.True(ClipboardMonitorService.IsInternalCopy(copiedLink, sequence));
+        Assert.False(ClipboardMonitorService.IsInternalCopy("https://files.example.invalid/other.zip", sequence));
+        var internalCopy = await ClipboardMonitorService.ReadClipboardLinksAsync(() => sequence, () => (null, copiedLink));
+        var externalCopy = await ClipboardMonitorService.ReadClipboardLinksAsync(() => sequence + 1, () => (null, copiedLink));
+        Assert.Empty(internalCopy.Links);
+        Assert.Equal(new[] { copiedLink }, externalCopy.Links);
+    }
+
+    [Fact]
+    public async Task ClipboardRead_RetriesAfterLockAndDiscardsDataFromAnUnstableChange()
+    {
+        const string staleLink = "https://files.example.invalid/stale.zip";
+        const string currentLink = "https://files.example.invalid/current.zip";
+        uint sequence = 3100;
+        int reads = 0;
+        (string? Html, string? Text) Read()
+        {
+            if (++reads == 1) throw new System.Runtime.InteropServices.COMException("Clipboard locked", unchecked((int)0x800401D0));
+            if (reads != 2) return (null, currentLink);
+            sequence++;
+            return (null, staleLink);
+        }
+
+        var snapshot = await ClipboardMonitorService.ReadClipboardLinksAsync(() => sequence, Read);
+
+        Assert.Equal(3, reads);
+        Assert.Equal(3101u, snapshot.Sequence);
+        Assert.Equal(new[] { currentLink }, snapshot.Links);
     }
 
     [Fact]

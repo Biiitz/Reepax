@@ -1323,8 +1323,8 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            ClipboardMonitorService.RegisterInternalCopy(text);
             ClipboardTextWriter(text);
+            ClipboardMonitorService.RegisterInternalCopy(text);
             StatusSummary = successMessage;
         }
         catch (Exception ex)

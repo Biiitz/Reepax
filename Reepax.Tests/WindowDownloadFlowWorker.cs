@@ -360,11 +360,13 @@ internal static partial class WindowDownloadFlowWorker
                 model.IsBusy = state == 1;
                 model.IsRemovalInProgress = state == 2;
                 string first = $"https://files.example.invalid/sample-{state}.zip";
+                string sameResource = $"HTTPS://FILES.EXAMPLE.INVALID/sample-{state}.zip";
                 string second = $"https://files.example.invalid/extra-{state}.zip";
                 var urls = Reepax.Services.SystemIntegration.ClipboardMonitorService.ExtractLinksFromData(null, first);
                 Assert.Equal(new[] { first }, urls);
                 int before = deliveries;
-                monitor.DispatchDetectedLinks(urls);
+                uint sequence = (uint)(state * 5 + 1);
+                monitor.DispatchDetectedLinks(urls, sequence);
                 Assert.Equal(before + 1, deliveries);
                 Assert.Empty(app.Windows.OfType<AddLinksDialog>());
                 model.SelectedMainTab = AppMainTab.Downloads;
@@ -383,25 +385,49 @@ internal static partial class WindowDownloadFlowWorker
                     {
                         Assert.Same(main, dialog.Owner);
                         Assert.Equal(first, dialog.LinksTextBox.Text);
-                        monitor.DispatchDetectedLinks(new() { first });
+                        monitor.DispatchDetectedLinks(new() { first }, sequence);
                         Assert.Equal(before + 2, deliveries);
-                        monitor.DispatchDetectedLinks(new() { second });
-                        monitor.DispatchDetectedLinks(new() { second });
+                        monitor.DispatchDetectedLinks(new() { sameResource }, sequence + 1);
                         Assert.Equal(before + 3, deliveries);
+                        Assert.Equal(first, dialog.LinksTextBox.Text);
+                        monitor.DispatchDetectedLinks(new() { first, second }, sequence + 2);
+                        monitor.DispatchDetectedLinks(new() { first, second }, sequence + 2);
+                        Assert.Equal(before + 4, deliveries);
                         Assert.Equal(first + Environment.NewLine + second, dialog.LinksTextBox.Text);
                         Assert.Single(app.Windows.OfType<AddLinksDialog>());
                     }
                     catch (Exception error) { failure = error; }
-                    finally { dialog.Close(); }
+                    finally { dialog.DialogResult = false; }
                 };
                 watcher.Start();
-                try { monitor.DispatchDetectedLinks(new(urls)); }
+                try { monitor.DispatchDetectedLinks(new(urls), sequence); }
                 finally { watcher.Stop(); }
                 if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
                 Assert.NotNull(observed);
                 Assert.Empty(app.Windows.OfType<AddLinksDialog>());
-                monitor.DispatchDetectedLinks(new() { second });
-                Assert.Equal(before + 3, deliveries);
+                monitor.DispatchDetectedLinks(new() { first, second }, sequence + 2);
+                Assert.Equal(before + 4, deliveries);
+                monitor.DispatchDetectedLinks(new(), sequence + 3);
+
+                observed = null;
+                var reopenWatcher = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(20) };
+                reopenWatcher.Tick += (_, _) =>
+                {
+                    var dialog = app.Windows.OfType<AddLinksDialog>().SingleOrDefault();
+                    if (dialog?.IsVisible != true) return;
+                    reopenWatcher.Stop();
+                    observed = dialog;
+                    try { Assert.Equal(second, dialog.LinksTextBox.Text); }
+                    catch (Exception error) { failure = error; }
+                    finally { dialog.DialogResult = false; }
+                };
+                reopenWatcher.Start();
+                try { monitor.DispatchDetectedLinks(new() { second }, sequence + 4); }
+                finally { reopenWatcher.Stop(); }
+                if (failure != null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+                Assert.NotNull(observed);
+                Assert.Equal(before + 5, deliveries);
+                Assert.Empty(app.Windows.OfType<AddLinksDialog>());
                 Assert.Empty(model.Packages);
             }
         }
