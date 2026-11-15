@@ -1558,10 +1558,18 @@ public partial class MainViewModel
         SaveCustomShortcuts();
     }
 
+    internal AppRestartService RestartService { get; set; } = AppRestartService.Instance;
+
     [RelayCommand]
     public void RestartApplication()
     {
-        AppRestartService.Restart();
+        if (RestartService.TryRestart()) return;
+
+        string message = Loc.Get("Status_AppRestartFailed");
+        StatusSummary = message;
+        if (!DownloadPersistenceService.IsTestEnvironment)
+            SafeInvoke(() => MessageBox.Show(message, Loc.Get("Dialog_ErrorTitle"),
+                MessageBoxButton.OK, MessageBoxImage.Warning));
     }
 
     private void SaveCustomShortcuts()

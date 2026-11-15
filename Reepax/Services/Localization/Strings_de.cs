@@ -378,6 +378,7 @@ public static class Strings_de
         ["Status_ErrorPrefix"] = "Fehler: {0}",
 
         // Dialogs
+        ["Status_AppRestartFailed"] = "Reepax konnte nicht neu gestartet werden. Bitte versuche es erneut.",
         ["Dialog_ErrorTitle"] = "Fehler",
         ["Dialog_ReextractTitle"] = "Erneut entpacken",
         ["Dialog_ReextractMessage"] = "Das Paket \"{0}\" wurde bereits entpackt.\n\nMöchtest du es erneut entpacken? Alle bereits vorhandenen Dateien werden dabei ersetzt.",

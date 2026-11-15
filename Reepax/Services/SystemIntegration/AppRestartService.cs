@@ -9,138 +9,140 @@ using Reepax.Services.Storage;
 
 namespace Reepax.Services.SystemIntegration;
 
-public static class AppRestartService
+public sealed class AppRestartService
 {
-    private static int _isRestarting;
+    internal static AppRestartService Instance { get; } = new(Process.Start, ExitApplication);
 
-    /// <summary>
-    /// Test hook: Action invoked instead of launching a process and exiting when in test environment.
-    /// </summary>
-    public static Action? RestartActionOverride { get; set; }
+    private readonly Func<ProcessStartInfo, Process?> _startProcess;
+    private readonly Action _exitApplication;
+    private int _isRestarting;
 
-    /// <summary>
-    /// Pauses all active downloads, saves application state and downloads,
-    /// disposes mutex/IPC, and starts a new instance of Reepax.
-    /// </summary>
-    public static void Restart()
+    internal AppRestartService(Func<ProcessStartInfo, Process?> startProcess, Action exitApplication)
     {
-        if (Interlocked.Exchange(ref _isRestarting, 1) != 0)
-            return;
+        _startProcess = startProcess;
+        _exitApplication = exitApplication;
+    }
 
-        AppLogger.Info("[AppRestartService] command.");
+    public bool TryRestart()
+    {
+        // A restart is already in progress.
+        if (Interlocked.Exchange(ref _isRestarting, 1) != 0)
+            return true;
+
+        bool replacementStarted = false;
+        try
+        {
+            AppLogger.Info("[AppRestartService] command.");
+
+            var executable = ResolveExecutablePath();
+            if (executable == null)
+            {
+                AppLogger.Error("[AppRestartService] Could not determine application executable path for restart.");
+                return false;
+            }
+
+            PrepareForRestart();
+
+            try
+            {
+                var start = CreateStartInfo(executable, Environment.GetCommandLineArgs());
+                using var replacement = _startProcess(start);
+                replacementStarted = replacement != null;
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[AppRestartService] Failed to start new instance", ex);
+                return false;
+            }
+
+            if (!replacementStarted)
+            {
+                AppLogger.Error("[AppRestartService] Process start did not return a replacement instance.");
+                return false;
+            }
+
+            _exitApplication();
+            return true;
+        }
+        finally
+        {
+            if (!replacementStarted)
+                Interlocked.Exchange(ref _isRestarting, 0);
+        }
+    }
+
+    private static string? ResolveExecutablePath()
+    {
+        string? executable = Environment.ProcessPath;
+        if (File.Exists(executable))
+            return executable;
 
         try
         {
-            // 1. Prepare MainWindow state and column widths if UI is alive
+            using var current = Process.GetCurrentProcess();
+            executable = current.MainModule?.FileName;
+            return File.Exists(executable) ? executable : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void PrepareForRestart()
+    {
+        try
+        {
             var app = Application.Current;
             if (!DownloadPersistenceService.IsTestEnvironment &&
-                app?.Dispatcher != null &&
-                app.Dispatcher.Thread?.IsAlive == true &&
+                app != null &&
+                app.Dispatcher.Thread.IsAlive &&
                 !app.Dispatcher.HasShutdownStarted &&
                 !app.Dispatcher.HasShutdownFinished)
             {
-                if (app.Dispatcher.CheckAccess())
+                app.Dispatcher.Invoke(() =>
                 {
-                    if (app.MainWindow is MainWindow mw)
-                    {
-                        mw.PrepareForRestart();
-                    }
-                }
-                else
-                {
-                    app.Dispatcher.Invoke(() =>
-                    {
-                        if (app.MainWindow is MainWindow mw)
-                        {
-                            mw.PrepareForRestart();
-                        }
-                    });
-                }
+                    if (app.MainWindow is MainWindow window)
+                        window.PrepareForRestart();
+                });
             }
         }
         catch (Exception ex)
         {
-            AppLogger.Warn($"[AppRestartService] Error saving window state before restart", ex);
+            AppLogger.Warn("[AppRestartService] Error saving window state before restart", ex);
         }
 
         try
         {
-            // 2. Pause all downloads, flush streams, persist downloads and settings
             QueueManager.Instance.StopQueue(isExiting: true);
             SettingsService.Instance.SaveSettings();
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[AppRestartService] Error during safe shutdown", ex);
+            AppLogger.Error("[AppRestartService] Error during restart preparation", ex);
         }
+    }
 
+    private static void ExitApplication()
+    {
         try
         {
-            // 3. Hide tray icon immediately
-            TrayIconService.Instance.HideTrayIcon();
-            TrayIconService.Instance.Dispose();
-        }
-        catch { }
-
-        // Test hook check
-        if (DownloadPersistenceService.IsTestEnvironment)
-        {
-            RestartActionOverride?.Invoke();
-            _isRestarting = 0;
-            return;
-        }
-
-        // 4. Resolve executable path
-        var exePath = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath))
-        {
-            try
+            if (Application.Current is { } app)
             {
-                exePath = Process.GetCurrentProcess().MainModule?.FileName;
+                // The application releases single-instance ownership after shutdown has saved its state.
+                app.Dispatcher.Invoke(() =>
+                {
+                    if (app.MainWindow is MainWindow window)
+                        window.ForceExit();
+                    app.Shutdown();
+                });
+                return;
             }
-            catch { }
-        }
-
-        if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath))
-        {
-            AppLogger.Error("[AppRestartService] Could not determine application executable path for restart.");
-            _isRestarting = 0;
-            return;
-        }
-
-        var psi = CreateStartInfo(exePath, Environment.GetCommandLineArgs());
-
-        // 6. Release single instance mutex & IPC so the new instance can acquire ownership without race condition
-        try
-        {
-            SingleInstanceService.Instance.Dispose();
-        }
-        catch { }
-
-        // 7. Launch new process
-        try
-        {
-            Process.Start(psi);
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[AppRestartService] Failed to start new instance", ex);
+            AppLogger.Warn("[AppRestartService] Error closing the original instance", ex);
         }
-
-        // 8. Terminate current process
-        try
-        {
-            var app = Application.Current;
-            app?.Dispatcher?.Invoke(() =>
-            {
-                if (app.MainWindow is MainWindow mw)
-                {
-                    mw.ForceExit();
-                }
-                app.Shutdown();
-            });
-        }
-        catch { }
 
         Environment.Exit(0);
     }

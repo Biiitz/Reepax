@@ -57,6 +57,18 @@ public sealed class WindowDownloadFlowTests
         finally { await DeleteWorkerDirectoryAsync(root.FullName); }
     }
 
+    [Fact]
+    public async Task MainWindow_RestartLaunchFailurePreservesOwnershipAndSavedDownloadProgress()
+    {
+        var root = Directory.CreateTempSubdirectory("WindowFlow_");
+        try
+        {
+            await RunWindowWorkerAsync(root.FullName, "en", "--package-restart-window-worker",
+                "Restart launch failure recovered", "launch-failure");
+        }
+        finally { await DeleteWorkerDirectoryAsync(root.FullName); }
+    }
+
     [Theory]
     [InlineData("en")]
     [InlineData("de")]

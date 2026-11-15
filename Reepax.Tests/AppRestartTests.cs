@@ -1,9 +1,12 @@
 using System;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows.Input;
 using Reepax.Models;
 using Reepax.Services.Download;
+using Reepax.Services.Localization;
 using Reepax.Services.Shortcuts;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -31,19 +34,39 @@ public class AppRestartTests
         Assert.Equal(hosted ? [entryPoint, ..startupOptions] : startupOptions, start.ArgumentList);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Restart_WhenProcessStartFails_PreservesTheCurrentInstanceAndAllowsRetry(bool noProcess)
+    {
+        var steps = new List<string>();
+        int attempts = 0;
+        var restart = new AppRestartService(start =>
+        {
+            Assert.Contains("--restart", start.ArgumentList);
+            steps.Add("start");
+            if (++attempts != 1) return new Process();
+            if (noProcess) return null;
+            throw new Win32Exception(5);
+        }, () => steps.Add("exit"));
+
+        Assert.False(restart.TryRestart());
+        Assert.Equal(new[] { "start" }, steps);
+        Assert.True(restart.TryRestart());
+        Assert.True(restart.TryRestart());
+        Assert.Equal(new[] { "start", "start", "exit" }, steps);
+    }
+
     [Fact]
     public void AppRestartService_Restart_PausesAllActiveAndQueuedDownloads()
     {
-        // Setup test environment
         bool restartHookCalled = false;
-        AppRestartService.RestartActionOverride = () =>
-        {
-            restartHookCalled = true;
-        };
+        var restart = new AppRestartService(_ => new Process(), () => restartHookCalled = true);
+        var qm = QueueManager.Instance;
+        var previousPackages = qm.Packages.ToArray();
 
         try
         {
-            var qm = QueueManager.Instance;
             qm.Packages.Clear();
 
             var pkg = new DownloadPackage { Name = "Restart Test Package" };
@@ -75,7 +98,7 @@ public class AppRestartTests
             qm.Packages.Add(pkg);
 
             // Trigger restart
-            AppRestartService.Restart();
+            Assert.True(restart.TryRestart());
 
             // Assert
             Assert.True(restartHookCalled);
@@ -86,32 +109,36 @@ public class AppRestartTests
         }
         finally
         {
-            AppRestartService.RestartActionOverride = null;
+            qm.Packages.Clear();
+            foreach (var package in previousPackages) qm.Packages.Add(package);
         }
     }
 
-    [Fact]
-    public void MainViewModel_RestartApplicationCommand_InvokesAppRestart()
+    [Theory]
+    [InlineData("en", "Reepax could not be restarted.")]
+    [InlineData("de", "Reepax konnte nicht neu gestartet werden.")]
+    public void MainViewModel_RestartApplicationCommand_ReportsTheLaunchFailure(string language, string expected)
     {
-        bool restartHookCalled = false;
-        AppRestartService.RestartActionOverride = () =>
-        {
-            restartHookCalled = true;
-        };
-
+        var localization = LocalizationService.Instance;
+        string previousLanguage = localization.CurrentLanguage;
         try
         {
-            var vm = new MainViewModel();
+            var vm = new MainViewModel
+            {
+                RestartService = new AppRestartService(_ => throw new Win32Exception(5),
+                    () => Assert.Fail("A failed start must not shut down the application."))
+            };
+            localization.CurrentLanguage = language;
             Assert.NotNull(vm.RestartApplicationCommand);
             Assert.True(vm.RestartApplicationCommand.CanExecute(null));
 
             vm.RestartApplicationCommand.Execute(null);
 
-            Assert.True(restartHookCalled);
+            Assert.StartsWith(expected, vm.StatusSummary, StringComparison.Ordinal);
         }
         finally
         {
-            AppRestartService.RestartActionOverride = null;
+            localization.CurrentLanguage = previousLanguage;
         }
     }
 

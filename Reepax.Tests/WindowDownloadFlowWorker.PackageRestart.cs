@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using Reepax.Models;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -13,6 +15,12 @@ internal static partial class WindowDownloadFlowWorker
 {
     private static async Task CheckPackageRestartAsync(string root, string stage)
     {
+        if (stage == "launch-failure")
+        {
+            await CheckRestartLaunchFailureAsync();
+            return;
+        }
+
         string downloads = Path.Combine(root, "downloads.json");
         string movedRoot = Path.Combine(root, "moved");
         using var storage = new DownloadPersistenceService(downloads);
@@ -78,5 +86,67 @@ internal static partial class WindowDownloadFlowWorker
             Console.WriteLine("Package state saved");
         }
         finally { main.Close(); }
+    }
+
+    private static async Task CheckRestartLaunchFailureAsync()
+    {
+        var main = new MainWindow { ShowActivated = false, ShowInTaskbar = false };
+        var model = (MainViewModel)main.DataContext;
+        string destination = SettingsService.Instance.Settings.DefaultDownloadDirectory;
+        string savePath = Path.Combine(destination, "partial.bin");
+        byte[] prefix = [1, 3, 5, 7];
+        File.WriteAllBytes(savePath + ".part", prefix);
+        var package = new DownloadPackage { Name = "Example package", SaveDirectory = destination };
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "partial.bin", SaveFilePath = savePath,
+            OriginalUrl = "https://example.test/partial.bin", TotalBytes = 16, Status = DownloadStatus.Downloading
+        });
+        model.Packages.Add(package);
+        main.Show();
+
+        bool previousTestEnvironment = DownloadPersistenceService.IsTestEnvironment;
+        DownloadPersistenceService.IsTestEnvironment = false;
+        string instanceName = "ReepaxRestart_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            using var primary = new SingleInstanceService(instanceName, requestTimeoutMs: 1000);
+            Assert.True(primary.TryAcquireOwnership());
+            string[]? forwarded = null;
+            primary.StartIpcServer(args => forwarded = args);
+            int attempts = 0;
+            bool closing = false;
+            var restart = new AppRestartService(_ =>
+            {
+                using var contender = new SingleInstanceService(instanceName, requestTimeoutMs: 1000);
+                Assert.False(contender.TryAcquireOwnership());
+                var saved = Assert.Single(Assert.Single(DownloadPersistenceService.Instance.LoadDownloads()).Items);
+                Assert.Equal(DownloadStatus.Paused, saved.Status);
+                Assert.Equal(prefix.Length, saved.DownloadedBytes);
+                Assert.Equal(prefix, File.ReadAllBytes(savePath + ".part"));
+                if (++attempts == 1) throw new Win32Exception(5);
+                return new Process();
+            }, () => App.CompleteInstanceExit(true, () => closing = true, primary.Dispose));
+
+            Assert.False(restart.TryRestart());
+            Assert.Equal(1, attempts);
+            Assert.False(closing);
+            Assert.True(main.IsVisible);
+            Assert.Equal(DownloadStatus.Paused, Assert.Single(package.Items).Status);
+            Assert.True(await primary.SendArgsToPrimaryAsync(["--activate"]));
+            Assert.Equal(new[] { "--activate" }, forwarded);
+
+            Assert.True(restart.TryRestart());
+            Assert.Equal(2, attempts);
+            Assert.True(closing);
+            using var successor = new SingleInstanceService(instanceName, requestTimeoutMs: 1000);
+            Assert.True(successor.TryAcquireOwnership(4000));
+            Console.WriteLine("Restart launch failure recovered");
+        }
+        finally
+        {
+            DownloadPersistenceService.IsTestEnvironment = previousTestEnvironment;
+            main.Close();
+        }
     }
 }
