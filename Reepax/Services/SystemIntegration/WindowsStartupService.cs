@@ -9,17 +9,23 @@ public static class WindowsStartupService
     private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "Reepax";
 
-    public static bool IsAutostartEnabled()
+    public static bool IsAutostartEnabled() => ReadAutostart() ?? false;
+
+    internal static bool? ReadAutostart()
     {
+        if (Storage.DownloadPersistenceService.IsTestEnvironment)
+            return null;
+
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, writable: false);
             var value = key?.GetValue(AppName) as string;
             return !string.IsNullOrWhiteSpace(value);
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            Storage.AppLogger.Warn("Error reading Windows startup registry key", ex);
+            return null;
         }
     }
 

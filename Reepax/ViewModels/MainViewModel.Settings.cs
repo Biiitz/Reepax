@@ -5,10 +5,12 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Reepax.Helpers;
@@ -528,14 +530,53 @@ public partial class MainViewModel
         _settingsService.SaveSettings();
     }
 
-    [ObservableProperty]
     private bool _startWithWindows;
+    private readonly Func<bool?> _readWindowsAutostart;
+    private readonly Func<bool, bool> _setWindowsAutostart;
 
-    partial void OnStartWithWindowsChanged(bool value)
+    [ObservableProperty]
+    private bool _startWithWindowsChangeFailed;
+
+    public bool StartWithWindows
     {
-        _settingsService.Settings.StartWithWindows = value;
-        _settingsService.SaveSettings();
-        WindowsStartupService.SetAutostart(value);
+        get => _startWithWindows;
+        set
+        {
+            if (value == _startWithWindows) return;
+            if (_setWindowsAutostart(value))
+            {
+                ApplyWindowsAutostartState(value);
+                StartWithWindowsChangeFailed = false;
+                return;
+            }
+
+            ApplyWindowsAutostartState(_readWindowsAutostart() ?? _startWithWindows);
+            StartWithWindowsChangeFailed = true;
+            // Refresh the checkbox after its two-way binding has finished updating the source.
+            var dispatcher = Dispatcher.FromThread(Thread.CurrentThread);
+            if (dispatcher is { HasShutdownStarted: false })
+                _ = dispatcher.InvokeAsync(() => OnPropertyChanged(nameof(StartWithWindows)), DispatcherPriority.DataBind);
+            else
+                OnPropertyChanged(nameof(StartWithWindows));
+        }
+    }
+
+    private void InitializeWindowsAutostart(bool saved)
+    {
+        // Refresh enabled registrations so they keep pointing at the current executable.
+        bool registered = saved && _setWindowsAutostart(true);
+        StartWithWindowsChangeFailed = saved && !registered;
+        ApplyWindowsAutostartState(registered || (_readWindowsAutostart() ?? saved));
+    }
+
+    private void ApplyWindowsAutostartState(bool enabled)
+    {
+        if (_settingsService.Settings.StartWithWindows != enabled)
+        {
+            _settingsService.Settings.StartWithWindows = enabled;
+            _settingsService.SaveSettings();
+        }
+        SetProperty(ref _startWithWindows, enabled, nameof(StartWithWindows));
     }
 
     [ObservableProperty]

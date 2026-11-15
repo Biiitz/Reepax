@@ -409,13 +409,16 @@ public partial class MainViewModel : ObservableObject
     // Application settings, themes, sounds, and archive passwords have been moved to MainViewModel.Settings.cs
 
 
-    public MainViewModel() : this(ReadDriveSpace)
+    public MainViewModel() : this(readDriveSpace: null)
     {
     }
 
-    internal MainViewModel(Func<string, (string Name, long FreeBytes, long TotalBytes)?> readDriveSpace)
+    internal MainViewModel(Func<string, (string Name, long FreeBytes, long TotalBytes)?>? readDriveSpace = null,
+        Func<bool?>? readWindowsAutostart = null, Func<bool, bool>? setWindowsAutostart = null)
     {
-        _readDriveSpace = readDriveSpace;
+        _readDriveSpace = readDriveSpace ?? ReadDriveSpace;
+        _readWindowsAutostart = readWindowsAutostart ?? WindowsStartupService.ReadAutostart;
+        _setWindowsAutostart = setWindowsAutostart ?? WindowsStartupService.SetAutostart;
         Overview = new DownloadOverviewViewModel(_settingsService, () => Packages, () => RootPackages);
         var settings = _settingsService.Settings;
 
@@ -526,7 +529,7 @@ public partial class MainViewModel : ObservableObject
         _isDarkMode = ThemeCatalog.Resolve(settings.ThemeId).IsDark;
         MinimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         _selectedPackageDoubleClickAction = NormalizePackageDoubleClickAction(settings.PackageDoubleClickAction);
-        StartWithWindows = settings.StartWithWindows;
+        InitializeWindowsAutostart(settings.StartWithWindows);
         EnableCompletionNotifications = settings.EnableCompletionNotifications;
         EnableCompletionSound = settings.EnableCompletionSound;
         CompletionSoundTrigger = settings.CompletionSoundTrigger;

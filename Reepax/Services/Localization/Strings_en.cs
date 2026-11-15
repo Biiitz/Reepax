@@ -178,6 +178,7 @@ public static class Strings_en
         ["Settings_Connections_Subtitle"] = "Choose the number of connections per file. Some servers allow only one.",
         ["Settings_StartWithWindows_Title"] = "Start with Windows",
         ["Settings_StartWithWindows_Subtitle"] = "Start Reepax automatically when you sign in to Windows.",
+        ["Settings_StartWithWindows_ChangeFailed"] = "Windows could not update the startup setting. Check your permissions and try again.",
         ["Settings_MinimizeToTrayOnClose_Title"] = "Minimize to tray on close",
         ["Settings_MinimizeToTrayOnClose_Subtitle"] = "Closing the window keeps Reepax running in the notification area. Downloads continue.",
         ["Settings_Notifications_Title"] = "Notifications",

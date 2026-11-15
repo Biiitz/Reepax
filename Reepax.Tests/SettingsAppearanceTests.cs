@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
@@ -12,6 +14,8 @@ using System.Windows.Threading;
 using System.Xml.Linq;
 using Reepax.Helpers;
 using Reepax.Services;
+using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Reepax.Views;
 using Xunit;
@@ -125,6 +129,74 @@ public partial class DialogUiTests
                 vm.SelectedLanguage = previousLanguage;
                 vm.IsArchivePasswordsExpanded = previousPasswordsExpanded;
                 ThemeService.Instance.SetAccentColor(previousAccent, save: false);
+                Application.Current.ShutdownMode = shutdownMode;
+            }
+        });
+    }
+
+    [Fact]
+    public void SettingsSurface_AutostartCheckboxRevertsShowsErrorAndAllowsRetry()
+    {
+        RunInSta(() =>
+        {
+            EnsureSettingsTheme();
+            var settings = SettingsService.Instance.Settings;
+            bool previous = settings.StartWithWindows;
+            bool registered = false;
+            bool allowWrite = false;
+            var shutdownMode = Application.Current.ShutdownMode;
+            Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            Window? host = null;
+            try
+            {
+                settings.StartWithWindows = false;
+                var vm = new MainViewModel(readWindowsAutostart: () => registered, setWindowsAutostart: value =>
+                {
+                    if (!allowWrite) return false;
+                    registered = value;
+                    return true;
+                });
+                var view = new SettingsView { DataContext = vm };
+                host = new Window { Width = 900, Height = 680, Content = view };
+                RenderSettings(view, "Autostart");
+                var checkBox = Assert.IsType<CheckBox>(view.FindName("StartWithWindowsCheckBox"));
+                var error = Assert.IsType<TextBlock>(view.FindName("StartWithWindowsError"));
+                var toggle = Assert.IsAssignableFrom<IToggleProvider>(
+                    new CheckBoxAutomationPeer(checkBox).GetPattern(PatternInterface.Toggle));
+                void Toggle()
+                {
+                    toggle.Toggle();
+                    Dispatcher.CurrentDispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                }
+
+                Assert.False(checkBox.IsChecked);
+                Assert.Equal(Visibility.Collapsed, error.Visibility);
+                Toggle();
+                Assert.False(checkBox.IsChecked);
+                Assert.Equal(Visibility.Visible, error.Visibility);
+                Assert.Equal(Loc.Get("Settings_StartWithWindows_ChangeFailed"), error.Text);
+
+                allowWrite = true;
+                Toggle();
+                Assert.True(checkBox.IsChecked);
+                Assert.Equal(Visibility.Collapsed, error.Visibility);
+
+                allowWrite = false;
+                Toggle();
+                Assert.True(checkBox.IsChecked);
+                Assert.Equal(Visibility.Visible, error.Visibility);
+                var reopened = new SettingsView { DataContext = vm };
+                host.Content = reopened;
+                RenderSettings(reopened, "AutostartReopened");
+                var reopenedCheckBox = Assert.IsType<CheckBox>(reopened.FindName("StartWithWindowsCheckBox"));
+                Assert.True(reopenedCheckBox.IsChecked);
+                Assert.True(registered);
+                Assert.True(settings.StartWithWindows);
+            }
+            finally
+            {
+                if (host != null) { host.Content = null; host.Close(); }
+                settings.StartWithWindows = previous;
                 Application.Current.ShutdownMode = shutdownMode;
             }
         });

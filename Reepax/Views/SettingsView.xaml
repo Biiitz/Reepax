@@ -692,10 +692,16 @@
                                             <Path Style="{StaticResource SettingInfoPathStyle}" />
                                         </Border>
                                     </StackPanel>
+                                    <TextBlock x:Name="StartWithWindowsError"
+                                               Text="{loc:Loc Settings_StartWithWindows_ChangeFailed}"
+                                               Visibility="{Binding StartWithWindowsChangeFailed, Converter={StaticResource BoolToVisConverter}}"
+                                               Foreground="{DynamicResource DangerBrush}"
+                                               TextWrapping="Wrap" FontSize="12" Margin="0,4,16,0" />
                                 </StackPanel>
-                                <CheckBox Grid.Column="1"
+                                <CheckBox x:Name="StartWithWindowsCheckBox" Grid.Column="1"
                                     HorizontalAlignment="Right"
                                     IsChecked="{Binding StartWithWindows, Mode=TwoWay}"
+                                    AutomationProperties.Name="{loc:Loc Settings_StartWithWindows_Title}"
                                     VerticalAlignment="Center"
                                     Cursor="Hand" />
                             </Grid>

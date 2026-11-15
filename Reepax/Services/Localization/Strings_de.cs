@@ -178,6 +178,7 @@ public static class Strings_de
         ["Settings_Connections_Subtitle"] = "Legt die Verbindungen pro Datei fest. Manche Server erlauben nur eine.",
         ["Settings_StartWithWindows_Title"] = "Mit Windows starten",
         ["Settings_StartWithWindows_Subtitle"] = "Startet Reepax automatisch bei der Windows-Anmeldung.",
+        ["Settings_StartWithWindows_ChangeFailed"] = "Windows konnte die Autostart-Einstellung nicht ändern. Prüfe die Berechtigungen und versuche es erneut.",
         ["Settings_MinimizeToTrayOnClose_Title"] = "In Infobereich minimieren beim Schließen",
         ["Settings_MinimizeToTrayOnClose_Subtitle"] = "Beim Schließen läuft Reepax neben der Windows-Uhr weiter. Downloads werden nicht beendet.",
         ["Settings_Notifications_Title"] = "Benachrichtigungen",

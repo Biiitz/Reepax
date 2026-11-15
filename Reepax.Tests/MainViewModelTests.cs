@@ -1694,6 +1694,89 @@ https://other-hoster.net/dl/Movie.part01.rar
     }
 
     [Fact]
+    public void StartWithWindows_RejectedChangeKeepsTheConfirmedStateAndCanBeRetried()
+    {
+        var settings = SettingsService.Instance.Settings;
+        bool previous = settings.StartWithWindows;
+        try
+        {
+            settings.StartWithWindows = false;
+            bool registered = false;
+            bool allowWrite = false;
+            int calls = 0;
+            var vm = new MainViewModel(readWindowsAutostart: () => registered, setWindowsAutostart: enabled =>
+            {
+                calls++;
+                if (!allowWrite) return false;
+                registered = enabled;
+                return true;
+            });
+
+            vm.StartWithWindows = true;
+            Assert.Equal(1, calls);
+            Assert.False(registered);
+            Assert.False(vm.StartWithWindows);
+            Assert.False(settings.StartWithWindows);
+            Assert.True(vm.StartWithWindowsChangeFailed);
+
+            allowWrite = true;
+            vm.ToggleStartWithWindowsCommand.Execute(null);
+            Assert.Equal(2, calls);
+            Assert.True(registered);
+            Assert.True(vm.StartWithWindows);
+            Assert.True(settings.StartWithWindows);
+            Assert.False(vm.StartWithWindowsChangeFailed);
+
+            allowWrite = false;
+            vm.ToggleStartWithWindowsCommand.Execute(null);
+            Assert.Equal(3, calls);
+            Assert.True(registered);
+            Assert.True(vm.StartWithWindows);
+            Assert.True(settings.StartWithWindows);
+            Assert.True(vm.StartWithWindowsChangeFailed);
+
+            allowWrite = true;
+            vm.StartWithWindows = false;
+            Assert.Equal(4, calls);
+            Assert.False(registered);
+            Assert.False(vm.StartWithWindows);
+            Assert.False(settings.StartWithWindows);
+            Assert.False(vm.StartWithWindowsChangeFailed);
+        }
+        finally { settings.StartWithWindows = previous; }
+    }
+
+    [Theory]
+    [InlineData(false, true, false, true, false)]
+    [InlineData(true, false, false, false, true)]
+    [InlineData(true, true, false, true, true)]
+    [InlineData(true, null, false, true, true)]
+    [InlineData(true, false, true, true, false)]
+    public void StartWithWindows_InitialStateReflectsTheRegistryAndRefreshesSavedRegistrations(
+        bool saved, bool? registered, bool allowWrite, bool expected, bool showError)
+    {
+        var settings = SettingsService.Instance.Settings;
+        bool previous = settings.StartWithWindows;
+        try
+        {
+            settings.StartWithWindows = saved;
+            var writes = new List<bool>();
+            var vm = new MainViewModel(readWindowsAutostart: () => registered, setWindowsAutostart: enabled =>
+            {
+                writes.Add(enabled);
+                if (!allowWrite) return false;
+                registered = enabled;
+                return true;
+            });
+            Assert.Equal(saved ? new[] { true } : Array.Empty<bool>(), writes);
+            Assert.Equal(expected, vm.StartWithWindows);
+            Assert.Equal(expected, settings.StartWithWindows);
+            Assert.Equal(showError, vm.StartWithWindowsChangeFailed);
+        }
+        finally { settings.StartWithWindows = previous; }
+    }
+
+    [Fact]
     public void StartWithWindows_ToggleAndDirectChangePersistTheSelectedState()
     {
         var settings = Reepax.Services.Storage.SettingsService.Instance.Settings;
