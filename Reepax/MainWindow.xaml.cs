@@ -2331,20 +2331,6 @@ public partial class MainWindow : Window
             if (cancelExtractMenuItem != null) cancelExtractMenuItem.Visibility = Visibility.Collapsed;
         }
 
-        var verifyMenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "VerifyBinFilesMenuItem" || (string?)m.Tag == "VerifyBinFilesMenuItem");
-        if (verifyMenuItem != null)
-        {
-            if (pkg != null)
-            {
-                pkg.CheckAndRefreshVerifyBatFile();
-                verifyMenuItem.Visibility = pkg.HasVerifyBatFile ? Visibility.Visible : Visibility.Collapsed;
-            }
-            else
-            {
-                verifyMenuItem.Visibility = Visibility.Collapsed;
-            }
-        }
-
         var par2MenuItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "Par2RepairMenuItem" || (string?)m.Tag == "Par2RepairMenuItem");
         if (par2MenuItem != null)
         {
@@ -2364,9 +2350,8 @@ public partial class MainWindow : Window
         {
             bool hasExtractAction = (extractMenuItem?.Visibility == Visibility.Visible) ||
                 (pauseResumeMenuItem?.Visibility == Visibility.Visible) || (retryCleanupItem?.Visibility == Visibility.Visible);
-            bool hasVerify = verifyMenuItem?.Visibility == Visibility.Visible;
             bool hasPar2 = par2MenuItem?.Visibility == Visibility.Visible;
-            verificationSep.Visibility = (hasExtractAction || hasVerify || hasPar2) ? Visibility.Visible : Visibility.Collapsed;
+            verificationSep.Visibility = (hasExtractAction || hasPar2) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         if (pkg == null) return;
@@ -2391,52 +2376,6 @@ public partial class MainWindow : Window
         _draggedPackage = null;
         _isDraggingPackage = false;
         ClearAllDropTargets();
-    }
-
-    private void VerifyBinFiles_MenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        var package = GetPackageFromSender(sender);
-        if (package == null) return;
-
-        var batPath = package.VerifyBatFilePath;
-        if (string.IsNullOrEmpty(batPath) || !File.Exists(batPath))
-        {
-            batPath = DownloadPackage.FindVerifyBatFilePath(package);
-        }
-
-        if (string.IsNullOrEmpty(batPath) || !File.Exists(batPath))
-        {
-            MessageBox.Show(
-                this,
-                Loc.Get("Dialog_VerifyBinFilesNotFoundMessage"),
-                Loc.Get("Dialog_VerifyBinFilesNotFoundTitle"),
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-            return;
-        }
-
-        try
-        {
-            var workingDir = Path.GetDirectoryName(batPath) ?? string.Empty;
-            var psi = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = batPath,
-                WorkingDirectory = workingDir,
-                UseShellExecute = true
-            };
-            System.Diagnostics.Process.Start(psi);
-            ViewModel.StatusSummary = Loc.Format("Status_VerifyBinFilesLaunched", Path.GetFileName(batPath));
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("[VerifyBinFiles] Could not start file verification", ex);
-            MessageBox.Show(
-                this,
-                Loc.Format("Dialog_VerifyBinFilesErrorMessage", ex.Message),
-                Loc.Get("Dialog_VerifyBinFilesErrorTitle"),
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
     }
 
     private void ArchivePasswords_MenuItem_Click(object sender, RoutedEventArgs e)

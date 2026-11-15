@@ -325,6 +325,7 @@ public sealed class ContextMenuActionsTests : IDisposable
             Assert.Contains("OpenItemInBrowser_MenuItem_Click", item.ToString());
             Assert.DoesNotContain("ChangeDownloadPath_MenuItem_Click", item.ToString());
             Assert.Contains("ResetPackageSortingCommand", package.ToString());
+            Assert.DoesNotContain("VerifyBinFiles", package.ToString());
             Assert.DoesNotContain("ResetPackageSortingCommand", item.ToString());
             Assert.DoesNotContain("Menu_CopyOriginalUrl", item.ToString());
         }

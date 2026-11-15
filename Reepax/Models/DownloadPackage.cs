@@ -188,12 +188,6 @@ public partial class DownloadPackage : ObservableObject
     internal bool TryClaimCompletionNotification() => Interlocked.CompareExchange(ref _hasCompletedNotified, 1, 0) == 0;
 
     [ObservableProperty]
-    private bool _hasVerifyBatFile;
-
-    [ObservableProperty]
-    private string? _verifyBatFilePath;
-
-    [ObservableProperty]
     private string _packageIconKey = "Archive";
 
     [ObservableProperty]
@@ -223,10 +217,6 @@ public partial class DownloadPackage : ObservableObject
     {
         OnPropertyChanged(nameof(CanEditPackage));
         OnPropertyChanged(nameof(IsFullyCompleted));
-        if (value == DownloadStatus.Completed)
-        {
-            _ = RefreshVerifyBatFileAsync();
-        }
     }
 
     [ObservableProperty]
@@ -445,7 +435,6 @@ public partial class DownloadPackage : ObservableObject
         if (stepKeyOrName == "Extract")
         {
             IsExtracted = true;
-            _ = RefreshVerifyBatFileAsync();
         }
         OnPropertyChanged(nameof(IsFullyCompleted));
     }
@@ -1454,205 +1443,6 @@ public partial class DownloadPackage : ObservableObject
     public bool ExistsOnDisk()
     {
         return RefreshAndCheckExistsOnDisk();
-    }
-
-    /// <summary>
-    /// Checks whether the package is extracted/fully completed,
-    /// and whether 'Verify BIN files before installation.bat' exists in the target folder.
-    /// Updates HasVerifyBatFile and VerifyBatFilePath.
-    /// </summary>
-    public bool CheckAndRefreshVerifyBatFile()
-    {
-        Interlocked.Increment(ref _verifyBatScanVersion);
-        if (!CanSearchForVerifyBatFile())
-        {
-            return SetVerifyBatFile(null, false);
-        }
-
-        var batPath = FindVerifyBatFilePath(this);
-        return SetVerifyBatFile(batPath, !string.IsNullOrEmpty(batPath) && File.Exists(batPath));
-    }
-
-    private bool CanSearchForVerifyBatFile()
-    {
-        // 1. If package is actively extracting right now, wait until extraction completes
-        if (Services.Extractor.ArchiveExtractionService.Instance.IsPackageExtracting(Id))
-        {
-            var extractStep = NextTaskSteps.FirstOrDefault(s => s.Key == "Extract");
-            if (extractStep == null || extractStep.State != NextTaskStepState.Done)
-            {
-                return false;
-            }
-        }
-
-        if (StatusMessage == Loc.Get("Status_Extracting") ||
-            StatusMessage == "Entpacken..." ||
-            StatusMessage == "Entpacke...")
-        {
-            return false;
-        }
-
-        // 2. If auto-extract is enabled, the "Extract" step must be completed first
-        if (AutoExtractArchives)
-        {
-            var extractStep = NextTaskSteps.FirstOrDefault(s => s.Key == "Extract");
-            if (extractStep != null && extractStep.State != NextTaskStepState.Done)
-            {
-                return false;
-            }
-        }
-
-        // 3. The download items must be finished (not currently downloading or queued)
-        var enabledItems = Items.Where(i => i.IsEnabled).ToList();
-        if (enabledItems.Count > 0 && !enabledItems.All(i => i.Status == DownloadStatus.Completed))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool SetVerifyBatFile(string? batPath, bool exists)
-    {
-        VerifyBatFilePath = batPath;
-        HasVerifyBatFile = exists;
-        return HasVerifyBatFile;
-    }
-
-    public static string? FindVerifyBatFilePath(DownloadPackage? package)
-    {
-        if (package == null) return null;
-
-        return FindVerifyBatFilePath(package.SaveDirectory, package.Name,
-            package.Items.Select(item => item.SaveFilePath).ToArray());
-    }
-
-    private static string? FindVerifyBatFilePath(string saveDir, string name, string?[] itemPaths)
-    {
-        var checkedDirs = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // 1. Search in SaveDirectory
-        if (!string.IsNullOrWhiteSpace(saveDir) && Directory.Exists(saveDir))
-        {
-            var found = FindVerifyBatInDirectory(saveDir, checkedDirs);
-            if (found != null) return found;
-
-            // Also check subfolder matching package name if present
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                var pkgSubdir = Path.Combine(saveDir, name);
-                if (Directory.Exists(pkgSubdir) && checkedDirs.Add(pkgSubdir))
-                {
-                    var subFound = FindVerifyBatInDirectory(pkgSubdir, checkedDirs);
-                    if (subFound != null) return subFound;
-                }
-            }
-        }
-
-        // 2. Search in item directories (if different from SaveDirectory)
-        foreach (var itemPath in itemPaths)
-        {
-            if (string.IsNullOrWhiteSpace(itemPath)) continue;
-            try
-            {
-                var itemDir = Path.GetDirectoryName(itemPath);
-                if (!string.IsNullOrWhiteSpace(itemDir) && Directory.Exists(itemDir) && checkedDirs.Add(itemDir))
-                {
-                    var found = FindVerifyBatInDirectory(itemDir, checkedDirs);
-                    if (found != null) return found;
-                }
-            }
-            catch { }
-        }
-
-        return null;
-    }
-
-    public static bool IsVerifyBatFile(string fileNameOrPath)
-    {
-        if (string.IsNullOrWhiteSpace(fileNameOrPath)) return false;
-        var name = Path.GetFileName(fileNameOrPath);
-        var ext = Path.GetExtension(name).ToLowerInvariant();
-        if (ext != ".bat" && ext != ".cmd") return false;
-
-        var lower = name.ToLowerInvariant();
-
-        // 1. Standard bin files integrity verification batch
-        if (lower == "verify bin files before installation.bat") return true;
-
-        // 2. Contains both 'verify' and 'bin'
-        if (lower.Contains("verify") && lower.Contains("bin")) return true;
-
-        // 3. Common archive integrity verification batches
-        if (lower == "verify.bat" || lower == "verify.cmd" ||
-            lower == "verify_files.bat" || lower == "verify files.bat" ||
-            lower == "chkcrcre.bat" || lower == "quickcheck.bat")
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string? FindVerifyBatInDirectory(string baseDir, System.Collections.Generic.HashSet<string>? checkedDirs = null, int maxDepth = 3)
-    {
-        try
-        {
-            if (!Directory.Exists(baseDir)) return null;
-
-            checkedDirs ??= new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            var queue = new System.Collections.Generic.Queue<(string Dir, int Depth)>();
-            queue.Enqueue((baseDir, 0));
-            checkedDirs.Add(baseDir);
-
-            while (queue.Count > 0)
-            {
-                var (currentDir, depth) = queue.Dequeue();
-
-                try
-                {
-                    // 1. Direct check for exact standard filename (fast path)
-                    var directBat = Path.Combine(currentDir, "Verify BIN files before installation.bat");
-                    if (File.Exists(directBat))
-                    {
-                        return directBat;
-                    }
-
-                    // 2. Enumerate all .bat and .cmd files for match
-                    foreach (var file in Directory.EnumerateFiles(currentDir, "*.*"))
-                    {
-                        if (IsVerifyBatFile(file))
-                        {
-                            return file;
-                        }
-                    }
-                }
-                catch { }
-
-                if (depth < maxDepth)
-                {
-                    try
-                    {
-                        foreach (var subDir in Directory.EnumerateDirectories(currentDir))
-                        {
-                            var dirName = Path.GetFileName(subDir);
-                            if (dirName.StartsWith(".") || dirName.StartsWith("$"))
-                                continue;
-
-                            if (checkedDirs.Add(subDir))
-                            {
-                                queue.Enqueue((subDir, depth + 1));
-                            }
-                        }
-                    }
-                    catch { }
-                }
-            }
-        }
-        catch { }
-
-        return null;
     }
 }
 

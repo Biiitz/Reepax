@@ -172,13 +172,6 @@
                     <Path Data="{StaticResource IconClose}" Fill="{DynamicResource DangerBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
-            <MenuItem x:Name="VerifyBinFilesMenuItem" Tag="VerifyBinFilesMenuItem"
-                      Header="{loc:Loc Menu_VerifyBinFiles}" Click="VerifyBinFiles_MenuItem_Click"
-                      Visibility="{Binding HasVerifyBatFile, Converter={StaticResource BoolToVisConverter}}">
-                <MenuItem.Icon>
-                    <Path Data="{StaticResource IconCheck}" Fill="{DynamicResource AccentBlueBrush}" Width="14" Height="14" Stretch="Uniform" />
-                </MenuItem.Icon>
-            </MenuItem>
             <MenuItem x:Name="Par2RepairMenuItem" Tag="Par2RepairMenuItem"
                       Header="{loc:Loc Menu_Par2Repair}" Click="Par2Repair_MenuItem_Click">
                 <MenuItem.Icon>
