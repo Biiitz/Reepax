@@ -180,7 +180,7 @@ public partial class DialogUiTests
                 foreach (var declaration in document.Root.Attributes().Where(a => a.IsNamespaceDeclaration))
                     resources.SetAttributeValue(declaration.Name, declaration.Value.StartsWith("clr-namespace:") ? declaration.Value + ";assembly=Reepax" : declaration.Value);
                 var dictionary = (ResourceDictionary)XamlReader.Parse(resources.ToString());
-                var item = new DownloadItem { FileName = "sample.bin", Status = DownloadStatus.Downloading, TotalBytes = 1000 };
+                var item = new DownloadItem { FileName = "sample.zip", Status = DownloadStatus.Downloading, TotalBytes = 1000 };
                 item.UpdateProgress(420, 1000, 100);
                 var package = new DownloadPackage { Name = "Sample", AutoPar2Repair = false, AutoExtractArchives = false };
                 package.Items.Add(item);

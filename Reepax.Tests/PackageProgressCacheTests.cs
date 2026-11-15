@@ -125,7 +125,7 @@ public class PackageProgressCacheTests
     public void StructuralChanges_RefreshCountsVerificationAndSubscriptions()
     {
         var first = new DownloadItem { TotalBytes = 100, Status = DownloadStatus.Downloading };
-        var second = new DownloadItem { TotalBytes = 100, Status = DownloadStatus.Paused };
+        var second = new DownloadItem { FileName = "sample.zip", TotalBytes = 100, Status = DownloadStatus.Paused };
         var package = Create(first, second);
         first.IsEnabled = false;
         Assert.Equal(1, package.EnabledItemsCount);

@@ -20,12 +20,80 @@ namespace Reepax.Tests;
 
 public class MainViewModelTests
 {
+    private sealed class LinkImportFixture : IAsyncDisposable
+    {
+        private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("LinkImport_");
+        private readonly HttpClient _client = new(new TestMockHttpMessageHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) })));
+        private readonly QueueManager _queue = QueueManager.Instance;
+        private readonly DownloadPackage[] _previous;
+        private readonly bool _wasRunning;
+        private readonly MainViewModel _model;
+
+        internal LinkImportFixture()
+        {
+            _previous = _queue.Packages.ToArray();
+            _wasRunning = _queue.IsRunning;
+            _queue.StopQueue();
+            _queue.Packages.Clear();
+            _model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(_client) };
+        }
+
+        internal async Task<DownloadPackage> AddAsync(string text)
+        {
+            await RunAndWaitForAdditionAsync(_model.Packages,
+                () => _model.AddLinksFromText(text, customDownloadDir: _directory.FullName));
+            var package = Assert.Single(_model.Packages);
+            await _model.ResolvePackageSizesAsync([package]).WaitAsync(TimeSpan.FromSeconds(10));
+            return package;
+        }
+
+        internal async Task AddToAsync(DownloadPackage package, string text)
+        {
+            await RunAndWaitForAdditionAsync(package.Items,
+                () => _model.AddLinksToPackage(package, text, autoResolveHostLinks: true));
+            await _model.ResolvePackageSizesAsync([package]).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        private static async Task RunAndWaitForAdditionAsync(
+            System.Collections.Specialized.INotifyCollectionChanged collection, Action add)
+        {
+            var added = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            void OnChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs args)
+            {
+                if (args.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+                    added.TrySetResult();
+            }
+            collection.CollectionChanged += OnChanged;
+            try
+            {
+                add();
+                await added.Task.WaitAsync(deadline.Token);
+                using (await PackagePathOperationGate.Instance.EnterAsync(deadline.Token)) { }
+            }
+            finally { collection.CollectionChanged -= OnChanged; }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await _model.ResolvePackageSizesAsync(_model.Packages.ToArray()).WaitAsync(TimeSpan.FromSeconds(10)); }
+            finally
+            {
+                _queue.Packages.Clear();
+                foreach (var package in _previous) _queue.Packages.Add(package);
+                if (_wasRunning) _queue.StartQueue();
+                _client.Dispose();
+                _directory.Delete(recursive: true);
+            }
+        }
+    }
+
     [Fact]
-    public void AddLinksFromText_CreatesPackagesAndItemsProperly()
+    public async Task AddLinksFromText_CreatesPackagesAndItemsProperly()
     {
         // Arrange
-        var vm = new MainViewModel();
-        vm.Packages.Clear();
+        await using var import = new LinkImportFixture();
 
         string forumPost = @"
 Here are the files for Project_Omega_v3:
@@ -35,22 +103,17 @@ https://rapidgator.net/file/103/Project_Omega_v3.part3.rar
 ";
 
         // Act
-        vm.AddLinksFromText(forumPost);
-
-        // Assert
-        Assert.Single(vm.Packages);
-        var pkg = vm.Packages[0];
+        var pkg = await import.AddAsync(forumPost);
         Assert.Equal("Project Omega v3", pkg.Name);
         Assert.Equal(3, pkg.Items.Count);
         Assert.Contains(pkg.Items, i => i.FileName == "Project_Omega_v3.part1.rar");
     }
 
     [Fact]
-    public void AddLinksFromText_WithCrypticUrlsAndContextTitle_GeneratesCleanPackageNameAndParts()
+    public async Task AddLinksFromText_WithCrypticUrlsAndContextTitle_GeneratesCleanPackageNameAndParts()
     {
         // Arrange
-        var vm = new MainViewModel();
-        vm.Packages.Clear();
+        await using var import = new LinkImportFixture();
 
         string text = @"
 Title: Example App 2025
@@ -59,11 +122,7 @@ https://rapidgator.net/file/823791284
 ";
 
         // Act
-        vm.AddLinksFromText(text);
-
-        // Assert
-        Assert.Single(vm.Packages);
-        var pkg = vm.Packages[0];
+        var pkg = await import.AddAsync(text);
         Assert.Equal("Example App 2025", pkg.Name);
         Assert.Equal(2, pkg.Items.Count);
         Assert.Equal("Example App 2025.part01.rar", pkg.Items[0].FileName);
@@ -71,11 +130,10 @@ https://rapidgator.net/file/823791284
     }
 
     [Fact]
-    public void AddLinksFromText_WithPureNumericUrlsWithoutHeaders_GroupsIntoOnePackageWithCleanPartNames()
+    public async Task AddLinksFromText_WithPureNumericUrlsWithoutHeaders_GroupsIntoOnePackageWithCleanPartNames()
     {
         // Arrange
-        var vm = new MainViewModel();
-        vm.Packages.Clear();
+        await using var import = new LinkImportFixture();
 
         // 5 random rapidgator links with purely numeric slugs
         string text = @"
@@ -87,11 +145,7 @@ https://rapidgator.net/file/182937105
 ";
 
         // Act
-        vm.AddLinksFromText(text);
-
-        // Assert: MUST BE 1 PACKAGE, NOT 5 SEPARATE FOLDERS!
-        Assert.Single(vm.Packages);
-        var pkg = vm.Packages[0];
+        var pkg = await import.AddAsync(text);
         var expectedPkgName = Loc.Format("Package_HosterMultiFilesName", "Rapidgator", 5);
         Assert.Equal(expectedPkgName, pkg.Name);
         Assert.Equal(5, pkg.Items.Count);
@@ -595,6 +649,8 @@ https://rapidgator.net/file/182937105
         string root = Path.GetPathRoot(Path.GetTempPath())!;
         string name = root.TrimEnd('\\');
         var queriedRoots = new List<string>();
+        var startupQuerySites = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        bool starting = true;
         string ExpectedText() => isReady
             ? Loc.Format("DiskSpace_FreeTotal", name, "2 GB", "10 GB")
             : Loc.Format("DiskSpace_NotReady", name);
@@ -607,8 +663,10 @@ https://rapidgator.net/file/182937105
             var vm = new MainViewModel(path =>
             {
                 queriedRoots.Add(path);
+                if (starting) startupQuerySites.Enqueue(Environment.StackTrace);
                 return isReady ? (name, 2 * gibibyte, 10 * gibibyte) : null;
             });
+            starting = false;
             Assert.Equal("en", localization.CurrentLanguage);
             int startupReads = queriedRoots.Count;
             string startupText = vm.FreeDiskSpaceText;
@@ -626,7 +684,7 @@ https://rapidgator.net/file/182937105
             Assert.Equal(isReady, vm.IsDiskSpaceWarning);
             Assert.Equal(isReady ? Loc.Format("DiskSpace_WarningInsufficient", name, "3 GB", "2 GB") : "",
                 vm.DiskSpaceWarningMessage);
-            Assert.Equal(1, startupReads);
+            Assert.True(startupReads == 1, $"Expected one startup drive query, got {startupReads}.\n{string.Join("\n", startupQuerySites)}");
             Assert.Equal(expectedStartupText, startupText);
 
             queriedRoots.Clear();
@@ -709,24 +767,22 @@ https://rapidgator.net/file/182937105
     }
 
     [Fact]
-    public void AddLinksToPackage_AddsNewItemsToExistingCompletedPackage()
+    public async Task AddLinksToPackage_AddsNewItemsToExistingCompletedPackage()
     {
         // Arrange
-        var vm = new MainViewModel();
-        vm.Packages.Clear();
-        Reepax.Services.Download.QueueManager.Instance.StopQueue();
+        await using var import = new LinkImportFixture();
 
-        vm.AddLinksFromText("https://rapidgator.net/file/1/Movie.part01.rar");
-        var pkg = vm.Packages[0];
+        var pkg = await import.AddAsync("https://rapidgator.net/file/1/Movie.part01.rar");
         pkg.Items[0].Status = DownloadStatus.Completed;
         pkg.RecalculateAggregates();
         Assert.Equal(DownloadStatus.Completed, pkg.Status);
 
         // Act: add additional links to the (completed) package
-        vm.AddLinksToPackage(pkg, @"
+        await import.AddToAsync(pkg, @"
 https://rapidgator.net/file/2/Movie.part02.rar
 https://rapidgator.net/file/3/Movie.part03.rar
-", autoResolveHostLinks: true);
+");
+        Assert.True(pkg.AutoResolveHostLinks);
 
         // Assert
         Assert.Equal(3, pkg.Items.Count);
