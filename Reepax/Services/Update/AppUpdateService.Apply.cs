@@ -13,16 +13,26 @@ public partial class AppUpdateService
     private static int _applying;
     internal static readonly SemaphoreSlim OperationGate = new(1, 1);
 
-    public static bool ApplyUpdate(string updatePath, string? expectedSha256 = null, string? expectedVersion = null)
+    public static bool ApplyUpdate(string updatePath, string? expectedSha256 = null, string? expectedVersion = null) =>
+        Instance.ApplyInstallerUpdate(updatePath, expectedSha256, expectedVersion);
+
+    private bool ApplyInstallerUpdate(string updatePath, string? expectedSha256, string? expectedVersion, UpdateInfo? info = null)
     {
-        if (DownloadPersistenceService.IsTestEnvironment && ApplyUpdateActionOverride != null)
-        {
-            ApplyUpdateActionOverride(updatePath);
-            return true;
-        }
         if (Interlocked.CompareExchange(ref _applying, 1, 0) != 0) return false;
+        LastApplyError = null;
+        bool scheduled = false;
         try
         {
+            if (CheckInstallerMigration(info))
+            {
+                LastApplyError = Localization.Loc.Get("UpdateDialog_Status_MigrationRequired");
+                return false;
+            }
+            if (DownloadPersistenceService.IsTestEnvironment && ApplyUpdateActionOverride is { } apply)
+            {
+                apply(updatePath);
+                return true;
+            }
             string exe = Environment.ProcessPath ?? throw new IOException("Application executable is unavailable.");
             string session = Path.GetDirectoryName(updatePath)!;
             if (expectedSha256 == null) throw new InvalidDataException("The update is not verified.");
@@ -53,13 +63,17 @@ public partial class AppUpdateService
             }
             File.WriteAllText(Path.Combine(session, "helper.approved"), "approved");
             PerformSafeShutdownAndExit();
+            scheduled = true;
             return true;
         }
         catch (Exception ex)
         {
             AppLogger.Error("[AppUpdateService] Failed to apply update", ex);
-            Interlocked.Exchange(ref _applying, 0);
             return false;
+        }
+        finally
+        {
+            if (!scheduled) Interlocked.Exchange(ref _applying, 0);
         }
     }
 

@@ -63,7 +63,7 @@ public class AppUpdateServiceTests
     }
 
     [Fact]
-    public void ApplyUpdate_InvokesOverrideInTestEnvironment()
+    public void ApplyDownloadedInstaller_InvokesOverrideInTestEnvironment()
     {
         string? capturedPath = null;
 
@@ -74,7 +74,8 @@ public class AppUpdateServiceTests
 
         try
         {
-            bool success = AppUpdateService.ApplyUpdate(@"C:\Test\fake_update.exe");
+            var service = new AppUpdateService { HasMachineInstallerRegistration = () => false };
+            bool success = service.ApplyDownloadedUpdate(new UpdateInfo(), @"C:\Test\fake_update.exe");
 
             Assert.True(success);
             Assert.Equal(@"C:\Test\fake_update.exe", capturedPath);
@@ -154,7 +155,7 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         });
 
         using var httpClient = new HttpClient(handler);
-        var service = new AppUpdateService(httpClient, httpClient);
+        var service = new AppUpdateService(httpClient, httpClient) { HasMachineInstallerRegistration = () => false };
 
         var updateInfo = new UpdateInfo
         {
@@ -185,7 +186,7 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         });
 
         using var httpClient = new HttpClient(handler);
-        var service = new AppUpdateService(httpClient, httpClient);
+        var service = new AppUpdateService(httpClient, httpClient) { HasMachineInstallerRegistration = () => false };
 
         var updateInfo = new UpdateInfo
         {
@@ -221,7 +222,7 @@ custom.exe: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         });
 
         using var httpClient = new HttpClient(handler);
-        var service = new AppUpdateService(httpClient, httpClient);
+        var service = new AppUpdateService(httpClient, httpClient) { HasMachineInstallerRegistration = () => false };
 
         var updateInfo = new UpdateInfo
         {

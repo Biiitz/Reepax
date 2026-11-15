@@ -40,7 +40,11 @@ public partial class UpdateDialog : Window
 
         ChangelogViewer.Document = MarkdownDocumentRenderer.CreateFlowDocument(updateInfo.Changelog);
 
-        if (_updateInfo.HasDirectAsset && _updateInfo.TargetDownloadSize > 0 &&
+        if (_updateInfo.RequiresPerUserMigration)
+        {
+            ShowMigrationInstructions();
+        }
+        else if (_updateInfo.HasDirectAsset && _updateInfo.TargetDownloadSize > 0 &&
             (_updateInfo.IsPackageUpdate || _updateInfo.Sha256ChecksumAssetUrl != null))
         {
             InstallUpdateButton.Visibility = Visibility.Visible;
@@ -193,9 +197,11 @@ public partial class UpdateDialog : Window
 
     private async void InstallUpdateButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_updateInfo.RequiresPerUserMigration) return;
         if (_isDownloading || !await AppUpdateService.OperationGate.WaitAsync(0)) return;
         _isDownloading = true;
         string? workspace = null;
+        bool showDownloadProgress = true;
 
         _downloadCts = new CancellationTokenSource();
         InstallUpdateButton.IsEnabled = false;
@@ -211,6 +217,7 @@ public partial class UpdateDialog : Window
         {
             var progress = new Progress<(long bytesDownloaded, long totalBytes)>(p =>
             {
+                if (!showDownloadProgress) return;
                 if (p.totalBytes > 0)
                 {
                     UpdateProgressBar.IsIndeterminate = false;
@@ -233,11 +240,12 @@ public partial class UpdateDialog : Window
 
             var downloadedFile = await AppUpdateService.Instance.DownloadUpdateAsync(_updateInfo, progress, _downloadCts.Token);
 
+            showDownloadProgress = false;
             workspace = System.IO.Path.GetDirectoryName(downloadedFile);
 
             UpdateProgressBar.IsIndeterminate = false;
             UpdateProgressBar.Value = 100;
-            UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_ReadyRestarting");
+            UpdateStatusTextBlock.Text = Loc.Format("UpdateDialog_Status_ReadyRestarting", _updateInfo.NewVersion);
 
             await Task.Delay(600, _downloadCts.Token);
 
@@ -256,19 +264,37 @@ public partial class UpdateDialog : Window
         }
         catch (Exception ex)
         {
-            AppLogger.Error("[UpdateDialog] Update download failed", ex);
-            UpdateStatusTextBlock.Text = Loc.Format("UpdateDialog_Status_Failed", ex.Message);
             ResetUiAfterDownload();
-            ViewOnGitHubButton.Visibility = Visibility.Visible;
-            ViewOnGitHubButton.IsEnabled = true;
+            if (_updateInfo.RequiresPerUserMigration)
+            {
+                ShowMigrationInstructions();
+            }
+            else
+            {
+                AppLogger.Error("[UpdateDialog] Update download failed", ex);
+                UpdateStatusTextBlock.Text = Loc.Format("UpdateDialog_Status_Failed", ex.Message);
+                ViewOnGitHubButton.Visibility = Visibility.Visible;
+            }
         }
         finally
         {
+            showDownloadProgress = false;
             _isApplying = false;
             LaterButton.IsEnabled = true;
             if (!_updateInfo.IsPackageUpdate && workspace != null && !_isDownloading) AppUpdateService.DeleteUpdateWorkspace(workspace);
             AppUpdateService.OperationGate.Release();
         }
+    }
+
+    private void ShowMigrationInstructions()
+    {
+        InstallUpdateButton.Visibility = Visibility.Collapsed;
+        GetUpdateButton.Visibility = Visibility.Collapsed;
+        ViewOnGitHubButton.Visibility = Visibility.Visible;
+        UpdateProgressPanel.Visibility = Visibility.Visible;
+        UpdateProgressBar.Visibility = Visibility.Collapsed;
+        UpdateStatusTextBlock.TextWrapping = TextWrapping.Wrap;
+        UpdateStatusTextBlock.Text = Loc.Get("UpdateDialog_Status_MigrationRequired");
     }
 
     private void ResetUiAfterDownload()

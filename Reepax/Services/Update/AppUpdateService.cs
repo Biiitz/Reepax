@@ -39,6 +39,7 @@ public class UpdateInfo
     internal Velopack.UpdateManager? PackageManager { get; set; }
     internal IReadOnlyDictionary<string, PackageFileDigest>? PackageFiles { get; set; }
     public bool IsPackageUpdate => PackageUpdate != null;
+    internal bool RequiresPerUserMigration { get; set; }
 
     public bool HasDirectAsset => !string.IsNullOrEmpty(TargetDownloadUrl);
 
@@ -73,6 +74,7 @@ public partial class AppUpdateService
 
     private readonly HttpClient _httpClient;
     private readonly HttpClient _downloadHttpClient;
+    internal Func<bool> HasMachineInstallerRegistration { get; init; } = ManagedInstallation.HasMachineInstallerRegistration;
 
     public static Action<string>? ApplyUpdateActionOverride { get; set; }
 
@@ -82,6 +84,13 @@ public partial class AppUpdateService
         _httpClient = httpClient ?? CreateUpdateClient(TimeSpan.FromSeconds(15));
         _downloadHttpClient = downloadHttpClient ?? CreateUpdateClient(TimeSpan.FromMinutes(20));
         _packageLocator = packageLocator ?? ReepaxPackageLocator.Instance;
+    }
+
+    private bool CheckInstallerMigration(UpdateInfo? info)
+    {
+        bool required = HasMachineInstallerRegistration();
+        if (info != null) info.RequiresPerUserMigration = required;
+        return required;
     }
 
     /// Parses an application release version string into components: Year, Month, Patch.
@@ -399,6 +408,8 @@ public partial class AppUpdateService
                 await PreparePackageUpdateAsync(info, root, cancellationToken);
             else if (!info.HasDirectAsset || info.TargetDownloadSize <= 0 || checksumUrl == null)
                 LastCheckStatus = UpdateCheckStatus.Incomplete;
+            else if (CheckInstallerMigration(info))
+                LastCheckStatus = UpdateCheckStatus.MigrationRequired;
             return info;
         }
         catch (OperationCanceledException) { throw; }

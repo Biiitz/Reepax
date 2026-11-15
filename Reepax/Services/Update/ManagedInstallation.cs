@@ -28,14 +28,28 @@ internal sealed class ReepaxPackageLocator(IProcessImpl? process = null) : Windo
 
 internal static class ManagedInstallation
 {
+    private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
     private const string InstallerRegistryId = "{B729352A-3D28-444F-A1BC-535A0F507F62}}_is1";
+
+    internal static bool HasMachineInstallerRegistration()
+    {
+        using var native = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var legacy = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+        return HasInstallerRegistration(native) || HasInstallerRegistration(legacy);
+    }
+
+    internal static bool HasInstallerRegistration(RegistryKey root)
+    {
+        using var registration = root.OpenSubKey($@"{UninstallRegistryPath}\{InstallerRegistryId}");
+        return registration != null;
+    }
 
     internal static void RefreshRegistration(ReepaxPackageLocator location, string version)
     {
         if (location.AppId != AppUpdateService.PackageId || location.RootAppDir == null) return;
         try
         {
-            using var entries = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall", writable: true);
+            using var entries = Registry.CurrentUser.OpenSubKey(UninstallRegistryPath, writable: true);
             if (entries != null) RefreshRegistration(entries, location.RootAppDir, version);
         }
         catch (Exception ex) { Storage.AppLogger.Warn("[AppUpdateService] Could not refresh installer registration", ex); }
@@ -64,7 +78,7 @@ internal static class ManagedInstallation
             RemoveInstalledPayloadFiles(location.AppContentDir);
             foreach (var package in location.GetLocalPackages())
                 TryDeleteFile(Path.Combine(location.PackagesDir!, package.FileName));
-            using var entries = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall", writable: true);
+            using var entries = Registry.CurrentUser.OpenSubKey(UninstallRegistryPath, writable: true);
             if (entries == null) return;
             using var duplicate = entries.OpenSubKey(AppUpdateService.PackageId);
             bool ownsEntry = MatchesInstallation(duplicate, location.RootAppDir);

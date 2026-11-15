@@ -191,7 +191,7 @@ public partial class AppUpdateService
     public bool ApplyDownloadedUpdate(UpdateInfo info, string path)
     {
         if (!info.IsPackageUpdate)
-            return ApplyUpdate(path, info.VerifiedSha256, info.NewVersion);
+            return ApplyInstallerUpdate(path, info.VerifiedSha256, info.NewVersion, info);
         if (Interlocked.CompareExchange(ref _applying, 1, 0) != 0) return false;
         LastApplyError = null;
         bool scheduled = false;

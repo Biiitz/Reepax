@@ -198,5 +198,22 @@ jobs:
             $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($assets[0].digest -ne "sha256:$hash") { throw 'Uploaded asset digest differs.' }
           }
-          gh release edit $env:RELEASE_TAG --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $migrationNote = @'
+          ## All-users installations / Systemweite Installationen
+
+          **EN** Windows requires administrator rights to replace an older installation for all users. Per-user installations can update without elevation.
+
+          **DE** Windows verlangt Adminrechte, um eine ältere Installation für alle Benutzer zu ersetzen. Benutzerinstallationen können sich ohne Adminabfrage aktualisieren.
+          '@
+          $body = [string]$release.body
+          if (-not $body.StartsWith($migrationNote, [StringComparison]::Ordinal)) {
+            $body = $migrationNote + "`n`n" + $body
+          }
+          $notesFile = New-TemporaryFile
+          try {
+            [IO.File]::WriteAllText($notesFile.FullName, $body)
+            gh release edit $env:RELEASE_TAG --notes-file $notesFile.FullName --draft=false --latest
+            if ($LASTEXITCODE -ne 0) { throw 'Could not publish the release notes and assets.' }
+          } finally {
+            Remove-Item -LiteralPath $notesFile.FullName
+          }

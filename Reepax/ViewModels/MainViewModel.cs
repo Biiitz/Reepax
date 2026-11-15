@@ -3448,7 +3448,8 @@ public partial class MainViewModel : ObservableObject
             UpdateButtonLabel = string.IsNullOrWhiteSpace(value.NewVersion)
                 ? Loc.Get("Toolbar_UpdateAvailable_DefaultButton")
                 : string.Format(Loc.Get("Toolbar_UpdateAvailable_Button"), value.NewVersion);
-            UpdateTooltip = Loc.Get("Toolbar_UpdateAvailable_ToolTip");
+            UpdateTooltip = Loc.Get(value.RequiresPerUserMigration
+                ? "Toolbar_UpdateMigrationRequired_ToolTip" : "Toolbar_UpdateAvailable_ToolTip");
         }
         else
         {
@@ -3475,6 +3476,7 @@ public partial class MainViewModel : ObservableObject
             UpdateCheckStatus.Checking => "Toolbar_UpdateChecking_ToolTip",
             UpdateCheckStatus.Available => "Toolbar_UpdateAvailable_ToolTip",
             UpdateCheckStatus.Incomplete => "Toolbar_UpdateIncomplete_ToolTip",
+            UpdateCheckStatus.MigrationRequired => "Toolbar_UpdateMigrationRequired_ToolTip",
             UpdateCheckStatus.UpToDate => "Toolbar_UpdateUpToDate_ToolTip",
             _ => "Toolbar_UpdateCheckFailed_ToolTip"
         });

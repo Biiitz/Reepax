@@ -44,7 +44,11 @@ public sealed class VelopackUpdateTests : IDisposable
                 Content = new ByteArrayContent(bytes ?? Array.Empty<byte>()), RequestMessage = request
             };
         }));
-        _service = new AppUpdateService(_client, _client, _locator) { ShutdownAfterPackageUpdate = () => _shutdowns++ };
+        _service = new AppUpdateService(_client, _client, _locator)
+        {
+            HasMachineInstallerRegistration = () => true,
+            ShutdownAfterPackageUpdate = () => _shutdowns++
+        };
         PublishPackage();
     }
 

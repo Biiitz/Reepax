@@ -8,7 +8,7 @@ using Reepax.Services.Storage;
 
 namespace Reepax.Services.Update;
 
-public enum UpdateCheckStatus { Checking, Failed, UpToDate, Available, Incomplete }
+public enum UpdateCheckStatus { Checking, Failed, UpToDate, Available, Incomplete, MigrationRequired }
 
 public partial class AppUpdateService
 {
@@ -79,9 +79,11 @@ public partial class AppUpdateService
             throw new InvalidOperationException("An update download is already running.");
         try
         {
-            return updateInfo.IsPackageUpdate
-                ? await DownloadPackageUpdateAsync(updateInfo, progress, cancellationToken)
-                : await DownloadAssetAsync(updateInfo, progress, cancellationToken);
+            if (updateInfo.IsPackageUpdate)
+                return await DownloadPackageUpdateAsync(updateInfo, progress, cancellationToken);
+            if (CheckInstallerMigration(updateInfo))
+                throw new InvalidOperationException(Localization.Loc.Get("UpdateDialog_Status_MigrationRequired"));
+            return await DownloadAssetAsync(updateInfo, progress, cancellationToken);
         }
         finally { DownloadGate.Release(); }
     }

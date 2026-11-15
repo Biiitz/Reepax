@@ -92,8 +92,8 @@ german.UpdateStartFailed=Die aktualisierte Anwendung konnte nicht gestartet werd
 english.UpdateStartFailed=The updated application could not be started.
 german.UpdateStartTimeout=Die aktualisierte Anwendung hat den Start nicht bestätigt.
 english.UpdateStartTimeout=The updated application did not confirm startup.
-german.MachineInstallationFound=Reepax ist für alle Benutzer installiert. Deinstalliere diese Version zuerst und behalte dabei deine Benutzerdaten. Starte danach dieses Setup erneut. Die neue Installation gilt nur für dein Benutzerkonto.
-english.MachineInstallationFound=Reepax is installed for all users. Uninstall that version first and choose to keep your user data. Then run this setup again to install Reepax for your account.
+german.MachineInstallationFound=Eine ältere Reepax-Version ist für alle Windows-Benutzer installiert. Windows verlangt Adminrechte, um sie zu ersetzen. Dieses Setup ist für Benutzerinstallationen vorgesehen.
+english.MachineInstallationFound=An older Reepax version is installed for all Windows users. Windows requires administrator rights to replace it. This setup is intended for per-user installations.
 
 [Code]
 const
@@ -107,7 +107,7 @@ begin
   Result := not (RegKeyExists(HKLM64, UninstallKey) or RegKeyExists(HKLM32, UninstallKey));
   if not Result then
   begin
-    Log('An existing all-users installation must be uninstalled first.');
+    Log('An existing all-users installation prevents per-user setup.');
     SuppressibleMsgBox(CustomMessage('MachineInstallationFound'), mbError, MB_OK, IDOK);
   end;
 end;

@@ -39,6 +39,9 @@ public sealed class UpdateReliabilityTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => send(request, token);
     }
 
+    private static AppUpdateService CreateInstallerService(HttpClient? client = null) =>
+        new(client, client) { HasMachineInstallerRegistration = () => false };
+
     [Fact]
     public void CurrentVersion_ComesFromBuiltAssembly()
     {
@@ -62,7 +65,7 @@ public sealed class UpdateReliabilityTests : IDisposable
         string release = JsonSerializer.Serialize(new { tag_name = "v26.10.5", assets });
         using var client = new HttpClient(new Handler((_, _) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(release) })));
-        var service = new AppUpdateService(client, client);
+        var service = CreateInstallerService(client);
 
         var info = await service.CheckForUpdatesAsync("26.10.4");
 
@@ -73,6 +76,70 @@ public sealed class UpdateReliabilityTests : IDisposable
         Assert.Equal(includeInstaller ? 10 : 0, info.TargetDownloadSize);
         Assert.Equal(includeInstaller ? UpdateCheckStatus.Available : UpdateCheckStatus.Incomplete, service.LastCheckStatus);
         Assert.Equal(includeInstaller ? 1 : 0, info.ExpectedSha256Hashes.Count);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InstallerUpdate_ReportsMigrationAndStopsBeforeRequestingAssetsOrLaunchingHelper(bool registeredAtCheck)
+    {
+        string release = JsonSerializer.Serialize(new
+        {
+            tag_name = "v26.10.5",
+            assets = new[]
+            {
+                new { name = "setup.exe", browser_download_url = AssetUrl("setup.exe"), size = 10 },
+                new { name = "SHA256SUMS.txt", browser_download_url = AssetUrl("SHA256SUMS.txt"), size = 100 }
+            }
+        });
+        using var releaseClient = new HttpClient(new Handler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(release) })));
+        int assetRequests = 0;
+        using var assetClient = new HttpClient(new Handler((_, _) =>
+        {
+            assetRequests++;
+            throw new InvalidOperationException("No update asset should be requested.");
+        }));
+        bool machineRegistered = registeredAtCheck;
+        var service = new AppUpdateService(releaseClient, assetClient)
+        {
+            HasMachineInstallerRegistration = () => machineRegistered
+        };
+
+        var info = await service.CheckForUpdatesAsync("26.10.4");
+
+        Assert.NotNull(info);
+        Assert.Equal(registeredAtCheck, info.RequiresPerUserMigration);
+        Assert.Equal(registeredAtCheck ? UpdateCheckStatus.MigrationRequired : UpdateCheckStatus.Available, service.LastCheckStatus);
+        Assert.Equal(AssetUrl("setup.exe"), info.TargetDownloadUrl);
+
+        machineRegistered = true;
+        string instructions = Reepax.Services.Localization.Loc.Get("UpdateDialog_Status_MigrationRequired");
+        var blocked = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DownloadUpdateAsync(info));
+        Assert.Equal(instructions, blocked.Message);
+        Assert.True(info.RequiresPerUserMigration);
+        Assert.Equal(0, assetRequests);
+
+        var previous = AppUpdateService.ApplyUpdateActionOverride;
+        int launches = 0;
+        AppUpdateService.ApplyUpdateActionOverride = _ => launches++;
+        try
+        {
+            string installer = Path.Combine(_root, "setup.exe");
+            info.RequiresPerUserMigration = false;
+            Assert.False(service.ApplyDownloadedUpdate(info, installer));
+            Assert.True(info.RequiresPerUserMigration);
+            Assert.Equal(instructions, service.LastApplyError);
+            Assert.Equal(0, launches);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(_root));
+
+            machineRegistered = false;
+            Assert.True(service.ApplyDownloadedUpdate(info, installer));
+            Assert.False(info.RequiresPerUserMigration);
+            Assert.Null(service.LastApplyError);
+            Assert.Equal(1, launches);
+        }
+        finally { AppUpdateService.ApplyUpdateActionOverride = previous; }
     }
 
     [Theory]
@@ -101,7 +168,7 @@ public sealed class UpdateReliabilityTests : IDisposable
         }));
         var info = Info([1, 2], false);
         info.VerifiedSha256 = "stale";
-        await Assert.ThrowsAsync<InvalidDataException>(() => new AppUpdateService(client, client).DownloadUpdateAsync(info));
+        await Assert.ThrowsAsync<InvalidDataException>(() => CreateInstallerService(client).DownloadUpdateAsync(info));
         Assert.Equal(0, requests);
         Assert.Null(info.VerifiedSha256);
     }
@@ -113,7 +180,7 @@ public sealed class UpdateReliabilityTests : IDisposable
     {
         var info = Info([1, 2]);
         info.SetupAssetUrl = url;
-        await Assert.ThrowsAsync<InvalidDataException>(() => new AppUpdateService().DownloadUpdateAsync(info));
+        await Assert.ThrowsAsync<InvalidDataException>(() => CreateInstallerService().DownloadUpdateAsync(info));
     }
 
     [Fact]
@@ -127,7 +194,7 @@ public sealed class UpdateReliabilityTests : IDisposable
             response.Headers.Location = new Uri("https://unrelated.example.test/payload");
             return Task.FromResult(response);
         }));
-        await Assert.ThrowsAsync<InvalidDataException>(() => new AppUpdateService(client, client).DownloadUpdateAsync(Info([1])));
+        await Assert.ThrowsAsync<InvalidDataException>(() => CreateInstallerService(client).DownloadUpdateAsync(Info([1])));
         Assert.Equal(1, requests);
     }
 
@@ -141,7 +208,7 @@ public sealed class UpdateReliabilityTests : IDisposable
             await Task.Delay(Timeout.Infinite, token);
             throw new InvalidOperationException();
         }));
-        var service = new AppUpdateService(client, client);
+        var service = CreateInstallerService(client);
         using var cancel = new CancellationTokenSource();
         var info = Info([1]);
         Task<string> first = service.DownloadUpdateAsync(info, cancellationToken: cancel.Token);
@@ -158,7 +225,7 @@ public sealed class UpdateReliabilityTests : IDisposable
         using var client = new HttpClient(new Handler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound))));
         var info = Info([1], false);
         info.Sha256ChecksumAssetUrl = AssetUrl("SHA256SUMS.txt");
-        await Assert.ThrowsAsync<HttpRequestException>(() => new AppUpdateService(client, client).DownloadUpdateAsync(info));
+        await Assert.ThrowsAsync<HttpRequestException>(() => CreateInstallerService(client).DownloadUpdateAsync(info));
         Assert.Null(info.VerifiedSha256);
     }
 
@@ -168,7 +235,7 @@ public sealed class UpdateReliabilityTests : IDisposable
         using var client = new HttpClient(new Handler((request, _) => Task.FromResult(
             request.RequestUri!.AbsolutePath.EndsWith("latest") ? new HttpResponseMessage(HttpStatusCode.NotFound) :
             new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[{\"draft\":true,\"tag_name\":\"v26.12.1\"},{\"prerelease\":true,\"tag_name\":\"v26.11.1\"},{\"tag_name\":\"v26.10.5\",\"assets\":[]}]") })));
-        var service = new AppUpdateService(client, client);
+        var service = CreateInstallerService(client);
         var info = await service.CheckForUpdatesAsync("26.10.4");
         Assert.Equal("26.10.5", info!.NewVersion);
         Assert.Equal(UpdateCheckStatus.Incomplete, service.LastCheckStatus);
@@ -178,12 +245,12 @@ public sealed class UpdateReliabilityTests : IDisposable
     public async Task Check_NetworkFailureDiffersFromUpToDate()
     {
         using var failed = new HttpClient(new Handler((_, _) => throw new HttpRequestException()));
-        var service = new AppUpdateService(failed, failed);
+        var service = CreateInstallerService(failed);
         Assert.Null(await service.CheckForUpdatesAsync());
         Assert.Equal(UpdateCheckStatus.Failed, service.LastCheckStatus);
         using var current = new HttpClient(new Handler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             { Content = new StringContent("{\"tag_name\":\"v26.10.4\"}") })));
-        service = new AppUpdateService(current, current);
+        service = CreateInstallerService(current);
         Assert.Null(await service.CheckForUpdatesAsync("26.10.4"));
         Assert.Equal(UpdateCheckStatus.UpToDate, service.LastCheckStatus);
     }
@@ -539,7 +606,7 @@ public sealed class UpdateReliabilityTests : IDisposable
             else { payloadRequests++; content = new ByteArrayContent(bytes); }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }));
-        var service = new AppUpdateService(client, client);
+        var service = CreateInstallerService(client);
         var info = await service.CheckForUpdatesAsync("26.10.4");
         Assert.NotNull(info);
         if (mismatch)

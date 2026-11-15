@@ -11,9 +11,13 @@ namespace Reepax.Tests;
 public partial class DialogUiTests
 {
     [Theory]
-    [InlineData("en", ThemeCatalog.DefaultId, "Preparing update: 50%")]
-    [InlineData("de", ThemeCatalog.MacOSId, "Update wird vorbereitet: 50%")]
-    public void VelopackUpdateDialog_OffersInstallForVerifiedPackageMetadata(string language, string theme, string progress)
+    [InlineData("en", ThemeCatalog.DefaultId, "Preparing update: 50%", true, false)]
+    [InlineData("de", ThemeCatalog.MacOSId, "Update wird vorbereitet: 50%", true, false)]
+    [InlineData("en", ThemeCatalog.DefaultId, "Preparing update: 50%", false, false)]
+    [InlineData("en", ThemeCatalog.DefaultId, "Preparing update: 50%", false, true)]
+    [InlineData("de", ThemeCatalog.MacOSId, "Update wird vorbereitet: 50%", false, true)]
+    public void UpdateDialog_OffersInstallOrMigrationInstructions(string language, string theme, string progress,
+        bool packageUpdate, bool migrationRequired)
     {
         RunInSta(() =>
         {
@@ -34,11 +38,25 @@ public partial class DialogUiTests
                 dialog = new UpdateDialog(new UpdateInfo
                 {
                     NewVersion = "26.11.2", Changelog = "Example release notes", SetupAssetSize = 1,
-                    SetupAssetUrl = "https://example.test/package.nupkg", PackageUpdate = new Velopack.UpdateInfo(release, false)
+                    SetupAssetUrl = packageUpdate ? "https://example.test/package.nupkg" : "https://example.test/setup.exe",
+                    Sha256ChecksumAssetUrl = packageUpdate ? null : "https://example.test/SHA256SUMS.txt",
+                    PackageUpdate = packageUpdate ? new Velopack.UpdateInfo(release, false) : null,
+                    RequiresPerUserMigration = migrationRequired
                 });
-                Assert.Equal(Visibility.Visible, ((Button)dialog.FindName("InstallUpdateButton")).Visibility);
+                Assert.Equal(migrationRequired ? Visibility.Collapsed : Visibility.Visible,
+                    ((Button)dialog.FindName("InstallUpdateButton")).Visibility);
                 Assert.Equal(Visibility.Collapsed, ((Button)dialog.FindName("GetUpdateButton")).Visibility);
                 Assert.Equal(progress, Loc.Format("UpdateDialog_Status_PackageProgress", 50));
+                if (migrationRequired)
+                {
+                    var instructions = (TextBlock)dialog.FindName("UpdateStatusTextBlock");
+                    Assert.Equal(TextWrapping.Wrap, instructions.TextWrapping);
+                    Assert.Equal(Loc.Get("UpdateDialog_Status_MigrationRequired"), instructions.Text);
+                    Assert.Contains(language == "de" ? "Adminrechte" : "administrator rights", instructions.Text);
+                    Assert.Equal(Visibility.Visible, ((Button)dialog.FindName("ViewOnGitHubButton")).Visibility);
+                    Assert.Equal(Visibility.Visible, ((Grid)dialog.FindName("UpdateProgressPanel")).Visibility);
+                    Assert.Equal(Visibility.Collapsed, ((ProgressBar)dialog.FindName("UpdateProgressBar")).Visibility);
+                }
             }
             finally
             {

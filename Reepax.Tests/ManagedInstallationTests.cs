@@ -6,6 +6,23 @@ namespace Reepax.Tests;
 
 public sealed class ManagedInstallationTests
 {
+    [Fact]
+    public void RegistrationCheck_UsesTheExactInnoUninstallKey()
+    {
+        string keyName = @"Software\Reepax_RegistrationTest_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            using var root = Registry.CurrentUser.CreateSubKey(keyName);
+            using var entries = root.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall");
+            using var unrelated = entries.CreateSubKey("Reepax.Desktop");
+            Assert.False(ManagedInstallation.HasInstallerRegistration(root));
+
+            using var installer = entries.CreateSubKey("{B729352A-3D28-444F-A1BC-535A0F507F62}}_is1");
+            Assert.True(ManagedInstallation.HasInstallerRegistration(root));
+        }
+        finally { Registry.CurrentUser.DeleteSubKeyTree(keyName, throwOnMissingSubKey: false); }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
