@@ -127,7 +127,7 @@ public static class HttpUserAgentService
     /// and full standard browser headers.
     /// </summary>
     public static HttpClient CreateHttpClient(TimeSpan? timeout = null, HttpContentType contentType = HttpContentType.Html,
-        bool automaticDecompression = true, bool scopedCookies = false)
+        bool automaticDecompression = true, bool scopedCookies = false, int? maxResponseDrainSize = null)
     {
         var handler = new SocketsHttpHandler
         {
@@ -142,6 +142,9 @@ public static class HttpUserAgentService
             EnableMultipleHttp2Connections = true,
             InitialHttp2StreamWindowSize = 16 * 1024 * 1024 // 16 MB HTTP/2 flow window
         };
+
+        if (maxResponseDrainSize.HasValue)
+            handler.MaxResponseDrainSize = maxResponseDrainSize.Value;
 
         var client = new HttpClient(scopedCookies ? new CookieRedirectHandler(handler) : handler)
         {

@@ -159,6 +159,31 @@ public class LinkMetadataResolverTests
     }
 
     [Fact]
+    public async Task ResolveItemMetadataAsync_RecognizesAFileEvenWhenTheServerOmitsItsLength()
+    {
+        var item = new DownloadItem { OriginalUrl = "https://files.example.invalid/example.pdf", FileName = "example.pdf" };
+        bool requestedBody = false;
+        using var client = new HttpClient(new MockHttpHandler(request =>
+        {
+            if (request.Method == HttpMethod.Head)
+                return new HttpResponseMessage(HttpStatusCode.MethodNotAllowed);
+
+            if (request.Headers.Range == null)
+                requestedBody = true;
+
+            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+            return response;
+        }));
+
+        var resolver = new LinkMetadataResolverService(client);
+        Assert.True(await resolver.ResolveItemMetadataAsync(item));
+        Assert.Equal(item.OriginalUrl, item.DirectDownloadUrl);
+        Assert.Equal(0, item.TotalBytes);
+        Assert.False(requestedBody);
+    }
+
+    [Fact]
     public async Task ResolvePackageMetadataAsync_ResolvesAllItemsAndRecalculatesPackageAggregates()
     {
         var mockHandler = new MockHttpHandler(req =>

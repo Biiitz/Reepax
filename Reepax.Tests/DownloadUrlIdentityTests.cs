@@ -116,7 +116,8 @@ public sealed class DownloadUrlIdentityTests
     public async Task WebPageExtraction_PreservesDistinctLocalLinks(bool anchors)
     {
         var files = new Dictionary<string, byte[]>();
-        await using var source = new PipelineHttpSource(files);
+        await using var source = new PipelineHttpSource(files,
+            contentType: name => name == "page" ? "text/html" : "application/octet-stream");
         string[] urls = new[] { source.Url("Payload.bin"), source.Url("payload.bin"),
             source.Url("payload.bin?token=Ab1"), source.Url("payload.bin?token=aB1") };
         files["page"] = Encoding.UTF8.GetBytes("<title>Example package</title>" + string.Join("\n",
@@ -127,9 +128,97 @@ public sealed class DownloadUrlIdentityTests
         {
             var result = await WebPageLinkExtractor.ExtractAsync(source.Url("page"));
             Assert.Equal(urls, result.Links.Select(link => link.Url));
-            Assert.Equal(1, source.Requests["page"]);
+            Assert.Equal(2, source.Requests["page"]);
         }
         finally { HosterInfo.KnownHosters.Remove(localHost); }
+    }
+
+    [Theory]
+    [InlineData("sample.pdf", "application/pdf", "sample.pdf", true)]
+    [InlineData("file.mp4?token=Ab1", "video/mp4", "file.mp4", true)]
+    [InlineData("get?token=Ab1", "application/pdf", "downloaded-file.pdf", true)]
+    [InlineData("get?token=Ab1", "video/mp4", "downloaded-file.mp4", false)]
+    public async Task AddLinksFromText_SingleFileLinksDoNotReadThePayloadBeforeDownloading(
+        string route, string mediaType, string fileName, bool supportsHead)
+    {
+        using var directory = new IsolatedDownloads();
+        byte[] payload = [7, 19, 64, 125, 208];
+        byte[] digest = MD5.HashData(payload);
+        int fullBodies = 0;
+        int bodyRequests = 0;
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { [route] = payload },
+            writeBody: async (_, _, stream, bytes, token) =>
+            {
+                if (Interlocked.Increment(ref bodyRequests) == 1 && !supportsHead)
+                {
+                    // A GET used for classification must complete with the rest of the body withheld.
+                    await stream.WriteAsync(bytes[..1], token);
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return;
+                }
+                if (bytes.Length == payload.Length) Interlocked.Increment(ref fullBodies);
+                await stream.WriteAsync(bytes, token);
+            },
+            responseHeaders: new Dictionary<string, string> { ["Content-MD5"] = Convert.ToBase64String(digest) },
+            contentType: _ => mediaType, supportsHead: supportsHead);
+        using var client = new HttpClient();
+        var model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+
+        string url = source.Url(route);
+        model.AddLinksFromText(url, "Example package", customDownloadDir: directory.Root);
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            while (model.IsBusy)
+                await Task.Delay(20, timeout.Token);
+
+        var package = Assert.Single(model.Packages);
+        var item = Assert.Single(package.Items);
+        await model.ResolvePackageSizesAsync([package]).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(0, Volatile.Read(ref fullBodies));
+        Assert.Equal(url, item.OriginalUrl);
+        Assert.Equal(url, item.DirectDownloadUrl);
+        Assert.Equal(Path.Combine(directory.Root, "Example package", fileName), item.SaveFilePath);
+        Assert.Equal(payload.Length, item.TotalBytes);
+        Assert.Equal(Convert.ToHexString(digest), item.ExpectedChecksum, ignoreCase: true);
+        Assert.Equal(supportsHead ? 0 : 1, Volatile.Read(ref bodyRequests));
+
+        var engine = new DownloadEngine(client);
+        await engine.StartDownloadAsync(item, item.DirectDownloadUrl!, null, null, null, null)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Equal(payload, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(1, Volatile.Read(ref fullBodies));
+    }
+
+    [Fact]
+    public async Task AddLinksFromText_HtmlPageStillCreatesAPackageOfHostedLinks()
+    {
+        using var directory = new IsolatedDownloads();
+        var files = new Dictionary<string, byte[]> { ["sample.bin"] = [3, 29, 101] };
+        await using var source = new PipelineHttpSource(files,
+            contentType: name => name == "page" ? "text/html; charset=utf-8" : "application/octet-stream");
+        string url = source.Url("sample.bin");
+        files["page"] = Encoding.UTF8.GetBytes($"<title>Fixture release</title><a href=\"{url}\">sample.bin</a>");
+        var hoster = new HosterInfo
+        {
+            Name = "fixture", DisplayName = "Fixture", DomainPattern = "^" + System.Text.RegularExpressions.Regex.Escape(url) + "$"
+        };
+        HosterInfo.KnownHosters.Add(hoster);
+        try
+        {
+            using var client = new HttpClient();
+            var model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+            model.AddLinksFromText(source.Url("page"), customDownloadDir: directory.Root);
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                while (model.IsBusy)
+                    await Task.Delay(20, timeout.Token);
+
+            var package = Assert.Single(model.Packages);
+            await model.ResolvePackageSizesAsync([package]).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal("Fixture release", package.Name);
+            Assert.Equal(url, Assert.Single(package.Items).OriginalUrl);
+            Assert.Equal(2, source.Requests["page"]);
+        }
+        finally { HosterInfo.KnownHosters.Remove(hoster); }
     }
 
     [Fact]

@@ -2663,7 +2663,8 @@ public partial class MainViewModel : ObservableObject
         var webPageUrl = WebPageLinkExtractor.FindExtractablePageUrl(rawText);
         if (webPageUrl != null)
         {
-            _ = AddWebPagePackageAsync(webPageUrl, autoExtractArchives, lowResourceExtraction, customDownloadDir, deleteArchiveAfterExtraction, moveArchiveToRecycleBin);
+            _ = AddWebPagePackageAsync(webPageUrl, customPackageName, autoExtractArchives, lowResourceExtraction,
+                customDownloadDir, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks);
             return;
         }
 
@@ -2678,6 +2679,23 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        var packages = AddDirectLinkPackages(extracted, customPackageName, autoExtractArchives, lowResourceExtraction,
+            customDownloadDir, deleteArchiveAfterExtraction, moveArchiveToRecycleBin, autoResolveHostLinks);
+        if (packages.Count > 0)
+            _ = ResolvePackageSizesAsync(packages);
+    }
+
+    private List<DownloadPackage> AddDirectLinkPackages(
+        List<ExtractedLink> extracted,
+        string? customPackageName,
+        bool autoExtractArchives,
+        bool? lowResourceExtraction,
+        string? customDownloadDir,
+        bool deleteArchiveAfterExtraction,
+        bool moveArchiveToRecycleBin,
+        bool autoResolveHostLinks,
+        WebPageExtractionResult? fileProbe = null)
+    {
         var baseDownloadDir = !string.IsNullOrWhiteSpace(customDownloadDir) && Directory.Exists(customDownloadDir)
             ? customDownloadDir
             : _settingsService.Settings.DefaultDownloadDirectory;
@@ -2693,23 +2711,29 @@ public partial class MainViewModel : ObservableObject
             autoResolveHostLinks);
 
         if (!TryAssignNewDownloadTargets(newPackages.SelectMany(package => package.ItemsSnapshot)))
-            return;
+            return [];
+
+        if (fileProbe != null)
+        {
+            var item = newPackages.Single().Items.Single();
+            item.TotalBytes = fileProbe.TotalSizeBytes.GetValueOrDefault();
+            item.ExpectedChecksum = fileProbe.DirectDownloadChecksum;
+            item.IsMetadataResolved = true;
+            newPackages[0].RecalculateAggregates();
+        }
 
         foreach (var package in newPackages)
         {
             package.EnsureNextTaskSteps();
-
-            bool isUpdate = UpdateDetector.IsUpdate(package.Name) ||
-                            package.Name.EndsWith("- Updates", StringComparison.OrdinalIgnoreCase) ||
-                            extracted.Any(l => UpdateDetector.IsUpdate(l.RawFileName) || UpdateDetector.IsUpdate(l.ContextTitle) || UpdateDetector.IsUpdate(l.Url));
-
             package.AutoResolveHostLinks = autoResolveHostLinks;
             Packages.Add(package);
         }
 
         RecalculateGlobalStats();
-        StatusSummary = Loc.Format("Status_LinksAddedResolvingSizes", extracted.Count);
-        _ = ResolvePackageSizesAsync(newPackages);
+        StatusSummary = fileProbe == null
+            ? Loc.Format("Status_LinksAddedResolvingSizes", extracted.Count)
+            : Loc.Format("Status_PackageUpdated", newPackages[0].Name);
+        return newPackages;
     }
 
     /// <summary>
@@ -3046,11 +3070,13 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task AddWebPagePackageAsync(
         string pageUrl,
-        bool autoExtractArchives = false,
-        bool? lowResourceExtraction = null,
-        string? customDownloadDir = null,
-        bool deleteArchiveAfterExtraction = false,
-        bool moveArchiveToRecycleBin = false)
+        string? customPackageName,
+        bool autoExtractArchives,
+        bool? lowResourceExtraction,
+        string? customDownloadDir,
+        bool deleteArchiveAfterExtraction,
+        bool moveArchiveToRecycleBin,
+        bool autoResolveHostLinks)
     {
         if (IsBusy)
         {
@@ -3066,37 +3092,44 @@ public partial class MainViewModel : ObservableObject
             var progress = new Progress<string>(msg => BusyMessage = msg);
             var result = await WebPageLinkExtractor.ExtractAsync(pageUrl, progress);
 
-            if (result.Links.Count == 0)
+            if (result.DirectDownload == null && result.Links.Count == 0)
             {
                 StatusSummary = Loc.Get("Status_NoValidLinksFound");
                 return;
             }
 
             using var pathLease = await PackagePathOperationGate.Instance.EnterAsync();
-            var baseDownloadDir = !string.IsNullOrWhiteSpace(customDownloadDir) && Directory.Exists(customDownloadDir)
-                ? customDownloadDir
-                : _settingsService.Settings.DefaultDownloadDirectory;
-
-            var newPackages = PackageGrouper.GroupLinksIntoPackages(
-                result.Links, 
-                baseDownloadDir, 
-                result.PageTitle, 
-                autoExtractArchives, 
-                lowResourceExtraction,
-                deleteArchiveAfterExtraction,
-                moveArchiveToRecycleBin);
-
-            if (!TryAssignNewDownloadTargets(newPackages.SelectMany(package => package.ItemsSnapshot)))
-                return;
-
-            foreach (var pkg in newPackages)
+            if (result.DirectDownload is { } direct)
             {
-                Packages.Add(pkg);
+                packagesToAnalyze = AddDirectLinkPackages([direct], customPackageName, autoExtractArchives,
+                    lowResourceExtraction, customDownloadDir, deleteArchiveAfterExtraction, moveArchiveToRecycleBin,
+                    autoResolveHostLinks, result);
             }
+            else
+            {
+                var baseDownloadDir = !string.IsNullOrWhiteSpace(customDownloadDir) && Directory.Exists(customDownloadDir)
+                    ? customDownloadDir
+                    : _settingsService.Settings.DefaultDownloadDirectory;
 
-            packagesToAnalyze = newPackages;
-            RecalculateGlobalStats();
-            StatusSummary = Loc.Format("Status_PackageUpdated", result.PageTitle);
+                var newPackages = PackageGrouper.GroupLinksIntoPackages(
+                    result.Links,
+                    baseDownloadDir,
+                    result.PageTitle,
+                    autoExtractArchives,
+                    lowResourceExtraction,
+                    deleteArchiveAfterExtraction,
+                    moveArchiveToRecycleBin);
+
+                if (!TryAssignNewDownloadTargets(newPackages.SelectMany(package => package.ItemsSnapshot)))
+                    return;
+
+                foreach (var pkg in newPackages)
+                    Packages.Add(pkg);
+
+                packagesToAnalyze = newPackages;
+                RecalculateGlobalStats();
+                StatusSummary = Loc.Format("Status_PackageUpdated", result.PageTitle);
+            }
         }
         catch (Exception ex)
         {

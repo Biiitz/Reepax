@@ -69,7 +69,7 @@ public partial class LinkMetadataResolverService
     public LinkMetadataResolverService(HttpClient? httpClient = null)
     {
         _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny,
-            scopedCookies: true);
+            scopedCookies: true, maxResponseDrainSize: 0);
     }
 
     private static void ApplyRequestHeaders(HttpRequestMessage request, DownloadItem? item = null)
@@ -181,10 +181,17 @@ public partial class LinkMetadataResolverService
                 var mediaType = rangeResponse.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
                 bool isHtml = mediaType != null && (mediaType.Contains("html") || mediaType.Contains("text"));
 
-                if (!isHtml && await ApplyResponseHeadersAsync(item, rangeResponse, cancellationToken))
+                if (!isHtml)
                 {
-                    MarkAsDirectDownloadIfFileResponse(item, targetUrl, rangeResponse);
-                    return true;
+                    bool hasMetadata = await ApplyResponseHeadersAsync(item, rangeResponse, cancellationToken);
+                    bool namedFile = mediaType != null &&
+                        LinkExtractor.HasRecognizedArchiveOrMediaExtension(Uri.UnescapeDataString(uri.AbsolutePath));
+                    if (hasMetadata || namedFile)
+                    {
+                        MarkAsDirectDownloadIfFileResponse(item, targetUrl, rangeResponse);
+                        if (hasMetadata || !string.IsNullOrWhiteSpace(item.DirectDownloadUrl))
+                            return true;
+                    }
                 }
             }
 

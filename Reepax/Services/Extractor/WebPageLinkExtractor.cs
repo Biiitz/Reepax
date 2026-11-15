@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,6 +19,8 @@ public class WebPageExtractionResult
     public string? TotalSizeText { get; set; }
     public long? TotalSizeBytes { get; set; }
     public List<ExtractedLink> Links { get; } = new();
+    internal ExtractedLink? DirectDownload { get; init; }
+    internal string? DirectDownloadChecksum { get; init; }
 }
 
 /// <summary>
@@ -26,7 +29,12 @@ public class WebPageExtractionResult
 /// </summary>
 public static class WebPageLinkExtractor
 {
-    private static HttpClient _httpClient = HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(25), HttpContentType.Html);
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(25);
+    private static HttpClient _httpClient = CreateClient();
+
+    // When a response turns out to be a file, stop after the headers.
+    private static HttpClient CreateClient() =>
+        HttpUserAgentService.CreateHttpClient(RequestTimeout, HttpContentType.Html, maxResponseDrainSize: 0);
 
     private static readonly Regex PageUrlRegex = new(
         @"https?://[^\s""'<>]+",
@@ -57,7 +65,7 @@ public static class WebPageLinkExtractor
         // atomically exchange the HttpClient instance so in-flight requests are not corrupted.
         HttpUserAgentService.UserAgentChanged += _ =>
         {
-            Interlocked.Exchange(ref _httpClient, HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(25), HttpContentType.Html));
+            Interlocked.Exchange(ref _httpClient, CreateClient());
         };
     }
 
@@ -73,21 +81,15 @@ public static class WebPageLinkExtractor
         if (matches.Count != 1)
             return null;
 
-        var candidate = matches[0].Value.TrimEnd('.', ',', ';', '!', ')', ']');
+        var candidate = LinkExtractor.CleanUrl(matches[0].Value.TrimEnd('.', ',', ';', '!', ')', ']'));
         if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
         {
             // If it's a known download hoster, treat as download link, not a webpage to crawl
             if (HosterInfo.IsKnownHoster(candidate) || FastHostResolver.IsFastHostUrl(candidate))
                 return null;
 
-            var path = uri.AbsolutePath.ToLowerInvariant();
-            // Ignore direct archive/media/binary downloads
-            if (path.EndsWith(".rar") || path.EndsWith(".zip") || path.EndsWith(".7z") ||
-                path.EndsWith(".iso") || path.EndsWith(".tar") || path.EndsWith(".gz") ||
-                path.EndsWith(".bin") || path.EndsWith(".exe"))
-            {
+            if (LinkExtractor.HasRecognizedArchiveOrMediaExtension(Uri.UnescapeDataString(uri.AbsolutePath)))
                 return null;
-            }
 
             return candidate;
         }
@@ -110,7 +112,9 @@ public static class WebPageLinkExtractor
         // Anti-rate-limiting jitter delay before request
         await HttpJitterHelper.DelayJitterAsync(150, 400, cancellationToken);
 
-        var html = await _httpClient.GetStringAsync(pageUrl, cancellationToken);
+        var client = Volatile.Read(ref _httpClient);
+        var (html, file) = await ReadPageOrFileAsync(client, pageUrl, cancellationToken);
+        if (file != null) return file;
 
         var result = new WebPageExtractionResult { PageTitle = ExtractPageTitle(html) };
 
@@ -187,7 +191,7 @@ public static class WebPageLinkExtractor
                 try
                 {
                     progress?.Report($"Paste-Seite wird geladen: {pasteUrl}…");
-                    var pasteHtml = await _httpClient.GetStringAsync(pasteUrl, cancellationToken);
+                    var pasteHtml = await client.GetStringAsync(pasteUrl, cancellationToken);
                     foreach (Match m in BareUrlRegex.Matches(pasteHtml))
                     {
                         var url = WebUtility.HtmlDecode(m.Value.Trim());
@@ -215,11 +219,76 @@ public static class WebPageLinkExtractor
         if (result.Links.Count > 0)
         {
             progress?.Report($"{result.Links.Count} Links gefunden – Direktdownloads werden aufgelöst…");
-            await FastHostResolver.ResolveLinksInParallelAsync(_httpClient, result.Links, progress, cancellationToken);
+            await FastHostResolver.ResolveLinksInParallelAsync(client, result.Links, progress, cancellationToken);
         }
 
         progress?.Report($"{result.Links.Count} Links gefunden – Paket wird erstellt…");
         return result;
+    }
+
+    private static async Task<(string Html, WebPageExtractionResult? File)> ReadPageOrFileAsync(
+        HttpClient client, string url, CancellationToken cancellationToken)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(RequestTimeout);
+        var token = deadline.Token;
+
+        using var head = new HttpRequestMessage(HttpMethod.Head, url);
+        head.Headers.AcceptEncoding.ParseAdd("identity");
+        try
+        {
+            using var response = await client.SendAsync(head, HttpCompletionOption.ResponseHeadersRead, token);
+            if (response.IsSuccessStatusCode &&
+                ReadFileHeaders(url, response.Content.Headers, assumeFileWithoutContentType: false) is { } file)
+                return (string.Empty, file);
+        }
+        catch (HttpRequestException)
+        {
+            // Some origins reject HEAD at the transport level.
+        }
+
+        using var get = new HttpRequestMessage(HttpMethod.Get, url);
+        using var content = await client.SendAsync(get, HttpCompletionOption.ResponseHeadersRead, token);
+        content.EnsureSuccessStatusCode();
+        if (content.StatusCode == HttpStatusCode.NoContent) return (string.Empty, null);
+        if (ReadFileHeaders(url, content.Content.Headers, assumeFileWithoutContentType: true) is { } download)
+            return (string.Empty, download);
+
+        return (await content.Content.ReadAsStringAsync(token), null);
+    }
+
+    private static WebPageExtractionResult? ReadFileHeaders(
+        string url, HttpContentHeaders headers, bool assumeFileWithoutContentType)
+    {
+        var disposition = headers.ContentDisposition;
+        var type = headers.ContentType?.MediaType?.ToLowerInvariant();
+        bool attachment = string.Equals(disposition?.DispositionType, "attachment", StringComparison.OrdinalIgnoreCase);
+        if (!attachment && (type is "text/html" or "application/xhtml+xml" || type == null && !assumeFileWithoutContentType))
+            return null;
+
+        string? fileName = (disposition?.FileNameStar ?? disposition?.FileName)?.Trim('"').Trim();
+        fileName = string.IsNullOrWhiteSpace(fileName) ? LinkExtractor.ExtractFileNameFromUrl(url) : LinkExtractor.SanitizeFileName(fileName);
+        if (LinkExtractor.IsPureNumericOrHash(fileName))
+        {
+            fileName = "downloaded-file" + (type switch
+            {
+                "application/pdf" => ".pdf",
+                "video/mp4" => ".mp4",
+                "text/plain" => ".txt",
+                _ => ".bin"
+            });
+        }
+
+        return new WebPageExtractionResult
+        {
+            DirectDownload = new ExtractedLink
+            {
+                Url = url, DirectDownloadUrl = url, RawFileName = fileName, Hoster = HosterInfo.DetectHoster(url)
+            },
+            TotalSizeBytes = headers.ContentLength,
+            DirectDownloadChecksum = headers.ContentLength != null && headers.ContentEncoding.Count == 0 && headers.ContentMD5 is { Length: 16 } md5
+                ? Convert.ToHexString(md5) : null
+        };
     }
 
     /// <summary>

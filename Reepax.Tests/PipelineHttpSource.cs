@@ -16,6 +16,7 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     private readonly IReadOnlyDictionary<string, string>? _responseHeaders;
     private readonly Func<string, string>? _contentType;
     private readonly Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? _writeBody;
+    private readonly bool _supportsHead;
     private readonly Task _accept;
     private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource ArchiveRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -24,12 +25,14 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
 
     internal PipelineHttpSource(IReadOnlyDictionary<string, byte[]> files,
         Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? writeBody = null,
-        IReadOnlyDictionary<string, string>? responseHeaders = null, Func<string, string>? contentType = null)
+        IReadOnlyDictionary<string, string>? responseHeaders = null, Func<string, string>? contentType = null,
+        bool supportsHead = true)
     {
         _files = files;
         _writeBody = writeBody;
         _responseHeaders = responseHeaders;
         _contentType = contentType;
+        _supportsHead = supportsHead;
         _listener.Start();
         _accept = AcceptAsync();
     }
@@ -74,6 +77,11 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
                 string name = Uri.UnescapeDataString(request[1].TrimStart('/'));
                 if (!_files.TryGetValue(name, out var body)) throw new InvalidDataException("Unexpected local HTTP target.");
                 Requests.AddOrUpdate(name, 1, (_, count) => count + 1);
+                if (request[0] == "HEAD" && !_supportsHead)
+                {
+                    await stream.WriteAsync("HTTP/1.1 405 Method Not Allowed\r\nAllow: GET\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(), _stop.Token);
+                    return;
+                }
                 long first = 0, last = body.Length - 1;
                 if (requestedRange != null)
                 {

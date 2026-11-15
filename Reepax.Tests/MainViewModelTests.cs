@@ -738,26 +738,53 @@ https://rapidgator.net/file/3/Movie.part03.rar
         Assert.NotEqual(DownloadStatus.Completed, pkg.Status);
     }
 
-    [Fact]
-    public void AddLinksToPackage_SkipsDuplicateUrlsAndAvoidsFilenameCollisions()
+    [Theory]
+    [InlineData(".bin", "Sample_1.bin")]
+    [InlineData(".part01.rar", null)]
+    public async Task AddLinksToPackage_SkipsDuplicateUrlsAndAvoidsFilenameCollisions(string suffix, string? alternateName)
     {
-        // Arrange
-        var vm = new MainViewModel();
-        vm.Packages.Clear();
+        using var client = new HttpClient(new TestMockHttpMessageHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([3, 5, 8]) })));
+        var vm = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+        var previous = vm.Packages.ToArray();
+        var queue = QueueManager.Instance;
+        bool wasRunning = queue.IsRunning;
+        var root = Directory.CreateTempSubdirectory("PackageCollision_");
+        string fileName = "Sample" + suffix;
+        string first = "https://files.example.invalid/one/" + fileName;
+        string second = "https://files.example.invalid/two/" + fileName;
+        try
+        {
+            queue.StopQueue();
+            vm.Packages.Clear();
+            vm.AddLinksFromText(first, customDownloadDir: root.FullName);
+            var package = Assert.Single(vm.Packages);
+            await vm.ResolvePackageSizesAsync([package]);
 
-        vm.AddLinksFromText("https://rapidgator.net/file/1/Movie.part01.rar");
-        var pkg = vm.Packages[0];
+            vm.AddLinksToPackage(package, first + "\n" + second);
+            await vm.ResolvePackageSizesAsync([package]);
 
-        // Act: same link + a new link with identical filename
-        vm.AddLinksToPackage(pkg, @"
-https://rapidgator.net/file/1/Movie.part01.rar
-https://other-hoster.net/dl/Movie.part01.rar
-", autoResolveHostLinks: true);
-
-        // Assert: duplicate skipped, collision resolved with suffix
-        Assert.Equal(2, pkg.Items.Count);
-        Assert.Equal("Movie.part01.rar", pkg.Items[0].FileName);
-        Assert.Equal("Movie.part01_1.rar", pkg.Items[1].FileName);
+            Assert.Equal(first, package.Items[0].OriginalUrl);
+            Assert.Equal(fileName, package.Items[0].FileName);
+            if (alternateName == null)
+            {
+                Assert.Single(package.Items);
+                Assert.Equal(Loc.Get("Import_OccupiedTargets"), vm.StatusSummary);
+            }
+            else
+            {
+                Assert.Equal(2, package.Items.Count);
+                Assert.Equal(second, package.Items[1].OriginalUrl);
+                Assert.Equal(alternateName, package.Items[1].FileName);
+            }
+        }
+        finally
+        {
+            vm.Packages.Clear();
+            foreach (var package in previous) vm.Packages.Add(package);
+            if (wasRunning) queue.StartQueue();
+            root.Delete(recursive: true);
+        }
     }
 
     [Fact]

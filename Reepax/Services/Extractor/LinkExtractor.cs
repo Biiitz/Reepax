@@ -56,8 +56,12 @@ public static partial class LinkExtractor
         @"[a-zA-Z0-9_\-\+]{20,}",
         RegexOptions.Compiled);
 
-    private static readonly Regex ArchiveOrMediaExtRegex = new(
-        @"(?i)\.(?:rar|zip|7z|tar|gz|iso|bin|exe|pkg|mkv|mp4|avi|mov|flv|wmv|mp3|flac|wav|pdf|epub|001|002|r\d{2})$",
+    private static readonly Regex ArchiveOrBinaryExtRegex = new(
+        @"(?i)\.(?:rar|zip|7z|tar|gz|iso|bin|exe|pkg|001|002|r\d{2})$",
+        RegexOptions.Compiled);
+
+    private static readonly Regex MediaOrDocumentExtRegex = new(
+        @"(?i)\.(?:mkv|mp4|avi|mov|flv|wmv|mp3|flac|wav|pdf|epub)$",
         RegexOptions.Compiled);
 
 
@@ -531,7 +535,8 @@ public static partial class LinkExtractor
     public static bool HasRecognizedArchiveOrMediaExtension(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return false;
-        return ArchiveOrMediaExtRegex.IsMatch(fileName.Trim());
+        string trimmed = fileName.Trim();
+        return ArchiveOrBinaryExtRegex.IsMatch(trimmed) || MediaOrDocumentExtRegex.IsMatch(trimmed);
     }
 
     private static bool IsGenericActionEndpoint(string? segment)
@@ -566,6 +571,8 @@ public static partial class LinkExtractor
             return true;
 
         var trimmed = str.Trim();
+        if (MediaOrDocumentExtRegex.IsMatch(trimmed))
+            return false;
 
         // 1. Generic action endpoints or placeholder
         if (IsGenericActionEndpoint(trimmed) || 
