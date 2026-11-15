@@ -1492,7 +1492,8 @@ public partial class QueueManager
         _ = OnBrowserNativeDownloadCompletedAsync(windowId, success, error, filePath);
     }
 
-    internal async Task OnBrowserNativeDownloadCompletedAsync(int windowId, bool success, string? error, string? filePath)
+    internal async Task OnBrowserNativeDownloadCompletedAsync(int windowId, bool success, string? error, string? filePath,
+        DownloadFailure? failure = null)
     {
         DownloadItem? item;
         TaskCompletionSource<bool>? pathOperation;
@@ -1562,7 +1563,7 @@ public partial class QueueManager
                 if (item.IsUnavailableForProcessing)
                     return;
                 item.Status = DownloadStatus.Failed;
-                item.SetDownloadFailure(new DownloadFailure());
+                item.SetDownloadFailure(failure ?? new DownloadFailure());
                 item.SpeedBytesPerSecond = 0;
                 item.RemainingSeconds = 0;
                 item.CurrentSlot = null;

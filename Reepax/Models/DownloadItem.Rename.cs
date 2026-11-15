@@ -33,8 +33,13 @@ public partial class DownloadItem
             if (!string.IsNullOrWhiteSpace(directory))
                 target = Path.Combine(directory, name);
             if (!string.IsNullOrWhiteSpace(SaveFilePath) && !string.IsNullOrWhiteSpace(target) &&
-                !string.Equals(SaveFilePath, target, StringComparison.Ordinal) && !TryRenameFiles(SaveFilePath, target))
-                return false;
+                !string.Equals(SaveFilePath, target, StringComparison.Ordinal))
+            {
+                if (QueueManager.IsInitialized &&
+                    PackageImportTargets.HasOtherOwner(target, this, QueueManager.Instance.Packages))
+                    return false;
+                if (!TryRenameFiles(SaveFilePath, target)) return false;
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -62,6 +67,10 @@ public partial class DownloadItem
                 return false;
             if (File.Exists(from)) moves.Add((from, to));
         }
+
+        if (moves.Count > 0 && QueueManager.IsInitialized &&
+            PackageImportTargets.HasOtherOwner(source, this, QueueManager.Instance.Packages))
+            return false;
 
         int moved = 0;
         try

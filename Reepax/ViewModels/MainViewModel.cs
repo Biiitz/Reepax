@@ -2689,6 +2689,9 @@ public partial class MainViewModel : ObservableObject
             moveArchiveToRecycleBin,
             autoResolveHostLinks);
 
+        if (!TryAssignNewDownloadTargets(newPackages.SelectMany(package => package.ItemsSnapshot)))
+            return;
+
         foreach (var package in newPackages)
         {
             package.EnsureNextTaskSteps();
@@ -2769,18 +2772,6 @@ public partial class MainViewModel : ObservableObject
                 effectiveSaveDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             }
 
-            // Collision avoidance with existing package files (in-memory list + disk)
-            var candidate = cleanFileName;
-            int suffix = 1;
-            while (package.Items.Any(i => string.Equals(i.FileName, candidate, StringComparison.OrdinalIgnoreCase)) ||
-                   File.Exists(Path.Combine(effectiveSaveDir, candidate)))
-            {
-                var baseName = Path.GetFileNameWithoutExtension(cleanFileName);
-                var ext = Path.GetExtension(cleanFileName);
-                candidate = $"{baseName}_{suffix++}{ext}";
-            }
-            cleanFileName = candidate;
-
             var item = new DownloadItem
             {
                 PackageId = package.Id,
@@ -2795,7 +2786,6 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = autoQueue ? Loc.Get("Status_Queued") : Loc.Get("Status_Paused")
             };
 
-            package.Items.Add(item);
             newlyAddedItems.Add(item);
             added++;
         }
@@ -2806,6 +2796,9 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        if (!TryAssignNewDownloadTargets(newlyAddedItems))
+            return;
+        foreach (var item in newlyAddedItems) package.Items.Add(item);
         package.RecalculateAggregates();
         RecalculateGlobalStats();
         StatusSummary = Loc.Format("Status_LinksAddedToPackage", added, package.Name);
@@ -2937,14 +2930,7 @@ public partial class MainViewModel : ObservableObject
     private (List<DownloadItem> AddedItems, bool Extract) EditPackageCore(DownloadPackage package, List<ExtractedLink> newExtractedLinks,
         bool autoExtractArchives, bool lowResourceExtraction, bool deleteArchiveAfterExtraction, bool moveArchiveToRecycleBin)
     {
-        // 1. Apply options
         bool autoExtractChangedToTrue = !package.AutoExtractArchives && autoExtractArchives;
-        package.AutoResolveHostLinks = false;
-        package.AutoExtractArchives = autoExtractArchives;
-        package.LowResourceExtraction = lowResourceExtraction;
-        package.DeleteArchiveAfterExtraction = deleteArchiveAfterExtraction;
-        package.MoveArchiveToRecycleBin = moveArchiveToRecycleBin;
-        package.EnsureNextTaskSteps();
 
         // 3. Synchronize links
         static bool Matches(ExtractedLink l, DownloadItem item)
@@ -2972,20 +2958,13 @@ public partial class MainViewModel : ObservableObject
             .Where(item => !newExtractedLinks.Any(link => Matches(link, item)))
             .ToList();
 
-        foreach (var item in itemsToRemove)
-        {
-            _queueManager.CloseBrowserWindowForItem(item);
-            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
-            package.Items.Remove(item);
-        }
-
         // b) Identify newly added links
         var linksToAdd = newExtractedLinks
             .Where(link => !package.Items.Any(item => Matches(link, item)))
             .ToList();
 
         bool autoQueue = _queueManager.IsRunning && package.IsEnabled;
-        int crypticIndex = package.Items.Count;
+        int crypticIndex = package.Items.Count - itemsToRemove.Count;
         var newlyAddedItems = new List<DownloadItem>();
 
         foreach (var link in linksToAdd)
@@ -3006,17 +2985,6 @@ public partial class MainViewModel : ObservableObject
                 effectiveSaveDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             }
 
-            var candidate = cleanFileName;
-            int suffix = 1;
-            while (package.Items.Any(i => string.Equals(i.FileName, candidate, StringComparison.OrdinalIgnoreCase)) ||
-                   File.Exists(Path.Combine(effectiveSaveDir, candidate)))
-            {
-                var baseName = Path.GetFileNameWithoutExtension(cleanFileName);
-                var ext = Path.GetExtension(cleanFileName);
-                candidate = $"{baseName}_{suffix++}{ext}";
-            }
-            cleanFileName = candidate;
-
             var item = new DownloadItem
             {
                 PackageId = package.Id,
@@ -3030,9 +2998,26 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = autoQueue ? Loc.Get("Status_Queued") : Loc.Get("Status_Paused")
             };
 
-            package.Items.Add(item);
             newlyAddedItems.Add(item);
         }
+
+        // Include outgoing items when reserving paths for their replacements.
+        if (!TryAssignNewDownloadTargets(newlyAddedItems))
+            return ([], false);
+
+        package.AutoResolveHostLinks = false;
+        package.AutoExtractArchives = autoExtractArchives;
+        package.LowResourceExtraction = lowResourceExtraction;
+        package.DeleteArchiveAfterExtraction = deleteArchiveAfterExtraction;
+        package.MoveArchiveToRecycleBin = moveArchiveToRecycleBin;
+        package.EnsureNextTaskSteps();
+        foreach (var item in itemsToRemove)
+        {
+            _queueManager.CloseBrowserWindowForItem(item);
+            _ = DownloadEngine.Instance.CancelOrPauseDownload(item.Id);
+            package.Items.Remove(item);
+        }
+        foreach (var item in newlyAddedItems) package.Items.Add(item);
 
         // 4. Aggregates & persistence
         package.RecalculateAggregates();
@@ -3097,6 +3082,9 @@ public partial class MainViewModel : ObservableObject
                 lowResourceExtraction,
                 deleteArchiveAfterExtraction,
                 moveArchiveToRecycleBin);
+
+            if (!TryAssignNewDownloadTargets(newPackages.SelectMany(package => package.ItemsSnapshot)))
+                return;
 
             foreach (var pkg in newPackages)
             {

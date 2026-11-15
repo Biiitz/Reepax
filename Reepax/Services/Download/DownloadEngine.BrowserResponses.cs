@@ -43,6 +43,7 @@ public partial class DownloadEngine
                 {
                     token.ThrowIfCancellationRequested();
                     if (item.IsUnavailableForProcessing) throw new OperationCanceledException(token);
+                    EnsureDownloadTargetIsExclusive(item);
                     if (item.RejectedFiles != null && !item.RejectedFiles.TryReset(item)) throw new DownloadRetryBlockedException();
                     string originalPath = item.SaveFilePath ?? throw new IOException("The download destination is missing.");
                     if (Path.Exists(originalPath)) throw new DownloadDestinationExistsException();

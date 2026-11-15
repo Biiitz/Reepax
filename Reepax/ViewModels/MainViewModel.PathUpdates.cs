@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -9,6 +11,33 @@ namespace Reepax.ViewModels;
 
 public partial class MainViewModel
 {
+    private bool TryAssignNewDownloadTargets(IEnumerable<DownloadItem> items)
+    {
+        try
+        {
+            HashSet<string>? occupied = null;
+            foreach (var item in items)
+            {
+                occupied ??= PackageImportTargets.GetOccupiedPaths(Packages);
+                string? target = PackageImportTargets.AllocateNewTarget(item.SaveFilePath!, occupied);
+                if (target == null)
+                {
+                    StatusSummary = Services.Localization.Loc.Get("Import_OccupiedTargets");
+                    return false;
+                }
+                item.SaveFilePath = target;
+                item.FileName = Path.GetFileName(target);
+            }
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            AppLogger.Warn("[MainViewModel] Could not reserve download targets.", error);
+            StatusSummary = Services.Localization.Loc.Get("Status_DownloadTargetCannotBeReserved");
+            return false;
+        }
+    }
+
     internal Action<string> RenameFailureNotification { get; set; } = message =>
     {
         if (!DownloadPersistenceService.IsTestEnvironment)

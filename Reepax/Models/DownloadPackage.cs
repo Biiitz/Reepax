@@ -1161,7 +1161,7 @@ public partial class DownloadPackage : ObservableObject
                 if (!string.Equals(oldDir, newDir, StringComparison.Ordinal))
                 {
                     bool caseOnly = string.Equals(oldDir, newDir, StringComparison.OrdinalIgnoreCase);
-                    if (!caseOnly && Path.Exists(newDir))
+                    if (!caseOnly && (Path.Exists(newDir) || IsDownloadDirectoryReserved(newDir)))
                     {
                         AppLogger.Warn("[DownloadPackage] Package rename target already exists.");
                         return false;
@@ -1209,6 +1209,16 @@ public partial class DownloadPackage : ObservableObject
             return false;
         }
         return true;
+    }
+
+    private bool IsDownloadDirectoryReserved(string directory)
+    {
+        if (!Services.Download.QueueManager.IsInitialized) return false;
+        string root = System.IO.Path.GetFullPath(directory);
+        string prefix = System.IO.Path.TrimEndingDirectorySeparator(root) + System.IO.Path.DirectorySeparatorChar;
+        return PackageImportTargets.GetOccupiedPaths(Services.Download.QueueManager.Instance.Packages.Where(package => package != this))
+            .Any(path => string.Equals(path, root, StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
     partial void OnIsEnabledChanged(bool value)

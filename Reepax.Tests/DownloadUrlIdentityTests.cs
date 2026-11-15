@@ -133,6 +133,238 @@ public sealed class DownloadUrlIdentityTests
     }
 
     [Fact]
+    public async Task AddLinksFromText_SameFileNamePreservesBothLocalDownloadsAcrossReload()
+    {
+        using var directory = new IsolatedDownloads();
+        byte[] first = Enumerable.Repeat((byte)17, 1024 * 1024).ToArray();
+        byte[] second = Enumerable.Repeat((byte)43, 1024 * 1024).ToArray();
+        byte[] foreign = [67, 89];
+        var prefixWritten = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseBody = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const int prefixLength = 256 * 1024;
+        int held = 0;
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]>
+        {
+            ["one/example.bin"] = first,
+            ["two/example.bin"] = second
+        }, writeBody: async (name, _, stream, bytes, token) =>
+        {
+            if (name == "one/example.bin" && Interlocked.Exchange(ref held, 1) == 0)
+            {
+                await stream.WriteAsync(bytes[..prefixLength], token);
+                await stream.FlushAsync(token);
+                prefixWritten.TrySetResult();
+                await releaseBody.Task.WaitAsync(token);
+                await stream.WriteAsync(bytes[prefixLength..], token);
+            }
+            else await stream.WriteAsync(bytes, token);
+        });
+        using var client = new HttpClient();
+        var model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+        string packageFolder = Directory.CreateDirectory(Path.Combine(directory.Root, "Example")).FullName;
+        string unrelated = Path.Combine(packageFolder, "unrelated.bin");
+        File.WriteAllBytes(unrelated, foreign);
+        var engine = new DownloadEngine(client);
+        try
+        {
+            string url1 = source.Url("one/example.bin"), url2 = source.Url("two/example.bin");
+            model.AddLinksFromText(url1 + "\n" + url2, "Example", autoExtractArchives: false, customDownloadDir: directory.Root);
+            var package = Assert.Single(model.Packages);
+            Assert.Equal(2, package.Items.Count);
+            var a = package.Items.Single(item => item.OriginalUrl == url1);
+            var b = package.Items.Single(item => item.OriginalUrl == url2);
+            Assert.False(string.Equals(a.SaveFilePath, b.SaveFilePath, StringComparison.OrdinalIgnoreCase));
+            await model.ResolvePackageSizesAsync([package]);
+
+            Task pending = engine.StartDownloadAsync(a, url1, null, null, null, null);
+            await prefixWritten.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            string partial = a.SaveFilePath + ".part";
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+                while (!File.Exists(partial) || new FileInfo(partial).Length < prefixLength)
+                    await Task.Delay(20, timeout.Token);
+            await engine.CancelOrPauseDownload(a.Id)!.WaitAsync(TimeSpan.FromSeconds(10));
+            await pending;
+            releaseBody.TrySetResult();
+            Assert.Equal(first[..prefixLength], File.ReadAllBytes(partial));
+
+            using var storage = new DownloadPersistenceService(Path.Combine(directory.Root, "downloads.json"));
+            storage.SaveDownloads([package], sync: true);
+            var reloaded = Assert.Single(storage.LoadDownloads());
+            model.Packages.Clear();
+            model.Packages.Add(reloaded);
+            var restoredA = reloaded.Items.Single(item => item.OriginalUrl == url1);
+            var restoredB = reloaded.Items.Single(item => item.OriginalUrl == url2);
+            Assert.Equal(a.SaveFilePath, restoredA.SaveFilePath);
+            Assert.Equal(b.SaveFilePath, restoredB.SaveFilePath);
+            Assert.Equal(prefixLength, restoredA.DownloadedBytes);
+            await engine.StartDownloadAsync(restoredB, url2, null, null, null, null).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Completed, restoredB.Status);
+            Assert.Equal(second, File.ReadAllBytes(restoredB.SaveFilePath!));
+            Assert.Equal(first[..prefixLength], File.ReadAllBytes(partial));
+            await engine.StartDownloadAsync(restoredA, url1, null, null, null, null).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(DownloadStatus.Completed, restoredA.Status);
+            Assert.Equal(first, File.ReadAllBytes(restoredA.SaveFilePath!));
+            Assert.Contains(source.Ranges, range => range.File == "one/example.bin" && range.Start == prefixLength);
+            Assert.Equal(foreign, File.ReadAllBytes(unrelated));
+        }
+        finally
+        {
+            releaseBody.TrySetResult();
+            await engine.PauseAllAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData("example.bin", "", false)]
+    [InlineData("example.bin", ".part", false)]
+    [InlineData("example.bin", ".part.segments", false)]
+    [InlineData("example.part01.rar", ".part", true)]
+    public async Task AddLinksFromText_ReservesAllWorkingPathsAndKeepsArchiveNames(string name, string suffix, bool archive)
+    {
+        using var directory = new IsolatedDownloads();
+        byte[] existing = [19, 73, 101];
+        string packageFolder = Directory.CreateDirectory(Path.Combine(directory.Root, "Example")).FullName;
+        string occupied = Path.Combine(packageFolder, name + suffix);
+        File.WriteAllBytes(occupied, existing);
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]>
+        {
+            ["one/" + name] = [1, 2, 3],
+            ["two/other.bin"] = [4, 5, 6]
+        });
+        using var client = new HttpClient();
+        var model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+
+        model.AddLinksFromText(source.Url("one/" + name) + "\n" + source.Url("two/other.bin"),
+            "Example", autoExtractArchives: false, customDownloadDir: directory.Root);
+
+        if (archive)
+        {
+            Assert.Empty(model.Packages);
+            Assert.Equal(Reepax.Services.Localization.Loc.Get("Import_OccupiedTargets"), model.StatusSummary);
+        }
+        else
+        {
+            var package = Assert.Single(model.Packages);
+            await model.ResolvePackageSizesAsync([package]);
+            Assert.Equal(2, package.Items.Count);
+            Assert.Equal(Path.Combine(packageFolder, "example_1.bin"), package.Items[0].SaveFilePath);
+            Assert.Equal(Path.Combine(packageFolder, "other.bin"), package.Items[1].SaveFilePath);
+        }
+        Assert.Equal(existing, File.ReadAllBytes(occupied));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task ServerFileNameCannotClaimAnotherQueuedDownloadsFinalOrWorkingPaths(int connections)
+    {
+        using var directory = new IsolatedDownloads();
+        byte[] data = Enumerable.Repeat((byte)53, 9 * 1024 * 1024).ToArray();
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["original.bin"] = data },
+            responseHeaders: new Dictionary<string, string>
+            {
+                ["Content-Disposition"] = "attachment; filename=queued.bin.part",
+                ["ETag"] = "\"fixture-v1\""
+            });
+        using var client = new HttpClient();
+        string original = Path.Combine(directory.Root, "original.bin");
+        string queued = Path.Combine(directory.Root, "queued.bin");
+        var item = new DownloadItem { FileName = "original.bin", SaveFilePath = original, OriginalUrl = source.Url("original.bin") };
+        var other = new DownloadItem { FileName = "queued.bin", SaveFilePath = queued };
+        var package = new DownloadPackage { Name = "Example", SaveDirectory = directory.Root, IsCustomName = true };
+        package.AddItems([item, other]);
+        QueueManager.Instance.Packages.Add(package);
+
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = connections };
+        await engine.StartDownloadAsync(item, item.OriginalUrl, null, null, null, null).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Equal(original, item.SaveFilePath);
+        Assert.Equal(data, File.ReadAllBytes(original));
+        Assert.Equal(queued, other.SaveFilePath);
+        Assert.False(File.Exists(queued + ".part"));
+        Assert.False(other.Rename("original.bin", isUserAction: false));
+        if (connections == 4) Assert.True(source.Ranges.Count > 1);
+    }
+
+    [Fact]
+    public async Task RestoredConflictingTargetsStopBeforeChangingPartialFiles()
+    {
+        using var directory = new IsolatedDownloads();
+        byte[] data = [23, 53, 97];
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["sample.bin"] = data });
+        using var client = new HttpClient();
+        string path = Path.Combine(directory.Root, "sample.bin");
+        File.WriteAllBytes(path + ".part", data);
+        File.WriteAllText(path + ".part.segments", "example checkpoint");
+        var package = new DownloadPackage { Name = "Example", SaveDirectory = directory.Root, IsCustomName = true };
+        package.AddItems([
+            new DownloadItem { FileName = "sample.bin", SaveFilePath = path, OriginalUrl = source.Url("sample.bin"), Status = DownloadStatus.Paused },
+            new DownloadItem { FileName = "sample.bin", SaveFilePath = path, OriginalUrl = source.Url("sample.bin") + "?variant=2", Status = DownloadStatus.Paused }
+        ]);
+        using var storage = new DownloadPersistenceService(Path.Combine(directory.Root, "downloads.json"));
+        storage.SaveDownloads([package], sync: true);
+        var restored = Assert.Single(storage.LoadDownloads());
+        QueueManager.Instance.Packages.Add(restored);
+        var engine = new DownloadEngine(client);
+        var item = restored.Items[1];
+        await engine.StartDownloadAsync(item, item.OriginalUrl, null, null, null, null).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(DownloadStatus.Failed, item.Status);
+        Assert.Equal(DownloadFailureKind.DestinationExists, item.FailureDetails?.Kind);
+        Assert.Empty(source.Requests);
+        Assert.Equal(data, File.ReadAllBytes(path + ".part"));
+        Assert.Equal("example checkpoint", File.ReadAllText(path + ".part.segments"));
+    }
+
+    [Fact]
+    public void PackageRenameDoesNotMoveIntoAnotherQueuedPackagesDirectory()
+    {
+        using var directory = new IsolatedDownloads();
+        string original = Directory.CreateDirectory(Path.Combine(directory.Root, "Original")).FullName;
+        string reserved = Path.Combine(directory.Root, "Reserved");
+        var moving = new DownloadPackage { Name = "Original", SaveDirectory = original };
+        var other = new DownloadPackage { Name = "Reserved", SaveDirectory = reserved };
+        moving.Items.Add(new DownloadItem { FileName = "sample.bin", SaveFilePath = Path.Combine(original, "sample.bin") });
+        other.Items.Add(new DownloadItem { FileName = "sample.bin", SaveFilePath = Path.Combine(reserved, "sample.bin") });
+        QueueManager.Instance.Packages.Add(moving);
+        QueueManager.Instance.Packages.Add(other);
+        byte[] bytes = [9, 13, 21];
+        File.WriteAllBytes(Path.Combine(original, "sample.bin"), bytes);
+
+        Assert.False(moving.Rename("Reserved", isUserAction: false));
+        Assert.Equal(original, moving.SaveDirectory);
+        Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(original, "sample.bin")));
+        Assert.False(Directory.Exists(reserved));
+    }
+
+    private sealed class IsolatedDownloads : IDisposable
+    {
+        private readonly QueueManager _queue = QueueManager.Instance;
+        private readonly DownloadPackage[] _previousPackages;
+        private readonly bool _wasRunning;
+        internal string Root { get; } = Directory.CreateTempSubdirectory("DownloadTargets_").FullName;
+
+        internal IsolatedDownloads()
+        {
+            _previousPackages = _queue.Packages.ToArray();
+            _wasRunning = _queue.IsRunning;
+            _queue.StopQueue();
+            _queue.Packages.Clear();
+        }
+
+        public void Dispose()
+        {
+            _queue.StopQueue();
+            _queue.Packages.Clear();
+            foreach (var package in _previousPackages) _queue.Packages.Add(package);
+            if (_wasRunning) _queue.StartQueue();
+            Assert.Equal(Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath())), Path.GetDirectoryName(Root));
+            Directory.Delete(Root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task AddLinksToPackage_PreservesExistingDataAndDistinctUrlsDespiteFilenameCollisions()
     {
         string root = Directory.CreateTempSubdirectory("UrlIdentity_").FullName;

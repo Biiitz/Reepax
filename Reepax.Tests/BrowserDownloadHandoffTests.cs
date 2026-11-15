@@ -183,6 +183,40 @@ public sealed partial class BrowserDownloadHandoffTests
         Assert.False(File.Exists(fixture.Item.SaveFilePath + ".part.segments"));
     });
 
+    [Theory]
+    [InlineData(false, "queued.bin.part")]
+    [InlineData(true, "new-name.bin")]
+    public Task NativeDownloadUsesReservedItemPathInsteadOfConflictingOrCustomNameHint(bool custom, string suggestedName)
+        => RunAsync(async fixture =>
+        {
+            await fixture.LoadAsync("/start");
+            var item = fixture.Item;
+            item.IsCustomName = custom;
+            string destination = item.SaveFilePath!;
+            string directory = Directory.CreateDirectory(Path.GetDirectoryName(destination)!).FullName;
+            var other = new DownloadItem
+            {
+                FileName = "queued.bin", SaveFilePath = Path.Combine(directory, "queued.bin"),
+                Status = DownloadStatus.Paused, IsEnabled = false
+            };
+            fixture.Package.Items.Add(other);
+
+            string encoded = JsonSerializer.Serialize(Convert.ToBase64String(fixture.Source.Bytes));
+            await fixture.WebView.ExecuteScriptAsync("(()=>{const a=document.createElement('a');" +
+                "const bytes=Uint8Array.from(atob(" + encoded + "),c=>c.charCodeAt(0));" +
+                "a.href=URL.createObjectURL(new Blob([bytes],{type:'application/zip'}));" +
+                "a.download=" + JsonSerializer.Serialize(suggestedName) + ";document.body.append(a);a.click();a.remove()})()");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            while (!item.IsReadyForPostProcessing && item.Status != DownloadStatus.Failed)
+                await Task.Delay(25, timeout.Token);
+
+            Assert.True(item.IsReadyForPostProcessing, item.StatusMessage);
+            Assert.Equal(destination, item.SaveFilePath);
+            Assert.Equal(fixture.Source.Bytes, File.ReadAllBytes(destination));
+            Assert.False(File.Exists(Path.Combine(directory, suggestedName)));
+            Assert.False(File.Exists(other.SaveFilePath));
+        });
+
     private static async Task RunAsync(Func<BrowserHandoffFixture, Task> action, int payloadLength = 8192)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -291,6 +291,7 @@ public partial class DownloadEngine
             // Ensure package name is updated if item already has a meaningful name
             using (await PackagePathOperationGate.Instance.EnterAsync(cancellationToken))
             {
+                EnsureDownloadTargetIsExclusive(item);
                 if (item.RejectedFiles != null && !item.RejectedFiles.TryReset(item))
                     throw new DownloadRetryBlockedException();
                 SafeInvoke(() =>
@@ -394,12 +395,10 @@ public partial class DownloadEngine
                         {
                             using var pathLease = await PackagePathOperationGate.Instance.EnterAsync(cancellationToken);
                             cancellationToken.ThrowIfCancellationRequested();
-                            var oldTemp = tempFilePath;
                             SafeInvoke(() =>
                             {
-                                item.Rename(probe.FileName, isUserAction: false);
                                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                                if (pkg != null && !pkg.IsCustomName)
+                                if (item.Rename(probe.FileName, isUserAction: false) && pkg is { IsCustomName: false })
                                 {
                                     Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
                                 }
@@ -411,16 +410,8 @@ public partial class DownloadEngine
                                 Directory.CreateDirectory(newDestDir);
                             }
 
-                            var renamedTemp = item.SaveFilePath + ".part";
-                            if (!string.Equals(renamedTemp, tempFilePath, StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (!string.IsNullOrWhiteSpace(oldTemp) && File.Exists(oldTemp))
-                                {
-                                    try { File.Move(oldTemp, renamedTemp, true); } catch { }
-                                }
-                                tempFilePath = renamedTemp;
-                                segMetaPath = tempFilePath + ".segments";
-                            }
+                            tempFilePath = item.SaveFilePath + ".part";
+                            segMetaPath = tempFilePath + ".segments";
                         }
 
                         SaveSegmentState(segMetaPath, segState, required: true);
@@ -1245,37 +1236,18 @@ public partial class DownloadEngine
         {
             using var pathLease = await PackagePathOperationGate.Instance.EnterAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            var oldTempPath = tempFilePath;
-            SafeInvoke(() => item.Rename(extractedFileName, isUserAction: false));
-            var newTempPath = item.SaveFilePath + ".part";
-
-            if (!string.Equals(oldTempPath, newTempPath, StringComparison.OrdinalIgnoreCase))
+            SafeInvoke(() =>
             {
-                if (!string.IsNullOrWhiteSpace(oldTempPath) && File.Exists(oldTempPath))
-                {
-                    try
-                    {
-                        if (File.Exists(newTempPath)) File.Delete(newTempPath);
-                        File.Move(oldTempPath, newTempPath);
-                    }
-                    catch { }
-                }
-                tempFilePath = newTempPath;
-                if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
-                {
-                    finalFilePath = item.SaveFilePath;
-                }
-            }
-
-            try
-            {
+                if (!item.Rename(extractedFileName, isUserAction: false)) return;
                 var pkg = QueueManager.Instance.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-                if (pkg != null && !pkg.IsCustomName)
-                {
+                if (pkg is { IsCustomName: false })
                     Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
-                }
+            });
+            if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+            {
+                finalFilePath = item.SaveFilePath;
+                tempFilePath = finalFilePath + ".part";
             }
-            catch { }
         }
 
         UiState(item).Clear(cancellationToken);
@@ -1754,6 +1726,14 @@ public partial class DownloadEngine
                 _samples.Dequeue();
             }
         }
+    }
+
+    private static void EnsureDownloadTargetIsExclusive(DownloadItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.SaveFilePath)) return;
+        bool exclusive = false;
+        SafeInvoke(() => exclusive = !PackageImportTargets.HasOtherOwner(item.SaveFilePath, item, QueueManager.Instance.Packages));
+        if (!exclusive) throw new DownloadDestinationExistsException();
     }
 
     private static void SafeInvoke(Action action)

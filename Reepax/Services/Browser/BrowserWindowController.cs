@@ -582,25 +582,26 @@ public partial class BrowserWindowController : IDisposable
         }
 
         var suggestedFileName = Path.GetFileName(e.ResultFilePath);
-        var targetPath = item.SaveFilePath;
-        if (!string.IsNullOrWhiteSpace(suggestedFileName) &&
+        if (!item.IsCustomName && !string.IsNullOrWhiteSpace(suggestedFileName) &&
             !suggestedFileName.Equals("download", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(targetPath))
+            item.Rename(suggestedFileName, isUserAction: false))
         {
-            var dir = Path.GetDirectoryName(targetPath);
-            if (!string.IsNullOrWhiteSpace(dir))
-            {
-                targetPath = Path.Combine(dir, suggestedFileName);
-            }
+            var pkg = _queue.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
+            if (pkg is { IsCustomName: false })
+                Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
         }
 
-        // Browser saves directly to target (no prompt)
+        var targetPath = item.SaveFilePath;
         e.Cancel = true;
         e.Handled = true;
-        if (!string.IsNullOrWhiteSpace(targetPath))
+        if (string.IsNullOrWhiteSpace(targetPath) || Path.Exists(targetPath) ||
+            PackageImportTargets.HasOtherOwner(targetPath, item, _queue.Packages))
         {
-            e.ResultFilePath = targetPath;
+            _ = _webView.Dispatcher.InvokeAsync(() => _ = _queue.OnBrowserNativeDownloadCompletedAsync(
+                _windowId, false, null, null, new DownloadFailure { Kind = DownloadFailureKind.DestinationExists }));
+            return;
         }
+        e.ResultFilePath = targetPath;
 
         var op = e.DownloadOperation;
         var lastBytes = 0L;
@@ -609,18 +610,6 @@ public partial class BrowserWindowController : IDisposable
         item.ClearDownloadFailure();
         item.Status = DownloadStatus.Downloading;
         item.StatusMessage = Loc.Get("Status_Downloading");
-        if (!string.IsNullOrWhiteSpace(targetPath))
-        {
-            if (!item.IsCustomName)
-            {
-                item.Rename(Path.GetFileName(targetPath), isUserAction: false);
-            }
-            var pkg = _queue.Packages.FirstOrDefault(p => p.Id == item.PackageId || p.Items.Contains(item));
-            if (pkg != null && !pkg.IsCustomName)
-            {
-                Extractor.LinkMetadataResolverService.TryUpdatePackageNameUnderLease(pkg);
-            }
-        }
 
         AppLogger.Info($"[Browser Window {_windowId}] Native blob download adopted: {blobUrl}");
 
