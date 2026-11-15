@@ -46,6 +46,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly QueueManager _queueManager = QueueManager.Instance;
     private readonly SettingsService _settingsService = SettingsService.Instance;
+    private readonly Func<string, (string Name, long FreeBytes, long TotalBytes)?> _readDriveSpace;
     private readonly System.Windows.Threading.DispatcherTimer? _statsTimer;
     private readonly System.Windows.Threading.DispatcherTimer? _updateTimer;
     private int _lastCommandStateActiveCount = -1;
@@ -283,7 +284,6 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEnglishSelected));
         OnPropertyChanged(nameof(IsGermanSelected));
         UpdateStatusSummary();
-        UpdateDriveSpace(force: true);
         RefreshUpdateTooltip();
     }
 
@@ -409,8 +409,13 @@ public partial class MainViewModel : ObservableObject
     // Application settings, themes, sounds, and archive passwords have been moved to MainViewModel.Settings.cs
 
 
-    public MainViewModel()
+    public MainViewModel() : this(ReadDriveSpace)
     {
+    }
+
+    internal MainViewModel(Func<string, (string Name, long FreeBytes, long TotalBytes)?> readDriveSpace)
+    {
+        _readDriveSpace = readDriveSpace;
         Overview = new DownloadOverviewViewModel(_settingsService, () => Packages, () => RootPackages);
         var settings = _settingsService.Settings;
 
@@ -482,7 +487,6 @@ public partial class MainViewModel : ObservableObject
         ConnectionsPerDownload = Math.Clamp(settings.ConnectionsPerDownload > 0 ? settings.ConnectionsPerDownload : 1, 1, 20);
         ConnectionsPerDownloadText = ConnectionsPerDownload.ToString();
         DownloadEngine.Instance.MaxConnectionsPerDownload = ConnectionsPerDownload;
-        CurrentDownloadDirectory = settings.DefaultDownloadDirectory;
         SelectedStatusFilter = settings.SelectedStatusFilter;
         AutoExtractArchives = settings.AutoExtractArchives;
         DeleteArchiveAfterExtraction = settings.DeleteArchiveAfterExtraction;
@@ -537,6 +541,7 @@ public partial class MainViewModel : ObservableObject
         EnableClipboardMonitor = settings.EnableClipboardMonitor;
         SelectedLanguage = settings.Language ?? "en";
         LocalizationService.Instance.CurrentLanguage = SelectedLanguage;
+        CurrentDownloadDirectory = settings.DefaultDownloadDirectory;
         StatusSummary = Loc.Get("Status_ReadyDragDrop");
 
         ShortcutManager.LoadCustomShortcuts(settings.CustomShortcuts);
@@ -3281,6 +3286,12 @@ public partial class MainViewModel : ObservableObject
     private const long DriveSpaceQueryIntervalMs = 5000;
     private long _lastDriveSpaceQueryTicks;
 
+    private static (string Name, long FreeBytes, long TotalBytes)? ReadDriveSpace(string root)
+    {
+        var drive = new DriveInfo(root);
+        return drive.IsReady ? (drive.Name.TrimEnd('\\'), drive.AvailableFreeSpace, drive.TotalSize) : null;
+    }
+
     public void UpdateDriveSpace(bool force = false)
     {
         // DriveInfo query (Win32) at most every 5 s; retain last drive values between queries.
@@ -3313,12 +3324,11 @@ public partial class MainViewModel : ObservableObject
                 {
                     try
                     {
-                        var driveInfo = new DriveInfo(root);
-                        if (driveInfo.IsReady)
+                        if (_readDriveSpace(root) is { } driveSpace)
                         {
-                            DriveName = driveInfo.Name.TrimEnd('\\');
-                            FreeDiskSpaceBytes = driveInfo.AvailableFreeSpace;
-                            TotalDiskSpaceBytes = driveInfo.TotalSize;
+                            DriveName = driveSpace.Name;
+                            FreeDiskSpaceBytes = driveSpace.FreeBytes;
+                            TotalDiskSpaceBytes = driveSpace.TotalBytes;
                             FreeDiskSpaceText = Loc.Format("DiskSpace_FreeTotal", DriveName, FormatBytes(FreeDiskSpaceBytes), FormatBytes(TotalDiskSpaceBytes));
                         }
                         else

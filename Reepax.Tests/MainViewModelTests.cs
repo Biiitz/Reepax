@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -9,6 +10,7 @@ using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
+using Reepax.Services.Storage;
 using Reepax.ViewModels;
 using Xunit;
 
@@ -577,6 +579,110 @@ https://rapidgator.net/file/182937105
         vm.UpdateDriveSpace();
 
         Assert.True(vm.FreeDiskSpaceText.Contains("Netzlaufwerk") || vm.FreeDiskSpaceText.Contains("Network drive"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void DriveSpace_LanguageSwitchReadsLocalDriveOnceAndRelocalizesStatus(bool isReady)
+    {
+        const long gibibyte = 1024L * 1024 * 1024;
+        var localization = LocalizationService.Instance;
+        var settings = SettingsService.Instance.Settings;
+        string previousLanguage = localization.CurrentLanguage;
+        string previousPreference = settings.Language;
+        string previousDirectory = settings.DefaultDownloadDirectory;
+        string root = Path.GetPathRoot(Path.GetTempPath())!;
+        string name = root.TrimEnd('\\');
+        var queriedRoots = new List<string>();
+        string ExpectedText() => isReady
+            ? Loc.Format("DiskSpace_FreeTotal", name, "2 GB", "10 GB")
+            : Loc.Format("DiskSpace_NotReady", name);
+
+        try
+        {
+            localization.CurrentLanguage = "de";
+            settings.Language = "en";
+            settings.DefaultDownloadDirectory = Path.Combine(root, "Example downloads");
+            var vm = new MainViewModel(path =>
+            {
+                queriedRoots.Add(path);
+                return isReady ? (name, 2 * gibibyte, 10 * gibibyte) : null;
+            });
+            Assert.Equal("en", localization.CurrentLanguage);
+            int startupReads = queriedRoots.Count;
+            string startupText = vm.FreeDiskSpaceText;
+            string expectedStartupText = ExpectedText();
+            vm.TotalBytes = 3 * gibibyte;
+
+            vm.SetLanguage("de");
+
+            Assert.Equal(root, Assert.Single(queriedRoots.Skip(startupReads)));
+            Assert.Equal("de", settings.Language);
+            Assert.Equal("de", localization.CurrentLanguage);
+            Assert.Equal(ExpectedText(), vm.FreeDiskSpaceText);
+            Assert.Equal(isReady ? 2 * gibibyte : 0, vm.FreeDiskSpaceBytes);
+            Assert.Equal(isReady ? 10 * gibibyte : 0, vm.TotalDiskSpaceBytes);
+            Assert.Equal(isReady, vm.IsDiskSpaceWarning);
+            Assert.Equal(isReady ? Loc.Format("DiskSpace_WarningInsufficient", name, "3 GB", "2 GB") : "",
+                vm.DiskSpaceWarningMessage);
+            Assert.Equal(1, startupReads);
+            Assert.Equal(expectedStartupText, startupText);
+
+            queriedRoots.Clear();
+            localization.CurrentLanguage = "en";
+            Assert.Equal(root, Assert.Single(queriedRoots));
+            Assert.Equal(ExpectedText(), vm.FreeDiskSpaceText);
+
+            queriedRoots.Clear();
+            vm.SetLanguage("en");
+            Assert.Empty(queriedRoots);
+            string movedDirectory = Path.Combine(root, "Example moved downloads");
+            vm.CurrentDownloadDirectory = movedDirectory;
+            Assert.Equal(root, Assert.Single(queriedRoots));
+            Assert.Equal(movedDirectory, settings.DefaultDownloadDirectory);
+            Assert.Equal(ExpectedText(), vm.FreeDiskSpaceText);
+        }
+        finally
+        {
+            settings.Language = previousPreference;
+            settings.DefaultDownloadDirectory = previousDirectory;
+            localization.CurrentLanguage = previousLanguage;
+        }
+    }
+
+    [Fact]
+    public void DriveSpace_LanguageSwitchRelocalizesUncWithoutReadingLocalDrive()
+    {
+        var localization = LocalizationService.Instance;
+        var settings = SettingsService.Instance.Settings;
+        string previousLanguage = localization.CurrentLanguage;
+        string previousPreference = settings.Language;
+        string previousDirectory = settings.DefaultDownloadDirectory;
+        const string share = @"\\example.test\share";
+        int reads = 0;
+        try
+        {
+            localization.CurrentLanguage = "en";
+            settings.Language = "de";
+            settings.DefaultDownloadDirectory = share + @"\downloads";
+            var vm = new MainViewModel(_ => { reads++; return null; });
+            Assert.Equal("de", localization.CurrentLanguage);
+            Assert.Equal(Loc.Format("DiskSpace_NetworkDriveUnc", share), vm.FreeDiskSpaceText);
+
+            vm.SetLanguage("en");
+
+            Assert.Equal("en", localization.CurrentLanguage);
+            Assert.Equal(Loc.Format("DiskSpace_NetworkDriveUnc", share), vm.FreeDiskSpaceText);
+            Assert.Equal(share, vm.DriveName);
+            Assert.Equal(0, reads);
+        }
+        finally
+        {
+            settings.Language = previousPreference;
+            settings.DefaultDownloadDirectory = previousDirectory;
+            localization.CurrentLanguage = previousLanguage;
+        }
     }
 
     [Fact]
