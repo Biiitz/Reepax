@@ -24,7 +24,8 @@ public partial class LinkMetadataResolverService
     private static readonly Lazy<LinkMetadataResolverService> _instance = new(() => new LinkMetadataResolverService());
     public static LinkMetadataResolverService Instance => _instance.Value;
 
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _pageClient;
+    private readonly HttpClient _fileProbeClient;
 
     private static readonly Regex SizeRegex = new(
         @"(?i)(?:file\s*size|size|größe|download\s*size|datei|taille|tamanho|poids|dimension|storage)[\s:>=<""'\/a-z\(\)]*?([0-9]+(?:[\.,][0-9]+)?\s*(?:TB|GB|MB|KB|Bytes|B|GiB|MiB|KiB|TiB))\b",
@@ -68,8 +69,17 @@ public partial class LinkMetadataResolverService
 
     public LinkMetadataResolverService(HttpClient? httpClient = null)
     {
-        _httpClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny,
+        _pageClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny,
             scopedCookies: true, maxResponseDrainSize: 0);
+        // File probes need the original headers to identify the representation.
+        _fileProbeClient = httpClient ?? HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(15), HttpContentType.BinaryOrAny,
+            automaticDecompression: false, scopedCookies: true, maxResponseDrainSize: 0);
+    }
+
+    private static void ApplyFileProbeRequestHeaders(HttpRequestMessage request, DownloadItem item)
+    {
+        ApplyRequestHeaders(request, item);
+        request.Headers.AcceptEncoding.Add(new StringWithQualityHeaderValue("identity"));
     }
 
     private static void ApplyRequestHeaders(HttpRequestMessage request, DownloadItem? item = null)
@@ -111,7 +121,7 @@ public partial class LinkMetadataResolverService
         // (only when host resolution is enabled for this package)
         if (allowFastHostResolve && item.IsFastHost && (string.IsNullOrWhiteSpace(item.DirectDownloadUrl) || !FastHostResolver.IsDirectDownloadUrl(item.DirectDownloadUrl)))
         {
-            var directUrl = await FastHostResolver.ResolveDirectUrlAsync(_httpClient, item.OriginalUrl, cancellationToken);
+            var directUrl = await FastHostResolver.ResolveDirectUrlAsync(_pageClient, item.OriginalUrl, cancellationToken);
             if (!string.IsNullOrWhiteSpace(directUrl))
             {
                 SafeInvoke(() =>
@@ -139,9 +149,9 @@ public partial class LinkMetadataResolverService
         {
             // Method 1: Fast HTTP HEAD Request
             using var headRequest = new HttpRequestMessage(HttpMethod.Head, uri);
-            ApplyRequestHeaders(headRequest, item);
+            ApplyFileProbeRequestHeaders(headRequest, item);
 
-            using var headResponse = await _httpClient.SendAsync(headRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var headResponse = await _fileProbeClient.SendAsync(headRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
             if (headResponse.IsSuccessStatusCode)
             {
@@ -158,20 +168,14 @@ public partial class LinkMetadataResolverService
             // Method 2: HTTP GET with Range: bytes=0-0 (for servers where HEAD is blocked or lacks Content-Length)
             using var rangeRequest = new HttpRequestMessage(HttpMethod.Get, uri);
             rangeRequest.Headers.Range = new RangeHeaderValue(0, 0);
-            ApplyRequestHeaders(rangeRequest, item);
+            ApplyFileProbeRequestHeaders(rangeRequest, item);
 
-            using var rangeResponse = await _httpClient.SendAsync(rangeRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var rangeResponse = await _fileProbeClient.SendAsync(rangeRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
             if (rangeResponse.StatusCode == HttpStatusCode.PartialContent)
             {
-                var contentRange = rangeResponse.Content.Headers.ContentRange;
-                if (contentRange?.Length != null && contentRange.Length.Value > 0)
+                if (await ApplyContentRangeAsync(item, rangeResponse, cancellationToken))
                 {
-                    SafeInvoke(() =>
-                    {
-                        item.TotalBytes = contentRange.Length.Value;
-                    });
-                    await ApplyContentDispositionFileNameAsync(item, rangeResponse, cancellationToken);
                     MarkAsDirectDownloadIfFileResponse(item, targetUrl, rangeResponse);
                     return true;
                 }
@@ -302,9 +306,24 @@ public partial class LinkMetadataResolverService
         }
     }
 
-    private async Task<bool> ApplyResponseHeadersAsync(DownloadItem item, HttpResponseMessage response, CancellationToken cancellationToken)
+    private static bool HasIdentityEncoding(HttpContentHeaders headers) =>
+        headers.ContentEncoding.All(encoding => encoding.Equals("identity", StringComparison.OrdinalIgnoreCase));
+
+    private static async Task<bool> ApplyContentRangeAsync(DownloadItem item, HttpResponseMessage response, CancellationToken cancellationToken)
     {
-        var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
+        var headers = response.Content.Headers;
+        if (headers.ContentRange?.Length is not long length || length <= 0) return false;
+
+        if (HasIdentityEncoding(headers))
+            SafeInvoke(() => item.TotalBytes = length);
+        await ApplyContentDispositionFileNameAsync(item, response, cancellationToken);
+        return true;
+    }
+
+    private static async Task<bool> ApplyResponseHeadersAsync(DownloadItem item, HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var headers = response.Content.Headers;
+        var mediaType = headers.ContentType?.MediaType?.ToLowerInvariant();
         if (mediaType != null && (mediaType.Contains("html") || mediaType.Contains("text")))
         {
             return false;
@@ -312,25 +331,23 @@ public partial class LinkMetadataResolverService
 
         bool updated = false;
 
-        // Content-Length
-        if (response.Content.Headers.ContentLength != null && response.Content.Headers.ContentLength.Value > 0)
+        bool identity = HasIdentityEncoding(headers);
+        if (identity && headers.ContentLength is long length && length > 0)
         {
-            var len = response.Content.Headers.ContentLength.Value;
-            SafeInvoke(() => item.TotalBytes = len);
+            SafeInvoke(() => item.TotalBytes = length);
             updated = true;
         }
 
         // Content-Disposition (clean file name)
         await ApplyContentDispositionFileNameAsync(item, response, cancellationToken);
 
-        // ETags identify versions and are not guaranteed content hashes.
-        if (string.IsNullOrWhiteSpace(item.ExpectedChecksum))
+        if (identity && response.StatusCode == HttpStatusCode.OK && headers.ContentMD5 is { Length: 16 } md5)
         {
-            if (response.Content.Headers.ContentMD5 != null && response.Content.Headers.ContentMD5.Length > 0)
+            SafeInvoke(() =>
             {
-                var md5 = Convert.ToHexString(response.Content.Headers.ContentMD5).ToLowerInvariant();
-                SafeInvoke(() => item.ExpectedChecksum = md5);
-            }
+                if (string.IsNullOrWhiteSpace(item.ExpectedChecksum))
+                    item.ExpectedChecksum = Convert.ToHexString(md5).ToLowerInvariant();
+            });
         }
 
         return updated;
@@ -373,7 +390,7 @@ public partial class LinkMetadataResolverService
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, pageUrl);
             ApplyRequestHeaders(req, item);
-            using var res = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseContentRead, cancellationToken);
+            using var res = await _pageClient.SendAsync(req, HttpCompletionOption.ResponseContentRead, cancellationToken);
             if (!res.IsSuccessStatusCode) return false;
 
             var html = await res.Content.ReadAsStringAsync(cancellationToken);
@@ -403,18 +420,12 @@ public partial class LinkMetadataResolverService
                 {
                     using var directReq = new HttpRequestMessage(HttpMethod.Get, directUrl);
                     directReq.Headers.Range = new RangeHeaderValue(0, 0);
-                    ApplyRequestHeaders(directReq, item);
-                    using var directRes = await _httpClient.SendAsync(directReq, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                    ApplyFileProbeRequestHeaders(directReq, item);
+                    using var directRes = await _fileProbeClient.SendAsync(directReq, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                     if (directRes.StatusCode == HttpStatusCode.PartialContent)
                     {
-                        var contentRange = directRes.Content.Headers.ContentRange;
-                        if (contentRange?.Length != null && contentRange.Length.Value > 0)
-                        {
-                            var rangeLen = contentRange.Length.Value;
-                            SafeInvoke(() => item.TotalBytes = rangeLen);
-                            await ApplyContentDispositionFileNameAsync(item, directRes, cancellationToken);
+                        if (await ApplyContentRangeAsync(item, directRes, cancellationToken) && HasIdentityEncoding(directRes.Content.Headers))
                             return true;
-                        }
                     }
                     else if (directRes.IsSuccessStatusCode)
                     {

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -56,6 +57,43 @@ public sealed class LocalDownloadIntegrityTests : IDisposable
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Metadata_GzipContentMd5_DoesNotRejectDecodedFile(bool supportsRanges)
+    {
+        byte[] data = Data(128 * 1024);
+        using var encoded = new MemoryStream();
+        using (var gzip = new GZipStream(encoded, CompressionLevel.Fastest, leaveOpen: true)) gzip.Write(data);
+        byte[] wireBytes = encoded.ToArray();
+        var headers = new Dictionary<string, string>
+        {
+            ["Content-Encoding"] = "gzip",
+            ["Content-MD5"] = Convert.ToBase64String(MD5.HashData(wireBytes))
+        };
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = wireBytes },
+            responseHeaders: headers, supportsRanges: supportsRanges);
+        var item = Item(Path.Combine(_root, "payload.bin"), 0);
+        item.DirectDownloadUrl = null;
+        item.OriginalUrl = source.Url("payload.bin");
+        var engine = new DownloadEngine { MaxConnectionsPerDownload = 1 };
+        int completed = 0;
+        engine.DownloadCompleted += _ => Interlocked.Increment(ref completed);
+
+        Assert.True(await LinkMetadataResolverService.Instance.ResolveItemMetadataAsync(item).WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(item.OriginalUrl, item.DirectDownloadUrl);
+        Assert.Equal(2, source.Requests["payload.bin"]);
+        long metadataSize = item.TotalBytes;
+        await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+
+        Assert.Equal(DownloadStatus.Completed, item.Status);
+        Assert.Null(item.ExpectedChecksum);
+        Assert.Equal(0, metadataSize);
+        Assert.Equal(data, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(1, completed);
+        Assert.False(File.Exists(item.SaveFilePath + ".part"));
+    }
+
+    [Theory]
     [InlineData("content-md5", true)]
     [InlineData("content-md5", false)]
     [InlineData("repr-digest", true)]
@@ -73,7 +111,7 @@ public sealed class LocalDownloadIntegrityTests : IDisposable
         if (checksumSource == "existing") headers["Content-MD5"] = Convert.ToBase64String(MD5.HashData(new byte[] { 9 }));
         await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = data }, responseHeaders: headers);
         using var client = new HttpClient(new HttpClientHandler { UseProxy = false });
-        var resolver = new LinkMetadataResolverService(client);
+        var resolver = LinkMetadataResolverService.Instance;
         var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 1 };
         var item = Item(Path.Combine(_root, "payload.bin"), 0);
         item.DirectDownloadUrl = null;

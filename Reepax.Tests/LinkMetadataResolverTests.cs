@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -137,6 +138,7 @@ public class LinkMetadataResolverTests
             {
                 var response = new HttpResponseMessage(HttpStatusCode.PartialContent);
                 response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, 0, 524288000); // 500 MB
+                response.Content.Headers.ContentMD5 = new byte[16];
                 return response;
             }
 
@@ -156,6 +158,26 @@ public class LinkMetadataResolverTests
 
         Assert.True(success);
         Assert.Equal(524288000, item.TotalBytes);
+        Assert.Null(item.ExpectedChecksum);
+    }
+
+    [Fact]
+    public async Task ResolveItemMetadataAsync_StillReadsGzipHosterPage()
+    {
+        using var encoded = new MemoryStream();
+        using (var gzip = new GZipStream(encoded, CompressionLevel.Fastest, leaveOpen: true))
+            gzip.Write("<html><span data-file-size=\"4096\"></span></html>"u8);
+
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["page"] = encoded.ToArray() },
+            responseHeaders: new Dictionary<string, string> { ["Content-Encoding"] = "gzip" },
+            contentType: _ => "text/html", supportsRanges: false);
+        var item = new DownloadItem { OriginalUrl = source.Url("page"), FileName = "download_file" };
+
+        var resolution = LinkMetadataResolverService.Instance.ResolveItemMetadataAsync(item);
+        Assert.True(await resolution.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(4096, item.TotalBytes);
+        Assert.Null(item.DirectDownloadUrl);
+        Assert.Equal(3, source.Requests["page"]);
     }
 
     [Fact]

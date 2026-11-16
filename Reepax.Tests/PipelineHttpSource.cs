@@ -17,6 +17,7 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     private readonly Func<string, string>? _contentType;
     private readonly Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? _writeBody;
     private readonly bool _supportsHead;
+    private readonly bool _supportsRanges;
     private readonly Task _accept;
     private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource ArchiveRequested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -26,13 +27,14 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
     internal PipelineHttpSource(IReadOnlyDictionary<string, byte[]> files,
         Func<string, long, Stream, ReadOnlyMemory<byte>, CancellationToken, Task>? writeBody = null,
         IReadOnlyDictionary<string, string>? responseHeaders = null, Func<string, string>? contentType = null,
-        bool supportsHead = true)
+        bool supportsHead = true, bool supportsRanges = true)
     {
         _files = files;
         _writeBody = writeBody;
         _responseHeaders = responseHeaders;
         _contentType = contentType;
         _supportsHead = supportsHead;
+        _supportsRanges = supportsRanges;
         _listener.Start();
         _accept = AcceptAsync();
     }
@@ -83,6 +85,7 @@ internal sealed class PipelineHttpSource : IAsyncDisposable
                     return;
                 }
                 long first = 0, last = body.Length - 1;
+                if (!_supportsRanges) requestedRange = null;
                 if (requestedRange != null)
                 {
                     if (!RangeHeaderValue.TryParse(requestedRange, out var parsed) || parsed.Ranges.Count != 1)
