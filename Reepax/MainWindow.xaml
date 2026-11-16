@@ -505,7 +505,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 1: Hoster Column (OFFICIAL HIGH-RES HOSTER FAVICON / BRAND LOGO) -->
+                    <!-- 1: Hoster Column -->
                     <Border Grid.Column="{Binding DataContext.ColIndexHoster, RelativeSource={RelativeSource AncestorType=Window}}" BorderBrush="{DynamicResource BorderDarkBrush}" 
                             BorderThickness="{Binding DataContext.ShowDividerHoster, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToRightBorderThicknessConverter}}" Padding="2,0" ToolTip="{Binding HosterName}"
                             Visibility="{Binding DataContext.ShowColHoster, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisConverter}}">

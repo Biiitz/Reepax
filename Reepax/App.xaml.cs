@@ -1,10 +1,6 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Media;
-using Reepax.Converters;
-using Reepax.Services;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
@@ -135,10 +131,6 @@ public partial class App : Application
             try { Services.Download.QueueManager.PerformSafeShutdown(); } catch { }
         };
 
-        // Once a hoster favicon is downloaded, refresh all hoster icon bindings
-        // so the real icon replaces the placeholder badge immediately.
-        HosterIconService.IconUpdated += _ => RefreshHosterIconBindingsDebounced();
-
         // Register archive password prompt dialog handler for password-protected extraction
         Services.Extractor.ArchiveExtractionService.PasswordRetryPromptHandler = async (archiveName, retry, cancellationToken) =>
         {
@@ -149,52 +141,6 @@ public partial class App : Application
             }
             return Views.PasswordPromptDialog.ShowDialog(archiveName, retry: retry, cancellationToken: cancellationToken);
         };
-    }
-
-    private static System.Windows.Threading.DispatcherTimer? _iconRefreshDebounceTimer;
-
-    private static void RefreshHosterIconBindingsDebounced()
-    {
-        if (Current?.Dispatcher == null || Current.Dispatcher.HasShutdownStarted) return;
-        Current.Dispatcher.InvokeAsync(() =>
-        {
-            if (_iconRefreshDebounceTimer == null)
-            {
-                _iconRefreshDebounceTimer = new System.Windows.Threading.DispatcherTimer
-                {
-                    Interval = TimeSpan.FromMilliseconds(500)
-                };
-                _iconRefreshDebounceTimer.Tick += (s, e) =>
-                {
-                    _iconRefreshDebounceTimer.Stop();
-                    RefreshHosterIconBindings();
-                };
-            }
-            _iconRefreshDebounceTimer.Stop();
-            _iconRefreshDebounceTimer.Start();
-        });
-    }
-
-    private static void RefreshHosterIconBindings()
-    {
-        if (Current?.Windows == null) return;
-        var windows = Current.Windows.Cast<Window>().ToArray();
-        foreach (var window in windows)
-            RefreshHosterIconBindings(window);
-    }
-
-    private static void RefreshHosterIconBindings(DependencyObject root)
-    {
-        int childCount = VisualTreeHelper.GetChildrenCount(root);
-        for (int i = 0; i < childCount; i++)
-            RefreshHosterIconBindings(VisualTreeHelper.GetChild(root, i));
-
-        if (root is Image image)
-        {
-            var expression = BindingOperations.GetBindingExpression(image, Image.SourceProperty);
-            if (expression?.ParentBinding.Converter is HosterImageConverter)
-                expression.UpdateTarget();
-        }
     }
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)

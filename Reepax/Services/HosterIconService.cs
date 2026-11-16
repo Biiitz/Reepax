@@ -2,60 +2,49 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Reepax.Helpers;
 using Reepax.Models;
 using Reepax.Services.Storage;
-using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services;
 
-public static class HosterIconService
+public sealed class HosterIconService
 {
-    private static readonly ConcurrentDictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, byte> _downloadsInFlight = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly string _appDataIconsDir;
-    private static HttpClient _httpClient;
-    private static readonly ImageSource _defaultGlobe;
+    private static readonly Lazy<HosterIconService> _default = new(() => new(SettingsService.IconsDirectory));
+    private static readonly ImageSource _defaultGlobe = CreateGenericGlobeIcon();
+    private static readonly char[] InvalidIconKeyCharacters = Path.GetInvalidFileNameChars();
+    private readonly ConcurrentDictionary<string, ImageSource> _iconCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _appDataIconsDir;
 
-    /// <summary>
-    /// Raised on the UI thread when a favicon finishes downloading.
-    /// Parameter is the hoster domain.
-    /// </summary>
-    public static event Action<string>? IconUpdated;
-
-    static HosterIconService()
+    internal HosterIconService(string iconDirectory)
     {
-        _appDataIconsDir = Path.Combine(SettingsService.AppDataDirectory, "Icons");
-        Directory.CreateDirectory(_appDataIconsDir);
-
-        _httpClient = HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(8), HttpContentType.Image);
-
-        HttpUserAgentService.UserAgentChanged += _ =>
-        {
-            Interlocked.Exchange(ref _httpClient, HttpUserAgentService.CreateHttpClient(TimeSpan.FromSeconds(8), HttpContentType.Image));
-        };
-
-        _defaultGlobe = CreateGenericGlobeIcon();
-
-        // Only load previously needed (and thus existing) icons from disk.
-        // No new icons are downloaded at startup.
+        _appDataIconsDir = iconDirectory;
         LoadAllLocalFavicons();
     }
 
-    private static void LoadAllLocalFavicons()
+    private bool CanReadIconCache()
     {
-        if (!Directory.Exists(_appDataIconsDir))
-            return;
-
         try
         {
+            var directory = new DirectoryInfo(_appDataIconsDir);
+            return directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) == 0;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool IsIconKey(string key) =>
+        key.Length > 0 && key.IndexOfAny(InvalidIconKeyCharacters) < 0;
+
+    private void LoadAllLocalFavicons()
+    {
+        try
+        {
+            if (!CanReadIconCache()) return;
+
             foreach (var file in Directory.GetFiles(_appDataIconsDir, "*.*", SearchOption.TopDirectoryOnly))
             {
                 var ext = Path.GetExtension(file).ToLowerInvariant();
@@ -73,7 +62,7 @@ public static class HosterIconService
                 _iconCache[rawName] = img;
 
                 // Also map canonical domain and known aliases into cache
-                var canonical = ExtractDomain(rawName);
+                var canonical = GetDomain(rawName);
                 if (!string.IsNullOrEmpty(canonical) && canonical != "unknown")
                 {
                     _iconCache[canonical] = img;
@@ -96,11 +85,11 @@ public static class HosterIconService
     }
 
     /// <summary>
-    /// Returns the official favicon for a hoster name, domain, or URL.
-    /// If the icon is not yet in AppData cache, it will be downloaded in the background
-    /// and reported upon completion via <see cref="IconUpdated"/>.
+    /// Returns a locally cached icon or a generated badge for a hoster.
     /// </summary>
-    public static ImageSource GetIconForHoster(string? hosterOrUrl)
+    public static ImageSource GetIconForHoster(string? hosterOrUrl) => _default.Value.GetIcon(hosterOrUrl);
+
+    internal ImageSource GetIcon(string? hosterOrUrl)
     {
         if (string.IsNullOrWhiteSpace(hosterOrUrl))
             return _defaultGlobe;
@@ -114,8 +103,8 @@ public static class HosterIconService
             return _defaultGlobe;
         }
 
-        string domain = ExtractDomain(trimmed);
-        if (domain.Equals("unknown", StringComparison.OrdinalIgnoreCase) ||
+        string domain = GetDomain(trimmed);
+        if (!IsIconKey(domain) || domain.Equals("unknown", StringComparison.OrdinalIgnoreCase) ||
             domain.Equals("generic", StringComparison.OrdinalIgnoreCase))
         {
             return _defaultGlobe;
@@ -136,19 +125,14 @@ public static class HosterIconService
             return img;
         }
 
-        // 3. Not yet downloaded -> queue download in background
-        if (domain.Contains('.') && _downloadsInFlight.TryAdd(domain, 0))
-            _ = FetchAndCacheIconAsync(domain);
-
-        // 4. Fallback badge until download finishes
         var fallback = CreateGenericLetterBadge(domain);
         _iconCache[domain] = fallback;
         return fallback;
     }
 
-    private static ImageSource? FindIconOnDisk(string domain)
+    private ImageSource? FindIconOnDisk(string domain)
     {
-        if (!Directory.Exists(_appDataIconsDir))
+        if (!IsIconKey(domain) || !CanReadIconCache())
             return null;
 
         // .png is the standard format; others for migrating older cache files
@@ -236,7 +220,9 @@ public static class HosterIconService
     /// Known hosters are resolved via <see cref="HosterInfo.KnownHosters"/>,
     /// unknown URLs via the host portion of the URL.
     /// </summary>
-    public static string ExtractDomain(string input)
+    public static string ExtractDomain(string input) => _default.Value.GetDomain(input);
+
+    private string GetDomain(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return "unknown";
@@ -295,86 +281,11 @@ public static class HosterIconService
         return lower.Replace(" ", "").Replace("www.", "");
     }
 
-    private static async Task FetchAndCacheIconAsync(string domain)
-    {
-        if (!domain.Contains('.'))
-            return;
-        try
-        {
-            // Multi-source fallback chain (DuckDuckGo -> Google -> IconHorse -> Direct)
-            string[] sources = {
-                $"https://icons.duckduckgo.com/ip3/{domain}.ico",
-                $"https://www.google.com/s2/favicons?domain={domain}&sz=64",
-                $"https://icon.horse/icon/{domain}",
-                $"https://{domain}/favicon.ico"
-            };
-
-            foreach (var url in sources)
-            {
-                try
-                {
-                    await HttpJitterHelper.DelayJitterAsync(50, 150);
-
-                    var bytes = await _httpClient.GetByteArrayAsync(url);
-                    if (bytes == null || bytes.Length < 100)
-                        continue;
-
-                    // Decoding validates that it is a valid image (not an HTML error page)
-                    var icon = DecodeBestFrame(bytes);
-                    if (icon == null)
-                        continue;
-
-                    // Always save as authentic PNG under the domain name -> {domain}.png
-                    var pngBytes = EncodeAsPng(icon);
-                    await File.WriteAllBytesAsync(Path.Combine(_appDataIconsDir, $"{domain}.png"), pngBytes);
-
-                    _iconCache[domain] = icon;
-
-                    if (App.Current != null)
-                        await App.Current.Dispatcher.InvokeAsync(() => IconUpdated?.Invoke(domain));
-                    return;
-                }
-                catch { }
-            }
-        }
-        finally
-        {
-            _downloadsInFlight.TryRemove(domain, out _);
-        }
-    }
-
-    private static BitmapSource? DecodeBestFrame(byte[] bytes)
-    {
-        try
-        {
-            using var stream = new MemoryStream(bytes);
-            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
-            if (decoder.Frames == null || decoder.Frames.Count == 0)
-                return null;
-
-            var frame = decoder.Frames.OrderByDescending(f => f.PixelWidth).FirstOrDefault() ?? decoder.Frames[0];
-            frame.Freeze();
-            return frame;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static byte[] EncodeAsPng(BitmapSource source)
-    {
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(source));
-        using var ms = new MemoryStream();
-        encoder.Save(ms);
-        return ms.ToArray();
-    }
-
     private static ImageSource? LoadImageFromFile(string filePath)
     {
         try
         {
+            if ((File.GetAttributes(filePath) & FileAttributes.ReparsePoint) != 0) return null;
             using var stream = File.OpenRead(filePath);
             var decoder = BitmapDecoder.Create(
                 stream,
@@ -387,20 +298,7 @@ public static class HosterIconService
         }
         catch
         {
-            try
-            {
-                var bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                bmp.UriSource = new Uri(filePath, UriKind.Absolute);
-                bmp.EndInit();
-                bmp.Freeze();
-                return bmp;
-            }
-            catch
-            {
-                return null;
-            }
+            return null;
         }
     }
 
