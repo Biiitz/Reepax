@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Reepax.Services.Storage;
 
@@ -162,16 +163,24 @@ public sealed class PowerManagementService
             return;
         }
 
+        ExecuteShutdown(Download.QueueManager.PerformSafeShutdown, startInfo =>
+        {
+            EnableShutdownPrivilege();
+            using var process = Process.Start(startInfo);
+        });
+    }
+
+    internal static void ExecuteShutdown(Action prepareShutdown, Action<ProcessStartInfo> startProcess)
+    {
         try
         {
             AppLogger.Info("[PowerManagement] Performing safe shutdown before initiating Windows shutdown...");
-            Download.QueueManager.PerformSafeShutdown();
+            prepareShutdown();
 
             if (OperatingSystem.IsWindows())
             {
-                EnableShutdownPrivilege();
-
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("shutdown.exe", "/s /t 0 /f")
+                // Reepax handles the countdown. A positive Windows timeout would imply /f.
+                startProcess(new ProcessStartInfo("shutdown.exe", "/s /t 0")
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -12,6 +13,27 @@ namespace Reepax.Tests;
 
 public sealed class PowerManagementTests
 {
+    [Fact]
+    public void ExecuteShutdown_PreparesReepaxThenRequestsGracefulWindowsShutdown()
+    {
+        var steps = new List<string>();
+        var launches = new List<ProcessStartInfo>();
+
+        PowerManagementService.ExecuteShutdown(
+            () => steps.Add("prepare"),
+            startInfo =>
+            {
+                steps.Add("launch");
+                launches.Add(startInfo);
+            });
+
+        Assert.Equal(new[] { "prepare", "launch" }, steps);
+        var request = Assert.Single(launches);
+        Assert.Equal("shutdown.exe", request.FileName);
+        Assert.Equal("/s /t 0", request.Arguments);
+        Assert.False(request.UseShellExecute);
+    }
+
     [Fact]
     public async Task NativeRequest_CanBeCreatedAndClosedOnDifferentThreads()
     {
