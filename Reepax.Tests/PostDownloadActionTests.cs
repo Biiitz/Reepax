@@ -191,21 +191,125 @@ public class PostDownloadActionTests : IDisposable
         Assert.False(service.IsCountdownActive);
     }
 
-    [Fact]
-    public void PostDownloadAction_WaitsUntilDiskCleanupFinishes()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Countdown_RestartsAfterTheLastCleanupAndAnyNewWorkFinishes(bool addWork)
     {
-        var service = PostDownloadActionService.Instance;
-        service.CurrentAction = PostDownloadAction.ExitApp;
-        service.StartCountdown();
-        Assert.True(service.IsCountdownActive);
-        using (service.BeginCleanup())
+        var allowTicks = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource<PostDownloadAction>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new PostDownloadActionService(token => allowTicks.Task.WaitAsync(token));
+        var packages = QueueManager.Instance.Packages;
+        DownloadPackage[] previousPackages = [];
+        void Finished()
         {
-            Assert.False(service.IsCountdownActive);
-            Assert.Equal(PostDownloadAction.ExitApp, service.CurrentAction);
-            service.StartCountdown();
-            Assert.False(service.IsCountdownActive);
+            var action = service.CurrentAction;
+            // Intercept the selected action at the countdown boundary.
             service.CurrentAction = PostDownloadAction.None;
+            finished.TrySetResult(action);
         }
+
+        try
+        {
+            await OnUiAsync(() =>
+            {
+                previousPackages = packages.ToArray();
+                packages.Clear();
+                packages.Add(CreateCompletedPackage());
+                service.CountdownFinished += Finished;
+                service.CurrentAction = PostDownloadAction.Sleep;
+                service.NotifyWorkStarted();
+                service.Evaluate(packages);
+                Assert.True(service.IsCountdownActive);
+
+                using var first = service.BeginCleanup();
+                using var last = service.BeginCleanup();
+                Assert.False(service.IsCountdownActive);
+                Assert.Equal(PostDownloadAction.Sleep, service.CurrentAction);
+                service.StartCountdown();
+                Assert.False(service.IsCountdownActive);
+
+                var newWork = CreateCompletedPackage();
+                if (addWork)
+                {
+                    newWork.Items[0].Status = DownloadStatus.Queued;
+                    packages.Add(newWork);
+                }
+
+                first.Dispose();
+                service.Evaluate(packages);
+                Assert.False(service.IsCountdownActive);
+                Assert.False(finished.Task.IsCompleted);
+                last.Dispose();
+
+                if (addWork)
+                {
+                    Assert.False(service.IsCountdownActive);
+                    newWork.Items[0].Status = DownloadStatus.Completed;
+                    service.Evaluate(packages);
+                }
+
+                Assert.True(service.IsCountdownActive);
+                Assert.Equal(10, service.RemainingSeconds);
+                Assert.False(finished.Task.IsCompleted);
+            });
+
+            allowTicks.SetResult();
+            Assert.Equal(PostDownloadAction.Sleep, await finished.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.False(service.IsCountdownActive);
+            Assert.Equal(PostDownloadAction.None, service.CurrentAction);
+        }
+        finally
+        {
+            await OnUiAsync(() =>
+            {
+                service.CancelCountdown();
+                service.CurrentAction = PostDownloadAction.None;
+                service.CountdownFinished -= Finished;
+                packages.Clear();
+                foreach (var previous in previousPackages) packages.Add(previous);
+            });
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Countdown_ExplicitCancellationDuringCleanupClearsThePendingRestart(bool deselectAction)
+    {
+        await OnUiAsync(() =>
+        {
+            var service = new PostDownloadActionService(Timeout.InfiniteTimeSpan);
+            var packages = QueueManager.Instance.Packages;
+            var previousPackages = packages.ToArray();
+            try
+            {
+                packages.Clear();
+                packages.Add(CreateCompletedPackage());
+                service.CurrentAction = PostDownloadAction.Sleep;
+                service.NotifyWorkStarted();
+                service.Evaluate(packages);
+                Assert.True(service.IsCountdownActive);
+
+                using (service.BeginCleanup())
+                {
+                    if (deselectAction) service.CurrentAction = PostDownloadAction.None;
+                    else service.CancelCountdown();
+                    Assert.Equal(PostDownloadAction.None, service.CurrentAction);
+                    service.CurrentAction = PostDownloadAction.Sleep;
+                }
+
+                service.Evaluate(packages);
+                Assert.False(service.IsCountdownActive);
+            }
+            finally
+            {
+                service.CancelCountdown();
+                service.CurrentAction = PostDownloadAction.None;
+                packages.Clear();
+                foreach (var previous in previousPackages) packages.Add(previous);
+            }
+        });
     }
 
     [Fact]
@@ -388,18 +492,6 @@ public class PostDownloadActionTests : IDisposable
         var outcome = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var ticks = new List<int>();
         bool reachedBoundary = false;
-        async Task OnUiAsync(Action action)
-        {
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.CheckAccess())
-            {
-                action();
-                return;
-            }
-            // Drain earlier UI notifications before installing this countdown's observers.
-            await dispatcher.InvokeAsync(action, System.Windows.Threading.DispatcherPriority.Background)
-                .Task.WaitAsync(TimeSpan.FromSeconds(10));
-        }
         void Tick(int seconds)
         {
             ticks.Add(seconds);
@@ -449,6 +541,19 @@ public class PostDownloadActionTests : IDisposable
                 service.CountdownCancelled -= Cancelled;
             });
         }
+    }
+
+    private static async Task OnUiAsync(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher == null || dispatcher.HasShutdownStarted || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+        // Drain earlier UI notifications before changing countdown observers.
+        await dispatcher.InvokeAsync(action, System.Windows.Threading.DispatcherPriority.Background)
+            .Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     private static DownloadPackage CreateCompletedPackage()

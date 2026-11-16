@@ -23,12 +23,13 @@ public sealed class PostDownloadActionService
     public static PostDownloadActionService Instance => _instance.Value;
 
     private readonly object _lock = new();
-    private readonly TimeSpan _countdownInterval;
+    private readonly Func<CancellationToken, Task> _waitForNextTick;
     private bool _hadActiveWork;
     private CancellationTokenSource? _countdownCts;
     private bool _isCountdownActive;
     private int _remainingSeconds;
     private int _activeCleanupCount;
+    private bool _restartCountdownAfterCleanup;
 
     public bool IsCountdownActive
     {
@@ -61,16 +62,16 @@ public sealed class PostDownloadActionService
         get => SettingsService.Instance.Settings.PostDownloadAction;
         set
         {
-            if (SettingsService.Instance.Settings.PostDownloadAction != value)
+            lock (_lock)
             {
+                if (CurrentAction == value) return;
+
                 SettingsService.Instance.Settings.PostDownloadAction = value;
                 SettingsService.Instance.SaveSettings();
                 OnStateChanged();
 
-                if (value == PostDownloadAction.None && IsCountdownActive)
-                {
+                if (value == PostDownloadAction.None)
                     CancelCountdown(manual: true);
-                }
             }
         }
     }
@@ -82,7 +83,9 @@ public sealed class PostDownloadActionService
 
     private PostDownloadActionService() : this(TimeSpan.FromSeconds(1)) { }
 
-    internal PostDownloadActionService(TimeSpan countdownInterval) => _countdownInterval = countdownInterval;
+    internal PostDownloadActionService(TimeSpan countdownInterval) : this(token => Task.Delay(countdownInterval, token)) { }
+
+    internal PostDownloadActionService(Func<CancellationToken, Task> waitForNextTick) => _waitForNextTick = waitForNextTick;
 
     /// <summary>
     /// Evaluates whether all currently active downloads and extractions have finished.
@@ -110,7 +113,7 @@ public sealed class PostDownloadActionService
                 return;
             }
 
-            if (CurrentAction == PostDownloadAction.None || (!_hadActiveWork && !IsCountdownActive))
+            if (CurrentAction == PostDownloadAction.None || (!_hadActiveWork && !_restartCountdownAfterCleanup && !IsCountdownActive))
                 return;
 
             if (!ArePackagesReady(packageList))
@@ -123,9 +126,10 @@ public sealed class PostDownloadActionService
                 return;
             }
 
-            if (_hadActiveWork && CurrentAction != PostDownloadAction.None && !IsCountdownActive)
+            if (!IsCountdownActive)
             {
                 _hadActiveWork = false;
+                _restartCountdownAfterCleanup = false;
                 StartCountdown(() =>
                 {
                     var currentPackages = packages.ToList();
@@ -168,7 +172,10 @@ public sealed class PostDownloadActionService
         {
             _activeCleanupCount++;
             if (IsCountdownActive)
+            {
+                _restartCountdownAfterCleanup = true;
                 CancelCountdown(manual: false);
+            }
         }
         return new CleanupLease(this);
     }
@@ -185,7 +192,9 @@ public sealed class PostDownloadActionService
             if (owner == null)
                 return;
             lock (owner._lock)
-                owner._activeCleanupCount--;
+            {
+                if (--owner._activeCleanupCount != 0) return;
+            }
             owner.Evaluate(QueueManager.Instance.Packages);
         }
     }
@@ -262,13 +271,14 @@ public sealed class PostDownloadActionService
                         var current = i;
                         SafeInvoke(() =>
                         {
+                            if (token.IsCancellationRequested) return;
                             RemainingSeconds = current;
                             CountdownTick?.Invoke(current);
                         });
 
                         if (i > 0)
                         {
-                            await Task.Delay(_countdownInterval, token).ConfigureAwait(false);
+                            await _waitForNextTick(token).ConfigureAwait(false);
                         }
                     }
 
@@ -313,7 +323,8 @@ public sealed class PostDownloadActionService
     {
         lock (_lock)
         {
-            if (!IsCountdownActive) return;
+            if (!IsCountdownActive && !(manual && _restartCountdownAfterCleanup)) return;
+            if (manual) _restartCountdownAfterCleanup = false;
 
             _countdownCts?.Cancel();
             _countdownCts?.Dispose();
@@ -329,7 +340,7 @@ public sealed class PostDownloadActionService
             }
             else
             {
-                AppLogger.Info("[PostDownloadAction] Countdown paused because a download was resumed or started.");
+                AppLogger.Info("[PostDownloadAction] Countdown paused. The action remains selected.");
             }
 
             SafeInvoke(() => CountdownCancelled?.Invoke(manual));

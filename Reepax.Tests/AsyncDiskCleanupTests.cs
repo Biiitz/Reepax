@@ -8,6 +8,7 @@ using Reepax.Models;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
 using Reepax.ViewModels;
 using Xunit;
@@ -336,31 +337,58 @@ public class AsyncDiskCleanupTests
         }
     }
 
-    [Fact]
-    public async Task Removal_CancelledAtConfirmationKeepsThePackageAndFiles()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Removal_CancelledAtConfirmationKeepsFilesAndRestartsCountdown(bool removeItem)
     {
         var root = Path.Combine(Path.GetTempPath(), "CleanupCase_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         var file = Path.Combine(root, "data.bin");
         File.WriteAllText(file, "data");
         var vm = new MainViewModel();
+        var previousPackages = vm.Packages.ToArray();
         vm.Packages.Clear();
-        var package = new DownloadPackage { Name = "TargetFolder", SaveDirectory = root, AutoPar2Repair = false };
-        package.Items.Add(new DownloadItem { FileName = "data.bin", SaveFilePath = file });
+        var package = new DownloadPackage { Name = "TargetFolder", SaveDirectory = root, AutoPar2Repair = false, AutoExtractArchives = false };
+        var item = new DownloadItem { FileName = "data.bin", SaveFilePath = file, Status = DownloadStatus.Completed, TotalBytes = 4, DownloadedBytes = 4 };
+        package.Items.Add(item);
         vm.Packages.Add(package);
+        var service = PostDownloadActionService.Instance;
+        var previousAction = service.CurrentAction;
         string? option = null;
-        vm.CleanupConfirmationOverride = value => { option = value; return (false, false, false); };
+        bool countdownPaused = false;
+        vm.CleanupConfirmationOverride = value =>
+        {
+            option = value;
+            countdownPaused = !service.IsCountdownActive && service.CurrentAction == PostDownloadAction.Sleep;
+            return (false, false, false);
+        };
         try
         {
-            await vm.RemovePackage(package);
+            service.CancelCountdown();
+            service.CurrentAction = PostDownloadAction.Sleep;
+            service.NotifyWorkStarted();
+            service.Evaluate(vm.Packages);
+            Assert.True(service.IsCountdownActive);
+
+            if (removeItem) await vm.RemoveItem(item);
+            else await vm.RemovePackage(package);
+
             Assert.NotNull(option);
+            Assert.True(countdownPaused);
             Assert.Contains(package, vm.Packages);
+            Assert.Contains(item, package.Items);
             Assert.Equal("data", File.ReadAllText(file));
             Assert.False(vm.IsRemovalInProgress);
+            Assert.True(service.IsCountdownActive);
+            Assert.Equal(PostDownloadAction.Sleep, service.CurrentAction);
         }
         finally
         {
+            service.CancelCountdown();
             vm.Packages.Clear();
+            foreach (var previous in previousPackages) vm.Packages.Add(previous);
+            service.CurrentAction = previousAction;
             if (Directory.Exists(root))
                 Directory.Delete(root, true);
         }
