@@ -59,8 +59,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // 1. Single-Instance Check via Mutex & Named Pipe (with retry timeout if launched via restart)
+        // Manual restarts wait for the previous process to finish saving before taking ownership.
         bool isRestart = e.Args.Any(a => string.Equals(a, "--restart", StringComparison.OrdinalIgnoreCase));
+        if (isRestart) AppRestartService.WaitForRestartParent(e.Args);
         if (!SingleInstanceService.Instance.TryAcquireOwnership(isRestart ? 4000 : 0))
         {
             TryForwardLaunchArguments(e.Args, args => SingleInstanceService.Instance.SendArgsToPrimary(args),

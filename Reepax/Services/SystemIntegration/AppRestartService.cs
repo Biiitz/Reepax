@@ -1,5 +1,7 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -11,6 +13,7 @@ namespace Reepax.Services.SystemIntegration;
 
 public sealed class AppRestartService
 {
+    private const string RestartParentPrefix = "--restart-parent=";
     internal static AppRestartService Instance { get; } = new(Process.Start, ExitApplication);
 
     private readonly Func<ProcessStartInfo, Process?> _startProcess;
@@ -41,7 +44,7 @@ public sealed class AppRestartService
                 return false;
             }
 
-            PrepareForRestart();
+            SaveWindowState();
 
             try
             {
@@ -59,6 +62,16 @@ public sealed class AppRestartService
             {
                 AppLogger.Error("[AppRestartService] Process start did not return a replacement instance.");
                 return false;
+            }
+
+            try
+            {
+                QueueManager.Instance.StopQueue(isExiting: true);
+                SettingsService.Instance.SaveSettings();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[AppRestartService] Error during restart preparation", ex);
             }
 
             _exitApplication();
@@ -89,7 +102,7 @@ public sealed class AppRestartService
         }
     }
 
-    private static void PrepareForRestart()
+    private static void SaveWindowState()
     {
         try
         {
@@ -110,16 +123,6 @@ public sealed class AppRestartService
         catch (Exception ex)
         {
             AppLogger.Warn("[AppRestartService] Error saving window state before restart", ex);
-        }
-
-        try
-        {
-            QueueManager.Instance.StopQueue(isExiting: true);
-            SettingsService.Instance.SaveSettings();
-        }
-        catch (Exception ex)
-        {
-            AppLogger.Error("[AppRestartService] Error during restart preparation", ex);
         }
     }
 
@@ -169,6 +172,36 @@ public sealed class AppRestartService
                 start.ArgumentList.Add(argument);
         }
         start.ArgumentList.Add("--restart");
+        using var current = Process.GetCurrentProcess();
+        start.ArgumentList.Add(CreateRestartParentArgument(current));
         return start;
+    }
+
+    internal static string CreateRestartParentArgument(Process process) =>
+        FormattableString.Invariant($"{RestartParentPrefix}{process.Id}:{process.StartTime.ToUniversalTime().Ticks}");
+
+    internal static void WaitForRestartParent(string[] arguments)
+    {
+        var argument = arguments.FirstOrDefault(value => value.StartsWith(RestartParentPrefix, StringComparison.Ordinal));
+        if (argument == null) return;
+
+        var identity = argument[RestartParentPrefix.Length..].Split(':', 2);
+        if (identity.Length != 2 ||
+            !int.TryParse(identity[0], NumberStyles.None, CultureInfo.InvariantCulture, out int id) || id <= 0 || id == Environment.ProcessId ||
+            !long.TryParse(identity[1], NumberStyles.None, CultureInfo.InvariantCulture, out long startedAt))
+            return;
+
+        try
+        {
+            using var parent = Process.GetProcessById(id);
+            // A recycled process ID must not keep the replacement waiting.
+            _ = parent.SafeHandle;
+            if (parent.StartTime.ToUniversalTime().Ticks == startedAt)
+                parent.WaitForExit();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
+        {
+            // The previous process may have exited before its handle could be opened.
+        }
     }
 }

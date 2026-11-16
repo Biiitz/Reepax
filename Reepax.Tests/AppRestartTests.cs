@@ -27,11 +27,47 @@ public class AppRestartTests
         var start = AppRestartService.CreateStartInfo(executable,
             [entryPoint, "example package.repx", "legacy.sdlr", "--RESTART", "--activate",
                 "--update-session=example", "--legacy-update-bootstrap", "--MINIMIZED", "--autostart"]);
-        string[] startupOptions = ["--MINIMIZED", "--autostart", "--restart"];
+        using var current = Process.GetCurrentProcess();
+        string[] startupOptions = ["--MINIMIZED", "--autostart", "--restart", AppRestartService.CreateRestartParentArgument(current)];
         Assert.Equal(executable, start.FileName);
         Assert.False(start.UseShellExecute);
         Assert.Equal(AppContext.BaseDirectory, start.WorkingDirectory);
         Assert.Equal(hosted ? [entryPoint, ..startupOptions] : startupOptions, start.ArgumentList);
+    }
+
+    [Fact]
+    public async Task RestartWait_FollowsTheOriginalProcessBeyondTheMutexRetryWindow()
+    {
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "cmd.exe"))
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true
+        };
+        start.ArgumentList.Add("/d");
+        start.ArgumentList.Add("/q");
+        start.ArgumentList.Add("/c");
+        start.ArgumentList.Add("set /p finish=");
+        using var original = Process.Start(start)!;
+        string argument = AppRestartService.CreateRestartParentArgument(original);
+        var waiting = Task.Factory.StartNew(() => AppRestartService.WaitForRestartParent(["--restart", argument]),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        try
+        {
+            string stale = argument[..(argument.IndexOf(':') + 1)] + "1";
+            await Task.Run(() => AppRestartService.WaitForRestartParent(["--restart", stale])).WaitAsync(TimeSpan.FromSeconds(2));
+            await Assert.ThrowsAsync<TimeoutException>(() => waiting.WaitAsync(TimeSpan.FromMilliseconds(4200)));
+            Assert.False(original.HasExited);
+            await original.StandardInput.WriteLineAsync("finish");
+            await original.StandardInput.FlushAsync();
+            await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(original.HasExited);
+            AppRestartService.WaitForRestartParent(["--restart", argument]);
+        }
+        finally
+        {
+            if (!original.HasExited) original.Kill();
+            await original.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     [Theory]
@@ -41,6 +77,12 @@ public class AppRestartTests
     {
         var steps = new List<string>();
         int attempts = 0;
+        var queue = QueueManager.Instance;
+        var package = new DownloadPackage { Name = "Restart test" };
+        var active = new DownloadItem { FileName = "active.bin", Status = DownloadStatus.Downloading };
+        var queued = new DownloadItem { FileName = "queued.bin", Status = DownloadStatus.Queued };
+        var browser = new DownloadItem { FileName = "browser.bin", Status = DownloadStatus.InBrowser };
+        foreach (var item in new[] { active, queued, browser }) package.Items.Add(item);
         var restart = new AppRestartService(start =>
         {
             Assert.Contains("--restart", start.ArgumentList);
@@ -50,11 +92,20 @@ public class AppRestartTests
             throw new Win32Exception(5);
         }, () => steps.Add("exit"));
 
-        Assert.False(restart.TryRestart());
-        Assert.Equal(new[] { "start" }, steps);
-        Assert.True(restart.TryRestart());
-        Assert.True(restart.TryRestart());
-        Assert.Equal(new[] { "start", "start", "exit" }, steps);
+        queue.Packages.Add(package);
+        try
+        {
+            Assert.False(restart.TryRestart());
+            Assert.Equal(new[] { "start" }, steps);
+            Assert.Equal(DownloadStatus.Downloading, active.Status);
+            Assert.Equal(DownloadStatus.Queued, queued.Status);
+            Assert.Equal(DownloadStatus.InBrowser, browser.Status);
+            Assert.True(restart.TryRestart());
+            Assert.True(restart.TryRestart());
+            Assert.Equal(new[] { "start", "start", "exit" }, steps);
+            Assert.All(package.Items, item => Assert.Equal(DownloadStatus.Paused, item.Status));
+        }
+        finally { queue.Packages.Remove(package); }
     }
 
     [Fact]
