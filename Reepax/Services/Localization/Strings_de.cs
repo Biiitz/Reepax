@@ -153,6 +153,8 @@ public static class Strings_de
         ["Status_BrowserLinksOpened"] = "{0} von {1} Links im Standardbrowser geöffnet.",
         ["Menu_DeleteItem"] = "Eintrag löschen",
         ["Menu_Retry"] = "Noch mal neu versuchen",
+        ["Menu_RetryWithoutLegacyMd5"] = "Alte MD5-Prüfsumme verwerfen und erneut laden…",
+        ["Dialog_RetryWithoutLegacyMd5"] = "Die gespeicherte MD5-Prüfsumme für „{0}“ stimmt mit der heruntergeladenen Datei nicht überein. Ihre Herkunft ist unbekannt. Beim erneuten Download wird der folgende Wert aus dem Eintrag entfernt. Fahre nur fort, wenn du der Downloadquelle vertraust.\n\n{1}",
         ["Menu_Resume"] = "Fortsetzen",
         ["Menu_Pause"] = "Pausieren",
         ["Menu_RestartDownload"] = "Erneut herunterladen",

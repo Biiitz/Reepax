@@ -91,6 +91,11 @@ public partial class DownloadItem : ObservableObject
     [NotifyPropertyChangedFor(nameof(ChecksumVerificationSummary))]
     private string? _expectedChecksum;
 
+    internal bool ExpectedChecksumHasKnownSource { get; set; }
+
+    partial void OnExpectedChecksumChanged(string? value) =>
+        ExpectedChecksumHasKnownSource = !string.IsNullOrWhiteSpace(value);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayChecksum))]
     [NotifyPropertyChangedFor(nameof(ChecksumVerificationSummary))]

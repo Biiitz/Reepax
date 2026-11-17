@@ -916,6 +916,12 @@ public partial class MainViewModel : ObservableObject
         RecalculateGlobalStats();
     }
 
+    internal void RetryItemWithoutLegacyMd5(DownloadItem item, string confirmedChecksum)
+    {
+        _queueManager.RetryItemWithoutLegacyMd5(item, confirmedChecksum);
+        RecalculateGlobalStats();
+    }
+
     [RelayCommand]
     public void TogglePackagePause(DownloadPackage? package)
     {

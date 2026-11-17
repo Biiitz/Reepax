@@ -152,6 +152,109 @@ public sealed class LocalDownloadIntegrityTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Metadata_GzipMd5RequiresExplicitDiscardOfAnUnattributedChecksum(bool knownSource)
+    {
+        byte[] data = Data(128 * 1024);
+        using var encoded = new MemoryStream();
+        using (var gzip = new GZipStream(encoded, CompressionLevel.Fastest, leaveOpen: true)) gzip.Write(data);
+        byte[] wireBytes = encoded.ToArray();
+        byte[] wireHash = MD5.HashData(wireBytes);
+        string checksum = Convert.ToHexString(wireHash).ToLowerInvariant();
+        var headers = new Dictionary<string, string>
+        {
+            ["Content-Encoding"] = "gzip",
+            ["Content-MD5"] = Convert.ToBase64String(wireHash)
+        };
+        await using var source = new PipelineHttpSource(new Dictionary<string, byte[]> { ["payload.bin"] = wireBytes },
+            responseHeaders: headers, supportsRanges: false);
+        string path = Path.Combine(_root, "payload.bin");
+        var item = Item(path, 0);
+        item.OriginalUrl = item.DirectDownloadUrl = source.Url("payload.bin");
+        item.ExpectedChecksum = checksum;
+        if (!knownSource) item.ExpectedChecksumHasKnownSource = false;
+        var package = new DownloadPackage { Name = "Sample", IsCustomName = true, SaveDirectory = _root, AutoPar2Repair = false };
+        package.Items.Add(item);
+        using var storage = new DownloadPersistenceService(Path.Combine(_root, "downloads.json"));
+        storage.SaveDownloads(new[] { package }, sync: true);
+        package = Assert.Single(storage.LoadDownloads());
+        item = Assert.Single(package.Items);
+        Assert.Equal(checksum, item.ExpectedChecksum);
+        Assert.Equal(knownSource, item.ExpectedChecksumHasKnownSource);
+
+        var queue = new QueueManager(subscribeToDownloadEvents: false);
+        var engine = new DownloadEngine { MaxConnectionsPerDownload = 1 };
+        int completed = 0;
+        engine.DownloadCompleted += _ => completed++;
+        try
+        {
+            queue.RetryItem(item);
+            Assert.Equal(checksum, item.ExpectedChecksum);
+            Assert.True(await LinkMetadataResolverService.Instance.ResolveItemMetadataAsync(item).WaitAsync(TimeSpan.FromSeconds(10)));
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+
+            Assert.Equal(DownloadStatus.Failed, item.Status);
+            Assert.Equal(DownloadFailureKind.ChecksumMismatch, item.FailureDetails?.Kind);
+            Assert.Equal(0, completed);
+            Assert.False(File.Exists(path));
+            Assert.Equal(data, File.ReadAllBytes(path + ".part"));
+
+            storage.SaveDownloads([package], sync: true);
+            package = Assert.Single(storage.LoadDownloads());
+            item = Assert.Single(package.Items);
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Equal(knownSource ? null : checksum, QueueManager.GetRetryableLegacyMd5(item));
+
+            queue.RetryItemWithoutLegacyMd5(item, new string('0', 32));
+            Assert.Equal(checksum, item.ExpectedChecksum);
+            Assert.Equal(DownloadStatus.Paused, item.Status);
+            Assert.Equal(data, File.ReadAllBytes(path + ".part"));
+
+            if (knownSource)
+            {
+                queue.RetryItemWithoutLegacyMd5(item, checksum);
+                Assert.Equal(checksum, item.ExpectedChecksum);
+                Assert.Equal(DownloadStatus.Paused, item.Status);
+                Assert.Equal(data, File.ReadAllBytes(path + ".part"));
+                return;
+            }
+
+            using (File.Open(path + ".part", FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                queue.RetryItemWithoutLegacyMd5(item, checksum);
+                Assert.Equal(checksum, item.ExpectedChecksum);
+                Assert.Equal(DownloadStatus.Failed, item.Status);
+                Assert.True(item.FailureDetails?.RetryBlocked);
+                Assert.Equal(checksum, QueueManager.GetRetryableLegacyMd5(item));
+                Assert.Equal(data, File.ReadAllBytes(path + ".part"));
+            }
+
+            queue.RetryItemWithoutLegacyMd5(item, checksum);
+            Assert.Equal(DownloadStatus.Queued, item.Status);
+            Assert.Null(item.ExpectedChecksum);
+            Assert.Null(item.RejectedFiles);
+            Assert.False(File.Exists(path + ".part"));
+
+            storage.SaveDownloads([package], sync: true);
+            item = Assert.Single(Assert.Single(storage.LoadDownloads()).Items);
+            Assert.Null(item.ExpectedChecksum);
+            Assert.True(await LinkMetadataResolverService.Instance.ResolveItemMetadataAsync(item).WaitAsync(TimeSpan.FromSeconds(10)));
+            await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(15));
+            Assert.Equal(DownloadStatus.Completed, item.Status);
+            Assert.Null(item.ExpectedChecksum);
+            Assert.Equal(data, File.ReadAllBytes(path));
+            Assert.Equal(1, completed);
+            Assert.False(File.Exists(path + ".part"));
+        }
+        finally
+        {
+            queue.StopQueue();
+            await engine.PauseAllAsync();
+        }
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(LocalDownloadIntegrity.BlockSize - 1)]

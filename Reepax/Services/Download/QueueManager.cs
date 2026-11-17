@@ -1273,14 +1273,26 @@ public partial class QueueManager
         }
     }
 
-    public void RetryItem(DownloadItem? item)
+    public void RetryItem(DownloadItem? item) => RetryItemCore(item, null);
+
+    internal void RetryItemWithoutLegacyMd5(DownloadItem item, string confirmedChecksum) =>
+        RetryItemCore(item, confirmedChecksum);
+
+    private void RetryItemCore(DownloadItem? item, string? confirmedChecksum)
     {
         if (item == null || item.IsUnavailableForProcessing || item.IsVerifyingIntegrity ||
             item.Status == DownloadStatus.Completed || IsItemActive(item) || DownloadEngine.Instance.IsDownloading(item.Id))
             return;
 
+        if (confirmedChecksum != null &&
+            !string.Equals(confirmedChecksum, GetRetryableLegacyMd5(item), StringComparison.Ordinal))
+            return;
+
         if (!PrepareRejectedDownload(item))
             return;
+
+        if (confirmedChecksum != null)
+            item.ExpectedChecksum = null;
 
         // Ensure item and parent package are enabled
         item.IsEnabled = true;
@@ -1316,6 +1328,7 @@ public partial class QueueManager
             }
         }
 
+        if (confirmedChecksum != null) DownloadPersistenceService.Instance.RequestSave();
         ProcessQueue();
         SafeInvoke(() => pkg?.RecalculateAggregates());
     }

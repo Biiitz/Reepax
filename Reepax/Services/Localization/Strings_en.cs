@@ -153,6 +153,8 @@ public static class Strings_en
         ["Status_BrowserLinksOpened"] = "Opened {0} of {1} links in the default browser.",
         ["Menu_DeleteItem"] = "Delete item",
         ["Menu_Retry"] = "Try again",
+        ["Menu_RetryWithoutLegacyMd5"] = "Discard old MD5 checksum and download again…",
+        ["Dialog_RetryWithoutLegacyMd5"] = "The stored MD5 checksum for “{0}” does not match the downloaded file. Its source is unknown. Retrying will remove the value below from this download. Continue only if you trust the download source.\n\n{1}",
         ["Menu_Resume"] = "Resume",
         ["Menu_Pause"] = "Pause",
         ["Menu_RestartDownload"] = "Download again",

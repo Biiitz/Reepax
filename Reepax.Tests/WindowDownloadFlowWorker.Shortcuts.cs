@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Reepax.Models;
+using Reepax.Services.Download;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.ViewModels;
@@ -139,6 +140,27 @@ internal static partial class WindowDownloadFlowWorker
                 Assert.True(item.IsSelected);
                 Assert.Equal(contents, File.ReadAllBytes(item.SaveFilePath!));
             });
+
+            string part = second.SaveFilePath + ".part";
+            File.WriteAllBytes(part, contents);
+            second.Status = DownloadStatus.Failed;
+            second.ExpectedChecksum = new string('a', 32);
+            second.RejectedFiles = RejectedDownloadFiles.Capture(second.SaveFilePath, published: false);
+            second.SetDownloadFailure(new DownloadFailure { Kind = DownloadFailureKind.ChecksumMismatch });
+            var retry = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, Loc.Get("Menu_RetryWithoutLegacyMd5")));
+            menu.PlacementTarget = new Border { DataContext = second };
+            menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            Assert.Equal(Visibility.Collapsed, retry.Visibility);
+
+            second.ExpectedChecksumHasKnownSource = false;
+            menu.RaiseEvent(new RoutedEventArgs(ContextMenu.OpenedEvent));
+            Assert.Equal(Visibility.Visible, retry.Visibility);
+            retry.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Assert.Equal(5, confirmations);
+            Assert.Equal(new string('a', 32), second.ExpectedChecksum);
+            Assert.Equal(DownloadStatus.Failed, second.Status);
+            Assert.Equal(contents, File.ReadAllBytes(part));
+            Assert.Equal(contents, File.ReadAllBytes(second.SaveFilePath!));
         }
         finally
         {

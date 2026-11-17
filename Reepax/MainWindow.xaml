@@ -197,6 +197,12 @@
                     <Path Data="{Binding Converter={StaticResource ItemActionMenuGeometryConverter}}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
                 </MenuItem.Icon>
             </MenuItem>
+            <MenuItem Tag="RetryWithoutLegacyMd5" Header="{loc:Loc Menu_RetryWithoutLegacyMd5}"
+                      Click="RetryWithoutLegacyMd5_MenuItem_Click" Visibility="Collapsed">
+                <MenuItem.Icon>
+                    <Path Data="{StaticResource IconShield}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                </MenuItem.Icon>
+            </MenuItem>
             <Separator Background="{DynamicResource BorderDarkBrush}" Visibility="{Binding Status, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='!Completed'}" />
 
             <MenuItem Header="{loc:Loc Menu_ShowInExplorer}" Click="ShowItemInExplorer_MenuItem_Click">

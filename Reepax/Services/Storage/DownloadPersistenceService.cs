@@ -44,6 +44,8 @@ public class DownloadItemDto
     public DateTime? CompletedAt { get; set; }
     public long ElapsedDurationMs { get; set; }
     public string? ExpectedChecksum { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ExpectedChecksumHasKnownSource { get; set; }
     public string? CalculatedChecksum { get; set; }
     public bool IsCustomName { get; set; }
     public bool IsMetadataResolved { get; set; }
@@ -884,6 +886,7 @@ public class DownloadPersistenceService : IDisposable
                         CompletedAt = item.CompletedAt,
                         ElapsedDurationMs = item.ElapsedDurationMs > 0 ? item.ElapsedDurationMs : (long)item.Duration.TotalMilliseconds,
                         ExpectedChecksum = item.ExpectedChecksum,
+                        ExpectedChecksumHasKnownSource = item.ExpectedChecksumHasKnownSource,
                         CalculatedChecksum = item.CalculatedChecksum,
                         RejectedFiles = item.RejectedFiles,
                         IsCustomName = item.IsCustomName,
@@ -1549,6 +1552,7 @@ public class DownloadPersistenceService : IDisposable
                             StatusMessage = itemDto.StatusMessage,
                             ProgressPercentage = itemDto.ProgressPercentage,
                             ExpectedChecksum = itemDto.ExpectedChecksum,
+                            ExpectedChecksumHasKnownSource = itemDto.ExpectedChecksumHasKnownSource,
                             CalculatedChecksum = itemDto.CalculatedChecksum,
                             RejectedFiles = itemDto.RejectedFiles,
                             IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed
@@ -1856,6 +1860,7 @@ public class DownloadPersistenceService : IDisposable
                             CompletedAt = itemDto.CompletedAt,
                             ElapsedDurationMs = itemDto.ElapsedDurationMs,
                             ExpectedChecksum = itemDto.ExpectedChecksum,
+                            ExpectedChecksumHasKnownSource = itemDto.ExpectedChecksumHasKnownSource,
                             CalculatedChecksum = itemDto.CalculatedChecksum,
                             RejectedFiles = itemDto.RejectedFiles,
                             IsMetadataResolved = itemDto.IsMetadataResolved || itemDto.TotalBytes > 0 || itemDto.DownloadedBytes > 0 || itemDto.Status == DownloadStatus.Completed

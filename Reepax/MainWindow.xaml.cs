@@ -2564,6 +2564,18 @@ public partial class MainWindow : Window
         }
     }
 
+    private void RetryWithoutLegacyMd5_MenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: DownloadItem item } ||
+            Services.Download.QueueManager.GetRetryableLegacyMd5(item) is not { } checksum)
+            return;
+
+        if (Views.ConfirmDialog.Show(Loc.Get("Menu_RetryWithoutLegacyMd5"),
+                Loc.Format("Dialog_RetryWithoutLegacyMd5", item.FileName, checksum),
+                confirmText: Loc.Get("Menu_Retry"), owner: this))
+            ViewModel.RetryItemWithoutLegacyMd5(item, checksum);
+    }
+
     private void CopyItemUrl_MenuItem_Click(object sender, RoutedEventArgs e)
     {
         var item = GetItemFromSender(sender);
@@ -2579,6 +2591,11 @@ public partial class MainWindow : Window
         var item = (menu.PlacementTarget as FrameworkElement)?.DataContext as DownloadItem
                   ?? ViewModel.SelectedItem;
         menu.DataContext = item;
+
+        var retryWithoutMd5 = menu.Items.OfType<MenuItem>().FirstOrDefault(m => (string?)m.Tag == "RetryWithoutLegacyMd5");
+        if (retryWithoutMd5 != null)
+            retryWithoutMd5.Visibility = Services.Download.QueueManager.GetRetryableLegacyMd5(item) != null
+                ? Visibility.Visible : Visibility.Collapsed;
 
         var extractItem = menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "ExtractArchiveItemMenuItem" || (string?)m.Tag == "ExtractArchiveItemMenuItem");
         if (extractItem != null)
