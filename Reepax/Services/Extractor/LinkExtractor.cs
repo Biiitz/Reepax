@@ -225,7 +225,10 @@ public static partial class LinkExtractor
     /// Prioritizes HTML markup (resolving actual href destination URLs),
     /// URL formats (UniformResourceLocatorW), and falls back to plain text.
     /// </summary>
-    public static List<string> ExtractUrlsFromDataObject(IDataObject? data)
+    public static List<string> ExtractUrlsFromDataObject(IDataObject? data) =>
+        ExtractUrlsFromDataObject(data, includePlainText: true);
+
+    internal static List<string> ExtractUrlsFromDataObject(IDataObject? data, bool includePlainText)
     {
         var urls = new List<string>();
         if (data == null)
@@ -295,6 +298,8 @@ public static partial class LinkExtractor
             }
         }
         catch { }
+
+        if (!includePlainText) return urls;
 
         // 3. Fall back to UnicodeText / Text
         try

@@ -38,6 +38,8 @@ public partial class AddLinksDialog : Window
     public bool IsAddingLinksToExisting => _isAddingLinksToExisting;
     public DownloadPackage? EditingPackage => _editingPackage;
 
+    internal Func<IDataObject?> ReadClipboardData { get; set; } = Clipboard.GetDataObject;
+
     public AddLinksDialog(string? initialText = null)
         : this(initialText, null, false)
     {
@@ -571,20 +573,22 @@ public partial class AddLinksDialog : Window
     {
         try
         {
-            string? text = null;
-            if (Clipboard.ContainsData(DataFormats.Html))
+            var data = ReadClipboardData();
+            if (data == null) return;
+
+            var urls = LinkExtractor.ExtractUrlsFromDataObject(data, includePlainText: false);
+            if (urls.Count > 0)
             {
-                text = Clipboard.GetData(DataFormats.Html) as string;
-            }
-            if (string.IsNullOrWhiteSpace(text) && Clipboard.ContainsText())
-            {
-                text = Clipboard.GetText();
+                LinksTextBox.Text = string.Join(Environment.NewLine, urls);
+                return;
             }
 
+            // Preserve headings used for package naming and grouping.
+            var text = data.GetData(DataFormats.UnicodeText) as string;
+            if (string.IsNullOrWhiteSpace(text))
+                text = data.GetData(DataFormats.Text) as string;
             if (!string.IsNullOrWhiteSpace(text))
-            {
                 LinksTextBox.Text = LinkExtractor.NormalizeInputText(text);
-            }
         }
         catch (Exception ex)
         {

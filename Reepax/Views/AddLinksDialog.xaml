@@ -181,7 +181,7 @@
 
             <!-- Buttons -->
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Content="{loc:Loc AddLinks_Button_PasteClipboard}" Click="PasteClipboard_Click" Style="{DynamicResource ModernButtonStyle}" Padding="10,6" Margin="0,0,8,0" />
+                <Button x:Name="PasteFromClipboardButton" Content="{loc:Loc AddLinks_Button_PasteClipboard}" Click="PasteClipboard_Click" Style="{DynamicResource ModernButtonStyle}" Padding="10,6" Margin="0,0,8,0" />
                 <Button x:Name="AddButton" Content="{loc:Loc AddLinks_Button_AddPackage}" Click="AddLinks_Click" Style="{DynamicResource AccentButtonStyle}" Width="140" Padding="0,6" IsDefault="True" />
             </StackPanel>
         </Grid>

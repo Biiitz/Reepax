@@ -203,6 +203,62 @@ public partial class DialogUiTests
         });
     }
 
+    [Theory]
+    [InlineData("<html><body>Selection only</body></html>", "UnicodeText",
+        "https://example.invalid/payload.zip", "https://example.invalid/payload.zip")]
+    [InlineData("<a href=\"https://example.invalid/target.zip\">Open file</a>", "UnicodeText",
+        "https://example.invalid/display.zip", "https://example.invalid/target.zip")]
+    [InlineData(null, "UniformResourceLocatorW",
+        "https://example.invalid/payload.zip", "https://example.invalid/payload.zip")]
+    [InlineData(null, "text/x-moz-url",
+        "https://example.invalid/payload.zip\nExample file", "https://example.invalid/payload.zip")]
+    [InlineData(null, "UnicodeText", "Example collection\r\nhttps://example.invalid/payload.zip",
+        "Example collection\r\nhttps://example.invalid/payload.zip")]
+    [InlineData(null, "Text", "Example text", "Example text")]
+    [InlineData("<html><body>Selection only</body></html>", null, null, null)]
+    [InlineData(null, null, null, null)]
+    public void AddLinksDialog_PasteClipboard_PrefersLinkFormatsAndPreservesPlainInput(
+        string? html, string? format, string? value, string? expected)
+    {
+        RunInSta(() =>
+        {
+            const string initial = "https://example.invalid/existing.zip";
+            var application = Application.Current;
+            var shutdownMode = application.ShutdownMode;
+            application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            AddLinksDialog? dialog = null;
+            try
+            {
+                dialog = new AddLinksDialog(initial);
+                var data = new DataObject();
+                if (html != null) data.SetData(DataFormats.Html, html, autoConvert: false);
+                if (format != null) data.SetData(format, value!, autoConvert: false);
+                int reads = 0;
+                dialog.ReadClipboardData = () =>
+                {
+                    reads++;
+                    return data;
+                };
+
+                if (html != null && format == DataFormats.UnicodeText)
+                {
+                    var paste = new DataObjectPastingEventArgs(data, isDragDrop: false, format);
+                    dialog.LinksTextBox.RaiseEvent(paste);
+                    Assert.Equal(expected, paste.DataObject.GetData(DataFormats.UnicodeText));
+                }
+
+                dialog.PasteFromClipboardButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                Assert.Equal(expected ?? initial, dialog.LinksTextBox.Text);
+                Assert.Equal(1, reads);
+            }
+            finally
+            {
+                dialog?.Close();
+                application.ShutdownMode = shutdownMode;
+            }
+        });
+    }
+
     [Fact]
     public void AddLinksDialog_EditExistingPackage_PopulatesFieldsAndPreservesSettings()
     {
