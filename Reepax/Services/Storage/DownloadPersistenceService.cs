@@ -116,10 +116,12 @@ public class DownloadPersistenceService : IDisposable
     private readonly Dictionary<ObservableCollection<NextTaskStep>, HashSet<NextTaskStep>> _collectionToStepsMap = new();
     private NotifyCollectionChangedEventHandler? _packagesCollectionChangedHandler;
     private readonly Timer _debounceTimer;
+    private readonly Action<Action> _scheduleDownloadsWrite;
     private volatile bool _isDirty;
     private volatile bool _hasDownloadsLoadFailed;
     private volatile bool _hasHistoryLoadFailed;
-    private long _latestDownloadsSaveSequence;
+    private long _downloadSnapshotSequence;
+    private long _lastSavedDownloadsSequence;
     private long _latestHistorySaveSequence;
     private ObservableCollection<DownloadPackage>? _trackedPackages;
 
@@ -271,7 +273,11 @@ public class DownloadPersistenceService : IDisposable
         }
     }
 
-    public DownloadPersistenceService(string? customFilePath = null)
+    public DownloadPersistenceService(string? customFilePath = null) : this(customFilePath, null)
+    {
+    }
+
+    internal DownloadPersistenceService(string? customFilePath, Action<Action>? scheduleDownloadsWrite)
     {
         if (!string.IsNullOrWhiteSpace(customFilePath))
         {
@@ -293,6 +299,9 @@ public class DownloadPersistenceService : IDisposable
             _historyFilePath = Path.Combine(appDataDir, "history.json");
         }
 
+        _scheduleDownloadsWrite = scheduleDownloadsWrite ?? (_isCustomPath
+            ? static write => write()
+            : static write => _ = Task.Run(write));
         _debounceTimer = new Timer(OnDebounceTimerElapsed, null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -722,59 +731,30 @@ public class DownloadPersistenceService : IDisposable
     {
         if (!_isDirty || _trackedPackages == null) return;
 
-        List<DownloadPackageDto>? dtosSnapshot = null;
+        (List<DownloadPackageDto> Dtos, long Sequence)? snapshot = null;
 
         try
         {
-            var app = System.Windows.Application.Current;
-            if (app?.Dispatcher != null && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
+            snapshot = CaptureOnDispatcher<(List<DownloadPackageDto> Dtos, long Sequence)?>(() =>
             {
-                app.Dispatcher.Invoke(() =>
-                {
-                    if (_trackedPackages != null)
-                    {
-                        _isDirty = false;
-                        dtosSnapshot = CreateDtos(_trackedPackages);
-                    }
-                });
-            }
-            else
-            {
-                if (_trackedPackages != null)
-                {
-                    _isDirty = false;
-                    dtosSnapshot = CreateDtos(_trackedPackages);
-                }
-            }
+                if (_trackedPackages is not { } packages) return null;
+                _isDirty = false;
+                return CaptureDownloads(packages);
+            }, useDispatcher: true);
         }
         catch (Exception ex)
         {
             AppLogger.Error("[DownloadPersistenceService] Could not capture UI state", ex);
         }
 
-        if (dtosSnapshot != null)
+        if (snapshot is { } captured && SaveDownloadsInternal(captured.Dtos, captured.Sequence)) return;
+
+        _isDirty = true;
+        try
         {
-            long seq = Interlocked.Increment(ref _latestDownloadsSaveSequence);
-            bool success = SaveDownloadsInternal(dtosSnapshot, seq);
-            if (!success)
-            {
-                _isDirty = true;
-                try
-                {
-                    _debounceTimer.Change(1500, Timeout.Infinite);
-                }
-                catch (ObjectDisposedException) { }
-            }
+            _debounceTimer.Change(1500, Timeout.Infinite);
         }
-        else
-        {
-            _isDirty = true;
-            try
-            {
-                _debounceTimer.Change(1500, Timeout.Infinite);
-            }
-            catch (ObjectDisposedException) { }
-        }
+        catch (ObjectDisposedException) { }
     }
 
     internal static List<DownloadPackageDto> CreateDtos(IEnumerable<DownloadPackage>? packages)
@@ -1111,25 +1091,32 @@ public class DownloadPersistenceService : IDisposable
         return Array.Empty<T>();
     }
 
-    public static List<DownloadPackageDto> SnapshotDtos(IEnumerable<DownloadPackage> packages)
+    public static List<DownloadPackageDto> SnapshotDtos(IEnumerable<DownloadPackage> packages) =>
+        CaptureOnDispatcher(() => CreateDtos(packages), useDispatcher: !IsTestEnvironment);
+
+    private static T CaptureOnDispatcher<T>(Func<T> capture, bool useDispatcher)
     {
-        if (!IsTestEnvironment)
+        if (useDispatcher)
         {
-            var app = System.Windows.Application.Current;
-            if (app?.Dispatcher != null && app.Dispatcher.Thread?.IsAlive == true && !app.Dispatcher.HasShutdownStarted && !app.Dispatcher.CheckAccess())
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher?.Thread.IsAlive == true && !dispatcher.HasShutdownStarted && !dispatcher.CheckAccess())
             {
                 try
                 {
-                    return app.Dispatcher.Invoke(() => CreateDtos(packages));
+                    return dispatcher.Invoke(capture);
                 }
-                catch
-                {
-                    return CreateDtos(packages);
-                }
+                catch { }
             }
         }
 
-        return CreateDtos(packages);
+        return capture();
+    }
+
+    private (List<DownloadPackageDto> Dtos, long Sequence) CaptureDownloads(IEnumerable<DownloadPackage> packages)
+    {
+        // Sequence the snapshot on the capture thread before it can be delayed by a background write.
+        long sequence = Interlocked.Increment(ref _downloadSnapshotSequence);
+        return (CreateDtosInternal(packages), sequence);
     }
 
     public void SaveDownloads(IEnumerable<DownloadPackage> packages, bool sync = false)
@@ -1138,16 +1125,8 @@ public class DownloadPersistenceService : IDisposable
 
         try
         {
-            var dtos = SnapshotDtos(packages);
-            if (sync || _isCustomPath || IsTestEnvironment)
-            {
-                SaveDownloadsInternal(dtos);
-            }
-            else
-            {
-                long seq = Interlocked.Increment(ref _latestDownloadsSaveSequence);
-                Task.Run(() => SaveDownloadsInternal(dtos, seq));
-            }
+            var (dtos, sequence) = CaptureOnDispatcher(() => CaptureDownloads(packages), useDispatcher: !IsTestEnvironment);
+            SaveDownloadSnapshot(dtos, sequence, sync);
         }
         catch (Exception ex)
         {
@@ -1159,18 +1138,22 @@ public class DownloadPersistenceService : IDisposable
     {
         if (!_isCustomPath && IsTestEnvironment) return;
 
-        if (sync || _isCustomPath || IsTestEnvironment)
+        SaveDownloadSnapshot(dtos, Interlocked.Increment(ref _downloadSnapshotSequence), sync);
+    }
+
+    private void SaveDownloadSnapshot(List<DownloadPackageDto> dtos, long sequence, bool sync)
+    {
+        if (sync)
         {
-            SaveDownloadsInternal(dtos);
+            SaveDownloadsInternal(dtos, sequence);
         }
         else
         {
-            long seq = Interlocked.Increment(ref _latestDownloadsSaveSequence);
-            Task.Run(() => SaveDownloadsInternal(dtos, seq));
+            _scheduleDownloadsWrite(() => SaveDownloadsInternal(dtos, sequence));
         }
     }
 
-    private bool SaveDownloadsInternal(List<DownloadPackageDto> dtos, long sequence = 0)
+    private bool SaveDownloadsInternal(List<DownloadPackageDto> dtos, long sequence)
     {
         if (_hasDownloadsLoadFailed && dtos.Count == 0)
         {
@@ -1181,14 +1164,13 @@ public class DownloadPersistenceService : IDisposable
             return false;
         }
 
-        string? tempFile = null;
         try
         {
             var json = JsonSerializer.Serialize(dtos, _jsonOptions);
 
             lock (_fileLock)
             {
-                if (sequence > 0 && sequence < Volatile.Read(ref _latestDownloadsSaveSequence))
+                if (sequence <= _lastSavedDownloadsSequence)
                 {
                     return true;
                 }
@@ -1214,20 +1196,27 @@ public class DownloadPersistenceService : IDisposable
                 ProtectedStorageBackup.Update<List<DownloadPackageDto>>(_downloadsFilePath, _jsonOptions);
 
                 var encryptedData = SecureAppDataStorage.EncryptString(json);
-                tempFile = _downloadsFilePath + ".tmp";
-                File.WriteAllText(tempFile, encryptedData);
-
-                for (int i = 0; i < 3; i++)
+                string tempFile = _downloadsFilePath + ".tmp";
+                try
                 {
-                    try
+                    File.WriteAllText(tempFile, encryptedData);
+                    for (int i = 0; i < 3; i++)
                     {
-                        File.Move(tempFile, _downloadsFilePath, overwrite: true);
-                        return true;
+                        try
+                        {
+                            File.Move(tempFile, _downloadsFilePath, overwrite: true);
+                            _lastSavedDownloadsSequence = sequence;
+                            return true;
+                        }
+                        catch (IOException) when (i < 2)
+                        {
+                            Thread.Sleep(25 * (i + 1));
+                        }
                     }
-                    catch (IOException) when (i < 2)
-                    {
-                        Thread.Sleep(25 * (i + 1));
-                    }
+                }
+                finally
+                {
+                    try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
                 }
             }
             return false;
@@ -1236,13 +1225,6 @@ public class DownloadPersistenceService : IDisposable
         {
             AppLogger.Error("[DownloadPersistenceService] Could not write downloads", ex);
             return false;
-        }
-        finally
-        {
-            if (tempFile != null)
-            {
-                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
-            }
         }
     }
 

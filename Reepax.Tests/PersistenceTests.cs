@@ -15,6 +15,161 @@ namespace Reepax.Tests;
 
 public class PersistenceTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Persistence_PendingDownloadSaveCannotOverwriteLaterSynchronousSave(bool backgroundUsesDtos, bool synchronousUsesDtos)
+    {
+        string directory = Directory.CreateTempSubdirectory("DownloadSaveOrder_").FullName;
+        string path = Path.Combine(directory, "downloads.json");
+        var pendingWrites = new Queue<Action>();
+        try
+        {
+            using var storage = new DownloadPersistenceService(path, pendingWrites.Enqueue);
+            var package = DownloadSaveSample(directory, 0);
+            var item = Assert.Single(package.Items);
+            storage.SaveDownloads([package], sync: true);
+            byte[] original = File.ReadAllBytes(path);
+
+            item.DownloadedBytes = 3;
+            Save(backgroundUsesDtos, sync: false);
+            Assert.Single(pendingWrites);
+            Assert.Equal(original, File.ReadAllBytes(path));
+
+            item.DownloadedBytes = 8;
+            Save(synchronousUsesDtos, sync: true);
+            byte[] current = File.ReadAllBytes(path);
+            Assert.Equal(original, File.ReadAllBytes(path + ".bak"));
+
+            pendingWrites.Dequeue()();
+
+            using var reopened = new DownloadPersistenceService(path);
+            var saved = Assert.Single(reopened.LoadDownloads());
+            Assert.Equal(8, Assert.Single(saved.Items).DownloadedBytes);
+            Assert.Equal(current, File.ReadAllBytes(path));
+            Assert.Equal(original, File.ReadAllBytes(path + ".bak"));
+            Assert.False(File.Exists(path + ".tmp"));
+
+            void Save(bool asDtos, bool sync)
+            {
+                if (asDtos)
+                    storage.SaveDownloadsFromDtos(DownloadPersistenceService.SnapshotDtos([package]), sync);
+                else
+                    storage.SaveDownloads([package], sync);
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Persistence_OverlappingSnapshotsUseTheLatestCommittedSave(bool newerAlreadyWritten)
+    {
+        string directory = Directory.CreateTempSubdirectory("DownloadSaveOrder_").FullName;
+        string path = Path.Combine(directory, "downloads.json");
+        var pendingWrites = new Queue<Action>();
+        try
+        {
+            using var storage = new DownloadPersistenceService(path, pendingWrites.Enqueue);
+            var captureStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var resumeCapture = new ManualResetEventSlim();
+            var older = DownloadSaveSample(directory, 3);
+            var newer = DownloadSaveSample(directory, 8);
+            Task synchronousSave = Task.Run(() => storage.SaveDownloads(CaptureOlder(), sync: true));
+            byte[]? firstWrite = null;
+            try
+            {
+                await captureStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                storage.SaveDownloads([newer]);
+                Assert.Single(pendingWrites);
+                if (newerAlreadyWritten)
+                {
+                    pendingWrites.Dequeue()();
+                    firstWrite = File.ReadAllBytes(path);
+                }
+            }
+            finally
+            {
+                resumeCapture.Set();
+                await synchronousSave.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            if (newerAlreadyWritten)
+            {
+                Assert.Equal(firstWrite, File.ReadAllBytes(path));
+                Assert.False(File.Exists(path + ".bak"));
+            }
+            else
+            {
+                Assert.Equal(3, Assert.Single(Assert.Single(storage.LoadDownloads()).Items).DownloadedBytes);
+                firstWrite = File.ReadAllBytes(path);
+                pendingWrites.Dequeue()();
+                Assert.Equal(firstWrite, File.ReadAllBytes(path + ".bak"));
+            }
+
+            using var reopened = new DownloadPersistenceService(path);
+            Assert.Equal(8, Assert.Single(Assert.Single(reopened.LoadDownloads()).Items).DownloadedBytes);
+
+            IEnumerable<DownloadPackage> CaptureOlder()
+            {
+                captureStarted.SetResult();
+                if (!resumeCapture.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("The test did not release the download snapshot.");
+                yield return older;
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void Persistence_FailedSynchronousSaveLetsPendingSnapshotCommitAndCanBeRetried()
+    {
+        string directory = Directory.CreateTempSubdirectory("DownloadSaveOrder_").FullName;
+        string path = Path.Combine(directory, "downloads.json");
+        var pendingWrites = new Queue<Action>();
+        try
+        {
+            using var storage = new DownloadPersistenceService(path, pendingWrites.Enqueue);
+            var package = DownloadSaveSample(directory, 0);
+            var item = Assert.Single(package.Items);
+            storage.SaveDownloads([package], sync: true);
+            byte[] initial = File.ReadAllBytes(path);
+
+            item.DownloadedBytes = 3;
+            storage.SaveDownloads([package]);
+            Assert.Single(pendingWrites);
+            item.DownloadedBytes = 8;
+            using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                storage.SaveDownloads([package], sync: true);
+                Assert.Equal(initial, File.ReadAllBytes(path));
+                Assert.False(File.Exists(path + ".tmp"));
+            }
+
+            pendingWrites.Dequeue()();
+            Assert.Equal(3, Assert.Single(Assert.Single(storage.LoadDownloads()).Items).DownloadedBytes);
+            byte[] older = File.ReadAllBytes(path);
+            storage.SaveDownloads([package], sync: true);
+            Assert.Equal(older, File.ReadAllBytes(path + ".bak"));
+            using var reopened = new DownloadPersistenceService(path);
+            Assert.Equal(8, Assert.Single(Assert.Single(reopened.LoadDownloads()).Items).DownloadedBytes);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private static DownloadPackage DownloadSaveSample(string directory, long downloaded)
+    {
+        var package = new DownloadPackage
+        {
+            Name = "Sample", SaveDirectory = Path.Combine(directory, "files"), IsCustomName = true
+        };
+        package.Items.Add(new DownloadItem { FileName = "sample.bin", TotalBytes = 12, DownloadedBytes = downloaded });
+        return package;
+    }
+
     [Fact]
     public void Persistence_SavesAndRestoresPackagesItemsProgressAndSelectionState()
     {

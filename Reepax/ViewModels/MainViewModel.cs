@@ -3184,11 +3184,7 @@ public partial class MainViewModel : ObservableObject
             RecalculateGlobalStats();
             UpdateDriveSpace();
 
-            var dtos = DownloadPersistenceService.SnapshotDtos(Packages);
-            _ = Task.Run(() =>
-            {
-                DownloadPersistenceService.Instance.SaveDownloadsFromDtos(dtos);
-            });
+            DownloadPersistenceService.Instance.SaveDownloads(Packages);
         }
         catch (Exception)
         {
