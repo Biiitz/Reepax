@@ -25,7 +25,7 @@ namespace Reepax.Tests;
 internal static partial class WindowDownloadFlowWorker
 {
     internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false,
-        bool filtersOnly = false, bool shortcutsOnly = false, string? packageRestartStage = null, bool powerShutdownOnly = false)
+        bool filtersOnly = false, bool shortcutsOnly = false, string? packageRestartStage = null, string? powerSessionTarget = null)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -33,7 +33,7 @@ internal static partial class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly, packageRestartStage, powerShutdownOnly).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly, packageRestartStage, powerSessionTarget).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -46,7 +46,7 @@ internal static partial class WindowDownloadFlowWorker
     }
 
     private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly,
-        bool filtersOnly, bool shortcutsOnly, string? packageRestartStage, bool powerShutdownOnly)
+        bool filtersOnly, bool shortcutsOnly, string? packageRestartStage, string? powerSessionTarget)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -67,7 +67,7 @@ internal static partial class WindowDownloadFlowWorker
         settings.EnableChecksumVerification = true;
         settings.MaxAutoRetryOnCorruption = 0;
         // Load production resources and windows without registering file associations or owning the user's app instance.
-        var app = powerShutdownOnly ? new SessionEndingApp() : new Application();
+        var app = powerSessionTarget != null ? new SessionEndingApp() : new Application();
         var markup = XDocument.Load(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Reepax", "App.xaml")));
         var resources = new XElement(markup.Descendants().First(element => element.Name.LocalName == "ResourceDictionary"));
         foreach (var element in resources.DescendantsAndSelf())
@@ -82,9 +82,9 @@ internal static partial class WindowDownloadFlowWorker
         app.Resources = (ResourceDictionary)XamlReader.Parse(resources.ToString());
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         LocalizationService.Instance.CurrentLanguage = language;
-        if (powerShutdownOnly)
+        if (app is SessionEndingApp sessionApp)
         {
-            CheckPowerShutdown((SessionEndingApp)app, settings.DefaultDownloadDirectory);
+            RunPowerShutdown(sessionApp, settings.DefaultDownloadDirectory, confirmAtMainWindow: powerSessionTarget == "main");
             Console.WriteLine("Power shutdown flow passed");
             return;
         }

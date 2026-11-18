@@ -86,6 +86,7 @@ public partial class App : Application
         }
 
         _isPrimaryInstance = true;
+        InstallWindowsSessionHandler();
         // Primary instance: start named pipe server to receive launch parameters from subsequent instances
         SingleInstanceService.Instance.StartIpcServer(ReceiveInstanceArguments);
 
@@ -146,21 +147,9 @@ public partial class App : Application
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
-        if (!_isPrimaryInstance)
-        {
-            base.OnSessionEnding(e);
-            return;
-        }
-        if (MainWindow is MainWindow mw)
-        {
-            mw.ForceExit();
-        }
+        // Keep WPF's normal shutdown path if the native handler could not be installed.
         base.OnSessionEnding(e);
-        try
-        {
-            Services.Download.QueueManager.PerformSafeShutdown();
-        }
-        catch { }
+        if (!e.Cancel) CompleteWindowsSession();
     }
 
     protected override void OnExit(ExitEventArgs e)

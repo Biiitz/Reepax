@@ -57,9 +57,11 @@ public sealed class WindowDownloadFlowTests
         finally { await DeleteWorkerDirectoryAsync(root.FullName); }
     }
 
-    [Fact]
-    public async Task MainWindow_FailedShutdownKeepsTrayRestoreAndSessionEndStillSaves()
-        => await RunWindowWorkerAsync("en", "--power-shutdown-window-worker", "Power shutdown flow passed");
+    [Theory]
+    [InlineData("parking")]
+    [InlineData("main")]
+    public async Task MainWindow_FailedShutdownOrCancelledSessionKeepsTrayRestoreAndConfirmedSessionSaves(string target)
+        => await RunWindowWorkerAsync("en", "--power-shutdown-window-worker", "Power shutdown flow passed", extraArguments: [target]);
 
     [Fact]
     public async Task MainWindow_RestartLaunchFailurePreservesOwnershipAndSavedDownloadProgress()
@@ -82,10 +84,10 @@ public sealed class WindowDownloadFlowTests
                 ? "Live HTTPS filter update and unchanged-list detection passed"
                 : "Browser filter updates passed");
 
-    private static async Task RunWindowWorkerAsync(string language, string worker, string success)
+    private static async Task RunWindowWorkerAsync(string language, string worker, string success, params string[] extraArguments)
     {
         string root = Directory.CreateTempSubdirectory("WindowFlow_").FullName;
-        try { await RunWindowWorkerAsync(root, language, worker, success); }
+        try { await RunWindowWorkerAsync(root, language, worker, success, extraArguments); }
         finally { await DeleteWorkerDirectoryAsync(root); }
     }
 

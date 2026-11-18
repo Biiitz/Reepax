@@ -130,18 +130,19 @@ public partial class MainWindow : Window
 
         Services.SystemIntegration.TrayIconService.Instance.Initialize(this);
 
-        if (!DownloadPersistenceService.IsTestEnvironment)
+        if (Application.Current is App || !DownloadPersistenceService.IsTestEnvironment)
         {
             try
             {
                 var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
                 var hwndSource = System.Windows.Interop.HwndSource.FromHwnd(hwnd);
                 hwndSource?.AddHook(WndProc);
-                Services.SystemIntegration.ClipboardMonitorService.Instance.Start(hwnd, OnClipboardLinksDetected);
+                if (!DownloadPersistenceService.IsTestEnvironment)
+                    Services.SystemIntegration.ClipboardMonitorService.Instance.Start(hwnd, OnClipboardLinksDetected);
             }
             catch (Exception ex)
             {
-                Services.Storage.AppLogger.Warn($"[MainWindow] ClipboardMonitor start failed", ex);
+                Services.Storage.AppLogger.Warn("[MainWindow] Failed to initialize window message handling", ex);
             }
         }
 
@@ -757,7 +758,12 @@ public partial class MainWindow : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == Services.SystemIntegration.ClipboardMonitorService.WM_CLIPBOARDUPDATE)
+        if (msg == App.WmEndSession && Application.Current is App app)
+        {
+            if (wParam != IntPtr.Zero) app.CompleteWindowsSession();
+            handled = true;
+        }
+        else if (msg == Services.SystemIntegration.ClipboardMonitorService.WM_CLIPBOARDUPDATE)
         {
             Services.SystemIntegration.ClipboardMonitorService.Instance.ProcessClipboardChange();
         }

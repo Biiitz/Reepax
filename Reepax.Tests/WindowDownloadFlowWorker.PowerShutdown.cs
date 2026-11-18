@@ -2,8 +2,12 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Threading;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
@@ -17,20 +21,39 @@ internal static partial class WindowDownloadFlowWorker
 {
     private sealed class SessionEndingApp : App
     {
-        protected override void OnStartup(StartupEventArgs e) { }
-
-        internal void SimulateSessionEnding()
+        protected override void OnStartup(StartupEventArgs e)
         {
-            // Avoid acquiring production single-instance ownership to reach the primary session handler.
+            // Reach the primary session handler without acquiring the real application instance.
             typeof(App).GetField("_isPrimaryInstance", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(this, true);
-            var args = (SessionEndingCancelEventArgs)Activator.CreateInstance(typeof(SessionEndingCancelEventArgs),
-                BindingFlags.Instance | BindingFlags.NonPublic, binder: null, args: [ReasonSessionEnding.Shutdown], culture: null)!;
-            OnSessionEnding(args);
-            Assert.False(args.Cancel);
+            InstallWindowsSessionHandler();
+        }
+
+        internal nint SendSessionMessage(uint message, nint wParam = 0, nint flags = 0)
+        {
+            var parkingWindow = typeof(Application).GetField("_parkingHwnd", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(this)!;
+            var handle = (nint)parkingWindow.GetType().GetProperty("Handle")!.GetValue(parkingWindow)!;
+            Assert.NotEqual(nint.Zero, handle);
+            return SendMessage(handle, message, wParam, flags);
         }
     }
 
-    private static void CheckPowerShutdown(SessionEndingApp app, string directory)
+    [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern nint SendMessage(nint window, uint message, nint wParam, nint lParam);
+
+    private static void RunPowerShutdown(SessionEndingApp app, string directory, bool confirmAtMainWindow)
+    {
+        ExceptionDispatchInfo? failure = null;
+        app.Dispatcher.BeginInvoke(() =>
+        {
+            try { CheckPowerShutdown(app, directory, confirmAtMainWindow); }
+            catch (Exception error) { failure = ExceptionDispatchInfo.Capture(error); }
+            finally { app.Shutdown(); }
+        });
+        app.Run();
+        failure?.Throw();
+    }
+
+    private static void CheckPowerShutdown(SessionEndingApp app, string directory, bool confirmAtMainWindow)
     {
         var main = new MainWindow { ShowActivated = false, ShowInTaskbar = false };
         var queue = QueueManager.Instance;
@@ -87,9 +110,32 @@ internal static partial class WindowDownloadFlowWorker
             Assert.Equal("rundll32.exe", fallback.FileName);
             CheckTrayRestore();
 
+            const uint queryEndSession = 0x0011;
+            const uint endSession = 0x0016;
+            nint mainHandle = new WindowInteropHelper(main).Handle;
+            Assert.NotEqual(nint.Zero, mainHandle);
+            Assert.NotEqual(nint.Zero, app.SendSessionMessage(queryEndSession));
+            Assert.NotEqual(nint.Zero, SendMessage(mainHandle, queryEndSession, 0, 0));
+            app.SendSessionMessage(endSession);
+            SendMessage(mainHandle, endSession, 0, 0);
+            app.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+            Assert.True(main.IsVisible);
+            Assert.True(queue.IsRunning);
+            CheckTrayRestore();
+            Assert.Equal(4, ReadSavedProgress());
+
             byte[] finalPart = [1, 2, 3, 4, 5];
             File.WriteAllBytes(path + ".part", finalPart);
-            app.SimulateSessionEnding();
+            main.Close();
+            Assert.False(main.IsVisible);
+            nint logoff = unchecked((int)0x80000000);
+            Assert.NotEqual(nint.Zero, app.SendSessionMessage(queryEndSession, flags: logoff));
+            Assert.Contains(main, app.Windows.Cast<Window>());
+            Assert.True(queue.IsRunning);
+            if (confirmAtMainWindow)
+                SendMessage(mainHandle, endSession, 1, logoff);
+            else
+                app.SendSessionMessage(endSession, wParam: 1, flags: logoff);
             Assert.False(main.IsVisible);
             Assert.False(queue.IsRunning);
             Assert.Equal(finalPart.Length, ReadSavedProgress());
