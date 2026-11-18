@@ -542,6 +542,11 @@ public static class Strings_de
 
         // Busy Indicators
         ["Busy_LoadingPage"] = "Seite wird geladen",
+        ["Busy_ExtractingPageLinks"] = "Links aus „{0}“ werden extrahiert",
+        ["Busy_LoadingPastePage"] = "Paste-Seite {0} wird geladen",
+        ["Busy_ResolvingPageLinks"] = "Direktdownloads werden aufgelöst ({0} Link(s) gefunden)",
+        ["Busy_ResolvingPageLinksProgress"] = "Direktdownloads werden aufgelöst ({0} von {1})",
+        ["Busy_CreatingPagePackage"] = "Paket wird erstellt ({0} Link(s) gefunden)",
         ["Busy_AnalyzingMetadata"] = "Metadaten werden analysiert ({0} von {1})",
 
         // Checksum Verification Errors

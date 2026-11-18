@@ -156,7 +156,7 @@ public static class FastHostResolver
     public static async Task ResolveLinksInParallelAsync(
         HttpClient httpClient, 
         List<ExtractedLink> links, 
-        IProgress<string>? progress = null, 
+        IProgress<WebPageExtractionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (links == null || links.Count == 0) return;
@@ -185,7 +185,7 @@ public static class FastHostResolver
             {
                 semaphore.Release();
                 var count = Interlocked.Increment(ref completed);
-                progress?.Report($"Direktdownloads werden aufgelöst ({count}/{total})…");
+                progress?.Report(new("Busy_ResolvingPageLinksProgress", count, total));
             }
         });
 

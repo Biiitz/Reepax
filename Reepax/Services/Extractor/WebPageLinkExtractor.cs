@@ -9,9 +9,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Helpers;
 using Reepax.Models;
+using Reepax.Services.Localization;
 using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services.Extractor;
+
+public readonly record struct WebPageExtractionProgress(string Key, params object[] Arguments)
+{
+    internal string GetLocalizedText() => Loc.Format(Key, Arguments);
+}
 
 public class WebPageExtractionResult
 {
@@ -100,14 +106,15 @@ public static class WebPageLinkExtractor
     /// <summary>
     /// Loads the web page and extracts page title + download links.
     /// </summary>
-    public static async Task<WebPageExtractionResult> ExtractAsync(string pageUrl, IProgress<string>? progress = null, CancellationToken cancellationToken = default)
+    public static async Task<WebPageExtractionResult> ExtractAsync(string pageUrl,
+        IProgress<WebPageExtractionProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         if (!Uri.TryCreate(pageUrl, UriKind.Absolute, out var pageUri))
         {
             throw new ArgumentException("Ungültige URL.", nameof(pageUrl));
         }
 
-        progress?.Report("Webseite wird geladen…");
+        progress?.Report(new("Busy_LoadingPage"));
 
         // Anti-rate-limiting jitter delay before request
         await HttpJitterHelper.DelayJitterAsync(150, 400, cancellationToken);
@@ -125,7 +132,7 @@ public static class WebPageLinkExtractor
             result.TotalSizeBytes = LinkMetadataResolverService.ParseSizeToBytes(result.TotalSizeText);
         }
 
-        progress?.Report($"'{result.PageTitle}': Links werden extrahiert…");
+        progress?.Report(new("Busy_ExtractingPageLinks", result.PageTitle));
 
         var seen = new HashSet<string>(DownloadUrlComparer.Instance);
 
@@ -190,7 +197,7 @@ public static class WebPageLinkExtractor
 
                 try
                 {
-                    progress?.Report($"Paste-Seite wird geladen: {pasteUrl}…");
+                    progress?.Report(new("Busy_LoadingPastePage", pasteUrl));
                     var pasteHtml = await client.GetStringAsync(pasteUrl, cancellationToken);
                     foreach (Match m in BareUrlRegex.Matches(pasteHtml))
                     {
@@ -218,11 +225,11 @@ public static class WebPageLinkExtractor
 
         if (result.Links.Count > 0)
         {
-            progress?.Report($"{result.Links.Count} Links gefunden – Direktdownloads werden aufgelöst…");
+            progress?.Report(new("Busy_ResolvingPageLinks", result.Links.Count));
             await FastHostResolver.ResolveLinksInParallelAsync(client, result.Links, progress, cancellationToken);
         }
 
-        progress?.Report($"{result.Links.Count} Links gefunden – Paket wird erstellt…");
+        progress?.Report(new("Busy_CreatingPagePackage", result.Links.Count));
         return result;
     }
 

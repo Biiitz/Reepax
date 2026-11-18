@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Extractor;
+using Reepax.Services.Localization;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -143,8 +144,10 @@ public class FastHostResolverTests
         Assert.Equal(expected, result);
     }
 
-    [Fact]
-    public async Task ResolveLinksInParallelAsync_ResolvesOnlyFastHostLinks()
+    [Theory]
+    [InlineData("en", "Resolving direct downloads (1 of 1)")]
+    [InlineData("de", "Direktdownloads werden aufgelöst (1 von 1)")]
+    public async Task ResolveLinksInParallelAsync_ResolvesOnlyFastHostLinks(string language, string expectedProgress)
     {
         var links = new List<ExtractedLink>
         {
@@ -162,12 +165,23 @@ public class FastHostResolverTests
         });
 
         using var client = new HttpClient(handler);
-        await FastHostResolver.ResolveLinksInParallelAsync(client, links);
+        var reported = new TaskCompletionSource<WebPageExtractionProgress>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var progress = new Progress<WebPageExtractionProgress>(update => reported.TrySetResult(update));
+        await FastHostResolver.ResolveLinksInParallelAsync(client, links, progress);
 
         Assert.Equal($"https://dl1.{Host}/dl/resolved_101.rar", links[0].DirectDownloadUrl);
         // Original page URL is preserved (for re-resolve with expired links)
         Assert.Equal($"https://{Host}/101", links[0].Url);
         Assert.Null(links[1].DirectDownloadUrl);
+        var update = await reported.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var localization = LocalizationService.Instance;
+        string previousLanguage = localization.CurrentLanguage;
+        try
+        {
+            localization.CurrentLanguage = language;
+            Assert.Equal(expectedProgress, update.GetLocalizedText());
+        }
+        finally { localization.CurrentLanguage = previousLanguage; }
         Assert.Equal("https://rapidgator.net/file/202", links[1].Url);
     }
 

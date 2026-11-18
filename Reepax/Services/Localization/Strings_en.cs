@@ -542,6 +542,11 @@ public static class Strings_en
 
         // Busy Indicators
         ["Busy_LoadingPage"] = "Loading page",
+        ["Busy_ExtractingPageLinks"] = "Extracting links from “{0}”",
+        ["Busy_LoadingPastePage"] = "Loading paste page {0}",
+        ["Busy_ResolvingPageLinks"] = "Resolving direct downloads ({0} link(s) found)",
+        ["Busy_ResolvingPageLinksProgress"] = "Resolving direct downloads ({0} of {1})",
+        ["Busy_CreatingPagePackage"] = "Creating package ({0} link(s) found)",
         ["Busy_AnalyzingMetadata"] = "Analyzing metadata ({0} of {1})",
 
         // Checksum Verification Errors

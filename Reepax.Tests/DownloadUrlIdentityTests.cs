@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -6,6 +7,7 @@ using System.Windows;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 using Reepax.ViewModels;
@@ -189,36 +191,106 @@ public sealed class DownloadUrlIdentityTests
         Assert.Equal(1, Volatile.Read(ref fullBodies));
     }
 
-    [Fact]
-    public async Task AddLinksFromText_HtmlPageStillCreatesAPackageOfHostedLinks()
+    [Theory]
+    [InlineData("en", true)]
+    [InlineData("de", true)]
+    [InlineData("en", false)]
+    public async Task AddLinksFromText_HtmlPageProgressFollowsTheLanguageAndPreservesLinks(string initialLanguage, bool hasLinks)
     {
+        const string title = "Fixture & Tools";
         using var directory = new IsolatedDownloads();
+        var pageRequested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePage = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var files = new Dictionary<string, byte[]> { ["sample.bin"] = [3, 29, 101] };
         await using var source = new PipelineHttpSource(files,
+            writeBody: async (name, _, stream, bytes, token) =>
+            {
+                if (name == "page")
+                {
+                    pageRequested.TrySetResult();
+                    await releasePage.Task.WaitAsync(token);
+                }
+                await stream.WriteAsync(bytes, token);
+            },
             contentType: name => name == "page" ? "text/html; charset=utf-8" : "application/octet-stream");
         string url = source.Url("sample.bin");
-        files["page"] = Encoding.UTF8.GetBytes($"<title>Fixture release</title><a href=\"{url}\">sample.bin</a>");
+        string html = "<title>Fixture &amp; Tools</title>";
+        if (hasLinks) html += $"<a href=\"{url}\">sample.bin</a>";
+        files["page"] = Encoding.UTF8.GetBytes(html);
         var hoster = new HosterInfo
         {
             Name = "fixture", DisplayName = "Fixture", DomainPattern = "^" + System.Text.RegularExpressions.Regex.Escape(url) + "$"
         };
+        var localization = LocalizationService.Instance;
+        var settings = SettingsService.Instance.Settings;
+        string previousLanguage = localization.CurrentLanguage;
+        string previousSetting = settings.Language;
         HosterInfo.KnownHosters.Add(hoster);
+        using var client = new HttpClient();
+        var model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+        var progress = new ConcurrentQueue<string>();
+        var pageFinished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        model.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(model.BusyDisplayMessage))
+                progress.Enqueue(model.BusyDisplayMessage);
+            if (args.PropertyName == nameof(model.BusyMessage) && model.BusyMessage.Length == 0 && !model.IsBusy)
+                pageFinished.TrySetResult();
+        };
         try
         {
-            using var client = new HttpClient();
-            var model = new MainViewModel { MetadataResolver = new LinkMetadataResolverService(client) };
+            model.SetLanguage(initialLanguage);
             model.AddLinksFromText(source.Url("page"), customDownloadDir: directory.Root);
-            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
-                while (model.IsBusy)
-                    await Task.Delay(20, timeout.Token);
+            await pageRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(model.IsBusy);
+            Assert.Equal(initialLanguage == "en" ? "Loading page" : "Seite wird geladen", model.BusyDisplayMessage);
 
-            var package = Assert.Single(model.Packages);
-            await model.ResolvePackageSizesAsync([package]).WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal("Fixture release", package.Name);
-            Assert.Equal(url, Assert.Single(package.Items).OriginalUrl);
+            string switchedLanguage = initialLanguage == "en" ? "de" : "en";
+            model.SetLanguage(switchedLanguage);
+            Assert.Equal(switchedLanguage == "en" ? "Loading page" : "Seite wird geladen", model.BusyDisplayMessage);
+
+            releasePage.TrySetResult();
+            await pageFinished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Contains(switchedLanguage == "en"
+                ? "Extracting links from “Fixture & Tools”" : "Links aus „Fixture & Tools“ werden extrahiert", progress);
+            if (hasLinks)
+            {
+                var package = Assert.Single(model.Packages);
+                await model.ResolvePackageSizesAsync([package]).WaitAsync(TimeSpan.FromSeconds(10));
+                var item = Assert.Single(package.Items);
+                Assert.Equal(title, package.Name);
+                Assert.Equal(url, item.OriginalUrl);
+                Assert.Equal("sample.bin", item.FileName);
+                Assert.Equal(3, item.TotalBytes);
+                Assert.Contains(switchedLanguage == "en"
+                    ? "Resolving direct downloads (1 link(s) found)" : "Direktdownloads werden aufgelöst (1 Link(s) gefunden)", progress);
+                Assert.Contains(switchedLanguage == "en"
+                    ? "Creating package (1 link(s) found)" : "Paket wird erstellt (1 Link(s) gefunden)", progress);
+            }
+            else
+            {
+                Assert.Empty(model.Packages);
+                Assert.Equal(Loc.Get("Status_NoValidLinksFound"), model.StatusSummary);
+            }
+            Assert.False(model.IsBusy);
+            Assert.Empty(model.BusyMessage);
             Assert.Equal(2, source.Requests["page"]);
         }
-        finally { HosterInfo.KnownHosters.Remove(hoster); }
+        finally
+        {
+            releasePage.TrySetResult();
+            try
+            {
+                await pageFinished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                await model.ResolvePackageSizesAsync(model.Packages.ToArray()).WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                HosterInfo.KnownHosters.Remove(hoster);
+                settings.Language = previousSetting;
+                localization.CurrentLanguage = previousLanguage;
+            }
+        }
     }
 
     [Fact]

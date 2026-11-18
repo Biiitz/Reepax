@@ -315,6 +315,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _busyMessage = string.Empty;
 
+    private WebPageExtractionProgress? _webPageExtractionProgress;
+
     private string _busyDisplayMessage = string.Empty;
     public string BusyDisplayMessage => _busyDisplayMessage;
 
@@ -565,6 +567,8 @@ public partial class MainViewModel : ObservableObject
                 Overview.RefreshLanguage();
                 if (IsAnalyzingMetadata)
                     BusyMessage = Loc.Format("Busy_AnalyzingMetadata", MetadataAnalysisCompleted, MetadataAnalysisTotal);
+                else if (_webPageExtractionProgress is { } progress)
+                    BusyMessage = progress.GetLocalizedText();
                 foreach (var package in Packages.ToArray())
                 {
                     package.RefreshLocalizedAggregateText();
@@ -3077,11 +3081,14 @@ public partial class MainViewModel : ObservableObject
         }
 
         IsBusy = true;
-        BusyMessage = Loc.Get("Busy_LoadingPage");
         List<DownloadPackage>? packagesToAnalyze = null;
         try
         {
-            var progress = new Progress<string>(msg => BusyMessage = msg);
+            var progress = new SynchronousProgress<WebPageExtractionProgress>(update =>
+            {
+                _webPageExtractionProgress = update;
+                BusyMessage = update.GetLocalizedText();
+            });
             var result = await WebPageLinkExtractor.ExtractAsync(pageUrl, progress);
 
             if (result.DirectDownload == null && result.Links.Count == 0)
@@ -3129,6 +3136,7 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
+            _webPageExtractionProgress = null;
             IsBusy = false;
             BusyMessage = string.Empty;
         }
@@ -3164,7 +3172,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var job in jobs)
             {
                 int offset = completed;
-                var progress = new SynchronousMetadataProgress(state =>
+                var progress = new SynchronousProgress<MetadataAnalysisProgress>(state =>
                 {
                     if (IsAnalyzingMetadata && version == _metadataAnalysisVersion)
                     {
@@ -3207,10 +3215,10 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private sealed class SynchronousMetadataProgress(Action<MetadataAnalysisProgress> report) : IProgress<MetadataAnalysisProgress>
+    private sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
     {
         // Finish progress updates before analysis returns and clears its status.
-        public void Report(MetadataAnalysisProgress value) => SafeInvoke(() => report(value));
+        public void Report(T value) => SafeInvoke(() => report(value));
     }
 
     public void RecalculateGlobalStats()
