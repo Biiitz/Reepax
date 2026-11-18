@@ -33,6 +33,8 @@ internal static class RecoveryProcessWorker
             return WindowDownloadFlowWorker.Run(args[1], args[2], filtersOnly: true);
         if (args.Length == 3 && args[0] == "--shortcut-window-worker")
             return WindowDownloadFlowWorker.Run(args[1], args[2], shortcutsOnly: true);
+        if (args.Length == 3 && args[0] == "--power-shutdown-window-worker")
+            return WindowDownloadFlowWorker.Run(args[1], args[2], powerShutdownOnly: true);
         if (args.Length >= 4 && args[0] == "--package-restart-window-worker")
             return WindowDownloadFlowWorker.Run(args[1], args[2], packageRestartStage: args[3]);
         if (args.Length == 4 && args[0] == "--load-worker")

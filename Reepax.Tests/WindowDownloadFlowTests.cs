@@ -58,6 +58,10 @@ public sealed class WindowDownloadFlowTests
     }
 
     [Fact]
+    public async Task MainWindow_FailedShutdownKeepsTrayRestoreAndSessionEndStillSaves()
+        => await RunWindowWorkerAsync("en", "--power-shutdown-window-worker", "Power shutdown flow passed");
+
+    [Fact]
     public async Task MainWindow_RestartLaunchFailurePreservesOwnershipAndSavedDownloadProgress()
     {
         var root = Directory.CreateTempSubdirectory("WindowFlow_");

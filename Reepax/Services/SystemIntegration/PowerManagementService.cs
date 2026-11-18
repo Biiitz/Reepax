@@ -163,19 +163,22 @@ public sealed class PowerManagementService
             return;
         }
 
-        ExecuteShutdown(Download.QueueManager.PerformSafeShutdown, startInfo =>
+        ExecuteShutdown(startInfo =>
         {
             EnableShutdownPrivilege();
             using var process = Process.Start(startInfo);
         });
     }
 
-    internal static void ExecuteShutdown(Action prepareShutdown, Action<ProcessStartInfo> startProcess)
+    internal static void ExecuteShutdown(Action<ProcessStartInfo> startProcess) =>
+        ExecuteShutdown(SavePowerActionState, startProcess);
+
+    internal static void ExecuteShutdown(Action saveState, Action<ProcessStartInfo> startProcess)
     {
         try
         {
-            AppLogger.Info("[PowerManagement] Performing safe shutdown before initiating Windows shutdown...");
-            prepareShutdown();
+            AppLogger.Info("[PowerManagement] Saving application state before requesting Windows shutdown...");
+            saveState();
 
             if (OperatingSystem.IsWindows())
             {
@@ -204,50 +207,50 @@ public sealed class PowerManagementService
             return;
         }
 
+        ExecuteSleepOrHibernate(() =>
+        {
+            if (!EnableShutdownPrivilege())
+                AppLogger.Warn("[PowerManagement] Could not enable SeShutdownPrivilege; SetSuspendState might fail.");
+
+            return SetSuspendState(false, false, false);
+        }, startInfo =>
+        {
+            using var process = Process.Start(startInfo);
+        });
+    }
+
+    internal static void ExecuteSleepOrHibernate(Func<bool> suspend, Action<ProcessStartInfo> startProcess)
+    {
         try
         {
-            AppLogger.Info("[PowerManagement] Performing safe shutdown before initiating Windows sleep/hibernate...");
-            Download.QueueManager.PerformSafeShutdown();
+            AppLogger.Info("[PowerManagement] Saving application state before requesting Windows sleep/hibernate...");
+            SavePowerActionState();
 
-            if (OperatingSystem.IsWindows())
+            if (!OperatingSystem.IsWindows()) return;
+            if (suspend())
             {
-                ReleaseAll();
-
-                bool privilegeEnabled = EnableShutdownPrivilege();
-                if (!privilegeEnabled)
-                {
-                    AppLogger.Warn("[PowerManagement] Could not enable SeShutdownPrivilege; SetSuspendState might fail.");
-                }
-
-                bool success = SetSuspendState(false, false, false);
-                if (!success)
-                {
-                    int win32Error = Marshal.GetLastWin32Error();
-                    AppLogger.Warn($"[PowerManagement] SetSuspendState returned false with Win32 error code {win32Error}. Attempting fallback via rundll32...");
-
-                    try
-                    {
-                        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0")
-                        {
-                            CreateNoWindow = true,
-                            UseShellExecute = false
-                        });
-                    }
-                    catch (Exception fallbackEx)
-                    {
-                        AppLogger.Error("[PowerManagement] Fallback to rundll32 failed", fallbackEx);
-                    }
-                }
-                else
-                {
-                    AppLogger.Info("[PowerManagement] SetSuspendState successfully initiated system sleep/standby.");
-                }
+                AppLogger.Info("[PowerManagement] SetSuspendState successfully initiated system sleep/standby.");
+                return;
             }
+
+            int win32Error = Marshal.GetLastWin32Error();
+            AppLogger.Warn($"[PowerManagement] SetSuspendState returned false with Win32 error code {win32Error}. Attempting fallback via rundll32...");
+            startProcess(new ProcessStartInfo("rundll32.exe", "powrprof.dll,SetSuspendState 0,1,0")
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
         }
         catch (Exception ex)
         {
             AppLogger.Error("[PowerManagement] Failed to initiate sleep/hibernate", ex);
         }
+    }
+
+    private static void SavePowerActionState()
+    {
+        DownloadPersistenceService.Instance.SaveDownloads(Download.QueueManager.Instance.Packages, sync: true);
+        SettingsService.Instance.SaveSettings();
     }
 
     /// <summary>
