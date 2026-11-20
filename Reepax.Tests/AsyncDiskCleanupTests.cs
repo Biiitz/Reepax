@@ -53,7 +53,8 @@ public class AsyncDiskCleanupTests
                 Assert.True(File.Exists(file));
                 Assert.False(item.IsRemovalPending);
                 Assert.False(vm.IsRemovalInProgress);
-                Assert.Equal(Loc.Format("Status_CleanupIncomplete", removePackage && !sharedDirectory ? 2 : 1), vm.StatusSummary);
+                Assert.Equal(Loc.Format("Status_CleanupIncomplete", 1), vm.StatusSummary);
+                Assert.True(Directory.Exists(directory));
                 Assert.Equal(vm.StatusSummary, notification);
                 if (listOnly)
                 {
@@ -74,6 +75,7 @@ public class AsyncDiskCleanupTests
                     await vm.RemoveItem(item, true);
                 Assert.DoesNotContain(package, vm.Packages);
                 Assert.False(File.Exists(file));
+                Assert.Equal(!removePackage || sharedDirectory, Directory.Exists(directory));
             }
         }
         finally

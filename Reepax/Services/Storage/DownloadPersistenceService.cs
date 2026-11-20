@@ -90,6 +90,8 @@ public class DownloadPackageDto
     public long ElapsedDurationMs { get; set; }
     public bool IsExtracted { get; set; } = false;
     public ArchiveCleanupState? PendingArchiveCleanup { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ExtractedPackageFile[]? ExtractedFiles { get; set; }
     public List<NextTaskStepDto> NextTaskSteps { get; set; } = new();
     public List<DownloadItemDto> Items { get; set; } = new();
 }
@@ -936,6 +938,7 @@ public class DownloadPersistenceService : IDisposable
                     StatusMessage = pkgStatusMsg,
                     IsExtracted = pkg.IsExtracted,
                     PendingArchiveCleanup = pkg.PendingArchiveCleanup,
+                    ExtractedFiles = pkg.ExtractedFiles.Length == 0 ? null : pkg.ExtractedFiles,
                     CreatedAt = pkg.CreatedAt,
                     StartedAt = pkg.StartedAt,
                     CompletedAt = pkg.CompletedAt,
@@ -1615,6 +1618,7 @@ public class DownloadPersistenceService : IDisposable
     private static void RestorePackageItemsAndSteps(DownloadPackage package, DownloadPackageDto savedPackage, List<DownloadItem> items)
     {
         // Keep prior extraction results even if the archive no longer exists.
+        package.ExtractedFiles = savedPackage.ExtractedFiles ?? [];
         var extract = savedPackage.NextTaskSteps?.FirstOrDefault(step => step.Key == "Extract");
         package.IsExtracted = savedPackage.IsExtracted ||
             savedPackage.StatusMessage is "Fertig & Entpackt" or "Completed & Extracted" ||

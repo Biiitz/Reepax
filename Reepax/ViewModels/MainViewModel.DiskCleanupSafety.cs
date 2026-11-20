@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Reepax.Models;
+using Reepax.Services.Storage;
 
 namespace Reepax.ViewModels;
 
@@ -25,8 +26,9 @@ public partial class MainViewModel
                     return false;
                 if (other.IsExtracting && IsWithinCleanupDirectory(directory, other.ExtractionDirectory))
                     return false;
-                if (other.Items.SelectMany(item => GetItemCandidatePaths(item, other.SaveDirectory))
-                    .Any(candidate => IsWithinCleanupDirectory(candidate, directory)))
+                if (other.ExtractedFiles.Any(file => IsWithinCleanupDirectory(file.Path, directory)) ||
+                    other.Items.SelectMany(item => GetItemCandidatePaths(item, other.SaveDirectory))
+                        .Any(candidate => IsWithinCleanupDirectory(candidate, directory)))
                     return false;
             }
             return true;
@@ -37,54 +39,53 @@ public partial class MainViewModel
         }
     }
 
-    private static HashSet<string> GetProtectedItemPaths(IEnumerable<DownloadPackage>? packages, Guid? excludedPackageId, Guid? excludedItemId)
+    private static HashSet<string> GetProtectedCleanupPaths(IEnumerable<DownloadPackage> packages,
+        HashSet<Guid> packageIds, HashSet<Guid> itemIds)
     {
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (packages == null)
-            return paths;
         foreach (var package in packages)
         {
-            if (package.Id == excludedPackageId)
-                continue;
-            foreach (var item in package.Items)
-            {
-                if (item.Id != excludedItemId)
+            if (packageIds.Contains(package.Id)) continue;
+            foreach (var file in package.ExtractedFiles)
+                paths.Add(file.Path);
+            foreach (var item in package.ItemsSnapshot)
+                if (!itemIds.Contains(item.Id))
                     paths.UnionWith(GetItemCandidatePaths(item, package.SaveDirectory));
-            }
         }
         return paths;
     }
 
     internal static IEnumerable<string> GetItemCandidatePaths(DownloadItem item, string? fallbackDirectory)
     {
-        var bases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+        var path = item.SaveFilePath;
+        if (string.IsNullOrWhiteSpace(path))
         {
-            bases.Add(item.SaveFilePath);
-            if (!Path.IsPathRooted(item.SaveFilePath) && !string.IsNullOrWhiteSpace(fallbackDirectory))
-                bases.Add(Path.Combine(fallbackDirectory, item.SaveFilePath));
+            if (string.IsNullOrWhiteSpace(item.FileName) || Path.GetFileName(item.FileName) != item.FileName ||
+                item.FileName is "." or "..") yield break;
+            path = item.FileName;
         }
-        if (!string.IsNullOrWhiteSpace(fallbackDirectory) && !string.IsNullOrWhiteSpace(item.FileName))
-            bases.Add(Path.Combine(fallbackDirectory, item.FileName));
-
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var path in bases)
+        if (!Path.IsPathFullyQualified(path))
         {
-            foreach (var suffix in new[] { "", ".part", ".part.segments", ".segments", ".tmp", ".temp", ".reepax_tmp" })
-                paths.Add(NormalizeCleanupPath(path + suffix));
-            if (path.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
-                paths.Add(NormalizeCleanupPath(path[..^5]));
-            else if (path.EndsWith(".part.segments", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(fallbackDirectory) || Path.IsPathRooted(path)) yield break;
+            path = Path.Combine(fallbackDirectory, path);
+        }
+
+        string fullPath = NormalizeCleanupPath(path);
+        // Older data may point at a working file while retaining the final name.
+        foreach (var suffix in new[] { ".part.segments", ".part" })
+        {
+            if (fullPath.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(Path.GetFileName(fullPath[..^suffix.Length]), item.FileName, StringComparison.OrdinalIgnoreCase))
             {
-                paths.Add(NormalizeCleanupPath(path[..^14]));
-                paths.Add(NormalizeCleanupPath(path[..^9]));
+                fullPath = fullPath[..^suffix.Length];
+                break;
             }
         }
-        return paths;
+        foreach (var candidate in PackageImportTargets.ReservedPaths(fullPath))
+            yield return candidate;
     }
 
-    private static string NormalizeCleanupPath(string path)
-        => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    private static string NormalizeCleanupPath(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
     private static bool IsWithinCleanupDirectory(string? path, string? directory)
     {
@@ -93,6 +94,7 @@ public partial class MainViewModel
         var fullPath = NormalizeCleanupPath(path);
         var fullDirectory = NormalizeCleanupPath(directory);
         return string.Equals(fullPath, fullDirectory, StringComparison.OrdinalIgnoreCase) ||
-            fullPath.StartsWith(fullDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            fullPath.StartsWith(Path.EndsInDirectorySeparator(fullDirectory) ? fullDirectory : fullDirectory + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
     }
 }

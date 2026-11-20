@@ -386,6 +386,7 @@ public static class Strings_de
         ["Dialog_DeletePackageMessage"] = "Möchtest du das Paket \"{0}\" wirklich aus Reepax entfernen?",
         ["Dialog_DeletePackageOptionFiles"] = "Auch alle {0} zugehörigen Dateien entfernen ({1})",
         ["Dialog_DeletePackageOptionSingleFile"] = "Auch die zugehörige Datei entfernen ({0})",
+        ["Dialog_DeleteEmptyPackageDirectory"] = "Auch den leeren Paketordner entfernen",
         ["Dialog_DeleteItemTitle"] = "Eintrag löschen",
         ["Dialog_DeleteItemMessage"] = "Möchtest du den Eintrag \"{0}\" wirklich aus Reepax entfernen?",
         ["Dialog_DeleteItemOptionFiles"] = "Auch die Datei entfernen ({0})",

@@ -1174,6 +1174,7 @@ public partial class DownloadPackage : ObservableObject
                                 catch
                                 {
                                     // Preserve the actual location if rollback cannot restore the original name.
+                                    RelocateExtractionPaths(oldDir, tempDir);
                                     SaveDirectory = tempDir;
                                     UpdateItemSaveFilePaths();
                                     Services.Storage.DownloadPersistenceService.Instance.RequestSave();
@@ -1185,6 +1186,7 @@ public partial class DownloadPackage : ObservableObject
                         {
                             RenameDirectory(oldDir, newDir);
                         }
+                        RelocateExtractionPaths(oldDir, newDir);
                     }
 
                     SaveDirectory = newDir;

@@ -108,236 +108,78 @@ public partial class MainViewModel
     }
 
     public static List<string> GetPackageFilesOnDisk(DownloadPackage package)
-    {
-        return GetPackageFilesOnDisk(package, null);
-    }
+        => GetPackageFilesOnDisk(package, null);
 
     public static List<string> GetPackageFilesOnDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages)
-        => GetPackageFilesOnDisk(package, allPackages, true);
-
-    private static List<string> GetPackageFilesOnDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages, bool persistChanges, bool refresh = true)
     {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        package.RefreshAndCheckExistsOnDisk();
+        var protectedPaths = GetProtectedCleanupPaths(GetCleanupPackages(allPackages), [package.Id], []);
+        return GetOwnedPackageFiles(package).Where(path => !protectedPaths.Contains(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
 
-        // 1. Refresh & self-heal path in case of renaming or moved folders
-        if (refresh)
-            package.RefreshAndCheckExistsOnDisk(persistChanges);
+    private static IEnumerable<DownloadPackage> GetCleanupPackages(IEnumerable<DownloadPackage>? packages)
+        => packages ?? (QueueManager.IsInitialized ? QueueManager.Instance.Packages.ToArray() : []);
 
-        // 2. Check if SaveDirectory is a dedicated package folder
-        if (IsCleanupDirectory(package, package.SaveDirectory, allPackages, !persistChanges))
+    private static IEnumerable<string> GetOwnedPackageFiles(DownloadPackage package)
+    {
+        foreach (var item in package.ItemsSnapshot)
+            foreach (var path in GetItemFilesOnDisk(item, package.SaveDirectory))
+                yield return path;
+
+        foreach (var file in package.ExtractedFiles)
         {
-            try
-            {
-                foreach (var file in Directory.EnumerateFiles(package.SaveDirectory, "*", SearchOption.AllDirectories))
-                {
-                    result.Add(Path.GetFullPath(file));
-                }
-            }
-            catch { }
+            if (string.IsNullOrWhiteSpace(file.Path) || !Path.IsPathFullyQualified(file.Path)) continue;
+            var info = new FileInfo(file.Path);
+            if (info.Exists && (info.Attributes & FileAttributes.ReparsePoint) == 0 &&
+                info.Length == file.Length && info.LastWriteTimeUtc.Ticks == file.LastWriteTicks)
+                yield return NormalizeCleanupPath(file.Path);
         }
-        else
-        {
-            // Non-dedicated (e.g. shared or root/Downloads directly): collect package item files specifically
-            foreach (var item in package.Items)
-            {
-                var itemFiles = GetItemFilesOnDisk(item, package.SaveDirectory);
-                foreach (var f in itemFiles)
-                {
-                    result.Add(f);
-                }
-            }
-
-            // Also check for orphaned temp/par2 files belonging to this package in SaveDirectory
-            if (!string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory))
-            {
-                try
-                {
-                    var itemBaseNames = package.Items
-                        .Where(i => !string.IsNullOrWhiteSpace(i.FileName))
-                        .Select(i => Path.GetFileNameWithoutExtension(i.FileName))
-                        .Where(n => !string.IsNullOrWhiteSpace(n))
-                        .ToList();
-
-                    foreach (var f in Directory.GetFiles(package.SaveDirectory, "*", SearchOption.TopDirectoryOnly))
-                    {
-                        var fileName = Path.GetFileName(f);
-                        bool matchesPackage = itemBaseNames.Any(baseName => fileName.Contains(baseName, StringComparison.OrdinalIgnoreCase));
-
-                        if (matchesPackage && (ArchiveExtractionService.IsTempFile(f) || f.EndsWith(".par2", StringComparison.OrdinalIgnoreCase)))
-                        {
-                            result.Add(Path.GetFullPath(f));
-                        }
-                    }
-                }
-                catch { }
-
-                // Check if a subfolder in SaveDirectory matches package name or safe name
-                var safeName = PackageGrouper.MakeSafeDirectoryName(package.Name);
-                var subfolderCandidates = new[]
-                {
-                    Path.Combine(package.SaveDirectory, package.Name),
-                    Path.Combine(package.SaveDirectory, safeName)
-                }.Distinct(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var subfolder in subfolderCandidates)
-                {
-                    if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsCleanupDirectory(package, subfolder, allPackages, !persistChanges))
-                    {
-                        try
-                        {
-                            foreach (var f in Directory.EnumerateFiles(subfolder, "*", SearchOption.AllDirectories))
-                            {
-                                result.Add(Path.GetFullPath(f));
-                            }
-                        }
-                        catch { }
-                    }
-                }
-            }
-        }
-
-        // 3. Check separate ExtractionDirectory if set, exists, and is different from SaveDirectory
-        if (!string.IsNullOrWhiteSpace(package.ExtractionDirectory) &&
-            Directory.Exists(package.ExtractionDirectory) &&
-            !IsProtectedDirectory(package.ExtractionDirectory))
-        {
-            var fullExt = Path.GetFullPath(package.ExtractionDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var fullSave = !string.IsNullOrWhiteSpace(package.SaveDirectory)
-                ? Path.GetFullPath(package.SaveDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                : null;
-
-            // If ExtractionDirectory is not already inside or identical to SaveDirectory
-            if (fullSave == null || (!fullExt.Equals(fullSave, StringComparison.OrdinalIgnoreCase) && !fullExt.StartsWith(fullSave + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
-            {
-                if (IsCleanupDirectory(package, package.ExtractionDirectory, allPackages, !persistChanges))
-                {
-                    try
-                    {
-                        foreach (var file in Directory.EnumerateFiles(package.ExtractionDirectory, "*", SearchOption.AllDirectories))
-                        {
-                            result.Add(Path.GetFullPath(file));
-                        }
-                    }
-                    catch { }
-                }
-            }
-        }
-
-        // 4. Any items that point to explicit paths outside SaveDirectory
-        foreach (var item in package.Items)
-        {
-            if (!string.IsNullOrWhiteSpace(item.SaveFilePath) && Path.IsPathRooted(item.SaveFilePath))
-            {
-                var itemFiles = GetItemFilesOnDisk(item, null);
-                foreach (var f in itemFiles)
-                {
-                    result.Add(f);
-                }
-            }
-        }
-
-        if (!persistChanges)
-            result.ExceptWith(GetProtectedItemPaths(allPackages, package.Id, null));
-        return result.ToList();
     }
 
     public static List<string> GetItemFilesOnDisk(DownloadItem item, string? fallbackDir = null)
-    {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var candidatePaths = new List<string>();
+        => GetItemCandidatePaths(item, fallbackDir).Where(File.Exists).ToList();
 
-        if (!string.IsNullOrWhiteSpace(item.SaveFilePath))
+    private static IEnumerable<string> GetPackageCleanupDirectories(DownloadPackage package,
+        IEnumerable<DownloadPackage> allPackages, IReadOnlyCollection<string> files)
+    {
+        foreach (var root in new[] { package.SaveDirectory, package.ExtractionDirectory })
         {
-            candidatePaths.Add(item.SaveFilePath);
-            if (!Path.IsPathRooted(item.SaveFilePath) && !string.IsNullOrWhiteSpace(fallbackDir))
+            if (string.IsNullOrWhiteSpace(root) || !IsCleanupDirectory(package, root, allPackages, protectOtherPaths: true))
+                continue;
+            var directory = NormalizeCleanupPath(root);
+            yield return directory;
+            var trackedPaths = files.Concat(package.ExtractedFiles.Select(file => file.Path));
+            foreach (var file in trackedPaths.Where(path => IsWithinCleanupDirectory(path, directory)))
             {
-                candidatePaths.Add(Path.Combine(fallbackDir, item.SaveFilePath));
+                for (var parent = Path.GetDirectoryName(file);
+                     parent != null && !string.Equals(parent, directory, StringComparison.OrdinalIgnoreCase);
+                     parent = Path.GetDirectoryName(parent))
+                    yield return parent;
             }
         }
+    }
 
-        if (!string.IsNullOrWhiteSpace(fallbackDir) && !string.IsNullOrWhiteSpace(item.FileName))
-        {
-            candidatePaths.Add(Path.Combine(fallbackDir, item.FileName));
-        }
+    private static bool IsEmptyCleanupDirectory(string path) =>
+        Directory.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0 &&
+        !Directory.EnumerateFileSystemEntries(path).Any();
 
-        foreach (var basePath in candidatePaths)
+    private static void RemoveEmptyCleanupDirectories(IEnumerable<string> paths)
+    {
+        var remaining = new List<string>();
+        foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(path => path.Length))
         {
             try
             {
-                // 1. Direct file
-                if (File.Exists(basePath))
-                {
-                    result.Add(Path.GetFullPath(basePath));
-                }
-
-                // 2. Part file
-                var partPath = basePath + ".part";
-                if (File.Exists(partPath))
-                {
-                    result.Add(Path.GetFullPath(partPath));
-                }
-
-                // 3. Part segments file
-                var segmentsPath = partPath + ".segments";
-                if (File.Exists(segmentsPath))
-                {
-                    result.Add(Path.GetFullPath(segmentsPath));
-                }
-
-                // 4. Additional temporary sidecars (.segments, .tmp, .temp, .reepax_tmp)
-                var directSegPath = basePath + ".segments";
-                if (File.Exists(directSegPath))
-                {
-                    result.Add(Path.GetFullPath(directSegPath));
-                }
-                var tmpPath = basePath + ".tmp";
-                if (File.Exists(tmpPath))
-                {
-                    result.Add(Path.GetFullPath(tmpPath));
-                }
-                var tempPath = basePath + ".temp";
-                if (File.Exists(tempPath))
-                {
-                    result.Add(Path.GetFullPath(tempPath));
-                }
-                var reepaxTmpPath = basePath + ".reepax_tmp";
-                if (File.Exists(reepaxTmpPath))
-                {
-                    result.Add(Path.GetFullPath(reepaxTmpPath));
-                }
-
-                // If basePath was already ending with .part or .part.segments
-                if (basePath.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
-                {
-                    var segPath = basePath + ".segments";
-                    if (File.Exists(segPath))
-                    {
-                        result.Add(Path.GetFullPath(segPath));
-                    }
-                    var stripped = basePath.Substring(0, basePath.Length - 5);
-                    if (File.Exists(stripped))
-                    {
-                        result.Add(Path.GetFullPath(stripped));
-                    }
-                }
-                else if (basePath.EndsWith(".part.segments", StringComparison.OrdinalIgnoreCase))
-                {
-                    var stripped = basePath.Substring(0, basePath.Length - 14);
-                    if (File.Exists(stripped))
-                    {
-                        result.Add(Path.GetFullPath(stripped));
-                    }
-                    var strippedPart = basePath.Substring(0, basePath.Length - 9);
-                    if (File.Exists(strippedPart))
-                    {
-                        result.Add(Path.GetFullPath(strippedPart));
-                    }
-                }
+                if (IsEmptyCleanupDirectory(path)) Directory.Delete(path, recursive: false);
             }
-            catch { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (IsEmptyCleanupDirectory(path)) remaining.Add(path);
+            }
         }
-
-        return result.ToList();
+        if (remaining.Count > 0)
+            throw new FileCleanupException(remaining);
     }
 
     public static long GetTotalFilesSizeOnDisk(IEnumerable<string> filePaths)
@@ -359,153 +201,51 @@ public partial class MainViewModel
     }
 
     public static void DeletePackageFilesFromDisk(DownloadPackage package)
-    {
-        DeletePackageFilesFromDisk(package, null);
-    }
+        => DeletePackageFilesFromDisk(package, null);
 
     public static void DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages)
     {
-        var remainingPaths = DeletePackageFilesFromDisk(package, allPackages, true);
-        if (remainingPaths.Count > 0)
-            throw new FileCleanupException(remainingPaths);
-    }
-
-    private static IReadOnlyCollection<string> DeletePackageFilesFromDisk(DownloadPackage package, IEnumerable<DownloadPackage>? allPackages, bool persistChanges, bool refresh = true)
-    {
-        // 1. Cancel active extraction if currently running
         if (ArchiveExtractionService.Instance.IsPackageExtracting(package.Id))
         {
             ArchiveExtractionService.Instance.CancelPackageExtraction(package.Id);
-            try { System.Threading.Thread.Sleep(100); } catch { }
+            throw new InvalidOperationException("Package extraction is still running.");
         }
-
-        // 2. Self-heal in case of renaming or moved folders
-        if (refresh)
-            package.RefreshAndCheckExistsOnDisk(persistChanges);
-
-        // 3. Delete dedicated SaveDirectory directly from disk if applicable
+        var packages = GetCleanupPackages(allPackages).ToArray();
+        var files = GetPackageFilesOnDisk(package, packages);
         if (package.RequiresRecoveredPathConfirmation)
             throw new InvalidOperationException("Recovered package paths require explicit confirmation before cleanup.");
-        var trackedFiles = GetPackageFilesOnDisk(package, allPackages, persistChanges, false);
-        var trackedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var failedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        bool saveDirDeleted = false;
-        if (IsCleanupDirectory(package, package.SaveDirectory, allPackages, !persistChanges))
-        {
-            trackedDirectories.Add(package.SaveDirectory);
-            try
-            {
-                ArchiveExtractionService.PurgeTemporaryFilesInDirectory(package.SaveDirectory);
-                ArchiveExtractionService.StripReadOnlyAttributes(package.SaveDirectory);
-                Directory.Delete(package.SaveDirectory, recursive: true);
-                saveDirDeleted = !Directory.Exists(package.SaveDirectory);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[MainViewModel] Could not delete dedicated package directory '{package.SaveDirectory}'", ex);
-            }
-        }
 
-        // 4. If SaveDirectory was NOT dedicated or its directory deletion didn't remove everything:
-        if (!saveDirDeleted)
-        {
-            var files = GetPackageFilesOnDisk(package, allPackages, persistChanges, false);
-            foreach (var file in files)
-            {
-                try
-                {
-                    if (!ArchiveExtractionService.DeleteOrMoveToTemp(file))
-                        failedPaths.Add(file);
-                }
-                catch (Exception ex)
-                {
-                    failedPaths.Add(file);
-                    AppLogger.Warn($"[MainViewModel] Could not delete package file {file}", ex);
-                }
-            }
-
-            // Check if matching package subfolder exists in SaveDirectory
-            if (!string.IsNullOrWhiteSpace(package.SaveDirectory) && Directory.Exists(package.SaveDirectory))
-            {
-                var safeName = PackageGrouper.MakeSafeDirectoryName(package.Name);
-                var subfolderCandidates = new[]
-                {
-                    Path.Combine(package.SaveDirectory, package.Name),
-                    Path.Combine(package.SaveDirectory, safeName)
-                }.Distinct(StringComparer.OrdinalIgnoreCase);
-
-                foreach (var subfolder in subfolderCandidates)
-                {
-                    if (Directory.Exists(subfolder) && !IsProtectedDirectory(subfolder) && IsCleanupDirectory(package, subfolder, allPackages, !persistChanges))
-                    {
-                        trackedDirectories.Add(subfolder);
-                        try
-                        {
-                            ArchiveExtractionService.PurgeTemporaryFilesInDirectory(subfolder);
-                            ArchiveExtractionService.StripReadOnlyAttributes(subfolder);
-                            Directory.Delete(subfolder, recursive: true);
-                        }
-                        catch { }
-                    }
-                }
-            }
-
-            // Clean up package save directory if it's now completely empty and not protected
-            try
-            {
-                var dir = package.SaveDirectory;
-                if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir) && !IsProtectedDirectory(dir))
-                {
-                    if (!Directory.EnumerateFileSystemEntries(dir).Any())
-                    {
-                        Directory.Delete(dir);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[MainViewModel] Could not delete empty package directory", ex);
-            }
-        }
-
-        // 5. Delete separate dedicated ExtractionDirectory directly if applicable
-        if (!string.IsNullOrWhiteSpace(package.ExtractionDirectory) &&
-            Directory.Exists(package.ExtractionDirectory) &&
-            !IsProtectedDirectory(package.ExtractionDirectory) &&
-            IsCleanupDirectory(package, package.ExtractionDirectory, allPackages, !persistChanges))
-        {
-            trackedDirectories.Add(package.ExtractionDirectory);
-            try
-            {
-                ArchiveExtractionService.PurgeTemporaryFilesInDirectory(package.ExtractionDirectory);
-                ArchiveExtractionService.StripReadOnlyAttributes(package.ExtractionDirectory);
-                Directory.Delete(package.ExtractionDirectory, recursive: true);
-            }
-            catch (Exception ex)
-            {
-                AppLogger.Warn($"[MainViewModel] Could not delete extraction directory '{package.ExtractionDirectory}'", ex);
-            }
-        }
-        failedPaths.UnionWith(trackedFiles.Where(File.Exists));
-        failedPaths.UnionWith(trackedDirectories.Where(Directory.Exists));
-        return failedPaths;
+        var directories = GetPackageCleanupDirectories(package, packages, files).ToArray();
+        DeleteCleanupFiles(files);
+        RemoveEmptyCleanupDirectories(directories);
     }
 
     public static void DeleteItemFilesFromDisk(DownloadItem item, string? fallbackDir = null)
     {
-        var files = GetItemFilesOnDisk(item, fallbackDir);
+        var protectedPaths = GetProtectedCleanupPaths(GetCleanupPackages(null), [], [item.Id]);
+        DeleteCleanupFiles(GetItemFilesOnDisk(item, fallbackDir).Where(path => !protectedPaths.Contains(path)));
+    }
+
+    private static void DeleteCleanupFiles(IEnumerable<string> paths)
+    {
         var failedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in files)
+        foreach (var path in paths)
         {
             try
             {
-                if (!ArchiveExtractionService.DeleteOrMoveToTemp(file))
-                    failedPaths.Add(file);
+                if (File.Exists(path))
+                {
+                    var attributes = File.GetAttributes(path);
+                    if ((attributes & FileAttributes.ReadOnly) != 0 && (attributes & FileAttributes.Directory) == 0)
+                        File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
+                }
+                if (Directory.Exists(path) || !ArchiveExtractionService.DeleteOrMoveToTemp(path))
+                    failedPaths.Add(path);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                failedPaths.Add(file);
-                AppLogger.Warn($"[MainViewModel] Could not delete item file {file}", ex);
+                failedPaths.Add(path);
+                AppLogger.Warn("[MainViewModel] Could not delete a selected file.", ex);
             }
         }
         if (failedPaths.Count > 0)

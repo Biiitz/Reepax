@@ -139,6 +139,8 @@ public partial class MainViewModel
     private static async Task<bool> ExecuteDownloadPathPlanAsync(PackageDirectoryMoveService.Plan plan)
     {
         var cleaned = await Task.Run(() => new PackageDirectoryMoveService().ExecuteAsync(plan));
+        if (plan.WholeDirectory && plan.Source != null && plan.Files.Length > 0)
+            plan.Package.RelocateExtractionPaths(plan.Source, plan.Target);
         plan.Package.SaveDirectory = plan.Target;
         foreach (var entry in plan.ItemPaths) entry.Key.SaveFilePath = entry.Value;
         plan.Package.ExtractionDirectory = plan.ExtractionDirectory;

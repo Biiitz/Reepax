@@ -193,7 +193,8 @@ public partial class MainViewModel
                     {
                         var current = CaptureCleanupSnapshot(selectedPackages, selectedItems);
                         await DiskCleanupRunner(() => current.Scan());
-                        if (preview != null && !preview.HasSameSelectionPaths(current))
+                        if (preview != null && (!preview.HasSameSelectionPaths(current) ||
+                            (preview.Files.Count == 0 && current.Files.Count > 0)))
                         {
                             StatusSummary = Loc.Get("Status_CleanupChanged");
                             return;
@@ -322,7 +323,9 @@ public partial class MainViewModel
         {
             title = Loc.Get("Dialog_DeletePackageTitle");
             message = Loc.Format("Dialog_DeletePackageMessage", packages.First().Name);
-            if (preview.Files.Count == 1 || (preview.Files.Count == 0 && preview.HasEmptyPackageDirectory))
+            if (preview.Files.Count == 0 && preview.HasEmptyPackageDirectory)
+                option = Loc.Get("Dialog_DeleteEmptyPackageDirectory");
+            else if (preview.Files.Count == 1)
                 option = Loc.Format("Dialog_DeletePackageOptionSingleFile", BytesToHumanReadableConverter.FormatBytes(preview.Size));
             else if (preview.Files.Count > 1)
                 option = Loc.Format("Dialog_DeletePackageOptionFiles", preview.Files.Count, BytesToHumanReadableConverter.FormatBytes(preview.Size));
@@ -347,6 +350,11 @@ public partial class MainViewModel
             deleteFiles = response.DeleteFiles;
             recycleFiles = response.RecycleFiles;
             return response.Confirmed;
+        }
+        if (preview.Files.Count == 0)
+        {
+            recycleFiles = false;
+            return Views.ConfirmDialog.ShowWithOption(title, message, option, out deleteFiles);
         }
         return Views.ConfirmDialog.ShowWithFileDeletionOptions(title, message, option, out deleteFiles, out recycleFiles);
     }
@@ -397,6 +405,7 @@ public partial class MainViewModel
         private readonly HashSet<Guid> _packageIds;
         private readonly HashSet<Guid> _itemIds;
         internal HashSet<string> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
+        private HashSet<string> Directories { get; } = new(StringComparer.OrdinalIgnoreCase);
         internal long Size { get; private set; }
         internal bool HasEmptyPackageDirectory { get; private set; }
 
@@ -409,20 +418,24 @@ public partial class MainViewModel
 
         internal void Scan()
         {
-            foreach (var package in Packages.Where(package => _packageIds.Contains(package.Id)))
+            var selectedPackages = Packages.Where(package => _packageIds.Contains(package.Id)).ToArray();
+            foreach (var package in selectedPackages)
+                package.RefreshAndCheckExistsOnDisk(persistChanges: false);
+
+            var protectedPaths = GetProtectedCleanupPaths(Packages, _packageIds, _itemIds);
+            foreach (var package in selectedPackages)
             {
-                Files.UnionWith(GetPackageFilesOnDisk(package, Packages, false));
-                if (Directory.Exists(package.SaveDirectory) && !IsProtectedDirectory(package.SaveDirectory))
-                    HasEmptyPackageDirectory = true;
+                var files = GetOwnedPackageFiles(package).Where(path => !protectedPaths.Contains(path)).ToArray();
+                Files.UnionWith(files);
+                Directories.UnionWith(GetPackageCleanupDirectories(package, Packages, files));
             }
             foreach (var package in Packages)
             {
+                if (_packageIds.Contains(package.Id)) continue;
                 foreach (var item in package.Items.Where(item => _itemIds.Contains(item.Id)))
-                {
-                    var protectedPaths = GetProtectedItemPaths(Packages, null, item.Id);
                     Files.UnionWith(GetItemFilesOnDisk(item, package.SaveDirectory).Where(path => !protectedPaths.Contains(path)));
-                }
             }
+            HasEmptyPackageDirectory = Files.Count == 0 && Directories.Any(IsEmptyCleanupDirectory);
             Size = GetTotalFilesSizeOnDisk(Files);
         }
 
@@ -437,6 +450,7 @@ public partial class MainViewModel
                         package.RequiresRecoveredPathConfirmation != otherPackage.RequiresRecoveredPathConfirmation ||
                         !SamePath(package.SaveDirectory, otherPackage.SaveDirectory) ||
                         !SamePath(package.ExtractionDirectory, otherPackage.ExtractionDirectory) ||
+                        !package.ExtractedFiles.SequenceEqual(otherPackage.ExtractedFiles) ||
                         package.Items.Count != otherPackage.Items.Count)
                         return false;
                     foreach (var item in package.Items)
@@ -515,30 +529,8 @@ public partial class MainViewModel
         internal void Delete()
         {
             EnsureRecoveredPathsConfirmed();
-            var failedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var package in Packages.ToList())
-            {
-                var selected = package.Items.Where(item => _itemIds.Contains(item.Id)).ToArray();
-                foreach (var item in selected)
-                {
-                    var protectedPaths = GetProtectedItemPaths(Packages, null, item.Id);
-                    foreach (var path in GetItemFilesOnDisk(item, package.SaveDirectory).Where(path => !protectedPaths.Contains(path)))
-                    {
-                        if (!ArchiveExtractionService.DeleteOrMoveToTemp(path))
-                            failedPaths.Add(path);
-                    }
-                    package.Items.Remove(item);
-                }
-                if (selected.Length > 0 && package.Items.Count == 0 && !_packageIds.Contains(package.Id))
-                    Packages.Remove(package);
-            }
-            foreach (var package in Packages.Where(package => _packageIds.Contains(package.Id)).ToArray())
-            {
-                failedPaths.UnionWith(DeletePackageFilesFromDisk(package, Packages, false, false));
-                Packages.Remove(package);
-            }
-            if (failedPaths.Count > 0)
-                throw new FileCleanupException(failedPaths);
+            DeleteCleanupFiles(Files);
+            RemoveEmptyCleanupDirectories(Directories);
         }
     }
 }

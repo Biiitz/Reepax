@@ -90,7 +90,7 @@ internal static class PackageImportTargets
         }
     }
 
-    private static IEnumerable<string> ReservedPaths(string path)
+    internal static IEnumerable<string> ReservedPaths(string path)
     {
         string fullPath = Path.GetFullPath(path);
         foreach (string suffix in ReservedSuffixes) yield return fullPath + suffix;

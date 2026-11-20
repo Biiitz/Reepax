@@ -11,7 +11,7 @@ namespace Reepax.Tests;
 public class DiskCleanupViewModelTests
 {
     [Fact]
-    public void GetPackageFilesOnDisk_FindsAllRelatedSidecarsAndCalculatesTotalSize()
+    public void GetPackageFilesOnDisk_CountsOnlyDownloadAndReservedSidecars()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "Reepax_DiskCleanup_Test_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -50,18 +50,15 @@ public class DiskCleanupViewModelTests
 
             var detectedFiles = MainViewModel.GetPackageFilesOnDisk(pkg);
 
-            // Verify all created sidecars are detected
-            Assert.Contains(Path.GetFullPath(mainFile), detectedFiles);
-            Assert.Contains(Path.GetFullPath(partFile), detectedFiles);
-            Assert.Contains(Path.GetFullPath(partSegmentsFile), detectedFiles);
-            Assert.Contains(Path.GetFullPath(directSegmentsFile), detectedFiles);
-            Assert.Contains(Path.GetFullPath(tmpFile), detectedFiles);
-            Assert.Contains(Path.GetFullPath(tempFile), detectedFiles);
-            Assert.Contains(Path.GetFullPath(reepaxTmpFile), detectedFiles);
-
-            // Verify total file size matches (7 files * 100 bytes = 700 bytes)
-            long totalSize = MainViewModel.GetTotalFilesSizeOnDisk(detectedFiles);
-            Assert.Equal(700, totalSize);
+            Assert.Equal(3, detectedFiles.Count);
+            Assert.Contains(mainFile, detectedFiles);
+            Assert.Contains(partFile, detectedFiles);
+            Assert.Contains(partSegmentsFile, detectedFiles);
+            Assert.DoesNotContain(directSegmentsFile, detectedFiles);
+            Assert.DoesNotContain(tmpFile, detectedFiles);
+            Assert.DoesNotContain(tempFile, detectedFiles);
+            Assert.DoesNotContain(reepaxTmpFile, detectedFiles);
+            Assert.Equal(300, MainViewModel.GetTotalFilesSizeOnDisk(detectedFiles));
         }
         finally
         {
@@ -185,6 +182,8 @@ public class DiskCleanupViewModelTests
             });
 
             Assert.True(Directory.Exists(dedicatedDir));
+
+            pkg.RecordExtractedFiles([ExtractedPackageFile.Capture(file2)]);
 
             // Delete dedicated package files
             MainViewModel.DeletePackageFilesFromDisk(pkg, new[] { pkg });

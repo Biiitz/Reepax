@@ -48,7 +48,11 @@ internal static class RecycleBinService
             var shellItemId = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
             foreach (var path in paths)
             {
-                try { _ = File.GetAttributes(path); }
+                try
+                {
+                    if ((File.GetAttributes(path) & FileAttributes.Directory) != 0)
+                        throw new IOException("A selected file was replaced by a directory.");
+                }
                 catch (FileNotFoundException) { continue; }
                 catch (DirectoryNotFoundException) { continue; }
                 SHCreateItemFromParsingName(path, 0, ref shellItemId, out var item);

@@ -103,7 +103,13 @@ public sealed class RecoveredPathCleanupTests : IDisposable
             return true;
         };
         string bin = Path.Combine(_root, "Recycled");
-        _model.RecyclePaths = paths => Directory.Move(Assert.Single(paths), bin);
+        _model.RecyclePaths = paths =>
+        {
+            var source = Assert.Single(paths);
+            Assert.Equal(file, source);
+            Directory.CreateDirectory(bin);
+            File.Move(source, Path.Combine(bin, Path.GetFileName(source)));
+        };
 
         await _model.RemovePackage(package);
 

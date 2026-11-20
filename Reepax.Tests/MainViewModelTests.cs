@@ -1338,6 +1338,7 @@ https://rapidgator.net/file/3/Movie.part03.rar
 
             var pkg = new DownloadPackage { Name = "ExtractedAppPkg", SaveDirectory = tempDir };
             pkg.Items.Add(new DownloadItem { FileName = "package.part1.rar", SaveFilePath = rarFile });
+            pkg.RecordExtractedFiles([ExtractedPackageFile.Capture(extractedExe), ExtractedPackageFile.Capture(extractedBin)]);
             vm.Packages.Add(pkg);
 
             var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
@@ -1386,6 +1387,7 @@ https://rapidgator.net/file/3/Movie.part03.rar
                 IsExtracted = true 
             };
             pkg.Items.Add(new DownloadItem { FileName = "package.rar", SaveFilePath = rarFile });
+            pkg.RecordExtractedFiles([ExtractedPackageFile.Capture(extractedSetup)]);
             vm.Packages.Add(pkg);
 
             var filesOnDisk = MainViewModel.GetPackageFilesOnDisk(pkg, vm.Packages);
@@ -1499,7 +1501,7 @@ https://rapidgator.net/file/3/Movie.part03.rar
     }
 
     [Fact]
-    public async Task RemovePackage_WithTempFiles_PurgesTempFilesDirectlyFromDisk()
+    public async Task RemovePackage_WithTempFiles_DeletesOwnedSidecarsAndPreservesUnrelatedFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "ReepaxPkgTempDel_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -1508,7 +1510,8 @@ https://rapidgator.net/file/3/Movie.part03.rar
             var userFile = Path.Combine(tempDir, "package.iso");
             var partFile = Path.Combine(tempDir, "package.iso.part");
             var segFile = Path.Combine(tempDir, "package.iso.part.segments");
-            var tmpFile = Path.Combine(tempDir, "cache.tmp");
+            var tmpFile = userFile + ".tmp";
+            var unrelatedTemp = Path.Combine(tempDir, "cache.tmp");
             var zeroFile = Path.Combine(tempDir, "empty.txt");
             var backupFile = Path.Combine(tempDir, "archive.rar.1");
 
@@ -1516,6 +1519,7 @@ https://rapidgator.net/file/3/Movie.part03.rar
             File.WriteAllBytes(partFile, new byte[250]);
             File.WriteAllText(segFile, "{}");
             File.WriteAllText(tmpFile, "temp data");
+            File.WriteAllText(unrelatedTemp, "unrelated temp");
             File.WriteAllBytes(zeroFile, Array.Empty<byte>());
             File.WriteAllText(backupFile, "backup");
 
@@ -1533,10 +1537,11 @@ https://rapidgator.net/file/3/Movie.part03.rar
             Assert.False(File.Exists(userFile));
             Assert.False(File.Exists(partFile));
             Assert.False(File.Exists(segFile));
-            Assert.False(File.Exists(tmpFile));
-            Assert.False(File.Exists(zeroFile));
-            Assert.False(File.Exists(backupFile));
-            Assert.False(Directory.Exists(tempDir));
+            Assert.Equal("temp data", File.ReadAllText(tmpFile));
+            Assert.Equal("unrelated temp", File.ReadAllText(unrelatedTemp));
+            Assert.Empty(File.ReadAllBytes(zeroFile));
+            Assert.Equal("backup", File.ReadAllText(backupFile));
+            Assert.True(Directory.Exists(tempDir));
         }
         finally
         {

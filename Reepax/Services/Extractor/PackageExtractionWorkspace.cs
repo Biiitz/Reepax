@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using Reepax.Models;
 
 namespace Reepax.Services.Extractor;
 
@@ -28,17 +29,17 @@ internal sealed class PackageExtractionWorkspace : IDisposable
         return Path.Combine(workspace.OutputDirectory, Path.GetRelativePath(root, target));
     }
 
-    internal HashSet<string> Publish(IEnumerable<string> protectedSources, CancellationToken cancellationToken)
+    internal ExtractedPackageFile[] Publish(IEnumerable<string> protectedSources, CancellationToken cancellationToken)
     {
         var protectedPaths = protectedSources.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var publishedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var publishedFiles = new List<ExtractedPackageFile>();
         foreach (var workspace in _workspaces.Values)
         foreach (var path in Directory.EnumerateFiles(workspace.OutputDirectory, "*", SearchOption.AllDirectories))
         {
             string destination = Path.GetFullPath(Path.Combine(workspace.TargetDirectory, Path.GetRelativePath(workspace.OutputDirectory, path)));
             if (protectedPaths.Contains(destination))
                 throw new IOException("An extracted file would overwrite a download source.");
-            publishedPaths.Add(destination);
+            publishedFiles.Add(ExtractedPackageFile.Capture(path, destination));
         }
         try
         {
@@ -62,7 +63,7 @@ internal sealed class PackageExtractionWorkspace : IDisposable
             if (recoveryFailed) throw new IOException("Extraction recovery files were retained.");
             throw;
         }
-        return publishedPaths;
+        return publishedFiles.ToArray();
     }
 
     private static bool IsWithin(string path, string root) =>

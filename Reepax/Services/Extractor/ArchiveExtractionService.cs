@@ -631,7 +631,9 @@ public partial class ArchiveExtractionService
                 {
                     token.ThrowIfCancellationRequested();
                     var sources = enabledItems.Select(item => item.SaveFilePath).OfType<string>().Where(path => !string.IsNullOrWhiteSpace(path));
-                    cleanupPlan.ProtectedPaths.UnionWith(batch.Publish(sources.Concat(primaryArchives.SelectMany(GetArchiveSourceFiles)), token));
+                    var published = batch.Publish(sources.Concat(primaryArchives.SelectMany(GetArchiveSourceFiles)), token);
+                    cleanupPlan.ProtectedPaths.UnionWith(published.Select(file => file.Path));
+                    SafeInvoke(() => package.RecordExtractedFiles(published));
                 }
                 CommitPackagePasswordResults(package, verified);
                 allSuccess = true;
