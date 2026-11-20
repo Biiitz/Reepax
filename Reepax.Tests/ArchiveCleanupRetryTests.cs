@@ -94,6 +94,93 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
         Assert.Equal(NextTaskStepState.Done, restored.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
     }
 
+    [Fact]
+    public async Task LegacyCleanupAfterReload_PreservesUnverifiedPar2FileAndFinishesArchiveCleanup()
+    {
+        var package = CreatePackage();
+        string archive = package.Items[0].SaveFilePath!;
+        using (var locked = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read))
+            Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package));
+
+        const string unrelatedName = "unrelated.par2";
+        string unrelated = Path.Combine(package.SaveDirectory, unrelatedName);
+        byte[] unrelatedBytes = [6, 2, 1, 0];
+        File.WriteAllBytes(unrelated, unrelatedBytes);
+        var info = new FileInfo(unrelated);
+        var legacy = new ArchiveCleanupFile(unrelated, null, "", unrelatedName, info.Length, info.LastWriteTimeUtc.Ticks, false);
+        var pending = package.PendingArchiveCleanup!;
+        package.PendingArchiveCleanup = pending with { Files = [..pending.Files, legacy] };
+        string output = Path.Combine(package.SaveDirectory, "payload.txt");
+        byte[] outputBytes = File.ReadAllBytes(output);
+
+        using var storage = new DownloadPersistenceService(Path.Combine(_root.FullName, "downloads.json"));
+        storage.SaveDownloads([package], sync: true);
+        QueueManager.Instance.Packages.Clear();
+        var restored = Assert.Single(storage.LoadDownloads());
+        QueueManager.Instance.Packages.Add(restored);
+        Assert.Contains(legacy, restored.PendingArchiveCleanup!.Files);
+
+        await new MainViewModel().RetryArchiveCleanupAsync(restored);
+
+        Assert.False(File.Exists(archive));
+        Assert.True(File.Exists(unrelated));
+        Assert.Equal(unrelatedBytes, File.ReadAllBytes(unrelated));
+        Assert.Equal(outputBytes, File.ReadAllBytes(output));
+        Assert.False(restored.HasPendingArchiveCleanup);
+        Assert.Equal(NextTaskStepState.Done, restored.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifiedPar2Retry_AfterReloadChecksFileBytes(bool replace)
+    {
+        var package = CreatePackage();
+        string archive = package.Items[0].SaveFilePath!;
+        string parity = await Par2RepairServiceTests.CreateParityAsync(package.SaveDirectory, archive);
+        byte[] bytes = File.ReadAllBytes(parity);
+        var modified = File.GetLastWriteTimeUtc(parity);
+        using (var locked = new FileStream(parity, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package));
+            Assert.False(File.Exists(archive));
+            var pending = Assert.Single(package.PendingArchiveCleanup!.Files);
+            Assert.Null(pending.ItemId);
+            Assert.Equal(parity, pending.Path);
+            Assert.NotNull(pending.Par2Sha256);
+        }
+
+        using var storage = new DownloadPersistenceService(Path.Combine(_root.FullName, "downloads.json"));
+        if (replace) storage.SaveHistory([package], sync: true);
+        else storage.SaveDownloads([package], sync: true);
+        QueueManager.Instance.Packages.Clear();
+        var restored = Assert.Single(replace ? storage.LoadHistory() : storage.LoadDownloads());
+        QueueManager.Instance.Packages.Add(restored);
+        string output = Path.Combine(restored.SaveDirectory, "payload.txt");
+        byte[] outputBytes = File.ReadAllBytes(output);
+
+        if (replace)
+        {
+            byte[] replacement = bytes.ToArray();
+            replacement[^1] ^= 1;
+            File.WriteAllBytes(parity, replacement);
+            File.SetLastWriteTimeUtc(parity, modified);
+            Assert.Equal(modified, File.GetLastWriteTimeUtc(parity));
+            Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(restored, force: true));
+            Assert.Equal(replacement, File.ReadAllBytes(parity));
+            Assert.True(restored.HasPendingArchiveCleanup);
+            File.WriteAllBytes(parity, bytes);
+            File.SetLastWriteTimeUtc(parity, modified);
+        }
+
+        await new MainViewModel().RetryArchiveCleanupAsync(restored);
+
+        Assert.False(File.Exists(parity));
+        Assert.False(restored.HasPendingArchiveCleanup);
+        Assert.Equal(outputBytes, File.ReadAllBytes(output));
+        Assert.Equal(NextTaskStepState.Done, restored.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

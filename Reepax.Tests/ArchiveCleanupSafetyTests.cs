@@ -73,7 +73,8 @@ public sealed class ArchiveCleanupSafetyTests : IDisposable
         string repairPath = Path.Combine(directory, "recovery.par2");
         File.WriteAllText(repairPath, "downloaded recovery input");
         string discoveredRepair = Path.Combine(directory, "discovered.par2");
-        File.WriteAllText(discoveredRepair, "recovery input");
+        byte[] unrelatedRecovery = [5, 4, 3, 2, 1];
+        File.WriteAllBytes(discoveredRepair, unrelatedRecovery);
         var package = new DownloadPackage
         {
             Name = "Archive", IsCustomName = true, SaveDirectory = directory, AutoPar2Repair = false,
@@ -105,9 +106,76 @@ public sealed class ArchiveCleanupSafetyTests : IDisposable
         Assert.False(File.Exists(dataPath + ".part"));
         Assert.False(File.Exists(dataPath + ".part.segments"));
         Assert.False(File.Exists(repairPath));
-        Assert.Equal(shared, File.Exists(discoveredRepair));
+        Assert.True(File.Exists(discoveredRepair));
+        Assert.Equal(unrelatedRecovery, File.ReadAllBytes(discoveredRepair));
         Assert.Equal("another download", File.ReadAllText(otherPart));
         Assert.Empty(Directory.GetDirectories(directory, ".archive-work-*", SearchOption.AllDirectories));
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public async Task PackageCleanup_RequiresMatchingUntrackedPar2Content(bool recycle, bool deletePar2)
+    {
+        var package = CreateSimplePackage();
+        package.DeleteArchiveAfterExtraction = !recycle;
+        package.MoveArchiveToRecycleBin = recycle;
+        SettingsService.Instance.Settings.DeletePar2AfterExtraction = deletePar2;
+        string archive = Assert.Single(package.Items).SaveFilePath!;
+        byte[] archiveBytes = File.ReadAllBytes(archive);
+        await Par2RepairServiceTests.CreateParityAsync(package.SaveDirectory, archive);
+        var matching = Directory.GetFiles(package.SaveDirectory, "*.par2").ToDictionary(path => path, File.ReadAllBytes);
+        Assert.True(matching.Count > 1);
+
+        var preserved = new Dictionary<string, byte[]>();
+        foreach (var mixedSet in new[] { false, true })
+        {
+            var fixtureDirectory = Directory.CreateDirectory(Path.Combine(_root.FullName, mixedSet ? "Mixed" : "Previous")).FullName;
+            string fixtureArchive = Path.Combine(fixtureDirectory, Path.GetFileName(archive));
+            byte[] fixtureBytes = archiveBytes.ToArray();
+            if (!mixedSet) fixtureBytes[^1] ^= 1;
+            File.WriteAllBytes(fixtureArchive, fixtureBytes);
+            if (mixedSet)
+            {
+                string fileName = "other.bin";
+                byte[] otherBytes = [1, 3, 5, 7, 9];
+                string neighbor = Path.Combine(package.SaveDirectory, fileName);
+                File.WriteAllBytes(neighbor, otherBytes);
+                preserved.Add(neighbor, otherBytes);
+                string fixtureNeighbor = Path.Combine(fixtureDirectory, fileName);
+                File.WriteAllBytes(fixtureNeighbor, otherBytes);
+                await Par2RepairServiceTests.CreateParityAsync(fixtureDirectory, fixtureArchive, fixtureNeighbor);
+            }
+            else await Par2RepairServiceTests.CreateParityAsync(fixtureDirectory, fixtureArchive);
+            foreach (var path in Directory.GetFiles(fixtureDirectory, "*.par2"))
+            {
+                string destination = Path.Combine(package.SaveDirectory,
+                    (mixedSet ? "mixed" : "archive") + Path.GetFileName(path)[4..]);
+                File.Move(path, destination);
+                preserved.Add(destination, File.ReadAllBytes(destination));
+            }
+        }
+
+        string combined = Path.Combine(package.SaveDirectory, "combined.par2");
+        byte[] combinedBytes = [..matching.Values.First(), ..preserved[Path.Combine(package.SaveDirectory, "archive.par2")]];
+        File.WriteAllBytes(combined, combinedBytes);
+        preserved.Add(combined, combinedBytes);
+
+        Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package));
+
+        Assert.False(File.Exists(archive));
+        Assert.Equal("payload", File.ReadAllText(Path.Combine(package.SaveDirectory, "payload.txt")));
+        Assert.False(package.HasPendingArchiveCleanup);
+        foreach (var (path, bytes) in matching)
+        {
+            Assert.Equal(!deletePar2, File.Exists(path));
+            if (!deletePar2) Assert.Equal(bytes, File.ReadAllBytes(path));
+        }
+        foreach (var (path, bytes) in preserved) Assert.Equal(bytes, File.ReadAllBytes(path));
+        if (recycle) Assert.Equal(archiveBytes, File.ReadAllBytes(Assert.Single(_recycleScope.RecycledPaths)));
+        else Assert.Empty(_recycleScope.RecycledPaths);
     }
 
     [Theory]

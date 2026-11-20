@@ -2,13 +2,17 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Verification;
 
 namespace Reepax.Services.Extractor;
 
 public partial class ArchiveExtractionService
 {
-    private sealed record ArchiveCleanupPlan(HashSet<string> Sidecars, HashSet<string> Par2Files, HashSet<string> ProtectedPaths);
+    private sealed record ArchiveCleanupPlan(HashSet<string> Sidecars, HashSet<string> Par2Files,
+        HashSet<string> ProtectedPaths, string? Par2Directory);
 
     private static ArchiveCleanupPlan CaptureArchiveCleanupPlan(DownloadPackage package)
     {
@@ -40,6 +44,7 @@ public partial class ArchiveExtractionService
             dedicated = ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, directory, packages);
             foreach (var other in packages)
             {
+                foreach (var output in other.ExtractedFiles) protectedPaths.Add(output.Path);
                 if (ReferenceEquals(other, package)) continue;
                 foreach (var item in other.ItemsSnapshot)
                 {
@@ -60,9 +65,50 @@ public partial class ArchiveExtractionService
         sidecars.ExceptWith(finalPaths);
         // Capture inputs before publication; files created by extraction are never cleanup inputs.
         sidecars.RemoveWhere(path => !File.Exists(path));
-        if (dedicated && !string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
-            par2.UnionWith(Directory.GetFiles(directory, "*.par2", SearchOption.TopDirectoryOnly));
-        return new(sidecars, par2, protectedPaths);
+        return new(sidecars, par2, protectedPaths, dedicated ? Path.GetFullPath(directory) : null);
+    }
+
+    private static async Task<ArchiveCleanupFile[]> FindUntrackedPar2ForCleanupAsync(string directory, ArchiveCleanupPlan plan,
+        IEnumerable<string> extractedArchives, CancellationToken token)
+    {
+        var archives = extractedArchives.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        archives.ExceptWith(plan.ProtectedPaths);
+        if (archives.Count == 0) return [];
+
+        string[] candidates;
+        try
+        {
+            ArchiveExtractionWorkspace.RejectReparsePoints(directory);
+            candidates = Directory.GetFiles(directory, "*.par2", SearchOption.TopDirectoryOnly);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+
+        var verified = new List<ArchiveCleanupFile>();
+        var archiveHashes = new Dictionary<string, (long Length, byte[] Md5)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in candidates)
+        {
+            token.ThrowIfCancellationRequested();
+            if (plan.Par2Files.Contains(path) || plan.ProtectedPaths.Contains(path)) continue;
+
+            try
+            {
+                ArchiveExtractionWorkspace.RejectReparsePoints(path);
+                using var recovery = File.OpenRead(path);
+                string? hash = await Par2RepairService.MatchArchiveRecoveryFileAsync(recovery, directory, archives, archiveHashes, token)
+                    .ConfigureAwait(false);
+                if (hash == null) continue;
+                verified.Add(new(path, null, "", Path.GetFileName(path), recovery.Length, File.GetLastWriteTimeUtc(path).Ticks, false)
+                    { Par2Sha256 = hash });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+            {
+                // An unreadable or invalid set cannot establish ownership for cleanup.
+            }
+        }
+        return verified.ToArray();
     }
 
     private static bool TryGetCleanupTarget(DownloadItem item, out string path)

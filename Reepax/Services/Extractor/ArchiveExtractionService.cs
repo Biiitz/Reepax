@@ -625,8 +625,20 @@ public partial class ArchiveExtractionService
                         successfullyExtractedFiles.Add(item.SaveFilePath);
             }
             PasswordCheckpoint();
+            var settings = SettingsService.Instance.Settings;
+            bool shouldDelete = package.DeleteArchiveAfterExtraction || settings.DeleteArchiveAfterExtraction;
+            bool shouldRecycle = !shouldDelete && (package.MoveArchiveToRecycleBin || settings.MoveArchiveToRecycleBin);
+            bool deletePar2 = settings.DeletePar2AfterExtraction;
+            ArchiveCleanupFile[] verifiedPar2 = [];
             if (verified.Count == preparation.Archives.Length)
             {
+                if ((shouldDelete || shouldRecycle) && deletePar2 && successfullyExtractedFiles.Count > 0 &&
+                    cleanupPlan.Par2Directory is { } par2Directory)
+                {
+                    verifiedPar2 = await Task.Run(() => FindUntrackedPar2ForCleanupAsync(
+                        par2Directory, cleanupPlan, successfullyExtractedFiles, token), token);
+                    PasswordCheckpoint();
+                }
                 using (await PackagePathOperationGate.Instance.EnterAsync(token))
                 {
                     token.ThrowIfCancellationRequested();
@@ -670,12 +682,9 @@ public partial class ArchiveExtractionService
                 });
             }
 
-            var shouldDelete = package.DeleteArchiveAfterExtraction || SettingsService.Instance.Settings.DeleteArchiveAfterExtraction;
-            var shouldRecycle = !shouldDelete && (package.MoveArchiveToRecycleBin || SettingsService.Instance.Settings.MoveArchiveToRecycleBin);
-
             if (allSuccess && (shouldDelete || shouldRecycle) && successfullyExtractedFiles.Count > 0)
             {
-                var cleanupState = CreateCleanupState(package, successfullyExtractedFiles, shouldRecycle, cleanupPlan);
+                var cleanupState = CreateCleanupState(package, successfullyExtractedFiles, shouldRecycle, deletePar2, cleanupPlan, verifiedPar2);
                 SafeInvoke(() => package.PendingArchiveCleanup = cleanupState);
                 await RunArchiveCleanupAsync(package, token, pauseEvent);
             }

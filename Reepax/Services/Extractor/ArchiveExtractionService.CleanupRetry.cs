@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
@@ -13,12 +14,12 @@ namespace Reepax.Services.Extractor;
 public partial class ArchiveExtractionService
 {
     private static ArchiveCleanupState CreateCleanupState(DownloadPackage package, IEnumerable<string> archives,
-        bool recycle, ArchiveCleanupPlan plan)
+        bool recycle, bool deletePar2, ArchiveCleanupPlan plan, IEnumerable<ArchiveCleanupFile> verifiedPar2)
     {
         var paths = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         foreach (string path in plan.Sidecars) paths[Path.GetFullPath(path)] = false;
         foreach (string path in archives) paths[Path.GetFullPath(path)] = recycle;
-        if (SettingsService.Instance.Settings.DeletePar2AfterExtraction)
+        if (deletePar2)
             foreach (string path in plan.Par2Files) paths[Path.GetFullPath(path)] = false;
         var owners = new Dictionary<string, (Guid Id, string Suffix)>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in package.ItemsSnapshot)
@@ -32,10 +33,7 @@ public partial class ArchiveExtractionService
         var files = new List<ArchiveCleanupFile>();
         foreach (var pair in paths)
         {
-            if (plan.ProtectedPaths.Contains(pair.Key)) continue;
-            Guid? itemId = null;
-            string suffix = "";
-            if (owners.TryGetValue(pair.Key, out var owner)) { itemId = owner.Id; suffix = owner.Suffix; }
+            if (plan.ProtectedPaths.Contains(pair.Key) || !owners.TryGetValue(pair.Key, out var owner)) continue;
             string relative = Path.GetRelativePath(package.SaveDirectory, pair.Key);
             if (Path.IsPathRooted(relative) || relative == ".." || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 relative = "";
@@ -52,8 +50,9 @@ public partial class ArchiveExtractionService
             catch (DirectoryNotFoundException) { continue; }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
-            files.Add(new(pair.Key, itemId, suffix, relative.Length == 0 ? null : relative, length, write, pair.Value));
+            files.Add(new(pair.Key, owner.Id, owner.Suffix, relative.Length == 0 ? null : relative, length, write, pair.Value));
         }
+        files.AddRange(verifiedPar2.Where(file => !plan.ProtectedPaths.Contains(file.Path) && !owners.ContainsKey(file.Path)));
         return new(recycle, files.ToArray());
     }
 
@@ -67,7 +66,8 @@ public partial class ArchiveExtractionService
             package.SetNextTaskRunning("Cleanup");
             package.StatusMessage = Loc.Get("Status_ArchiveCleanupRunning");
         });
-        var remaining = state.Files.ToHashSet();
+        // Old plans could include any PAR2 file in a matching folder.
+        var remaining = state.Files.Where(entry => entry.ItemId.HasValue || entry.Par2Sha256 != null).ToHashSet();
         try
         {
             using var lease = await PackagePathOperationGate.Instance.EnterAsync(token);
@@ -88,19 +88,25 @@ public partial class ArchiveExtractionService
                         if (items.TryGetValue(id, out var item) && item.IsEnabled && item.IsReadyForPostProcessing &&
                             TryGetCleanupTarget(item, out string target)) path = target + entry.Suffix;
                     }
-                    else if (entry.RelativePath != null) path = GetSafeArchiveDestination(package.SaveDirectory, entry.RelativePath);
+                    else if (entry.Par2Sha256 != null && !entry.Recycle && entry.Suffix.Length == 0 &&
+                        entry.RelativePath is { } relative && Verification.Par2RepairService.Instance.IsPar2File(relative))
+                        path = GetSafeArchiveDestination(package.SaveDirectory, relative);
                     if (path != null) resolved[entry] = path;
                 }
+                foreach (var output in package.ExtractedFiles) protectedPaths.Add(output.Path);
                 foreach (var other in Download.QueueManager.Instance.Packages)
-                foreach (var item in other.ItemsSnapshot)
                 {
-                    if (!TryGetCleanupTarget(item, out string path)) continue;
-                    if (ReferenceEquals(other, package)) finalPaths.Add(path);
-                    if (ReferenceEquals(other, package) && item.IsEnabled && item.IsReadyForPostProcessing) continue;
-                    protectedPaths.Add(path); protectedPaths.Add(path + ".part"); protectedPaths.Add(path + ".part.segments");
+                    foreach (var output in other.ExtractedFiles) protectedPaths.Add(output.Path);
+                    foreach (var item in other.ItemsSnapshot)
+                    {
+                        if (!TryGetCleanupTarget(item, out string path)) continue;
+                        if (ReferenceEquals(other, package)) finalPaths.Add(path);
+                        if (ReferenceEquals(other, package) && item.IsEnabled && item.IsReadyForPostProcessing) continue;
+                        protectedPaths.Add(path); protectedPaths.Add(path + ".part"); protectedPaths.Add(path + ".part.segments");
+                    }
                 }
             });
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
                 foreach (var entry in state.Files)
                 {
@@ -124,7 +130,16 @@ public partial class ArchiveExtractionService
                         var info = new FileInfo(path);
                         // Delayed retries must not delete a replacement file at the same location.
                         if (entry.Length < 0 || info.Length != entry.Length || info.LastWriteTimeUtc.Ticks != entry.LastWriteTicks) continue;
-                        if (entry.Recycle) DeleteToRecycleBin(path);
+                        if (entry.Par2Sha256 != null)
+                        {
+                            using var source = RelocationFileAccess.OpenSource(path);
+                            if (!source.CanDelete) continue;
+                            var hash = await SHA256.HashDataAsync(source.Stream, token).ConfigureAwait(false);
+                            token.ThrowIfCancellationRequested();
+                            if (!string.Equals(Convert.ToHexString(hash), entry.Par2Sha256, StringComparison.Ordinal) ||
+                                !source.TryDelete()) continue;
+                        }
+                        else if (entry.Recycle) DeleteToRecycleBin(path);
                         else if (!DeleteOrMoveToTemp(path)) continue;
                         remaining.Remove(entry);
                     }

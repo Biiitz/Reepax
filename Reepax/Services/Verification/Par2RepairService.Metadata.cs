@@ -119,11 +119,41 @@ public partial class Par2RepairService
         }
     }
 
+    internal static async Task<string?> MatchArchiveRecoveryFileAsync(FileStream recovery, string directory,
+        HashSet<string> archives, Dictionary<string, (long Length, byte[] Md5)> archiveHashes, CancellationToken ct)
+    {
+        var metadata = new RepairMetadata();
+        metadata.Read(recovery, ct, requireValidPackets: true);
+        if (!metadata.IsComplete) return null;
+
+        var targets = metadata.GetTargetFiles(directory);
+        if (targets.Keys.Any(path => !archives.Contains(path))) return null;
+        foreach (var (path, target) in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!archiveHashes.TryGetValue(path, out var archive))
+            {
+                using var input = File.OpenRead(path);
+                if ((ulong)input.Length != target.Length) return null;
+                archive = (input.Length, await MD5.HashDataAsync(input, ct).ConfigureAwait(false));
+                archiveHashes.Add(path, archive);
+            }
+            if ((ulong)archive.Length != target.Length || !archive.Md5.AsSpan().SequenceEqual(target.Md5))
+                return null;
+        }
+
+        // Persist a fingerprint of the validated file for cleanup after moves or restarts.
+        recovery.Position = 0;
+        using var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        metadata.Read(recovery, ct, requireValidPackets: true, wholeFileHash: sha256);
+        return Convert.ToHexString(sha256.GetHashAndReset());
+    }
+
     private sealed class RepairMetadata
     {
         private static readonly UTF8Encoding FileNameEncoding = new(false, true);
         private readonly byte[] _buffer = new byte[64 * 1024];
-        private readonly Dictionary<string, (string Name, PacketLocation Packet)> _descriptions = [];
+        private readonly Dictionary<string, (string Name, ulong Length, byte[] Md5, PacketLocation Packet)> _descriptions = [];
         private string? _set;
         private PacketLocation _main;
         private string[]? _fileIds;
@@ -131,11 +161,12 @@ public partial class Par2RepairService
 
         internal bool IsComplete => _missingIds is { Count: 0 };
 
-        internal void Read(FileStream stream, CancellationToken ct)
+        internal void Read(FileStream stream, CancellationToken ct, bool requireValidPackets = false,
+            IncrementalHash? wholeFileHash = null)
         {
             byte[] header = new byte[64];
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
-            while (!IsComplete && stream.Length - stream.Position >= header.Length)
+            while ((wholeFileHash != null || !IsComplete) && stream.Length - stream.Position >= header.Length)
             {
                 ct.ThrowIfCancellationRequested();
                 long start = stream.Position;
@@ -144,15 +175,18 @@ public partial class Par2RepairService
                 if (!header.AsSpan(0, 8).SequenceEqual("PAR2\0PKT"u8) || length < 64 || length % 4 != 0 ||
                     length > (ulong)(stream.Length - start))
                 {
+                    if (requireValidPackets) throw new InvalidDataException();
                     if (!FindNextPacket(stream, start + 1, ct)) return;
                     continue;
                 }
 
                 string set = Convert.ToHexString(header.AsSpan(32, 16));
+                if (requireValidPackets && _set != null && _set != set) throw new InvalidDataException();
+                wholeFileHash?.AppendData(header);
                 long bodyLength = (long)length - header.Length;
                 bool main = header.AsSpan(48, 16).SequenceEqual("PAR 2.0\0Main\0\0\0\0"u8);
                 bool description = header.AsSpan(48, 16).SequenceEqual("PAR 2.0\0FileDesc"u8);
-                bool keepBody = (_set == null || _set == set) &&
+                bool keepBody = !IsComplete && (_set == null || _set == set) &&
                     ((main && _fileIds == null && bodyLength is >= 12 and <= 12 + 32768 * 16) ||
                      (description && bodyLength is > 56 and <= 56 + 100000));
                 byte[]? body = keepBody ? new byte[(int)bodyLength] : null;
@@ -161,6 +195,7 @@ public partial class Par2RepairService
                 {
                     stream.ReadExactly(body);
                     hash.AppendData(body);
+                    wholeFileHash?.AppendData(body);
                 }
                 else
                 {
@@ -170,12 +205,14 @@ public partial class Par2RepairService
                         int count = (int)Math.Min(remaining, _buffer.Length);
                         stream.ReadExactly(_buffer.AsSpan(0, count));
                         hash.AppendData(_buffer, 0, count);
+                        wholeFileHash?.AppendData(_buffer, 0, count);
                         remaining -= count;
                     }
                 }
 
                 if (!hash.GetHashAndReset().AsSpan().SequenceEqual(header.AsSpan(16, 16)))
                 {
+                    if (requireValidPackets) throw new InvalidDataException();
                     if (!FindNextPacket(stream, start + 1, ct)) return;
                     continue;
                 }
@@ -187,6 +224,7 @@ public partial class Par2RepairService
                 if (main) ReadMain(body, packet);
                 else ReadDescription(body, packet);
             }
+            if (wholeFileHash != null && stream.Position != stream.Length) throw new InvalidDataException();
         }
 
         private bool FindNextPacket(FileStream stream, long offset, CancellationToken ct)
@@ -233,27 +271,32 @@ public partial class Par2RepairService
             var name = body.AsSpan(56);
             int terminator = name.IndexOf((byte)0);
             if (terminator >= 0) name = name[..terminator];
-            _descriptions.Add(id, (FileNameEncoding.GetString(name), packet));
+            _descriptions.Add(id, (FileNameEncoding.GetString(name), BinaryPrimitives.ReadUInt64LittleEndian(body.AsSpan(48)),
+                body.AsSpan(16, 16).ToArray(), packet));
             _missingIds?.Remove(id);
         }
 
-        internal string[] GetTargets(string directory)
+        internal string[] GetTargets(string directory) => GetTargetFiles(directory).Keys.ToArray();
+
+        internal Dictionary<string, (ulong Length, byte[] Md5)> GetTargetFiles(string directory)
         {
-            var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var targets = new Dictionary<string, (ulong Length, byte[] Md5)>(StringComparer.OrdinalIgnoreCase);
             string prefix = Path.EndsInDirectorySeparator(directory) ? directory : directory + Path.DirectorySeparatorChar;
             foreach (string id in _fileIds!)
             {
-                string name = _descriptions[id].Name;
+                var description = _descriptions[id];
+                string name = description.Name;
                 string[] parts = name.Replace('\\', '/').Split('/');
                 if (parts.Any(part => string.IsNullOrWhiteSpace(part) || part.EndsWith(' ') || part.EndsWith('.') ||
                     part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || IsDeviceName(part)))
                     throw new InvalidDataException();
                 string target = Path.GetFullPath(Path.Combine(directory, name));
-                if (!target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || !targets.Add(target))
+                if (!target.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                    !targets.TryAdd(target, (description.Length, description.Md5)))
                     throw new InvalidDataException();
             }
             if (targets.Count == 0) throw new InvalidDataException();
-            return targets.ToArray();
+            return targets;
         }
 
         private static bool IsDeviceName(string part)

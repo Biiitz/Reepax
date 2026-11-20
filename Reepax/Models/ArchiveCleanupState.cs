@@ -6,7 +6,11 @@ using Reepax.Services.Localization;
 namespace Reepax.Models;
 
 public sealed record ArchiveCleanupFile(string Path, Guid? ItemId, string Suffix, string? RelativePath,
-    long Length, long LastWriteTicks, bool Recycle);
+    long Length, long LastWriteTicks, bool Recycle)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Par2Sha256 { get; init; }
+}
 
 public sealed record ArchiveCleanupState(bool RecycleArchives, ArchiveCleanupFile[] Files);
 

@@ -891,7 +891,7 @@ You need 4 more recovery blocks to be able to repair.
         }
     }
 
-    private static async Task<string> CreateParityAsync(string directory, params string[] files)
+    internal static async Task<string> CreateParityAsync(string directory, params string[] files)
     {
         var parityFile = Path.Combine(directory, "data.par2");
         var startInfo = new ProcessStartInfo
