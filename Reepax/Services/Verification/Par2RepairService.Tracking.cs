@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Storage;
+using Reepax.Services.SystemIntegration;
 
 namespace Reepax.Services.Verification;
 
@@ -49,6 +50,7 @@ public partial class Par2RepairService
 
     private async Task<bool> RunTrackedPackageOperationAsync(DownloadPackage package, Func<Action<string>, Task<bool>> operation, CancellationToken cancellationToken)
     {
+        using var countdownSuspension = PostDownloadActionService.Instance.SuspendCountdown();
         var run = new RepairRun();
         using (await PackagePathOperationGate.Instance.EnterAsync(cancellationToken))
         {
@@ -94,6 +96,15 @@ public partial class Par2RepairService
                 }
             }
             run.Finished.TrySetResult(true);
+        }
+    }
+
+    internal bool HasActiveRepairs
+    {
+        get
+        {
+            lock (_repairSync)
+                return _activeRepairs.Count > 0;
         }
     }
 

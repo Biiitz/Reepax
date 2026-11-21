@@ -118,7 +118,7 @@ public partial class MainViewModel
 
         _removalFinished = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         IsRemovalInProgress = true;
-        using var cleanupLease = PostDownloadActionService.Instance.BeginCleanup();
+        using var countdownSuspension = PostDownloadActionService.Instance.SuspendCountdown();
         var targets = selectedPackages.SelectMany(package => package.Items).Concat(selectedItems).Distinct().ToArray();
         var affectedPackages = selectedPackages.Concat(Packages.Where(package => selectedItems.Any(package.Items.Contains))).Distinct().ToArray();
         bool reserved = false;

@@ -9,6 +9,7 @@ using Reepax.Services.Download;
 using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
+using Reepax.Services.Verification;
 
 namespace Reepax.Services.SystemIntegration;
 
@@ -28,8 +29,8 @@ public sealed class PostDownloadActionService
     private CancellationTokenSource? _countdownCts;
     private bool _isCountdownActive;
     private int _remainingSeconds;
-    private int _activeCleanupCount;
-    private bool _restartCountdownAfterCleanup;
+    private int _countdownSuspensions;
+    private bool _restartCountdownWhenReady;
 
     public bool IsCountdownActive
     {
@@ -96,13 +97,11 @@ public sealed class PostDownloadActionService
         if (packages == null) return;
 
         var packageList = packages.ToList();
-        bool hasActiveWork = CheckHasActiveWork(packageList);
-
         lock (_lock)
         {
-            if (_activeCleanupCount > 0)
+            if (_countdownSuspensions > 0)
                 return;
-            if (hasActiveWork)
+            if (CheckHasActiveWork(packageList))
             {
                 _hadActiveWork = true;
                 // If a download resumed or started during countdown, abort countdown but keep action armed
@@ -113,7 +112,7 @@ public sealed class PostDownloadActionService
                 return;
             }
 
-            if (CurrentAction == PostDownloadAction.None || (!_hadActiveWork && !_restartCountdownAfterCleanup && !IsCountdownActive))
+            if (CurrentAction == PostDownloadAction.None || (!_hadActiveWork && !_restartCountdownWhenReady && !IsCountdownActive))
                 return;
 
             if (!ArePackagesReady(packageList))
@@ -129,7 +128,7 @@ public sealed class PostDownloadActionService
             if (!IsCountdownActive)
             {
                 _hadActiveWork = false;
-                _restartCountdownAfterCleanup = false;
+                _restartCountdownWhenReady = false;
                 StartCountdown(() =>
                 {
                     var currentPackages = packages.ToList();
@@ -166,25 +165,25 @@ public sealed class PostDownloadActionService
         }
     }
 
-    internal IDisposable BeginCleanup()
+    internal IDisposable SuspendCountdown()
     {
         lock (_lock)
         {
-            _activeCleanupCount++;
+            _countdownSuspensions++;
             if (IsCountdownActive)
             {
-                _restartCountdownAfterCleanup = true;
+                _restartCountdownWhenReady = true;
                 CancelCountdown(manual: false);
             }
         }
-        return new CleanupLease(this);
+        return new CountdownSuspension(this);
     }
 
-    private sealed class CleanupLease : IDisposable
+    private sealed class CountdownSuspension : IDisposable
     {
         private PostDownloadActionService? _owner;
 
-        internal CleanupLease(PostDownloadActionService owner) => _owner = owner;
+        internal CountdownSuspension(PostDownloadActionService owner) => _owner = owner;
 
         public void Dispose()
         {
@@ -193,20 +192,19 @@ public sealed class PostDownloadActionService
                 return;
             lock (owner._lock)
             {
-                if (--owner._activeCleanupCount != 0) return;
+                if (--owner._countdownSuspensions != 0) return;
             }
-            owner.Evaluate(QueueManager.Instance.Packages);
+            SafeInvoke(() => owner.Evaluate(QueueManager.Instance.Packages));
         }
     }
 
     /// <summary>
-    /// Checks whether any download package or extraction task is currently active or queued to run.
+    /// Checks for downloads, extractions or PAR2 work that can delay an action.
     /// Paused packages are treated as non-active.
     /// </summary>
     public static bool CheckHasActiveWork(IEnumerable<DownloadPackage> packages)
     {
-        // 1. Any package actively extracting?
-        if (ArchiveExtractionService.Instance.IsAnyExtracting)
+        if (ArchiveExtractionService.Instance.IsAnyExtracting || Par2RepairService.Instance.HasActiveRepairs)
             return true;
 
         foreach (var pkg in packages)
@@ -247,7 +245,7 @@ public sealed class PostDownloadActionService
     {
         lock (_lock)
         {
-            if (_activeCleanupCount > 0 || IsCountdownActive || CurrentAction == PostDownloadAction.None) return;
+            if (_countdownSuspensions > 0 || IsCountdownActive || CurrentAction == PostDownloadAction.None) return;
 
             _countdownCts?.Cancel();
             _countdownCts?.Dispose();
@@ -291,7 +289,7 @@ public sealed class PostDownloadActionService
                         {
                             if (token.IsCancellationRequested)
                                 return;
-                            if (_activeCleanupCount > 0 || canComplete?.Invoke() == false)
+                            if (_countdownSuspensions > 0 || canComplete?.Invoke() == false)
                             {
                                 // Keep the action armed for a successful retry.
                                 _hadActiveWork = true;
@@ -323,8 +321,8 @@ public sealed class PostDownloadActionService
     {
         lock (_lock)
         {
-            if (!IsCountdownActive && !(manual && _restartCountdownAfterCleanup)) return;
-            if (manual) _restartCountdownAfterCleanup = false;
+            if (!IsCountdownActive && !(manual && _restartCountdownWhenReady)) return;
+            if (manual) _restartCountdownWhenReady = false;
 
             _countdownCts?.Cancel();
             _countdownCts?.Dispose();

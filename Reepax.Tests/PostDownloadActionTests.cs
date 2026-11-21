@@ -9,6 +9,8 @@ using Reepax.Services.Download;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
+using Reepax.Services.Verification;
+using Reepax.ViewModels;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -222,8 +224,8 @@ public class PostDownloadActionTests : IDisposable
                 service.Evaluate(packages);
                 Assert.True(service.IsCountdownActive);
 
-                using var first = service.BeginCleanup();
-                using var last = service.BeginCleanup();
+                using var first = service.SuspendCountdown();
+                using var last = service.SuspendCountdown();
                 Assert.False(service.IsCountdownActive);
                 Assert.Equal(PostDownloadAction.Sleep, service.CurrentAction);
                 service.StartCountdown();
@@ -291,7 +293,7 @@ public class PostDownloadActionTests : IDisposable
                 service.Evaluate(packages);
                 Assert.True(service.IsCountdownActive);
 
-                using (service.BeginCleanup())
+                using (service.SuspendCountdown())
                 {
                     if (deselectAction) service.CurrentAction = PostDownloadAction.None;
                     else service.CancelCountdown();
@@ -540,6 +542,215 @@ public class PostDownloadActionTests : IDisposable
                 service.CountdownFinished -= Finished;
                 service.CountdownCancelled -= Cancelled;
             });
+        }
+    }
+
+    [Theory]
+    [InlineData("resume")]
+    [InlineData("cancel")]
+    [InlineData("deselect")]
+    public async Task Countdown_DuringOverlappingPar2Repairs_ResumesOnlyWhenStillArmed(string choice)
+    {
+        var actions = PostDownloadActionService.Instance;
+        var packages = QueueManager.Instance.Packages;
+        var package = CreateCompletedPackage();
+        package.AutoExtractArchives = false;
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishFirst = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishSecond = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var previousPackages = Array.Empty<DownloadPackage>();
+        Task<bool>? first = null;
+        Task<bool>? second = null;
+
+        Task<bool> TrackRepair(TaskCompletionSource started, TaskCompletionSource<bool> finish) =>
+            Par2RepairService.Instance.RunTrackedPackageOperationAsync(package, () =>
+            {
+                started.SetResult();
+                return finish.Task;
+            });
+
+        try
+        {
+            await OnUiAsync(() =>
+            {
+                previousPackages = packages.ToArray();
+                packages.Clear();
+                packages.Add(package);
+                actions.CurrentAction = PostDownloadAction.Sleep;
+                actions.NotifyWorkStarted();
+                actions.Evaluate(packages);
+                Assert.True(actions.IsCountdownActive);
+            });
+
+            first = TrackRepair(firstStarted, finishFirst);
+            second = TrackRepair(secondStarted, finishSecond);
+            await Task.WhenAll(firstStarted.Task, secondStarted.Task).WaitAsync(TimeSpan.FromSeconds(10));
+            await OnUiAsync(() =>
+            {
+                Assert.False(actions.IsCountdownActive);
+                Assert.Equal(PostDownloadAction.Sleep, actions.CurrentAction);
+                actions.StartCountdown();
+                actions.Evaluate(packages);
+                Assert.False(actions.IsCountdownActive);
+            });
+
+            finishFirst.SetCanceled();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.WaitAsync(TimeSpan.FromSeconds(10)));
+            await OnUiAsync(() =>
+            {
+                Assert.True(PostDownloadActionService.CheckHasActiveWork(packages));
+                Assert.False(actions.IsCountdownActive);
+                if (choice == "resume") return;
+
+                if (choice == "cancel") actions.CancelCountdown();
+                else actions.CurrentAction = PostDownloadAction.None;
+                Assert.Equal(PostDownloadAction.None, actions.CurrentAction);
+                actions.CurrentAction = PostDownloadAction.Sleep;
+            });
+
+            finishSecond.SetResult(true);
+            Assert.True(await second.WaitAsync(TimeSpan.FromSeconds(10)));
+            await OnUiAsync(() =>
+            {
+                Assert.False(PostDownloadActionService.CheckHasActiveWork(packages));
+                Assert.Equal(choice == "resume", actions.IsCountdownActive);
+                Assert.Equal(PostDownloadAction.Sleep, actions.CurrentAction);
+            });
+        }
+        finally
+        {
+            finishFirst.TrySetResult(false);
+            finishSecond.TrySetResult(false);
+            try
+            {
+                var pending = new[] { first, second }.OfType<Task>();
+                await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                await OnUiAsync(() =>
+                {
+                    actions.CancelCountdown();
+                    actions.CurrentAction = PostDownloadAction.None;
+                    packages.Clear();
+                    foreach (var previous in previousPackages) packages.Add(previous);
+                });
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Countdown_RechecksManualPar2BeforeExecutingAction()
+    {
+        var directory = Directory.CreateTempSubdirectory("PostDownloadPar2_");
+        var repairs = Par2RepairService.Instance;
+        var previousHook = repairs.ProcessStarted;
+        var advance = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var verificationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseVerification = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstOutcome = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource<PostDownloadAction>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var actions = new PostDownloadActionService(token => advance.Task.WaitAsync(token));
+        Task? repair = null;
+
+        void Finished()
+        {
+            var chosenAction = actions.CurrentAction;
+            actions.CurrentAction = PostDownloadAction.None;
+            firstOutcome.TrySetResult(true);
+            finished.TrySetResult(chosenAction);
+        }
+
+        void Cancelled(bool manual)
+        {
+            if (!manual) firstOutcome.TrySetResult(false);
+        }
+
+        try
+        {
+            byte[] original = Enumerable.Range(0, 80).Select(i => (byte)(i * 3)).ToArray();
+            byte[] damaged = original.ToArray();
+            damaged[0] ^= 1;
+            byte[] independent = [9, 8, 7, 6];
+            string payload = Path.Combine(directory.FullName, "payload.bin");
+            string unrelated = Path.Combine(directory.FullName, "unrelated.bin");
+            File.WriteAllBytes(payload, original);
+            string parity = await Par2RepairServiceTests.CreateParityAsync(directory.FullName, payload);
+            File.WriteAllBytes(payload, damaged);
+            File.WriteAllBytes(payload + ".1", independent);
+            File.WriteAllBytes(unrelated, independent);
+
+            var package = new DownloadPackage { SaveDirectory = directory.FullName, AutoExtractArchives = false };
+            foreach (string file in new[] { payload, parity })
+            {
+                var size = new FileInfo(file).Length;
+                package.Items.Add(new DownloadItem { PackageId = package.Id, FileName = Path.GetFileName(file),
+                    SaveFilePath = file, Status = DownloadStatus.Completed, TotalBytes = size, DownloadedBytes = size });
+            }
+            package.RecalculateAggregates(force: true);
+            Assert.True(package.IsFullyCompleted);
+            DownloadPackage[] packages = [package];
+            var model = new MainViewModel();
+            repairs.ProcessStarted = (_, repairing) =>
+            {
+                if (!repairing)
+                {
+                    verificationStarted.TrySetResult();
+                    releaseVerification.Task.WaitAsync(TimeSpan.FromSeconds(20)).GetAwaiter().GetResult();
+                }
+            };
+
+            await OnUiAsync(() =>
+            {
+                actions.CountdownFinished += Finished;
+                actions.CountdownCancelled += Cancelled;
+                actions.CurrentAction = PostDownloadAction.Sleep;
+                actions.NotifyWorkStarted();
+                actions.Evaluate(packages);
+                Assert.True(actions.IsCountdownActive);
+            });
+
+            repair = Task.Run(() => model.Par2RepairPackageCommand.ExecuteAsync(package));
+            await verificationStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            advance.SetResult();
+            Assert.False(await firstOutcome.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.True(PostDownloadActionService.CheckHasActiveWork(packages));
+            Assert.False(finished.Task.IsCompleted);
+            Assert.Equal(PostDownloadAction.Sleep, actions.CurrentAction);
+            Assert.Equal(damaged, File.ReadAllBytes(payload));
+
+            releaseVerification.SetResult();
+            await repair.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(Loc.Get("Status_Par2Repaired"), model.StatusSummary);
+            Assert.Equal(original, File.ReadAllBytes(payload));
+            Assert.Equal(independent, File.ReadAllBytes(payload + ".1"));
+            Assert.Equal(independent, File.ReadAllBytes(unrelated));
+            Assert.False(PostDownloadActionService.CheckHasActiveWork(packages));
+
+            await OnUiAsync(() => actions.Evaluate(packages));
+            Assert.Equal(PostDownloadAction.Sleep, await finished.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        }
+        finally
+        {
+            releaseVerification.TrySetResult();
+            try
+            {
+                if (repair != null) await repair.WaitAsync(TimeSpan.FromSeconds(20));
+            }
+            finally
+            {
+                repairs.ProcessStarted = previousHook;
+                await OnUiAsync(() =>
+                {
+                    actions.CancelCountdown();
+                    actions.CurrentAction = PostDownloadAction.None;
+                    actions.CountdownFinished -= Finished;
+                    actions.CountdownCancelled -= Cancelled;
+                });
+                directory.Delete(recursive: true);
+            }
         }
     }
 
