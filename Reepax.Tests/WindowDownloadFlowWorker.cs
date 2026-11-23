@@ -85,13 +85,19 @@ internal static partial class WindowDownloadFlowWorker
         LocalizationService.Instance.CurrentLanguage = language;
         if (app is SessionEndingApp sessionApp)
         {
-            RunPowerShutdown(sessionApp, settings.DefaultDownloadDirectory, confirmAtMainWindow: powerSessionTarget == "main");
+            RunPowerShutdown(sessionApp, settings.DefaultDownloadDirectory, powerSessionTarget!);
             Console.WriteLine("Power shutdown flow passed");
             return;
         }
         if (packageRestartStage != null)
         {
             await CheckPackageRestartAsync(root, packageRestartStage);
+            return;
+        }
+        if (par2ExitTarget == "restart")
+        {
+            await CheckPar2RestartAsync(settings.DefaultDownloadDirectory);
+            Console.WriteLine("PAR2 restart passed");
             return;
         }
         if (par2ExitTarget != null)

@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Reepax.Services.Verification;
 using Reepax.Services.Update;
 using Velopack;
 using Velopack.Locators;
@@ -71,12 +72,59 @@ public sealed class VelopackUpdateTests : IDisposable
         Assert.Equal(unrelated, File.ReadAllBytes(foreign));
         Assert.Empty(_locator.Launches);
         Assert.Equal(0, _shutdowns);
-        Assert.True(_service.ApplyDownloadedUpdate(info, downloaded));
+        Assert.True(await _service.ApplyDownloadedUpdateAsync(info, downloaded));
         var launch = Assert.Single(_locator.Launches);
         Assert.Contains("apply", launch);
         Assert.Contains("--restart", launch);
         Assert.Equal(1, _shutdowns);
         Assert.Equal(unrelated, File.ReadAllBytes(foreign));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Apply_WaitsForNativePar2AndItsBackupCleanupBeforeLaunch(bool packageUpdate)
+    {
+        var service = packageUpdate ? _service : new AppUpdateService { HasMachineInstallerRegistration = () => false };
+        var info = packageUpdate ? await Check() : new Reepax.Services.Update.UpdateInfo();
+        string path = packageUpdate ? await _service.DownloadUpdateAsync(info) : Path.Combine(_root, "setup.exe");
+        byte[] independent = [2, 7, 1];
+        var sample = await WindowDownloadFlowWorker.CreateDamagedPar2PackageAsync(_root, "Repair sample", independent);
+        var previousApply = AppUpdateService.ApplyUpdateActionOverride;
+        int launches = 0;
+        await using var checkpoint = new Par2ExtractionCancellationTests.NativeCheckpoint(repairStage: true);
+        Task<bool> repair = Par2RepairService.Instance.ProcessPackagePar2Async(sample.Package);
+        var process = await checkpoint.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        void CheckLaunch()
+        {
+            Assert.True(process.HasExited);
+            Assert.Equal(sample.Original, File.ReadAllBytes(sample.Path));
+            Assert.False(File.Exists(sample.Path + ".2"));
+            launches++;
+        }
+        _locator.BeforeLaunch = CheckLaunch;
+        AppUpdateService.ApplyUpdateActionOverride = _ => CheckLaunch();
+        try
+        {
+            Task<bool> apply = service.ApplyDownloadedUpdateAsync(info, path);
+            Assert.True(Par2RepairService.Instance.IsExitPending);
+            Assert.False(apply.IsCompleted);
+            Assert.False(await service.ApplyDownloadedUpdateAsync(info, path));
+            Assert.Equal(0, launches);
+            checkpoint.Resume();
+            Assert.True(await repair.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.True(await apply.WaitAsync(TimeSpan.FromSeconds(10)));
+            Assert.Equal(1, launches);
+            Assert.Equal(independent, File.ReadAllBytes(sample.Path + ".1"));
+            Assert.Equal(independent, File.ReadAllBytes(Path.Combine(sample.Package.SaveDirectory, "neighbor.bin")));
+        }
+        finally
+        {
+            AppUpdateService.ApplyUpdateActionOverride = previousApply;
+            _locator.BeforeLaunch = null;
+            await checkpoint.DisposeAsync();
+            await repair.WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 
     [Theory]
@@ -182,7 +230,7 @@ public sealed class VelopackUpdateTests : IDisposable
         if (tamper) File.AppendAllText(path, "changed");
         else info.VerifiedSha256 = null;
 
-        Assert.False(_service.ApplyDownloadedUpdate(info, path));
+        Assert.False(await _service.ApplyDownloadedUpdateAsync(info, path));
         Assert.Empty(_locator.Launches);
         Assert.Equal(0, _shutdowns);
     }
@@ -193,11 +241,11 @@ public sealed class VelopackUpdateTests : IDisposable
         var info = await Check();
         string path = await _service.DownloadUpdateAsync(info);
         _locator.FailLaunch = true;
-        Assert.False(_service.ApplyDownloadedUpdate(info, path));
+        Assert.False(await _service.ApplyDownloadedUpdateAsync(info, path));
         Assert.Equal(0, _shutdowns);
         Assert.Equal(_assets[PackageName], File.ReadAllBytes(path));
         _locator.FailLaunch = false;
-        Assert.True(_service.ApplyDownloadedUpdate(info, path));
+        Assert.True(await _service.ApplyDownloadedUpdateAsync(info, path));
         Assert.Equal(1, _shutdowns);
     }
 
@@ -208,13 +256,13 @@ public sealed class VelopackUpdateTests : IDisposable
         string downloaded = await _service.DownloadUpdateAsync(info);
         string userFile = Path.Combine(_locator.AppContentDir!, "user-notes.txt");
         File.WriteAllText(userFile, "preserve");
-        Assert.False(_service.ApplyDownloadedUpdate(info, downloaded));
+        Assert.False(await _service.ApplyDownloadedUpdateAsync(info, downloaded));
         Assert.Equal("preserve", File.ReadAllText(userFile));
         Assert.Empty(_locator.Launches);
         Assert.Equal(0, _shutdowns);
         Assert.Equal(Reepax.Services.Localization.Loc.Get("UpdateDialog_Status_AdditionalFiles"), _service.LastApplyError);
         File.Move(userFile, Path.Combine(_root, "user-notes.txt"));
-        Assert.True(_service.ApplyDownloadedUpdate(info, downloaded));
+        Assert.True(await _service.ApplyDownloadedUpdateAsync(info, downloaded));
         Assert.Equal("preserve", File.ReadAllText(Path.Combine(_root, "user-notes.txt")));
     }
 
@@ -290,6 +338,7 @@ public sealed class VelopackUpdateTests : IDisposable
     {
         public List<string[]> Launches { get; } = new();
         public bool FailLaunch { get; set; }
+        public Action? BeforeLaunch { get; set; }
         public override IProcessImpl Process => new RecordingProcess(this);
 
         private sealed class RecordingProcess(RecordingLocator owner) : IProcessImpl
@@ -299,6 +348,7 @@ public sealed class VelopackUpdateTests : IDisposable
             public void StartProcess(string exePath, IEnumerable<string> args, string workDir, bool showWindow)
             {
                 if (owner.FailLaunch) throw new IOException("Controlled helper launch failure.");
+                owner.BeforeLaunch?.Invoke();
                 owner.Launches.Add(args.ToArray());
             }
             public void Exit(int exitCode) => throw new InvalidOperationException("An immediate exit would bypass safe shutdown.");

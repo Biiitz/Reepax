@@ -63,7 +63,7 @@ public class AppUpdateServiceTests
     }
 
     [Fact]
-    public void ApplyDownloadedInstaller_InvokesOverrideInTestEnvironment()
+    public async Task ApplyDownloadedInstaller_InvokesOverrideInTestEnvironment()
     {
         string? capturedPath = null;
 
@@ -75,7 +75,7 @@ public class AppUpdateServiceTests
         try
         {
             var service = new AppUpdateService { HasMachineInstallerRegistration = () => false };
-            bool success = service.ApplyDownloadedUpdate(new UpdateInfo(), @"C:\Test\fake_update.exe");
+            bool success = await service.ApplyDownloadedUpdateAsync(new UpdateInfo(), @"C:\Test\fake_update.exe");
 
             Assert.True(success);
             Assert.Equal(@"C:\Test\fake_update.exe", capturedPath);

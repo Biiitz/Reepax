@@ -1561,9 +1561,9 @@ public partial class MainViewModel
     internal AppRestartService RestartService { get; set; } = AppRestartService.Instance;
 
     [RelayCommand]
-    public void RestartApplication()
+    public async Task RestartApplicationAsync()
     {
-        if (RestartService.TryRestart()) return;
+        if (await RestartService.TryRestartAsync() || Services.Verification.Par2RepairService.Instance.IsExitPending) return;
 
         string message = Loc.Get("Status_AppRestartFailed");
         StatusSummary = message;

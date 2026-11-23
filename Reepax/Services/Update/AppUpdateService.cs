@@ -645,7 +645,7 @@ public partial class AppUpdateService
         return result;
     }
 
-    public static void PerformSafeShutdownAndExit()
+    private static void PerformSafeShutdownAndExit()
     {
         try
         {

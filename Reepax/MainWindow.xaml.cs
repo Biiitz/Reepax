@@ -662,7 +662,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!_bypassCloseConfirmation && _confirmedExitRepairs?.IsCompleted == false)
+        var repairs = Par2RepairService.Instance;
+        if (!_bypassCloseConfirmation && (_confirmedExitRepairs?.IsCompleted == false || repairs.IsWindowsSessionEnding))
         {
             e.Cancel = true;
             return;
@@ -689,7 +690,12 @@ public partial class MainWindow : Window
 
         if (!_bypassCloseConfirmation && _confirmedExitRepairs == null)
         {
-            var repairs = Par2RepairService.Instance;
+            if (repairs.IsExitPending)
+            {
+                e.Cancel = true;
+                _isForceExit = false;
+                return;
+            }
             if (Services.Download.QueueManager.Instance.HasActiveDownloads())
             {
                 string message = Loc.Get(repairs.HasActiveRepairs
@@ -704,7 +710,13 @@ public partial class MainWindow : Window
                 }
             }
 
-            _confirmedExitRepairs = repairs.BeginExit();
+            _confirmedExitRepairs = repairs.TryBeginExit();
+            if (_confirmedExitRepairs == null)
+            {
+                e.Cancel = true;
+                _isForceExit = false;
+                return;
+            }
             if (!_confirmedExitRepairs.IsCompleted)
             {
                 e.Cancel = true;
@@ -758,7 +770,7 @@ public partial class MainWindow : Window
         await repairsFinished;
         _ = Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (!_isClosed && _confirmedExitRepairs == repairsFinished)
+            if (!_isClosed && _confirmedExitRepairs == repairsFinished && !Par2RepairService.Instance.IsWindowsSessionEnding)
                 Close();
         }));
     }

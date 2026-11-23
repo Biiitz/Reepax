@@ -14,7 +14,9 @@ public partial class Par2RepairService
 {
     private readonly object _repairSync = new();
     private readonly Dictionary<Guid, HashSet<RepairRun>> _activeRepairs = new();
+    private readonly CancellationTokenSource _sessionExitCancellation = new();
     private bool _exitPending;
+    private bool _windowsSessionEnding;
 
     private sealed class RepairRun
     {
@@ -24,15 +26,25 @@ public partial class Par2RepairService
 
     internal sealed record RepairActivity(Task Finished, IReadOnlyCollection<string> Directories);
 
-    public Task<bool> ProcessPackagePar2Async(DownloadPackage package, Action<string>? statusCallback = null,
+    public async Task<bool> ProcessPackagePar2Async(DownloadPackage package, Action<string>? statusCallback = null,
         Action<double>? progressCallback = null, CancellationToken ct = default)
     {
         if (package == null)
-            return Task.FromResult(true);
-        return RunTrackedPackageOperationAsync(package, async trackDirectory =>
+            return true;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _sessionExitCancellation.Token);
+        try
+        {
+            return await RunTrackedPackageOperationAsync(package, ProcessAsync, linked.Token);
+        }
+        catch (OperationCanceledException) when (_sessionExitCancellation.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        async Task<bool> ProcessAsync(Action<string> trackDirectory)
         {
             string? primaryPar2;
-            using (await PackagePathOperationGate.Instance.EnterAsync(ct))
+            using (await PackagePathOperationGate.Instance.EnterAsync(linked.Token))
             {
                 if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
                     return false;
@@ -42,8 +54,8 @@ public partial class Par2RepairService
                 if (!string.IsNullOrWhiteSpace(directory))
                     trackDirectory(directory);
             }
-            return await ProcessPackagePar2CoreAsync(package, primaryPar2, statusCallback, progressCallback, ct);
-        }, ct);
+            return await ProcessPackagePar2CoreAsync(package, primaryPar2, statusCallback, progressCallback, linked.Token);
+        }
     }
 
     internal async Task<bool> RunTrackedPackageOperationAsync(DownloadPackage package, Func<Task<bool>> operation, CancellationToken cancellationToken = default)
@@ -102,19 +114,46 @@ public partial class Par2RepairService
         }
     }
 
-    internal Task BeginExit()
+    internal Task? TryBeginExit()
     {
         lock (_repairSync)
         {
+            if (_exitPending) return null;
             _exitPending = true;
-            return Task.WhenAll(_activeRepairs.Values.SelectMany(repairs => repairs).Select(repair => repair.Finished.Task));
+            return GetRepairCompletion();
         }
     }
+
+    internal Task BeginWindowsSessionExit()
+    {
+        Task finished;
+        lock (_repairSync)
+        {
+            _windowsSessionEnding = _exitPending = true;
+            finished = GetRepairCompletion();
+        }
+        return Task.WhenAll(finished, _sessionExitCancellation.CancelAsync());
+    }
+
+    private Task GetRepairCompletion() =>
+        Task.WhenAll(_activeRepairs.Values.SelectMany(repairs => repairs).Select(repair => repair.Finished.Task));
 
     internal void CancelExit()
     {
         lock (_repairSync)
-            _exitPending = false;
+        {
+            if (!_windowsSessionEnding) _exitPending = false;
+        }
+    }
+
+    internal bool IsExitPending
+    {
+        get { lock (_repairSync) return _exitPending; }
+    }
+
+    internal bool IsWindowsSessionEnding
+    {
+        get { lock (_repairSync) return _windowsSessionEnding; }
     }
 
     internal bool HasActiveRepairs

@@ -254,7 +254,7 @@ public partial class UpdateDialog : Window
             _downloadCts.Token.ThrowIfCancellationRequested();
             _isApplying = true;
             LaterButton.IsEnabled = false;
-            bool applied = await Task.Run(() => AppUpdateService.Instance.ApplyDownloadedUpdate(_updateInfo, downloadedFile));
+            bool applied = await AppUpdateService.Instance.ApplyDownloadedUpdateAsync(_updateInfo, downloadedFile);
             if (!applied) throw new InvalidOperationException(AppUpdateService.Instance.LastApplyError ?? Loc.Get("UpdateDialog_Status_StartFailed"));
         }
         catch (OperationCanceledException)

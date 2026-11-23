@@ -188,13 +188,13 @@ public partial class AppUpdateService
         }
     }
 
-    public bool ApplyDownloadedUpdate(UpdateInfo info, string path)
+    public Task<bool> ApplyDownloadedUpdateAsync(UpdateInfo info, string path) =>
+        ApplyAfterRepairsAsync(() => info.IsPackageUpdate
+            ? ApplyPackageUpdate(info, path)
+            : ApplyInstallerUpdate(path, info.VerifiedSha256, info.NewVersion, info));
+
+    private bool ApplyPackageUpdate(UpdateInfo info, string path)
     {
-        if (!info.IsPackageUpdate)
-            return ApplyInstallerUpdate(path, info.VerifiedSha256, info.NewVersion, info);
-        if (Interlocked.CompareExchange(ref _applying, 1, 0) != 0) return false;
-        LastApplyError = null;
-        bool scheduled = false;
         try
         {
             if (!string.Equals(GetPackagePath(info), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase) ||
@@ -204,7 +204,6 @@ public partial class AppUpdateService
             ValidateInstallationContents(_packageLocator.AppContentDir!);
             info.PackageManager!.WaitExitThenApplyUpdates(info.PackageUpdate!.TargetFullRelease,
                 silent: false, restart: true, restartArgs: new[] { "--restart" });
-            scheduled = true;
             ShutdownAfterPackageUpdate();
             return true;
         }
@@ -214,11 +213,6 @@ public partial class AppUpdateService
                 ? "UpdateDialog_Status_AdditionalFiles" : "UpdateDialog_Status_StartFailed");
             Storage.AppLogger.Error("[AppUpdateService] Could not apply the package update", ex);
             return false;
-        }
-        finally
-        {
-            if (!scheduled || Storage.DownloadPersistenceService.IsTestEnvironment)
-                Interlocked.Exchange(ref _applying, 0);
         }
     }
 

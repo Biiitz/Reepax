@@ -73,7 +73,7 @@ public class AppRestartTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Restart_WhenProcessStartFails_PreservesTheCurrentInstanceAndAllowsRetry(bool noProcess)
+    public async Task Restart_WhenProcessStartFails_PreservesTheCurrentInstanceAndAllowsRetry(bool noProcess)
     {
         var steps = new List<string>();
         int attempts = 0;
@@ -95,13 +95,13 @@ public class AppRestartTests
         queue.Packages.Add(package);
         try
         {
-            Assert.False(restart.TryRestart());
+            Assert.False(await restart.TryRestartAsync());
             Assert.Equal(new[] { "start" }, steps);
             Assert.Equal(DownloadStatus.Downloading, active.Status);
             Assert.Equal(DownloadStatus.Queued, queued.Status);
             Assert.Equal(DownloadStatus.InBrowser, browser.Status);
-            Assert.True(restart.TryRestart());
-            Assert.True(restart.TryRestart());
+            Assert.True(await restart.TryRestartAsync());
+            Assert.True(await restart.TryRestartAsync());
             Assert.Equal(new[] { "start", "start", "exit" }, steps);
             Assert.All(package.Items, item => Assert.Equal(DownloadStatus.Paused, item.Status));
         }
@@ -109,7 +109,7 @@ public class AppRestartTests
     }
 
     [Fact]
-    public void AppRestartService_Restart_PausesAllActiveAndQueuedDownloads()
+    public async Task AppRestartService_Restart_PausesAllActiveAndQueuedDownloads()
     {
         bool restartHookCalled = false;
         var restart = new AppRestartService(_ => new Process(), () => restartHookCalled = true);
@@ -149,7 +149,7 @@ public class AppRestartTests
             qm.Packages.Add(pkg);
 
             // Trigger restart
-            Assert.True(restart.TryRestart());
+            Assert.True(await restart.TryRestartAsync());
 
             // Assert
             Assert.True(restartHookCalled);
@@ -168,7 +168,7 @@ public class AppRestartTests
     [Theory]
     [InlineData("en", "Reepax could not be restarted.")]
     [InlineData("de", "Reepax konnte nicht neu gestartet werden.")]
-    public void MainViewModel_RestartApplicationCommand_ReportsTheLaunchFailure(string language, string expected)
+    public async Task MainViewModel_RestartApplicationCommand_ReportsTheLaunchFailure(string language, string expected)
     {
         var localization = LocalizationService.Instance;
         string previousLanguage = localization.CurrentLanguage;
@@ -183,7 +183,7 @@ public class AppRestartTests
             Assert.NotNull(vm.RestartApplicationCommand);
             Assert.True(vm.RestartApplicationCommand.CanExecute(null));
 
-            vm.RestartApplicationCommand.Execute(null);
+            await vm.RestartApplicationCommand.ExecuteAsync(null);
 
             Assert.StartsWith(expected, vm.StatusSummary, StringComparison.Ordinal);
         }

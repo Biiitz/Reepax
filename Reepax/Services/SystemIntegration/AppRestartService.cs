@@ -5,9 +5,11 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
+using Reepax.Services.Verification;
 
 namespace Reepax.Services.SystemIntegration;
 
@@ -26,13 +28,15 @@ public sealed class AppRestartService
         _exitApplication = exitApplication;
     }
 
-    public bool TryRestart()
+    public async Task<bool> TryRestartAsync()
     {
         // A restart is already in progress.
         if (Interlocked.Exchange(ref _isRestarting, 1) != 0)
             return true;
 
         bool replacementStarted = false;
+        var repairs = Par2RepairService.Instance;
+        Task? repairsFinished = null;
         try
         {
             AppLogger.Info("[AppRestartService] command.");
@@ -43,6 +47,11 @@ public sealed class AppRestartService
                 AppLogger.Error("[AppRestartService] Could not determine application executable path for restart.");
                 return false;
             }
+
+            repairsFinished = repairs.TryBeginExit();
+            if (repairsFinished == null) return false;
+            await repairsFinished;
+            if (repairs.IsWindowsSessionEnding) return false;
 
             SaveWindowState();
 
@@ -79,6 +88,8 @@ public sealed class AppRestartService
         }
         finally
         {
+            if (repairsFinished != null && (!replacementStarted || DownloadPersistenceService.IsTestEnvironment))
+                repairs.CancelExit();
             if (!replacementStarted)
                 Interlocked.Exchange(ref _isRestarting, 0);
         }

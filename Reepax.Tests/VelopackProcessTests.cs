@@ -101,7 +101,7 @@ public sealed class VelopackProcessTests
                     using var watcher = new FileSystemWatcher(installed, Path.GetFileName(report) + ".ready");
                     watcher.Created += (_, _) => ready.TrySetResult();
                     watcher.EnableRaisingEvents = true;
-                    Assert.True(service.ApplyDownloadedUpdate(info!, package));
+                    Assert.True(await service.ApplyDownloadedUpdateAsync(info!, package));
                     Assert.Equal(1, shutdowns);
                     await ready.Task.WaitAsync(TimeSpan.FromSeconds(45));
                     using var startup = JsonDocument.Parse(File.ReadAllText(report));

@@ -99,7 +99,7 @@ public sealed class PostDownloadActionService
         var packageList = packages.ToList();
         lock (_lock)
         {
-            if (_countdownSuspensions > 0)
+            if (_countdownSuspensions > 0 || Par2RepairService.Instance.IsExitPending)
                 return;
             if (CheckHasActiveWork(packageList))
             {
@@ -245,7 +245,8 @@ public sealed class PostDownloadActionService
     {
         lock (_lock)
         {
-            if (_countdownSuspensions > 0 || IsCountdownActive || CurrentAction == PostDownloadAction.None) return;
+            if (_countdownSuspensions > 0 || IsCountdownActive || CurrentAction == PostDownloadAction.None ||
+                Par2RepairService.Instance.IsExitPending) return;
 
             _countdownCts?.Cancel();
             _countdownCts?.Dispose();
@@ -289,7 +290,7 @@ public sealed class PostDownloadActionService
                         {
                             if (token.IsCancellationRequested)
                                 return;
-                            if (_countdownSuspensions > 0 || canComplete?.Invoke() == false)
+                            if (_countdownSuspensions > 0 || Par2RepairService.Instance.IsExitPending || canComplete?.Invoke() == false)
                             {
                                 // Keep the action armed for a successful retry.
                                 _hadActiveWork = true;

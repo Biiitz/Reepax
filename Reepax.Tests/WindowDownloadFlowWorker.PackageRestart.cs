@@ -176,7 +176,7 @@ internal static partial class WindowDownloadFlowWorker
 
             for (int attempt = 1; attempt <= 2; attempt++)
             {
-                Assert.False(restart.TryRestart());
+                Assert.False(await restart.TryRestartAsync());
                 Assert.Equal(attempt, attempts);
                 Assert.False(closing);
                 Assert.True(main.IsVisible);
@@ -195,7 +195,7 @@ internal static partial class WindowDownloadFlowWorker
             Assert.True(await extraction.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.Equal("sample content", File.ReadAllText(Path.Combine(archiveDirectory, "extracted.txt")));
 
-            Assert.True(restart.TryRestart());
+            Assert.True(await restart.TryRestartAsync());
             Assert.Equal(3, attempts);
             Assert.True(closing);
             Assert.Equal(0, host.ActiveWindowCount);

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -111,7 +112,44 @@ internal static partial class WindowDownloadFlowWorker
         }
     }
 
-    private static async Task<(DownloadPackage Package, string Path, byte[] Original)> CreateDamagedPar2PackageAsync(
+    private static async Task CheckPar2RestartAsync(string directory)
+    {
+        byte[] independent = [1, 3, 5, 7];
+        var sample = await CreateDamagedPar2PackageAsync(directory, "Repair sample", independent);
+        var main = new MainWindow { ShowActivated = false, ShowInTaskbar = false };
+        main.Show();
+        var model = (MainViewModel)main.DataContext;
+        QueueManager.Instance.Packages.Add(sample.Package);
+        await using var checkpoint = new Par2ExtractionCancellationTests.NativeCheckpoint(repairStage: true);
+        Task repair = model.Par2RepairPackageCommand.ExecuteAsync(sample.Package);
+        var process = await checkpoint.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        int launches = 0;
+        int exits = 0;
+        var restart = new AppRestartService(_ =>
+        {
+            launches++;
+            Assert.True(process.HasExited);
+            Assert.Equal(sample.Original, File.ReadAllBytes(sample.Path));
+            Assert.False(File.Exists(sample.Path + ".2"));
+            return new Process();
+        }, () => exits++);
+
+        model.RestartService = restart;
+        Task result = model.RestartApplicationCommand.ExecuteAsync(null);
+        Assert.True(Par2RepairService.Instance.IsExitPending);
+        Assert.Equal(0, launches);
+        Assert.False(result.IsCompleted);
+        checkpoint.Resume();
+        await result.WaitAsync(TimeSpan.FromSeconds(10));
+        await repair.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, launches);
+        Assert.Equal(1, exits);
+        Assert.Equal(independent, File.ReadAllBytes(sample.Path + ".1"));
+        Assert.Equal(independent, File.ReadAllBytes(Path.Combine(sample.Package.SaveDirectory, "neighbor.bin")));
+        main.ForceExit();
+    }
+
+    internal static async Task<(DownloadPackage Package, string Path, byte[] Original)> CreateDamagedPar2PackageAsync(
         string root, string name, byte[] independent)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;

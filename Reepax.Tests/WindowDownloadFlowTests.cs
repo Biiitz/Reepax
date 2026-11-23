@@ -70,6 +70,17 @@ public sealed class WindowDownloadFlowTests
         => await RunWindowWorkerAsync(language, "--par2-exit-window-worker", "PAR2 exit flow passed", extraArguments: [target]);
 
     [Fact]
+    public async Task Restart_WaitsForNativePar2AndItsBackupCleanupBeforeLaunch()
+        => await RunWindowWorkerAsync("en", "--par2-exit-window-worker", "PAR2 restart passed", extraArguments: ["restart"]);
+
+    [Theory]
+    [InlineData("par2-main")]
+    [InlineData("par2-parking")]
+    [InlineData("par2-fallback")]
+    public async Task WindowsSessionEnd_StopsNativePar2AndRestoresBackupBeforeExit(string target)
+        => await RunWindowWorkerAsync("en", "--power-shutdown-window-worker", "Power shutdown flow passed", extraArguments: [target]);
+
+    [Fact]
     public async Task MainWindow_RestartLaunchFailurePreservesOwnershipAndSavedDownloadProgress()
     {
         var root = Directory.CreateTempSubdirectory("WindowFlow_");

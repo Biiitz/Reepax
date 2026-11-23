@@ -127,14 +127,14 @@ public sealed class UpdateReliabilityTests : IDisposable
         {
             string installer = Path.Combine(_root, "setup.exe");
             info.RequiresPerUserMigration = false;
-            Assert.False(service.ApplyDownloadedUpdate(info, installer));
+            Assert.False(await service.ApplyDownloadedUpdateAsync(info, installer));
             Assert.True(info.RequiresPerUserMigration);
             Assert.Equal(instructions, service.LastApplyError);
             Assert.Equal(0, launches);
             Assert.Empty(Directory.EnumerateFileSystemEntries(_root));
 
             machineRegistered = false;
-            Assert.True(service.ApplyDownloadedUpdate(info, installer));
+            Assert.True(await service.ApplyDownloadedUpdateAsync(info, installer));
             Assert.False(info.RequiresPerUserMigration);
             Assert.Null(service.LastApplyError);
             Assert.Equal(1, launches);

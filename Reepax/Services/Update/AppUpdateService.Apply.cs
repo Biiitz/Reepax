@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
+using Reepax.Services.Verification;
 
 namespace Reepax.Services.Update;
 
@@ -13,14 +14,36 @@ public partial class AppUpdateService
     private static int _applying;
     internal static readonly SemaphoreSlim OperationGate = new(1, 1);
 
-    public static bool ApplyUpdate(string updatePath, string? expectedSha256 = null, string? expectedVersion = null) =>
-        Instance.ApplyInstallerUpdate(updatePath, expectedSha256, expectedVersion);
+    public static Task<bool> ApplyUpdateAsync(string updatePath, string? expectedSha256 = null, string? expectedVersion = null) =>
+        Instance.ApplyAfterRepairsAsync(() => Instance.ApplyInstallerUpdate(updatePath, expectedSha256, expectedVersion));
 
-    private bool ApplyInstallerUpdate(string updatePath, string? expectedSha256, string? expectedVersion, UpdateInfo? info = null)
+    private async Task<bool> ApplyAfterRepairsAsync(Func<bool> apply)
     {
         if (Interlocked.CompareExchange(ref _applying, 1, 0) != 0) return false;
         LastApplyError = null;
-        bool scheduled = false;
+        var repairs = Par2RepairService.Instance;
+        Task? finished = null;
+        bool applied = false;
+        try
+        {
+            finished = repairs.TryBeginExit();
+            if (finished == null) return false;
+            await finished.ConfigureAwait(false);
+            applied = await Task.Run(() => !repairs.IsWindowsSessionEnding && apply()).ConfigureAwait(false);
+            return applied;
+        }
+        finally
+        {
+            if (!applied || DownloadPersistenceService.IsTestEnvironment)
+            {
+                if (finished != null) repairs.CancelExit();
+                Interlocked.Exchange(ref _applying, 0);
+            }
+        }
+    }
+
+    private bool ApplyInstallerUpdate(string updatePath, string? expectedSha256, string? expectedVersion, UpdateInfo? info = null)
+    {
         try
         {
             if (CheckInstallerMigration(info))
@@ -63,17 +86,12 @@ public partial class AppUpdateService
             }
             File.WriteAllText(Path.Combine(session, "helper.approved"), "approved");
             PerformSafeShutdownAndExit();
-            scheduled = true;
             return true;
         }
         catch (Exception ex)
         {
             AppLogger.Error("[AppUpdateService] Failed to apply update", ex);
             return false;
-        }
-        finally
-        {
-            if (!scheduled) Interlocked.Exchange(ref _applying, 0);
         }
     }
 

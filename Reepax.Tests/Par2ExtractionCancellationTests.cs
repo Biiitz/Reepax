@@ -125,7 +125,7 @@ public sealed class Par2ExtractionCancellationTests
             try
             {
                 if (!_process.HasExited) _process.Kill(entireProcessTree: true);
-                await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                await _process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             }
             finally { _process.Dispose(); }
         }

@@ -2,8 +2,10 @@ using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
 using Reepax.Services.Download;
 using Reepax.Services.Storage;
+using Reepax.Services.Verification;
 
 namespace Reepax;
 
@@ -56,6 +58,7 @@ public partial class App
 
         try
         {
+            FinishSessionRepairs();
             if (MainWindow is MainWindow window) window.ForceExit();
         }
         catch (Exception ex)
@@ -67,6 +70,24 @@ public partial class App
             QueueManager.PerformSafeShutdown();
             Shutdown();
         }
+    }
+
+    private static void FinishSessionRepairs()
+    {
+        var finished = Par2RepairService.Instance.BeginWindowsSessionExit();
+        if (!finished.IsCompleted)
+        {
+            // The session can end as soon as this message returns. Keep the dispatcher running for PAR2 cleanup.
+            var frame = new DispatcherFrame();
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            using var timeout = deadline.Token.Register(() => frame.Continue = false);
+            _ = finished.ContinueWith(_ => frame.Continue = false, TaskScheduler.Default);
+            Dispatcher.PushFrame(frame);
+        }
+        if (finished.IsCompleted)
+            finished.GetAwaiter().GetResult();
+        else
+            AppLogger.Warn("[App] PAR2 cleanup did not finish within the Windows session timeout.");
     }
 
     private delegate nint WindowSubclassProc(nint handle, uint message, nint wParam, nint lParam, nuint id, nuint data);
