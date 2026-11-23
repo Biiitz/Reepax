@@ -151,19 +151,46 @@ public static class PackageExportImportService
     /// Saves package to a file on disk.
     /// </summary>
     public static void ExportToFile(DownloadPackage package, string filePath)
+        => ExportToFile(package, filePath, static (writer, json) => writer.Write(json));
+
+    internal static void ExportToFile(DownloadPackage package, string filePath, Action<TextWriter, string> writeJson)
     {
         ArgumentNullException.ThrowIfNull(package);
         if (string.IsNullOrWhiteSpace(filePath))
             throw new ArgumentException("File path cannot be empty.", nameof(filePath));
 
         var json = ExportToJson(package);
-        var dir = Path.GetDirectoryName(filePath);
-        if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
+        string destination = Path.GetFullPath(filePath);
+        string directory = Path.GetDirectoryName(destination)
+            ?? throw new ArgumentException("File path must name a file.", nameof(filePath));
+        Directory.CreateDirectory(directory);
 
-        File.WriteAllText(filePath, json);
+        string temporary = Path.Combine(directory, $".repx-{Guid.NewGuid():N}.tmp");
+        bool ownsTemporaryFile = false;
+        try
+        {
+            using (var stream = File.Open(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                ownsTemporaryFile = true;
+                using (var writer = new StreamWriter(stream, leaveOpen: true))
+                    writeJson(writer, json);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporary, destination, overwrite: true);
+            ownsTemporaryFile = false;
+        }
+        finally
+        {
+            if (ownsTemporaryFile)
+            {
+                try { File.Delete(temporary); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    AppLogger.Warn("[PackageExport] Could not remove temporary export", ex);
+                }
+            }
+        }
     }
 
     /// <summary>

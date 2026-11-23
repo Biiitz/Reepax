@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Reepax.Models;
 using Reepax.Services.Localization;
@@ -125,6 +126,101 @@ public class PackageExportImportTests : IDisposable
         Assert.DoesNotContain("\"Temporary chunk timeout\"", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"status\"", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("\"statusMessage\"", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ExportToFile_PartialWritePreservesExistingExportAndNeighbor()
+    {
+        string path = Path.Combine(_tempTestDir, "package.repx");
+        string neighbor = path + ".tmp";
+        byte[] neighborBytes = [8, 1, 6, 2];
+        File.WriteAllBytes(neighbor, neighborBytes);
+        PackageExportImportService.ExportToFile(CreateExportPackage("Original package"), path);
+        byte[] original = File.ReadAllBytes(path);
+
+        var writeFailure = new IOException("Simulated write failure.");
+        var error = Assert.Throws<IOException>(() => PackageExportImportService.ExportToFile(
+            CreateExportPackage("Replacement package"), path, (writer, json) =>
+            {
+                writer.Write(json.AsSpan(0, 32));
+                writer.Flush();
+                throw writeFailure;
+            }));
+
+        Assert.Same(writeFailure, error);
+        Assert.Equal(original, File.ReadAllBytes(path));
+        Assert.Equal("Original package", PackageExportImportService.ImportFromFile(path).Name);
+        Assert.Equal(neighborBytes, File.ReadAllBytes(neighbor));
+        Assert.Equal(2, Directory.GetFileSystemEntries(_tempTestDir).Length);
+    }
+
+    [Fact]
+    public void ExportToFile_LockedDestinationPreservesExistingExportAndAllowsRetry()
+    {
+        string path = Path.Combine(_tempTestDir, "exports", "package.repx");
+        var original = CreateExportPackage("Original package");
+        PackageExportImportService.ExportToFile(original, path);
+        byte[] originalBytes = File.ReadAllBytes(path);
+        Assert.Equal(Encoding.UTF8.GetBytes(PackageExportImportService.ExportToJson(original)), originalBytes);
+        Assert.Equal(original.Name, PackageExportImportService.ImportFromFile(path).Name);
+
+        var replacement = CreateExportPackage("Ersatzpaket mit Umlaut ä");
+        using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            bool writeCompleted = false;
+            var error = Record.Exception(() => PackageExportImportService.ExportToFile(replacement, path, (writer, json) =>
+            {
+                writer.Write(json);
+                writer.Flush();
+                writeCompleted = true;
+            }));
+            Assert.True(writeCompleted);
+            Assert.True(error is IOException or UnauthorizedAccessException, error?.ToString());
+            Assert.Equal(originalBytes, File.ReadAllBytes(path));
+            Assert.Equal(path, Assert.Single(Directory.GetFileSystemEntries(Path.GetDirectoryName(path)!)));
+        }
+
+        PackageExportImportService.ExportToFile(replacement, path);
+        Assert.Equal(Encoding.UTF8.GetBytes(PackageExportImportService.ExportToJson(replacement)), File.ReadAllBytes(path));
+        var imported = PackageExportImportService.ImportFromFile(path);
+        Assert.Equal(replacement.Name, imported.Name);
+        Assert.Equal("payload.bin", Assert.Single(imported.Items).FileName);
+        Assert.Equal(path, Assert.Single(Directory.GetFileSystemEntries(Path.GetDirectoryName(path)!)));
+    }
+
+    [Fact]
+    public void ExportToFile_FailedOverlappingWriteKeepsSuccessfulExport()
+    {
+        string path = Path.Combine(_tempTestDir, "package.repx");
+        var failing = CreateExportPackage("Failed export");
+        var successful = CreateExportPackage("Successful export");
+        var writeFailure = new IOException("Simulated write failure.");
+
+        var error = Assert.Throws<IOException>(() => PackageExportImportService.ExportToFile(failing, path, (writer, json) =>
+        {
+            writer.Write(json.AsSpan(0, 32));
+            writer.Flush();
+            Assert.False(File.Exists(path));
+            PackageExportImportService.ExportToFile(successful, path);
+            throw writeFailure;
+        }));
+
+        Assert.Same(writeFailure, error);
+        Assert.Equal(Encoding.UTF8.GetBytes(PackageExportImportService.ExportToJson(successful)), File.ReadAllBytes(path));
+        Assert.Equal(successful.Name, PackageExportImportService.ImportFromFile(path).Name);
+        Assert.Equal(path, Assert.Single(Directory.GetFileSystemEntries(_tempTestDir)));
+    }
+
+    private static DownloadPackage CreateExportPackage(string name)
+    {
+        var package = new DownloadPackage { Name = name };
+        package.Items.Add(new DownloadItem
+        {
+            FileName = "payload.bin",
+            OriginalUrl = "https://example.test/payload.bin",
+            TotalBytes = 128
+        });
+        return package;
     }
 
     [Fact]
