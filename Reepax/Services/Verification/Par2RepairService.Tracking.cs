@@ -14,6 +14,7 @@ public partial class Par2RepairService
 {
     private readonly object _repairSync = new();
     private readonly Dictionary<Guid, HashSet<RepairRun>> _activeRepairs = new();
+    private bool _exitPending;
 
     private sealed class RepairRun
     {
@@ -68,6 +69,8 @@ public partial class Par2RepairService
             }
             lock (_repairSync)
             {
+                if (_exitPending)
+                    return false;
                 if (!_activeRepairs.TryGetValue(package.Id, out var repairs))
                 {
                     repairs = new HashSet<RepairRun>();
@@ -94,9 +97,24 @@ public partial class Par2RepairService
                     if (repairs.Count == 0)
                         _activeRepairs.Remove(package.Id);
                 }
+                run.Finished.TrySetResult(true);
             }
-            run.Finished.TrySetResult(true);
         }
+    }
+
+    internal Task BeginExit()
+    {
+        lock (_repairSync)
+        {
+            _exitPending = true;
+            return Task.WhenAll(_activeRepairs.Values.SelectMany(repairs => repairs).Select(repair => repair.Finished.Task));
+        }
+    }
+
+    internal void CancelExit()
+    {
+        lock (_repairSync)
+            _exitPending = false;
     }
 
     internal bool HasActiveRepairs

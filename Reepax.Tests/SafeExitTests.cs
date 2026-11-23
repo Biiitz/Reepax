@@ -451,10 +451,12 @@ public class SafeExitTests
             LocalizationService.Instance.CurrentLanguage = "de";
             Assert.Equal("Beenden bestätigen", Loc.Get("Dialog_ConfirmExit_Title"));
             Assert.Equal("Es laufen noch aktive Downloads. Möchtest du Reepax wirklich schließen? Alle Downloads werden pausiert.", Loc.Get("Dialog_ConfirmExit_ActiveDownloads"));
+            Assert.Contains("wartet auf den Abschluss", Loc.Get("Dialog_ConfirmExit_ActivePar2"));
 
             LocalizationService.Instance.CurrentLanguage = "en";
             Assert.Equal("Confirm Exit", Loc.Get("Dialog_ConfirmExit_Title"));
             Assert.Equal("There are active downloads in progress. Are you sure you want to exit Reepax? All downloads will be paused.", Loc.Get("Dialog_ConfirmExit_ActiveDownloads"));
+            Assert.Contains("wait for it to finish", Loc.Get("Dialog_ConfirmExit_ActivePar2"));
         }
         finally
         {

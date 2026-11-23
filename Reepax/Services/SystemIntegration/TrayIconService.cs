@@ -82,7 +82,7 @@ public class TrayIconService : IDisposable
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-    private Window? _mainWindow;
+    private MainWindow? _mainWindow;
     private IntPtr _hwnd;
     private IntPtr _hIcon;
     private bool _isCreated;
@@ -91,7 +91,7 @@ public class TrayIconService : IDisposable
 
     private uint _wmTaskbarCreated;
 
-    public void Initialize(Window mainWindow)
+    public void Initialize(MainWindow mainWindow)
     {
         _mainWindow = mainWindow;
         _wmTaskbarCreated = RegisterWindowMessage("TaskbarCreated");
@@ -267,29 +267,7 @@ public class TrayIconService : IDisposable
         resumeAllItem.Click += (s, e) => QueueManager.Instance.StartQueue();
 
         var exitItem = CreateMenuItem("Tray_Menu_Exit", "IconClose");
-        exitItem.Click += (s, e) =>
-        {
-            if (_mainWindow is MainWindow mw)
-            {
-                mw.ForceExit(bypassCloseConfirmation: false);
-            }
-            else
-            {
-                if (QueueManager.Instance.HasActiveDownloads())
-                {
-                    bool confirmed = Reepax.Views.ConfirmDialog.Show(
-                        Loc.Get("Dialog_ConfirmExit_Title"),
-                        Loc.Get("Dialog_ConfirmExit_ActiveDownloads"),
-                        isDanger: false);
-
-                    if (!confirmed)
-                        return;
-                }
-
-                QueueManager.PerformSafeShutdown();
-                Application.Current?.Shutdown();
-            }
-        };
+        exitItem.Click += (s, e) => _mainWindow?.ForceExit(bypassCloseConfirmation: false);
 
         var postActionMenu = CreateMenuItem("PostDownload_Menu_Header", "IconPower");
         void RefreshPostActionMenuItems()

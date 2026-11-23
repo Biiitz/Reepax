@@ -552,7 +552,7 @@ public partial class QueueManager
 
     /// <summary>
     /// Checks whether any download is currently actively streaming, waiting in a browser slot,
-    /// solving captcha, or waiting in the active queue to be processed, or if an archive extraction is actively running.
+    /// solving captcha, or waiting in the active queue, or if archive extraction or PAR2 work is in progress.
     /// </summary>
     public bool HasActiveDownloads()
     {
@@ -562,7 +562,7 @@ public partial class QueueManager
         if (GetCurrentlyActiveItems().Count > 0)
             return true;
 
-        if (Extractor.ArchiveExtractionService.Instance.IsAnyExtracting)
+        if (Extractor.ArchiveExtractionService.Instance.IsAnyExtracting || Verification.Par2RepairService.Instance.HasActiveRepairs)
             return true;
 
         var packageSnapshot = Packages.ToArray();

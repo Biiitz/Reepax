@@ -429,6 +429,7 @@ public static class Strings_en
         ["Dialog_SettingsLoadFailedMessage"] = "The settings ('settings.json') could not be loaded because the file is locked or corrupt.\n\nTo prevent data loss, automatic overwriting of settings has been disabled.\nPlease ensure no other application (such as an antivirus scanner or editor) is locking the file, and restart Reepax.",
         ["Dialog_ConfirmExit_Title"] = "Confirm Exit",
         ["Dialog_ConfirmExit_ActiveDownloads"] = "There are active downloads in progress. Are you sure you want to exit Reepax? All downloads will be paused.",
+        ["Dialog_ConfirmExit_ActivePar2"] = "PAR2 verification or repair is in progress. Reepax will wait for it to finish and pause active downloads on exit. Do you want to exit Reepax?",
 
 
         // AddLinks Dialog

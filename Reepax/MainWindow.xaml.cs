@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -17,6 +18,7 @@ using Reepax.Services.Extractor;
 using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
+using Reepax.Services.Verification;
 using Reepax.ViewModels;
 using Reepax.Views;
 
@@ -615,6 +617,8 @@ public partial class MainWindow : Window
 
     private bool _isForceExit;
     private bool _bypassCloseConfirmation;
+    private Task? _confirmedExitRepairs;
+    private bool _isClosed;
 
     public void ForceExit(bool bypassCloseConfirmation = true)
     {
@@ -647,12 +651,27 @@ public partial class MainWindow : Window
         base.OnClosing(e);
 
         if (e.Cancel)
+        {
+            if (_confirmedExitRepairs?.IsCompleted == true)
+            {
+                Par2RepairService.Instance.CancelExit();
+                _confirmedExitRepairs = null;
+                _isForceExit = false;
+                _bypassCloseConfirmation = false;
+            }
             return;
+        }
+
+        if (!_bypassCloseConfirmation && _confirmedExitRepairs?.IsCompleted == false)
+        {
+            e.Cancel = true;
+            return;
+        }
 
         var settings = SettingsService.Instance.Settings;
         var minimizeToTray = ViewModel?.MinimizeToTrayOnClose ?? settings.MinimizeToTrayOnClose;
 
-        if (!_isForceExit && minimizeToTray)
+        if (!_isForceExit && _confirmedExitRepairs == null && minimizeToTray)
         {
             e.Cancel = true;
             SaveWindowState(persistToDisk: true);
@@ -668,20 +687,28 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Active downloads confirmation check
-        if (!_bypassCloseConfirmation && Services.Download.QueueManager.Instance.HasActiveDownloads())
+        if (!_bypassCloseConfirmation && _confirmedExitRepairs == null)
         {
-            bool confirmed = Views.ConfirmDialog.Show(
-                Services.Localization.Loc.Get("Dialog_ConfirmExit_Title"),
-                Services.Localization.Loc.Get("Dialog_ConfirmExit_ActiveDownloads"),
-                owner: this,
-                isDanger: false);
+            var repairs = Par2RepairService.Instance;
+            if (Services.Download.QueueManager.Instance.HasActiveDownloads())
+            {
+                string message = Loc.Get(repairs.HasActiveRepairs
+                    ? "Dialog_ConfirmExit_ActivePar2"
+                    : "Dialog_ConfirmExit_ActiveDownloads");
+                if (!ConfirmDialog.Show(Loc.Get("Dialog_ConfirmExit_Title"), message, owner: this, isDanger: false))
+                {
+                    e.Cancel = true;
+                    _isForceExit = false;
+                    _bypassCloseConfirmation = false;
+                    return;
+                }
+            }
 
-            if (!confirmed)
+            _confirmedExitRepairs = repairs.BeginExit();
+            if (!_confirmedExitRepairs.IsCompleted)
             {
                 e.Cancel = true;
-                _isForceExit = false;
-                _bypassCloseConfirmation = false;
+                _ = CloseWhenRepairsFinishAsync(_confirmedExitRepairs);
                 return;
             }
         }
@@ -726,8 +753,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task CloseWhenRepairsFinishAsync(Task repairsFinished)
+    {
+        await repairsFinished;
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_isClosed && _confirmedExitRepairs == repairsFinished)
+                Close();
+        }));
+    }
+
     protected override void OnClosed(EventArgs e)
     {
+        _isClosed = true;
         _windowBoundsDebounceTimer?.Stop();
         try
         {

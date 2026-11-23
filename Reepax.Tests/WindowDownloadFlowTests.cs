@@ -63,6 +63,12 @@ public sealed class WindowDownloadFlowTests
     public async Task MainWindow_FailedShutdownOrCancelledSessionKeepsTrayRestoreAndConfirmedSessionSaves(string target)
         => await RunWindowWorkerAsync("en", "--power-shutdown-window-worker", "Power shutdown flow passed", extraArguments: [target]);
 
+    [Theory]
+    [InlineData("window", "en")]
+    [InlineData("tray", "de")]
+    public async Task ManualExit_ConfirmsAndWaitsForAllPar2Repairs(string target, string language)
+        => await RunWindowWorkerAsync(language, "--par2-exit-window-worker", "PAR2 exit flow passed", extraArguments: [target]);
+
     [Fact]
     public async Task MainWindow_RestartLaunchFailurePreservesOwnershipAndSavedDownloadProgress()
     {

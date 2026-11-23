@@ -429,6 +429,7 @@ public static class Strings_de
         ["Dialog_SettingsLoadFailedMessage"] = "Die Einstellungen ('settings.json') konnten nicht geladen werden, da die Datei gesperrt oder beschädigt ist.\n\nUm Datenverlust zu verhindern, wurde das automatische Überschreiben der Einstellungen deaktiviert.\nBitte stellen Sie sicher, dass keine andere Anwendung (wie ein Virenscanner oder Editor) die Datei sperrt, und starten Sie Reepax neu.",
         ["Dialog_ConfirmExit_Title"] = "Beenden bestätigen",
         ["Dialog_ConfirmExit_ActiveDownloads"] = "Es laufen noch aktive Downloads. Möchtest du Reepax wirklich schließen? Alle Downloads werden pausiert.",
+        ["Dialog_ConfirmExit_ActivePar2"] = "Es läuft noch eine PAR2-Prüfung oder -Reparatur. Reepax wartet auf den Abschluss und pausiert laufende Downloads beim Beenden. Möchtest du Reepax beenden?",
 
 
         // AddLinks Dialog

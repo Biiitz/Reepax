@@ -85,7 +85,7 @@ public sealed class Par2ExtractionCancellationTests
         }
     }
 
-    private sealed class NativeCheckpoint : IAsyncDisposable
+    internal sealed class NativeCheckpoint : IAsyncDisposable
     {
         private readonly Par2RepairService _service = Par2RepairService.Instance;
         private readonly Action<Process, bool>? _previous;
@@ -111,6 +111,12 @@ public sealed class Par2ExtractionCancellationTests
             };
         }
 
+        internal void Resume()
+        {
+            var process = Started.Task.GetAwaiter().GetResult();
+            Assert.Equal(0, NtResumeProcess(process.Handle));
+        }
+
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -126,5 +132,8 @@ public sealed class Par2ExtractionCancellationTests
 
         [DllImport("ntdll.dll", ExactSpelling = true)]
         private static extern int NtSuspendProcess(IntPtr processHandle);
+
+        [DllImport("ntdll.dll", ExactSpelling = true)]
+        private static extern int NtResumeProcess(IntPtr processHandle);
     }
 }
