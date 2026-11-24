@@ -188,13 +188,24 @@
         </ContextMenu>
 
         <ContextMenu x:Key="ItemContextMenu" Opened="ItemContextMenu_Opened">
-            <MenuItem Header="{Binding Converter={StaticResource ItemActionMenuHeaderConverter}}"
-                      Click="RetryItem_MenuItem_Click"
-                      Command="{Binding DataContext.RetryItemCommand, Source={x:Reference RootWindow}}"
+            <MenuItem Command="{Binding DataContext.ToggleItemPauseCommand, Source={x:Reference RootWindow}}"
                       CommandParameter="{Binding}"
                       Visibility="{Binding Status, Converter={StaticResource EqualsToVisConverter}, ConverterParameter='!Completed'}">
+                <MenuItem.Header>
+                    <MultiBinding Converter="{StaticResource ItemActionMenuHeaderConverter}">
+                        <Binding Path="Status" />
+                        <Binding Path="StatusMessage" />
+                    </MultiBinding>
+                </MenuItem.Header>
                 <MenuItem.Icon>
-                    <Path Data="{Binding Converter={StaticResource ItemActionMenuGeometryConverter}}" Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform" />
+                    <Path Fill="{DynamicResource TextPrimaryBrush}" Width="14" Height="14" Stretch="Uniform">
+                        <Path.Data>
+                            <MultiBinding Converter="{StaticResource ItemActionMenuGeometryConverter}">
+                                <Binding Path="Status" />
+                                <Binding Path="StatusMessage" />
+                            </MultiBinding>
+                        </Path.Data>
+                    </Path>
                 </MenuItem.Icon>
             </MenuItem>
             <MenuItem Tag="RetryWithoutLegacyMd5" Header="{loc:Loc Menu_RetryWithoutLegacyMd5}"

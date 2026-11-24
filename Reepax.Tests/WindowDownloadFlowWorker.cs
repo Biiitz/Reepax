@@ -26,7 +26,7 @@ internal static partial class WindowDownloadFlowWorker
 {
     internal static int Run(string root, string language, bool columnsOnly = false, bool clipboardOnly = false,
         bool filtersOnly = false, bool shortcutsOnly = false, string? packageRestartStage = null, string? powerSessionTarget = null,
-        string? par2ExitTarget = null)
+        string? par2ExitTarget = null, string? itemMenuInput = null)
     {
         int result = 1;
         var thread = new Thread(() =>
@@ -34,7 +34,7 @@ internal static partial class WindowDownloadFlowWorker
             var dispatcher = Dispatcher.CurrentDispatcher;
             dispatcher.BeginInvoke(new Action(async () =>
             {
-                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly, packageRestartStage, powerSessionTarget, par2ExitTarget).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
+                try { await ExecuteAsync(root, language, columnsOnly, clipboardOnly, filtersOnly, shortcutsOnly, packageRestartStage, powerSessionTarget, par2ExitTarget, itemMenuInput).WaitAsync(TimeSpan.FromSeconds(75)); result = 0; }
                 catch (Exception error) { Console.Error.WriteLine(DiagnosticPrivacy.Sanitize(error.ToString())); }
                 finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Send); }
             }));
@@ -47,7 +47,8 @@ internal static partial class WindowDownloadFlowWorker
     }
 
     private static async Task ExecuteAsync(string root, string language, bool columnsOnly, bool clipboardOnly,
-        bool filtersOnly, bool shortcutsOnly, string? packageRestartStage, string? powerSessionTarget, string? par2ExitTarget)
+        bool filtersOnly, bool shortcutsOnly, string? packageRestartStage, string? powerSessionTarget, string? par2ExitTarget,
+        string? itemMenuInput)
     {
         root = Path.GetFullPath(root);
         if (!Path.GetFileName(root).StartsWith("WindowFlow_", StringComparison.Ordinal) ||
@@ -104,6 +105,12 @@ internal static partial class WindowDownloadFlowWorker
         {
             await CheckPar2ExitAsync(settings.DefaultDownloadDirectory, fromTray: par2ExitTarget == "tray");
             Console.WriteLine("PAR2 exit flow passed");
+            return;
+        }
+        if (itemMenuInput != null)
+        {
+            await CheckItemMenuDownloadAsync(settings.DefaultDownloadDirectory, keyboard: itemMenuInput == "keyboard");
+            Console.WriteLine("Item context menu passed");
             return;
         }
         await using var source = new BrowserHandoffSource();

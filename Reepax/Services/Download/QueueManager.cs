@@ -1208,11 +1208,7 @@ public partial class QueueManager
         item.ClearDownloadFailure();
         item.IsTrickling = false;
 
-        bool wasBrowserClosed = item.StatusMessage == Loc.Get("Status_BrowserWindowClosed") ||
-                                item.StatusMessage.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) ||
-                                item.StatusMessage.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase);
-
-        if (wasBrowserClosed)
+        if (IsBrowserWindowClosedMessage(item.StatusMessage))
         {
             item.DirectDownloadUrl = null;
             item.ClearDownloadFailure();
@@ -1333,29 +1329,38 @@ public partial class QueueManager
         SafeInvoke(() => pkg?.RecalculateAggregates());
     }
 
+    internal enum ItemAction { None, Pause, Resume, Retry }
+
+    private static bool IsBrowserWindowClosedMessage(string? message) =>
+        message == Loc.Get("Status_BrowserWindowClosed") ||
+        message?.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) == true ||
+        message?.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase) == true;
+
+    internal static ItemAction GetItemAction(DownloadStatus status, string? message) => status switch
+    {
+        DownloadStatus.Completed => ItemAction.None,
+        DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or
+            DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha => ItemAction.Pause,
+        DownloadStatus.Failed => ItemAction.Retry,
+        _ => IsBrowserWindowClosedMessage(message) ? ItemAction.Retry : ItemAction.Resume
+    };
+
     public void ToggleItemPause(DownloadItem? item)
     {
-        if (item == null || item.Status == DownloadStatus.Completed)
+        if (item == null)
             return;
 
-        if (item.Status is DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha)
+        switch (GetItemAction(item.Status, item.StatusMessage))
         {
-            PauseItem(item);
-        }
-        else
-        {
-            bool wasBrowserClosed = item.StatusMessage == Loc.Get("Status_BrowserWindowClosed") ||
-                                    item.StatusMessage.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) ||
-                                    item.StatusMessage.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase);
-
-            if (wasBrowserClosed || item.Status == DownloadStatus.Failed)
-            {
-                RetryItem(item);
-            }
-            else
-            {
+            case ItemAction.Pause:
+                PauseItem(item);
+                break;
+            case ItemAction.Resume:
                 ResumeItem(item);
-            }
+                break;
+            case ItemAction.Retry:
+                RetryItem(item);
+                break;
         }
     }
 

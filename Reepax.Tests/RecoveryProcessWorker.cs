@@ -33,6 +33,8 @@ internal static class RecoveryProcessWorker
             return WindowDownloadFlowWorker.Run(args[1], args[2], filtersOnly: true);
         if (args.Length == 3 && args[0] == "--shortcut-window-worker")
             return WindowDownloadFlowWorker.Run(args[1], args[2], shortcutsOnly: true);
+        if (args.Length == 4 && args[0] == "--item-menu-window-worker" && args[3] is "mouse" or "keyboard")
+            return WindowDownloadFlowWorker.Run(args[1], args[2], itemMenuInput: args[3]);
         if (args.Length == 4 && args[0] == "--power-shutdown-window-worker" &&
             args[3] is "main" or "parking" or "par2-main" or "par2-parking" or "par2-fallback")
             return WindowDownloadFlowWorker.Run(args[1], args[2], powerSessionTarget: args[3]);

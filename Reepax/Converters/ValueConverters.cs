@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using Reepax.Models;
 using Reepax.Services;
+using Reepax.Services.Download;
 using Reepax.Services.Localization;
 
 namespace Reepax.Converters;
@@ -253,74 +254,38 @@ public class StatusToPlayPauseTooltipConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotImplementedException();
 }
 
-public class ItemActionMenuHeaderConverter : IValueConverter
+public class ItemActionMenuHeaderConverter : IMultiValueConverter
 {
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is DownloadItem item)
+    public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture) =>
+        GetAction(values) switch
         {
-            if (item.Status == DownloadStatus.Completed)
-            {
-                return string.Empty;
-            }
+            QueueManager.ItemAction.None => string.Empty,
+            QueueManager.ItemAction.Pause => Loc.Get("Menu_Pause"),
+            QueueManager.ItemAction.Retry => Loc.Get("Menu_Retry"),
+            _ => Loc.Get("Menu_Resume")
+        };
 
-            var msg = item.StatusMessage ?? string.Empty;
-            bool isBrowserClosed = msg == Loc.Get("Status_BrowserWindowClosed") ||
-                                   msg.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) ||
-                                   msg.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase);
+    internal static QueueManager.ItemAction GetAction(object[] values) =>
+        values is [DownloadStatus status, var message] ? QueueManager.GetItemAction(status, message as string)
+            : QueueManager.ItemAction.Resume;
 
-            if (isBrowserClosed || item.Status == DownloadStatus.Failed)
-            {
-                return Loc.Get("Menu_Retry");
-            }
-
-            if (item.Status is DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha)
-            {
-                return Loc.Get("Menu_Pause");
-            }
-
-            return Loc.Get("Menu_Resume");
-        }
-
-        return Loc.Get("Menu_Resume");
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotImplementedException();
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
 }
 
-public class ItemActionMenuGeometryConverter : IValueConverter
+public class ItemActionMenuGeometryConverter : IMultiValueConverter
 {
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is DownloadItem item)
+    public object? Convert(object[] values, Type targetType, object? parameter, CultureInfo culture) =>
+        ItemActionMenuHeaderConverter.GetAction(values) switch
         {
-            if (item.Status == DownloadStatus.Completed)
-            {
-                return null;
-            }
+            QueueManager.ItemAction.None => null,
+            QueueManager.ItemAction.Pause => Application.Current?.TryFindResource("IconPause"),
+            QueueManager.ItemAction.Retry => Application.Current?.TryFindResource("IconRefresh"),
+            _ => Application.Current?.TryFindResource("IconPlay")
+        };
 
-            var msg = item.StatusMessage ?? string.Empty;
-            bool isBrowserClosed = msg == Loc.Get("Status_BrowserWindowClosed") ||
-                                   msg.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) ||
-                                   msg.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase);
-
-            if (isBrowserClosed || item.Status == DownloadStatus.Failed)
-            {
-                return Application.Current?.TryFindResource("IconRefresh");
-            }
-
-            if (item.Status is DownloadStatus.Downloading or DownloadStatus.InBrowser or DownloadStatus.InBrowserSlot1 or DownloadStatus.InBrowserSlot2 or DownloadStatus.SolvingCaptcha)
-            {
-                return Application.Current?.TryFindResource("IconPause");
-            }
-
-            return Application.Current?.TryFindResource("IconPlay");
-        }
-
-        return Application.Current?.TryFindResource("IconPlay");
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotImplementedException();
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture)
+        => throw new NotImplementedException();
 }
 
 public class EqualsToVisibilityConverter : IValueConverter

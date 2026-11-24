@@ -201,7 +201,7 @@ public class ValueConvertersTests
             Status = DownloadStatus.Paused,
             StatusMessage = Loc.Get("Status_BrowserWindowClosed")
         };
-        Assert.Equal(Loc.Get("Menu_Retry"), converter.Convert(item1, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal(Loc.Get("Menu_Retry"), Convert(item1));
 
         // Failed -> Try again
         var item2 = new DownloadItem
@@ -209,14 +209,14 @@ public class ValueConvertersTests
             Status = DownloadStatus.Failed,
             StatusMessage = "Some error"
         };
-        Assert.Equal(Loc.Get("Menu_Retry"), converter.Convert(item2, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal(Loc.Get("Menu_Retry"), Convert(item2));
 
         // Downloading -> Pause
         var item3 = new DownloadItem
         {
             Status = DownloadStatus.Downloading
         };
-        Assert.Equal(Loc.Get("Menu_Pause"), converter.Convert(item3, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal(Loc.Get("Menu_Pause"), Convert(item3));
 
         // Normal Paused -> Resume
         var item4 = new DownloadItem
@@ -224,14 +224,17 @@ public class ValueConvertersTests
             Status = DownloadStatus.Paused,
             StatusMessage = Loc.Get("Status_Paused")
         };
-        Assert.Equal(Loc.Get("Menu_Resume"), converter.Convert(item4, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal(Loc.Get("Menu_Resume"), Convert(item4));
 
         // Completed -> Returns empty string as action is not applicable
         var item5 = new DownloadItem
         {
             Status = DownloadStatus.Completed
         };
-        Assert.Equal(string.Empty, converter.Convert(item5, typeof(string), null, CultureInfo.InvariantCulture));
+        Assert.Equal(string.Empty, Convert(item5));
+
+        object Convert(DownloadItem item) => converter.Convert(
+            [item.Status, item.StatusMessage], typeof(string), null, CultureInfo.InvariantCulture);
     }
 
     [Fact]
@@ -245,12 +248,15 @@ public class ValueConvertersTests
         var pausedItem = new DownloadItem { Status = DownloadStatus.Paused };
 
         // Completed returns null
-        Assert.Null(converter.Convert(completedItem, typeof(object), null, CultureInfo.InvariantCulture));
+        Assert.Null(Convert(completedItem));
 
         // Test environment has no Application.Current resources, so verify other branches don't throw
-        _ = converter.Convert(failedItem, typeof(object), null, CultureInfo.InvariantCulture);
-        _ = converter.Convert(downloadingItem, typeof(object), null, CultureInfo.InvariantCulture);
-        _ = converter.Convert(pausedItem, typeof(object), null, CultureInfo.InvariantCulture);
+        _ = Convert(failedItem);
+        _ = Convert(downloadingItem);
+        _ = Convert(pausedItem);
+
+        object? Convert(DownloadItem item) => converter.Convert(
+            [item.Status, item.StatusMessage], typeof(object), null, CultureInfo.InvariantCulture);
     }
 
     [Fact]

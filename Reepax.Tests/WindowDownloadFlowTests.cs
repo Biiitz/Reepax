@@ -34,6 +34,12 @@ public sealed class WindowDownloadFlowTests
         => await RunWindowWorkerAsync(language, "--shortcut-window-worker", "Window shortcuts passed");
 
     [Theory]
+    [InlineData("mouse", "de")]
+    [InlineData("keyboard", "en")]
+    public async Task ItemContextMenu_ResumesDirectDownloadWithBusyAndFreeSlots(string input, string language)
+        => await RunWindowWorkerAsync(language, "--item-menu-window-worker", "Item context menu passed", extraArguments: [input]);
+
+    [Theory]
     [InlineData("keep", ".repx")]
     [InlineData("remove", ".sdlr")]
     [InlineData("move", ".repx")]

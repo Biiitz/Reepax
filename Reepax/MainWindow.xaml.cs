@@ -2597,29 +2597,6 @@ public partial class MainWindow : Window
             _ = ViewModel.DeleteFromDownloadListAsync(contextPackage: package);
     }
 
-    private void RetryItem_MenuItem_Click(object sender, RoutedEventArgs e)
-    {
-        var item = GetItemFromSender(sender);
-        if (item != null)
-        {
-            if (item.Status == Models.DownloadStatus.Completed)
-                return;
-
-            bool wasBrowserClosed = item.StatusMessage == Services.Localization.Loc.Get("Status_BrowserWindowClosed") ||
-                                    item.StatusMessage.Contains("Browser window closed", StringComparison.OrdinalIgnoreCase) ||
-                                    item.StatusMessage.Contains("Browser-Fenster geschlossen", StringComparison.OrdinalIgnoreCase);
-
-            if (wasBrowserClosed || item.Status == Models.DownloadStatus.Failed)
-            {
-                ViewModel.RetryItem(item);
-            }
-            else
-            {
-                ViewModel.ToggleItemPause(item);
-            }
-        }
-    }
-
     private void RetryWithoutLegacyMd5_MenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { DataContext: DownloadItem item } ||
