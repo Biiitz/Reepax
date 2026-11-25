@@ -773,6 +773,7 @@ You need 4 more recovery blocks to be able to repair.
             File.WriteAllText(document + ".1", "previous document");
             var parityFile = await CreateParityAsync(tempDir, original);
             using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            scope.PrepareRecovery(tempDir);
             File.Move(original, original + ".2");
             if (!missingOriginal)
                 File.WriteAllText(original, "replacement payload");
@@ -780,10 +781,7 @@ You need 4 more recovery blocks to be able to repair.
             File.WriteAllText(concurrentDocument, "other current");
             File.WriteAllText(concurrentDocument + ".1", "other previous");
 
-            if (restore)
-                scope.Restore();
-            else
-                scope.Clean();
+            scope.FinishRecovery(success: !restore, purgeBackups: true);
 
             Assert.Equal("current document", File.ReadAllText(document));
             Assert.Equal("previous document", File.ReadAllText(document + ".1"));
@@ -808,8 +806,10 @@ You need 4 more recovery blocks to be able to repair.
         }
     }
 
-    [Fact]
-    public async Task BackupScope_NewUnrelatedFileAtExpectedBackupPath_IsPreserved()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BackupScope_NewUnrelatedFileAtExpectedBackupPath_IsPreserved(bool repairSucceeded)
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "RepairBackup_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -819,10 +819,10 @@ You need 4 more recovery blocks to be able to repair.
             File.WriteAllText(original, "current payload");
             var parityFile = await CreateParityAsync(tempDir, original);
             using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            scope.PrepareRecovery(tempDir);
             File.WriteAllText(original + ".1", "independent backup");
 
-            scope.Clean();
-            scope.Restore();
+            scope.FinishRecovery(repairSucceeded, purgeBackups: true);
 
             Assert.Equal("current payload", File.ReadAllText(original));
             Assert.Equal("independent backup", File.ReadAllText(original + ".1"));
@@ -844,10 +844,11 @@ You need 4 more recovery blocks to be able to repair.
             File.WriteAllText(original, "original payload");
             var parityFile = await CreateParityAsync(tempDir, original);
             using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            scope.PrepareRecovery(tempDir);
             File.Move(original, original + ".1");
             File.WriteAllText(original, "replacement payload");
             using (File.Open(original, FileMode.Open, FileAccess.Read, FileShare.Read))
-                scope.Restore();
+                Assert.ThrowsAny<IOException>(() => scope.FinishRecovery(success: false, purgeBackups: false));
 
             Assert.Equal("replacement payload", File.ReadAllText(original));
             Assert.Equal("original payload", File.ReadAllText(original + ".1"));
@@ -876,11 +877,12 @@ You need 4 more recovery blocks to be able to repair.
             }
             File.WriteAllBytes(parityFile, bytes);
             using var scope = Par2RepairService.RepairBackupScope.Capture(parityFile);
+            scope.PrepareRecovery(tempDir);
             File.Move(original, original + ".1");
             File.WriteAllText(original, "current payload");
 
-            scope.Clean();
-            scope.Restore();
+            scope.FinishRecovery(success: true, purgeBackups: true);
+            scope.FinishRecovery(success: false, purgeBackups: false);
 
             Assert.Equal("current payload", File.ReadAllText(original));
             Assert.Equal("original payload", File.ReadAllText(original + ".1"));

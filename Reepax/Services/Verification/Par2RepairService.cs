@@ -399,6 +399,7 @@ public partial class Par2RepairService
 
         var outputBuilder = new StringBuilder();
         RepairBackupScope? backups = null;
+        NativeRepairProcess? native = null;
         IDisposable? repairLease = null;
         PackageRepairInput? repairInput = null;
         bool repairStopped = true;
@@ -406,100 +407,67 @@ public partial class Par2RepairService
         try
         {
             repairLease = await EnterRepairDirectoryAsync(workingDir, ct);
-            if (package != null)
-            {
-                repairInput = await Task.Run(() => PackageRepairInput.Open(par2FilePath, workingDir, ct), ct);
-                if (repairInput == null) return UnconfirmedRepairTargets();
-            }
-            if (repairInput is { RecoveryVolumes.Length: > 0 })
+            using (await PackagePathOperationGate.Instance.EnterAsync(ct))
+                RepairBackupScope.RecoverPending(workingDir);
+            repairInput = await Task.Run(() => PackageRepairInput.Open(par2FilePath, workingDir, ct), ct);
+            if (repairInput == null) return UnconfirmedRepairTargets();
+            if (repairInput.RecoveryVolumes.Length > 0)
                 psi.ArgumentList.Add("-B" + workingDir);
-            psi.ArgumentList.Add(repairInput?.IndexPath ?? par2FilePath);
-            if (repairInput != null)
-            {
-                foreach (string volume in repairInput.RecoveryVolumes)
-                    psi.ArgumentList.Add(volume);
-            }
-
-            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
-            process.OutputDataReceived += (_, e) =>
-            {
-                if (e.Data == null) return;
-                lock (outputBuilder)
-                {
-                    outputBuilder.AppendLine(e.Data);
-                }
-
-                ParseProgressAndStatus(e.Data, statusCallback, progressCallback);
-            };
-
-            process.ErrorDataReceived += (_, e) =>
-            {
-                if (e.Data == null) return;
-                lock (outputBuilder)
-                {
-                    outputBuilder.AppendLine(e.Data);
-                }
-            };
+            psi.ArgumentList.Add(repairInput.IndexPath);
+            foreach (string volume in repairInput.RecoveryVolumes)
+                psi.ArgumentList.Add(volume);
 
             using (package == null ? null : await PackagePathOperationGate.Instance.EnterAsync(ct))
             {
                 if (package != null)
                 {
-                    var affected = await ConfirmRepairTargetsAsync(package, workingDir, repairInput!.Targets, ct);
+                    var affected = await ConfirmRepairTargetsAsync(package, workingDir, repairInput.Targets, ct);
                     if (affected == null) return UnconfirmedRepairTargets();
                     ct.ThrowIfCancellationRequested();
                     foreach (var item in affected)
                         item.CalculatedChecksum = null;
                 }
 
-                backups = RepairBackupScope.Capture(par2FilePath, repairInput?.Targets);
+                backups = RepairBackupScope.Capture(par2FilePath, repairInput.Targets);
+                backups.PrepareRecovery(workingDir);
                 ct.ThrowIfCancellationRequested();
-                process.Start();
+                native = NativeRepairProcess.Create(psi);
+                backups.SetRecoveryWriter(native.Process);
+                ct.ThrowIfCancellationRequested();
+                native.Resume();
                 repairStopped = false;
             }
 
+            var process = native.Process;
+            Task outputRead = Task.CompletedTask;
+            Task errorRead = Task.CompletedTask;
             try
             {
-                using (ct.Register(() =>
-                {
-                    try { if (!process.HasExited) process.Kill(true); } catch { }
-                }))
+                using (ct.Register(native.Stop))
                 {
                     ProcessStarted?.Invoke(process, true);
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
+                    outputRead = Task.Run(() => ReadOutputAsync(native.Output, reportProgress: true));
+                    errorRead = Task.Run(() => ReadOutputAsync(native.Error, reportProgress: false));
                     await process.WaitForExitAsync(ct);
+                    repairStopped = true;
+                    await Task.WhenAll(outputRead, errorRead);
                 }
-                process.WaitForExit();
-                repairStopped = true;
             }
             catch
             {
                 // Wait for process termination before restoring any renamed files.
                 if (!process.HasExited)
-                    process.Kill(true);
+                    native.Stop();
                 await process.WaitForExitAsync(CancellationToken.None);
-                process.WaitForExit();
                 repairStopped = true;
+                try { await Task.WhenAll(outputRead, errorRead); } catch { }
                 throw;
             }
 
             var output = outputBuilder.ToString();
             bool success = process.ExitCode == 0;
 
-            // Handle only backups identified before this repair started.
-            if (success)
-            {
-                if (purgeBackups)
-                {
-                    backups.Clean();
-                }
-            }
-            else
-            {
-                backups?.Restore();
-            }
+            backups.FinishRecovery(success, purgeBackups);
 
             int repairedCount = 0;
             var matchDamaged = _damagedFilesRegex.Match(output);
@@ -518,8 +486,7 @@ public partial class Par2RepairService
         }
         catch (OperationCanceledException)
         {
-            if (repairStopped)
-                backups?.Restore();
+            RecoverAfterFailure();
             return new Par2RepairResult
             {
                 Success = false,
@@ -528,12 +495,12 @@ public partial class Par2RepairService
         }
         catch (Exception ex) when (package != null && ex is InvalidDataException or DecoderFallbackException)
         {
+            RecoverAfterFailure();
             return UnconfirmedRepairTargets();
         }
         catch (Exception ex)
         {
-            if (repairStopped)
-                backups?.Restore();
+            RecoverAfterFailure();
             AppLogger.Error("[Par2RepairService] PAR2 repair failed", ex);
             return new Par2RepairResult
             {
@@ -544,9 +511,27 @@ public partial class Par2RepairService
         }
         finally
         {
+            native?.Dispose();
             backups?.Dispose();
             repairInput?.Dispose();
             repairLease?.Dispose();
+        }
+
+        async Task ReadOutputAsync(Stream stream, bool reportProgress)
+        {
+            using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
+            while (await reader.ReadLineAsync() is { } line)
+            {
+                lock (outputBuilder) outputBuilder.AppendLine(line);
+                if (reportProgress) ParseProgressAndStatus(line, statusCallback, progressCallback);
+            }
+        }
+
+        void RecoverAfterFailure()
+        {
+            if (!repairStopped) return;
+            try { backups?.FinishRecovery(success: false, purgeBackups: false); }
+            catch (Exception ex) { AppLogger.Warn("[Par2RepairService] PAR2 recovery is still pending", ex); }
         }
     }
 

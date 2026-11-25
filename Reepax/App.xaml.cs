@@ -87,6 +87,7 @@ public partial class App : Application
 
         _isPrimaryInstance = true;
         InstallWindowsSessionHandler();
+        Services.Verification.Par2RepairService.RecoverInterruptedRepairs();
         // Primary instance: start named pipe server to receive launch parameters from subsequent instances
         SingleInstanceService.Instance.StartIpcServer(ReceiveInstanceArguments);
 

@@ -163,6 +163,114 @@ public sealed partial class ProcessRecoveryTests : IDisposable
         Assert.Equal(1, source.Requests["source.zip"]);
     }
 
+    [Theory]
+    [InlineData("renamed")]
+    [InlineData("partial")]
+    [InlineData("locked-target")]
+    [InlineData("foreign-backup")]
+    [InlineData("committed")]
+    [InlineData("committed-changed")]
+    public async Task KilledPar2Repair_RestoresOnlyItsProvenBackup(string boundary)
+    {
+        PrepareDestination();
+        string path = Path.Combine(Downloads, "repair.bin");
+        byte[] original = Data(32 * 1024, 23);
+        File.WriteAllBytes(path, original);
+        await Par2RepairServiceTests.CreateParityAsync(Downloads, path);
+        byte[] damaged = original.ToArray();
+        damaged[41] ^= 0x71;
+        File.WriteAllBytes(path, damaged);
+        File.WriteAllBytes(path + ".1", Unaffected);
+        string unrelated = Path.Combine(Downloads, "other.bin.2");
+        File.WriteAllBytes(unrelated, Unaffected);
+        string journals = Path.Combine(_directory.FullName, "appdata", "Par2Recovery");
+        bool committed = boundary is "committed" or "committed-changed";
+
+        await using (var child = new RecoveryChildProcess(_directory.FullName, "par2-crash", boundary, "none", 1))
+        {
+            var report = await child.ReceiveAsync();
+            Assert.Equal(boundary, report.Boundary);
+            using var native = report.NativeProcessId == 0 ? null : System.Diagnostics.Process.GetProcessById(report.NativeProcessId);
+            try
+            {
+                await child.KillAtBoundaryAsync();
+                if (native != null) await native.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.Equal(damaged, File.ReadAllBytes(path + ".2"));
+                Assert.Single(Directory.GetFiles(journals, "*.journal"));
+                if (boundary == "renamed") Assert.False(File.Exists(path));
+                else Assert.Equal(committed ? original : new byte[] { 9, 8, 7 }, File.ReadAllBytes(path));
+            }
+            finally
+            {
+                if (native != null)
+                {
+                    if (!native.HasExited) native.Kill(entireProcessTree: true);
+                    await native.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                }
+            }
+        }
+
+        if (boundary == "locked-target")
+        {
+            using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                await RecoverAsync();
+                Assert.Equal(new byte[] { 9, 8, 7 }, File.ReadAllBytes(path));
+                Assert.Equal(damaged, File.ReadAllBytes(path + ".2"));
+                Assert.Single(Directory.GetFiles(journals, "*.journal"));
+            }
+        }
+        else if (boundary == "foreign-backup")
+        {
+            string retained = path + ".3";
+            File.Move(path + ".2", retained);
+            File.WriteAllBytes(path + ".2", damaged);
+            await RecoverAsync();
+            Assert.Equal(new byte[] { 9, 8, 7 }, File.ReadAllBytes(path));
+            Assert.Equal(damaged, File.ReadAllBytes(path + ".2"));
+            Assert.Equal(damaged, File.ReadAllBytes(retained));
+            Assert.Single(Directory.GetFiles(journals, "*.journal"));
+            File.Move(path + ".2", path + ".4");
+            File.Move(retained, path + ".2");
+        }
+        else if (boundary == "committed-changed")
+        {
+            string repaired = path + ".3";
+            File.Move(path, repaired);
+            File.WriteAllBytes(path, Unaffected);
+            await RecoverAsync();
+            Assert.Equal(Unaffected, File.ReadAllBytes(path));
+            Assert.Equal(damaged, File.ReadAllBytes(path + ".2"));
+            Assert.Equal(original, File.ReadAllBytes(repaired));
+            Assert.Single(Directory.GetFiles(journals, "*.journal"));
+            File.Move(path, path + ".4");
+            File.Move(repaired, path);
+        }
+
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            await RecoverAsync();
+            Assert.True(File.Exists(path), "The original PAR2 target was not restored.");
+            Assert.Equal(committed ? original : damaged, File.ReadAllBytes(path));
+            Assert.False(File.Exists(path + ".2"));
+            Assert.Equal(Unaffected, File.ReadAllBytes(path + ".1"));
+            Assert.Equal(Unaffected, File.ReadAllBytes(unrelated));
+            if (boundary is "partial" or "locked-target" or "foreign-backup")
+                Assert.Equal(new byte[] { 9, 8, 7 }, File.ReadAllBytes(Assert.Single(Directory.GetFiles(Downloads, "*.interrupted-*"))));
+            if (boundary == "foreign-backup") Assert.Equal(damaged, File.ReadAllBytes(path + ".4"));
+            if (boundary == "committed-changed") Assert.Equal(Unaffected, File.ReadAllBytes(path + ".4"));
+            Assert.Empty(Directory.GetFiles(journals));
+            AssertUnaffected();
+        }
+
+        async Task RecoverAsync()
+        {
+            await using var recovery = new RecoveryChildProcess(_directory.FullName, "par2-recover", "none", "none", 1);
+            Assert.Equal("recovered", (await recovery.ReceiveAsync()).Boundary);
+            await recovery.AssertExitedSuccessfullyAsync();
+        }
+    }
+
     private void PrepareDestination()
     {
         Directory.CreateDirectory(Downloads);

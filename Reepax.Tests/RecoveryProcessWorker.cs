@@ -14,7 +14,7 @@ using Reepax.Services.Verification;
 namespace Reepax.Tests;
 
 internal sealed record RecoveryProcessReport(int ProcessId, string Boundary, bool Completed, bool Extracted,
-    bool Notified, long Downloaded, string? Checksum, long ResumedFrom = 0);
+    bool Notified, long Downloaded, string? Checksum, long ResumedFrom = 0, int NativeProcessId = 0);
 
 internal static class RecoveryProcessWorker
 {
@@ -113,6 +113,12 @@ internal static class RecoveryProcessWorker
             else if (args[3] == "download-recover") await DownloadAsync(root, args[5], connections, false, Report);
             else if (args[3] == "archive-crash") await ExtractAsync(root, args[5], args[4], Stop);
             else if (args[3] == "archive-recover") RecoverArchive(root, Report);
+            else if (args[3] == "par2-crash") await InterruptPar2Async(root, args[4], Stop);
+            else if (args[3] == "par2-recover")
+            {
+                Par2RepairService.RecoverInterruptedRepairs();
+                Report(new(Environment.ProcessId, "recovered", false, false, false, 0, null));
+            }
             else throw new InvalidOperationException("Unknown recovery worker operation.");
             return 0;
         }
@@ -121,6 +127,31 @@ internal static class RecoveryProcessWorker
             Console.Error.WriteLine(ex.GetType().Name + ": " + DiagnosticPrivacy.Sanitize(ex.Message));
             return 1;
         }
+    }
+
+    private static async Task InterruptPar2Async(string root, string boundary, Action<RecoveryProcessReport> stop)
+    {
+        string directory = Path.Combine(root, "downloads");
+        string target = Path.Combine(directory, "repair.bin");
+        var package = new DownloadPackage { Name = "Recovery sample", SaveDirectory = directory };
+        package.AddItems([new DownloadItem { FileName = "repair.bin", SaveFilePath = target, Status = DownloadStatus.Completed },
+            new DownloadItem { FileName = "data.par2", SaveFilePath = Path.Combine(directory, "data.par2"), Status = DownloadStatus.Completed }]);
+        QueueManager.Instance.Packages.Add(package);
+        if (boundary is "committed" or "committed-changed")
+        {
+            Par2RepairService.RepairDecisionSaved = () => stop(new(Environment.ProcessId, boundary, false, false, false, 0, null));
+            await Par2RepairService.Instance.ProcessPackagePar2Async(package);
+            throw new IOException("The repair finished before the requested crash boundary.");
+        }
+
+        await using var checkpoint = new Par2ExtractionCancellationTests.NativeCheckpoint(repairStage: true);
+        var repair = Par2RepairService.Instance.ProcessPackagePar2Async(package);
+        var process = await checkpoint.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // Stop at the same disk boundary as an interrupted native rename and replacement write.
+        File.Move(target, target + ".2");
+        if (boundary != "renamed") File.WriteAllBytes(target, [9, 8, 7]);
+        stop(new(Environment.ProcessId, boundary, false, false, false, 0, null, NativeProcessId: process.Id));
+        await repair;
     }
 
     private static DownloadPackage CreatePackage(string root, string url, string name, bool extract)

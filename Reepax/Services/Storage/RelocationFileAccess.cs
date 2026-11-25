@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace Reepax.Services.Storage;
@@ -13,6 +14,7 @@ internal static class RelocationFileAccess
     private const uint OpenReparsePoint = 0x00200000;
     private const uint ReadFlags = (uint)(FileOptions.Asynchronous | FileOptions.SequentialScan) | OpenReparsePoint;
     private const int FileDispositionInfo = 4;
+    private const int FileRenameInfo = 3;
 
     internal sealed class SourceLease(FileStream stream, bool canDelete) : IDisposable
     {
@@ -24,6 +26,26 @@ internal static class RelocationFileAccess
             if (!canDelete) return false;
             var disposition = new FileDisposition { DeleteFile = 1 };
             return SetFileInformationByHandle(Stream.SafeFileHandle, FileDispositionInfo, ref disposition, 1);
+        }
+
+        internal void MoveTo(string destination)
+        {
+            if (!canDelete) throw new IOException("The source file cannot be renamed.");
+            byte[] name = Encoding.Unicode.GetBytes(Path.GetFullPath(destination) + '\0');
+            int nameLengthOffset = 2 * IntPtr.Size;
+            int nameOffset = nameLengthOffset + sizeof(int);
+            int size = nameOffset + name.Length;
+            nint buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                Marshal.WriteIntPtr(buffer, 0, 0);
+                Marshal.WriteIntPtr(buffer, IntPtr.Size, 0);
+                Marshal.WriteInt32(buffer, nameLengthOffset, name.Length - sizeof(char));
+                Marshal.Copy(name, 0, buffer + nameOffset, name.Length);
+                if (!SetFileInformationByHandle(Stream.SafeFileHandle, FileRenameInfo, buffer, size))
+                    throw Failure("The source file could not be renamed.", Marshal.GetLastWin32Error());
+            }
+            finally { Marshal.FreeHGlobal(buffer); }
         }
 
         public void Dispose() => Stream.Dispose();
@@ -67,4 +89,9 @@ internal static class RelocationFileAccess
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int informationClass,
         ref FileDisposition information, uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int informationClass,
+        nint information, int size);
 }

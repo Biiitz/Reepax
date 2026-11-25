@@ -55,9 +55,9 @@ public partial class Par2RepairService
         }
     }
 
-    internal sealed class RepairBackupScope : IDisposable
+    internal sealed partial class RepairBackupScope : IDisposable
     {
-        private readonly List<(string Original, string Backup, SafeFileHandle Handle, FileIdentity Identity)> _candidates = new();
+        private readonly List<(Entry Entry, SafeFileHandle Handle)> _candidates = new();
 
         [StructLayout(LayoutKind.Sequential)]
         private struct FileIdentity
@@ -83,20 +83,28 @@ public partial class Par2RepairService
                 var directory = Path.GetDirectoryName(Path.GetFullPath(par2FilePath))!;
                 foreach (var original in authorizedTargets ?? ReadRepairTargets(par2FilePath, directory))
                 {
-                    if (!File.Exists(original) || HasReparsePoint(original))
+                    if (HasReparsePoint(original))
+                        throw new IOException("A linked PAR2 target cannot be tracked.");
+                    if (IsAbsent(original))
                         continue;
                     string backup = GetBackupPath(original);
                     var handle = File.OpenHandle(original, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                    if (TryGetIdentity(handle, out var identity))
-                        scope._candidates.Add((original, backup, handle, identity));
-                    else
+                    try
+                    {
+                        var identity = ReadIdentity(handle) ?? throw new IOException("A PAR2 target identity could not be read.");
+                        scope._candidates.Add((new(original, backup, identity), handle));
+                    }
+                    catch
+                    {
                         handle.Dispose();
+                        throw;
+                    }
                 }
             }
-            catch (Exception ex)
+            catch
             {
                 scope.Dispose();
-                AppLogger.Warn($"[Par2RepairService] Backup tracking unavailable", ex);
+                throw;
             }
             return scope;
         }
@@ -112,38 +120,13 @@ public partial class Par2RepairService
             return backup;
         }
 
-        internal void Restore() => Process(restore: true);
+        public void Dispose() => CloseTargetHandles();
 
-        internal void Clean() => Process(restore: false);
-
-        public void Dispose()
+        private void CloseTargetHandles()
         {
             foreach (var candidate in _candidates)
                 candidate.Handle.Dispose();
             _candidates.Clear();
-        }
-
-        private void Process(bool restore)
-        {
-            foreach (var (original, backup, _, identity) in _candidates)
-            {
-                try
-                {
-                    if (!File.Exists(backup) || HasReparsePoint(backup) || HasReparsePoint(original))
-                        continue;
-                    using var handle = File.OpenHandle(backup, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                    if (!TryGetIdentity(handle, out var backupIdentity) || !identity.Equals(backupIdentity))
-                        continue;
-                    if (restore)
-                        File.Move(backup, original, overwrite: true);
-                    else if (File.Exists(original))
-                        Extractor.ArchiveExtractionService.DeleteOrMoveToTemp(backup);
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[Par2RepairService] Backup handling failed", ex);
-                }
-            }
         }
 
         private static string[] ReadRepairTargets(string par2FilePath, string directory)
