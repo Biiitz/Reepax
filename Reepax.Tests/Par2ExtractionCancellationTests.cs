@@ -93,7 +93,7 @@ public sealed class Par2ExtractionCancellationTests
         private int _disposed;
         internal TaskCompletionSource<Process> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal NativeCheckpoint(bool repairStage)
+        internal NativeCheckpoint(bool repairStage, Action<Process>? beforeSuspend = null)
         {
             _previous = _service.ProcessStarted;
             _service.ProcessStarted = (process, repairing) =>
@@ -102,6 +102,7 @@ public sealed class Par2ExtractionCancellationTests
                 try
                 {
                     _process = Process.GetProcessById(process.Id);
+                    beforeSuspend?.Invoke(_process);
                     // Freeze only this invocation's child, before requesting cancellation.
                     int status = NtSuspendProcess(_process.Handle);
                     if (status != 0) throw new InvalidOperationException("The repair test process could not be suspended.");

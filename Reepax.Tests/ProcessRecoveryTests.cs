@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Reepax.Services.Verification;
 using Xunit;
 
 namespace Reepax.Tests;
@@ -269,6 +270,88 @@ public sealed partial class ProcessRecoveryTests : IDisposable
             Assert.Equal("recovered", (await recovery.ReceiveAsync()).Boundary);
             await recovery.AssertExitedSuccessfullyAsync();
         }
+    }
+
+    [Theory]
+    [InlineData("missing", false)]
+    [InlineData("missing", true)]
+    [InlineData("missing-committed", true)]
+    public async Task KilledPar2Reconstruction_PreservesMissingOrIndependentlyCreatedTarget(string boundary, bool occupied)
+    {
+        PrepareDestination();
+        const int blockSize = 256 * 1024;
+        byte[] original = Data(64 * blockSize, 37);
+        string path = Path.Combine(Downloads, "missing.bin");
+        string parity = Path.Combine(Downloads, "data.par2");
+        File.WriteAllBytes(path, original);
+        var start = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = Par2RepairService.Instance.ResolvePar2ExecutablePath()!,
+            WorkingDirectory = Downloads, UseShellExecute = false, CreateNoWindow = true
+        };
+        foreach (string arg in new[] { "c", "-qq", $"-s{blockSize}", "-c64", parity, path })
+            start.ArgumentList.Add(arg);
+        using (var creator = System.Diagnostics.Process.Start(start)!)
+        {
+            try { await creator.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30)); }
+            finally { if (!creator.HasExited) creator.Kill(entireProcessTree: true); }
+            Assert.Equal(0, creator.ExitCode);
+        }
+        File.Delete(path);
+
+        bool committed = boundary == "missing-committed";
+        string journals = Path.Combine(_directory.FullName, "appdata", "Par2Recovery");
+        string independent = Path.Combine(Downloads, "independent.bin");
+        await using (var child = new RecoveryChildProcess(_directory.FullName, "par2-crash", boundary, "none", 1))
+        {
+            var report = await child.ReceiveAsync();
+            Assert.Equal(boundary, report.Boundary);
+            using var native = committed ? null : System.Diagnostics.Process.GetProcessById(report.NativeProcessId);
+            await child.KillAtBoundaryAsync();
+            if (native != null) await native.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        Assert.False(File.Exists(path));
+        string workspace = Assert.Single(Directory.GetDirectories(Downloads, ".par2-work-*"));
+        byte[] staged = File.ReadAllBytes(Path.Combine(workspace, "missing.bin"));
+        Assert.Equal(committed, original.AsSpan().SequenceEqual(staged));
+        if (occupied)
+        {
+            using var outside = File.Open(path, FileMode.CreateNew);
+            outside.Write(Unaffected);
+        }
+
+        await RecoverPar2Async();
+        if (occupied)
+        {
+            Assert.Equal(Unaffected, File.ReadAllBytes(path));
+            File.Move(path, independent);
+        }
+        else
+        {
+            Assert.False(File.Exists(path));
+        }
+
+        if (committed)
+        {
+            Assert.Single(Directory.GetFiles(journals, "*.journal"));
+            Assert.Equal(original, File.ReadAllBytes(Path.Combine(workspace, "missing.bin")));
+            await RecoverPar2Async();
+            await RecoverPar2Async();
+        }
+        Assert.Empty(Directory.GetDirectories(Downloads, ".par2-work-*"));
+        Assert.Empty(Directory.GetFiles(journals, "*.journal"));
+        AssertUnaffected();
+        if (!committed) Assert.True((await Par2RepairService.Instance.RepairAsync(parity)).Success);
+        Assert.Equal(original, File.ReadAllBytes(path));
+        if (occupied) Assert.Equal(Unaffected, File.ReadAllBytes(independent));
+        AssertUnaffected();
+    }
+
+    private async Task RecoverPar2Async()
+    {
+        await using var recovery = new RecoveryChildProcess(_directory.FullName, "par2-recover", "none", "none", 1);
+        Assert.Equal("recovered", (await recovery.ReceiveAsync()).Boundary);
+        await recovery.AssertExitedSuccessfullyAsync();
     }
 
     private void PrepareDestination()

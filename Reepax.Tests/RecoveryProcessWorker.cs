@@ -132,6 +132,28 @@ internal static class RecoveryProcessWorker
     private static async Task InterruptPar2Async(string root, string boundary, Action<RecoveryProcessReport> stop)
     {
         string directory = Path.Combine(root, "downloads");
+        if (boundary == "missing-committed")
+        {
+            Par2RepairService.RepairDecisionSaved = () => stop(new(Environment.ProcessId, boundary, false, false, false, 0, null));
+            await Par2RepairService.Instance.RepairAsync(Path.Combine(directory, "data.par2"));
+            throw new IOException("The reconstruction finished before the requested crash boundary.");
+        }
+        if (boundary == "missing")
+        {
+            string missing = Path.Combine(directory, "missing.bin");
+            await using var held = new Par2ExtractionCancellationTests.NativeCheckpoint(repairStage: true, beforeSuspend: process =>
+            {
+                if (!SpinWait.SpinUntil(() => process.HasExited || File.Exists(missing) ||
+                    Directory.EnumerateDirectories(directory, ".par2-work-*").Any(workspace =>
+                        File.Exists(Path.Combine(workspace, "missing.bin"))), TimeSpan.FromSeconds(10)) || process.HasExited)
+                    throw new IOException("The native reconstruction did not reach the requested boundary.");
+            });
+            var reconstruction = Par2RepairService.Instance.RepairAsync(Path.Combine(directory, "data.par2"));
+            var writer = await held.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            stop(new(Environment.ProcessId, boundary, false, false, false, 0, null, NativeProcessId: writer.Id));
+            await reconstruction;
+            return;
+        }
         string target = Path.Combine(directory, "repair.bin");
         var package = new DownloadPackage { Name = "Recovery sample", SaveDirectory = directory };
         package.AddItems([new DownloadItem { FileName = "repair.bin", SaveFilePath = target, Status = DownloadStatus.Completed },

@@ -640,6 +640,48 @@ You need 4 more recovery blocks to be able to repair.
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RepairAsync_MissingAndDamagedTargets_PreservesBackupPolicy(bool purgeBackups)
+    {
+        var directory = Directory.CreateTempSubdirectory("ReepaxPar2Mixed_");
+        try
+        {
+            string damaged = Path.Combine(directory.FullName, "damaged.bin");
+            string missing = Path.Combine(directory.FullName, "missing.bin");
+            string intact = Path.Combine(directory.FullName, "intact.bin");
+            byte[] expected = Enumerable.Range(0, 80).Select(index => (byte)index).ToArray();
+            byte[] reconstructed = Enumerable.Range(80, 80).Select(index => (byte)index).ToArray();
+            byte[] untouched = Enumerable.Range(160, 80).Select(index => (byte)index).ToArray();
+            File.WriteAllBytes(damaged, expected);
+            File.WriteAllBytes(missing, reconstructed);
+            File.WriteAllBytes(intact, untouched);
+            string parity = await CreateParityAsync(directory.FullName, damaged, missing, intact);
+            byte[] original = (byte[])expected.Clone();
+            original[0] = 255;
+            byte[] unrelatedBackup = [4, 5, 6];
+            File.WriteAllBytes(damaged, original);
+            File.WriteAllBytes(damaged + ".1", unrelatedBackup);
+            File.Delete(missing);
+
+            var result = await new Par2RepairService().RepairAsync(parity, purgeBackups);
+
+            Assert.True(result.Success, result.ErrorMessage);
+            Assert.Equal(expected, File.ReadAllBytes(damaged));
+            Assert.Equal(reconstructed, File.ReadAllBytes(missing));
+            Assert.Equal(untouched, File.ReadAllBytes(intact));
+            Assert.Equal(unrelatedBackup, File.ReadAllBytes(damaged + ".1"));
+            Assert.Equal(!purgeBackups, File.Exists(damaged + ".2"));
+            if (!purgeBackups) Assert.Equal(original, File.ReadAllBytes(damaged + ".2"));
+            Assert.Empty(directory.GetDirectories(".par2-work-*"));
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     private static void RemoveFileDescriptions(string path)
     {
         byte[] bytes = File.ReadAllBytes(path);

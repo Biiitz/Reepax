@@ -58,6 +58,7 @@ public partial class Par2RepairService
     internal sealed partial class RepairBackupScope : IDisposable
     {
         private readonly List<(Entry Entry, SafeFileHandle Handle)> _candidates = new();
+        private bool _needsWorkspace;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct FileIdentity
@@ -81,14 +82,22 @@ public partial class Par2RepairService
             try
             {
                 var directory = Path.GetDirectoryName(Path.GetFullPath(par2FilePath))!;
-                foreach (var original in authorizedTargets ?? ReadRepairTargets(par2FilePath, directory))
+                var targets = authorizedTargets ?? ReadRepairTargets(par2FilePath, directory);
+                var existing = new List<string>();
+                foreach (var original in targets)
                 {
                     if (HasReparsePoint(original))
                         throw new IOException("A linked PAR2 target cannot be tracked.");
                     if (IsAbsent(original))
-                        continue;
+                        scope._needsWorkspace = true;
+                    else
+                        existing.Add(original);
+                }
+                foreach (var original in existing)
+                {
                     string backup = GetBackupPath(original);
-                    var handle = File.OpenHandle(original, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    var share = scope._needsWorkspace ? FileShare.Read | FileShare.Delete : FileShare.ReadWrite | FileShare.Delete;
+                    var handle = File.OpenHandle(original, FileMode.Open, FileAccess.Read, share);
                     try
                     {
                         var identity = ReadIdentity(handle) ?? throw new IOException("A PAR2 target identity could not be read.");

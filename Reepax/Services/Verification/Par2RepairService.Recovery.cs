@@ -19,11 +19,11 @@ public partial class Par2RepairService
 
     internal sealed partial class RepairBackupScope
     {
-        private enum RecoveryDecision { Restore, Clean, Keep }
+        private enum RecoveryDecision { Restore, Clean, Keep, Publish }
         private sealed record Identity(ulong Volume, ulong Low, ulong High, long Length, long Created, long Written);
         private sealed record Entry(string Original, string Backup, Identity Identity, Identity? Replacement = null);
         private sealed record Journal(Guid Id, string Directory, Entry[] Entries, int ProcessId = 0, long ProcessStart = 0,
-            RecoveryDecision Decision = RecoveryDecision.Restore);
+            RecoveryDecision Decision = RecoveryDecision.Restore, Workspace? Stage = null);
 
         private static string GetJournalDirectory(string? repairDirectory) =>
             DownloadPersistenceService.IsTestEnvironment && SettingsService.AppDataDirectoryOverride == null && repairDirectory != null
@@ -34,15 +34,24 @@ public partial class Par2RepairService
 
         internal void PrepareRecovery(string directory)
         {
-            if (_candidates.Count == 0) return;
+            if (_candidates.Count == 0 && !_needsWorkspace) return;
             string journalDirectory = GetJournalDirectory(directory);
             if (HasReparsePoint(journalDirectory)) throw new IOException("The PAR2 recovery directory is linked.");
             Directory.CreateDirectory(journalDirectory);
-            var journal = new Journal(Guid.NewGuid(), directory, _candidates.Select(candidate => candidate.Entry).ToArray());
+            var journal = new Journal(Guid.NewGuid(), directory, _candidates.Select(candidate => candidate.Entry).ToArray(),
+                Stage: _needsWorkspace ? new Workspace(null) : null);
             string path = Path.Combine(journalDirectory, journal.Id.ToString("N") + ".journal");
             Save(path, journal, overwrite: false);
             _journalPath = path;
             _journal = journal;
+            if (_needsWorkspace)
+            {
+                string workspace = GetWorkspacePath(journal);
+                if (!CreateDirectoryW(ToNativePath(workspace), 0)) throw new System.ComponentModel.Win32Exception();
+                journal = journal with { Stage = new Workspace(ReadDirectoryIdentity(workspace)) };
+                Save(path, journal, overwrite: true);
+                _journal = journal;
+            }
         }
 
         internal void SetRecoveryWriter(Process process)
@@ -57,6 +66,8 @@ public partial class Par2RepairService
         {
             if (_journal == null) return;
             CloseTargetHandles();
+            // A durable publication decision must be replayed without abandoning any already published files.
+            if (_journal.Decision == RecoveryDecision.Publish) return;
             if (success)
             {
                 var journal = _journal with
@@ -126,6 +137,11 @@ public partial class Par2RepairService
 
         private static void Apply(Journal journal)
         {
+            if (journal.Stage != null)
+            {
+                ApplyWorkspace(journal);
+                return;
+            }
             if (journal.Decision == RecoveryDecision.Keep) return;
             if (!Directory.Exists(journal.Directory) || HasReparsePoint(journal.Directory))
                 throw new IOException("The PAR2 repair directory is unavailable.");

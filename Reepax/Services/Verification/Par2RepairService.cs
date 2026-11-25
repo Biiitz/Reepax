@@ -411,12 +411,6 @@ public partial class Par2RepairService
                 RepairBackupScope.RecoverPending(workingDir);
             repairInput = await Task.Run(() => PackageRepairInput.Open(par2FilePath, workingDir, ct), ct);
             if (repairInput == null) return UnconfirmedRepairTargets();
-            if (repairInput.RecoveryVolumes.Length > 0)
-                psi.ArgumentList.Add("-B" + workingDir);
-            psi.ArgumentList.Add(repairInput.IndexPath);
-            foreach (string volume in repairInput.RecoveryVolumes)
-                psi.ArgumentList.Add(volume);
-
             using (package == null ? null : await PackagePathOperationGate.Instance.EnterAsync(ct))
             {
                 if (package != null)
@@ -430,15 +424,16 @@ public partial class Par2RepairService
 
                 backups = RepairBackupScope.Capture(par2FilePath, repairInput.Targets);
                 backups.PrepareRecovery(workingDir);
-                ct.ThrowIfCancellationRequested();
-                native = NativeRepairProcess.Create(psi);
-                backups.SetRecoveryWriter(native.Process);
-                ct.ThrowIfCancellationRequested();
-                native.Resume();
-                repairStopped = false;
+                if (backups.WorkspacePath == null) StartNative();
             }
 
-            var process = native.Process;
+            if (backups.WorkspacePath != null)
+            {
+                await backups.StageInputsAsync(ct);
+                StartNative();
+            }
+
+            var process = native!.Process;
             Task outputRead = Task.CompletedTask;
             Task errorRead = Task.CompletedTask;
             try
@@ -467,7 +462,22 @@ public partial class Par2RepairService
             var output = outputBuilder.ToString();
             bool success = process.ExitCode == 0;
 
-            backups.FinishRecovery(success, purgeBackups);
+            if (success && backups.WorkspacePath != null)
+            {
+                await backups.VerifyWorkspaceOutputsAsync(repairInput.TargetFiles, ct);
+                using var publication = await PackagePathOperationGate.Instance.EnterAsync(ct);
+                if (package != null && await ConfirmRepairTargetsAsync(package, workingDir, repairInput.Targets, ct) == null)
+                {
+                    backups.FinishRecovery(success: false, purgeBackups: false);
+                    return UnconfirmedRepairTargets();
+                }
+                ct.ThrowIfCancellationRequested();
+                backups.PublishWorkspace(purgeBackups);
+            }
+            else
+            {
+                backups.FinishRecovery(success, purgeBackups);
+            }
 
             int repairedCount = 0;
             var matchDamaged = _damagedFilesRegex.Match(output);
@@ -515,6 +525,24 @@ public partial class Par2RepairService
             backups?.Dispose();
             repairInput?.Dispose();
             repairLease?.Dispose();
+        }
+
+        void StartNative()
+        {
+            ct.ThrowIfCancellationRequested();
+            string? workspace = backups!.WorkspacePath;
+            if (workspace != null) psi.WorkingDirectory = workspace;
+            if (workspace != null || repairInput!.RecoveryVolumes.Length > 0)
+                psi.ArgumentList.Add("-B" + (workspace ?? workingDir));
+            psi.ArgumentList.Add(repairInput!.IndexPath);
+            foreach (string volume in repairInput.RecoveryVolumes)
+                psi.ArgumentList.Add(volume);
+
+            native = NativeRepairProcess.Create(psi);
+            backups.SetRecoveryWriter(native.Process);
+            ct.ThrowIfCancellationRequested();
+            native.Resume();
+            repairStopped = false;
         }
 
         async Task ReadOutputAsync(Stream stream, bool reportProgress)

@@ -9,13 +9,14 @@ namespace Reepax.Services.Verification;
 
 public partial class Par2RepairService
 {
-    private sealed class PackageRepairInput(FileStream parity, string path, string[] targets) : IDisposable
+    private sealed class PackageRepairInput(FileStream parity, string path, Dictionary<string, (ulong Length, byte[] Md5)> targets) : IDisposable
     {
         private static readonly Regex VolumeSuffix = new(@"\.(?:v(?:o(?:l[0-9]*(?:[+-][0-9]*)?)?)?)?$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         internal string IndexPath { get; } = path;
-        internal string[] Targets { get; } = targets;
+        internal string[] Targets { get; } = targets.Keys.ToArray();
+        internal IReadOnlyDictionary<string, (ulong Length, byte[] Md5)> TargetFiles { get; } = targets;
         internal string[] RecoveryVolumes { get; private init; } = [];
         private DirectoryInfo? ScratchDirectory { get; init; }
 
@@ -30,7 +31,7 @@ public partial class Par2RepairService
                 metadata.Read(streams[0], ct);
                 if (metadata.IsComplete)
                 {
-                    var input = new PackageRepairInput(streams[0], primary, metadata.GetTargets(directory));
+                    var input = new PackageRepairInput(streams[0], primary, metadata.GetTargetFiles(directory));
                     streams.Clear();
                     return input;
                 }
@@ -47,7 +48,7 @@ public partial class Par2RepairService
                 }
 
                 if (!metadata.IsComplete) return null;
-                string[] targets = metadata.GetTargets(directory);
+                var targets = metadata.GetTargetFiles(directory);
 
                 // The native reader loads these validated packets first, then uses the volumes for recovery data.
                 scratch = Directory.CreateTempSubdirectory("ReepaxPar2_");
