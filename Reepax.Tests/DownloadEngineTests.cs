@@ -1477,10 +1477,12 @@ public class DownloadEngineTests
                 testData[i] = (byte)(i % 251);
 
             item.ExpectedChecksum = WholeFileChecksum(testData);
+            int rangeRequests = 0, fullRequests = 0;
             var handler = new TestMockHttpMessageHandler((req, ct) =>
             {
                 if (req.Headers.Range != null)
                 {
+                    Interlocked.Increment(ref rangeRequests);
                     long from = req.Headers.Range.Ranges.First().From ?? 0;
                     long to = req.Headers.Range.Ranges.First().To ?? (testData.Length - 1);
 
@@ -1505,6 +1507,7 @@ public class DownloadEngineTests
                     return Task.FromResult(res);
                 }
 
+                Interlocked.Increment(ref fullRequests);
                 var full = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(testData) };
                 full.Content.Headers.ContentLength = testData.Length;
                 return Task.FromResult(full);
@@ -1523,6 +1526,8 @@ public class DownloadEngineTests
             Assert.Same(tcs.Task, completedTask);
             Assert.True(tcs.Task.Result);
 
+            Assert.True(rangeRequests >= 2); // The probe and at least one oversized range preceded the fallback.
+            Assert.Equal(1, fullRequests);
             Assert.Equal(DownloadStatus.Completed, item.Status);
             Assert.True(File.Exists(destinationFile));
             Assert.Equal(testData.Length, new FileInfo(destinationFile).Length);

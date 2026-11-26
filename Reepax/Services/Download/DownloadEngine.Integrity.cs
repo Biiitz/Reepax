@@ -194,7 +194,8 @@ public partial class DownloadEngine
             return new SegmentState
             {
                 Start = segment.Start, End = state.IsUnknownLength ? Math.Max(1, committed) - 1 : segment.End,
-                Done = committed, LocalHashes = local?.Hashes ?? segment.LocalHashes
+                Done = committed, LocalHashes = local?.Hashes ?? segment.LocalHashes,
+                ResponseCompleted = segment.ResponseCompleted && committed == segment.End - segment.Start + 1
             };
         }).ToList();
         return new SegmentFileState

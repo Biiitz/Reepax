@@ -681,6 +681,7 @@ public partial class DownloadEngine
         public long Start { get; set; }
         public long End { get; set; }
         public long Done { get; set; }
+        public bool ResponseCompleted { get; set; }
         public List<string>? LocalHashes { get; set; }
         [System.Text.Json.Serialization.JsonIgnore]
         public LocalDownloadIntegrity? Integrity { get; set; }
@@ -859,7 +860,12 @@ public partial class DownloadEngine
         {
             if (segments.Any(segment => segment.Done > 0))
             {
-                foreach (var segment in segments) segment.Done = 0;
+                foreach (var segment in segments)
+                {
+                    segment.Done = 0;
+                    segment.ResponseCompleted = false;
+                    segment.LocalHashes = null;
+                }
                 // Publish the reset before preallocating the file.
                 SaveSegmentState(segMetaPath, state, required: true);
             }
@@ -868,8 +874,13 @@ public partial class DownloadEngine
 
         foreach (var segment in segments)
         {
+            long segmentLength = segment.End - segment.Start + 1;
+            // Legacy checkpoints could mark a range complete before checking its HTTP ending.
+            if (segment.Done == segmentLength && !segment.ResponseCompleted && string.IsNullOrWhiteSpace(item.ExpectedChecksum))
+                segment.Done = 0;
             segment.Integrity = LocalDownloadIntegrity.ReadVerifiedPrefix(fs.SafeFileHandle, segment.Start, segment.Done, segment.LocalHashes, cancellationToken);
             segment.Done = segment.Integrity.Snapshot().Length;
+            segment.ResponseCompleted &= segment.Done == segmentLength;
             segment.InitializeReceivedBytes();
         }
         long initialDownloaded = segments.Sum(segment => segment.ReceivedBytes);
@@ -1058,6 +1069,8 @@ public partial class DownloadEngine
                         throw new RangeNotSupportedException("Encoded responses cannot be assembled as byte ranges.");
                     if (!MatchesRepresentation(response, state, item)) throw new RepresentationChangedException();
                     long responseEnd = ValidateContentRange(response, rangeStart, state.TotalBytes).To!.Value;
+                    if (responseEnd > segment.End)
+                        throw new RangeNotSupportedException("Server returned a range beyond the requested end.");
                     ApplyResponseDigest(response, item);
                     using var stream = new NetworkReadTimeoutStream(await response.Content.ReadAsStreamAsync(cancellationToken), NetworkReadTimeout, cancellationToken);
                     long offset = rangeStart;
@@ -1065,21 +1078,21 @@ public partial class DownloadEngine
                     long lastFlushTimestamp = Stopwatch.GetTimestamp();
                     long flushIntervalTicks = Stopwatch.Frequency / 4; // ~250ms watchdog for smooth UI progress updates
 
-                    while (segment.Done + bufferedBytes < segmentLength && offset + bufferedBytes <= responseEnd)
+                    async Task FlushBufferedAsync()
                     {
-                        if (bufferedBytes >= bufferSize)
-                        {
-                            await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
-                            segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
-                            offset += bufferedBytes;
-                            segment.Done += bufferedBytes;
-                            bufferedBytes = 0;
-                            lastFlushTimestamp = Stopwatch.GetTimestamp();
-                        }
+                        await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
+                        segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
+                        offset += bufferedBytes;
+                        segment.Done += bufferedBytes;
+                        bufferedBytes = 0;
+                        lastFlushTimestamp = Stopwatch.GetTimestamp();
+                    }
 
+                    while (offset + bufferedBytes <= responseEnd)
+                    {
                         int spaceInBuffer = bufferSize - bufferedBytes;
-                        long remainingInSegment = Math.Min(segmentLength - (segment.Done + bufferedBytes), responseEnd - offset - bufferedBytes + 1);
-                        int toRead = (int)Math.Min(spaceInBuffer, remainingInSegment);
+                        long remainingInResponse = responseEnd - offset - bufferedBytes + 1;
+                        int toRead = (int)Math.Min(spaceInBuffer, remainingInResponse);
                         bool applyTrickle = item.IsTrickling;
                         toRead = _throttler.GetOptimalReadChunkSize(toRead, applyTrickle ? 500 * 1024 : 0, activeSegmentsCount);
 
@@ -1120,34 +1133,24 @@ public partial class DownloadEngine
                         bufferedBytes += bytesRead;
                         segment.AddReceivedBytes(bytesRead);
 
-                        bool isSegmentDone = segment.Done + bufferedBytes >= segmentLength;
                         bool isWatchdogElapsed = Stopwatch.GetTimestamp() - lastFlushTimestamp >= flushIntervalTicks;
-
-                        if (bufferedBytes >= bufferSize || isSegmentDone || isWatchdogElapsed)
-                        {
-                            await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
-                            segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
-                            offset += bufferedBytes;
-                            segment.Done += bufferedBytes;
-                            bufferedBytes = 0;
-                            lastFlushTimestamp = Stopwatch.GetTimestamp();
-                        }
+                        if (bytesRead < remainingInResponse && (bufferedBytes >= bufferSize || isWatchdogElapsed))
+                            await FlushBufferedAsync();
                     }
 
-                    if (bufferedBytes > 0)
-                    {
-                        await RandomAccess.WriteAsync(fileHandle, rentedBuffer.AsMemory(0, bufferedBytes), offset, cancellationToken);
-                        segment.Integrity!.Append(rentedBuffer.AsSpan(0, bufferedBytes));
-                        offset += bufferedBytes;
-                        segment.Done += bufferedBytes;
-                        bufferedBytes = 0;
-                    }
+                    // Keep the last batch out of the file and checkpoints until the HTTP stream confirms EOF.
+                    if (offset + bufferedBytes > responseEnd &&
+                        await stream.ReadAsync(rentedBuffer.AsMemory(0, 1), cancellationToken) != 0)
+                        throw new InvalidDataException("Server sent more bytes than the declared range.");
+
+                    if (bufferedBytes > 0) await FlushBufferedAsync();
 
                     if (segment.Done < segmentLength)
                     {
                         throw new IOException("Segment stream was prematurely closed by the server.");
                     }
 
+                    segment.ResponseCompleted = true;
                     return;
                 }
                 catch (OperationCanceledException)
