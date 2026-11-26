@@ -202,7 +202,7 @@ public partial class DownloadEngine
             TotalBytes = state.IsUnknownLength ? Math.Max(1, segments[0].Done) : state.TotalBytes,
             IsUnknownLength = state.IsUnknownLength,
             IsSequential = state.IsSequential,
-            IsSingleResponse = state.IsSingleResponse,
+            ResponseCompleted = state.ResponseCompleted,
             EntityTag = state.EntityTag,
             SourceKey = state.SourceKey,
             ResponseSourceKey = state.ResponseSourceKey,

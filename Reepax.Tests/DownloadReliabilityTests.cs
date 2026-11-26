@@ -7,8 +7,10 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Reepax.Models;
 using Reepax.Services.Download;
+using Reepax.Services.Extractor;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 using Reepax.Services.Verification;
@@ -508,6 +510,147 @@ public class DownloadReliabilityTests : IDisposable
             listener.Stop();
             try { await server.WaitAsync(TimeSpan.FromSeconds(2)); }
             catch (Exception) when (cancellation.IsCancellationRequested) { }
+        }
+    }
+
+    [Theory]
+    [InlineData("complete", 3, true)]
+    [InlineData("complete", 5, true)]
+    [InlineData("zero-length", 0, true)]
+    [InlineData("truncated-chunks", 4, false)]
+    [InlineData("legacy-checkpoint", 4, false)]
+    [InlineData("truncated-content-length", 4, false)]
+    [InlineData("partial", 4, false)]
+    [InlineData("short-range", 4, false)]
+    [InlineData("full-range", 4, true)]
+    [InlineData("checksum-matches", 5, true)]
+    [InlineData("checksum-mismatch", 5, false)]
+    [InlineData("occupied", 5, false)]
+    public async Task DirectGet_UsesCurrentResponseForCompleteness(string scenario, int length, bool completed)
+    {
+        const int headLength = 4;
+        byte[] data = Payload(61, length);
+        byte[] retryData = Payload(72, 5);
+        byte[] occupant = [12, 13, 14];
+        var item = CreateItem();
+        string destination = item.SaveFilePath!;
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        var engine = new DownloadEngine(client) { MaxConnectionsPerDownload = 1 };
+        item.OriginalUrl = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/payload.bin";
+        item.DirectDownloadUrl = null;
+        if (scenario == "checksum-matches") item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(data));
+        if (scenario == "checksum-mismatch") item.ExpectedChecksum = Convert.ToHexString(SHA256.HashData(Payload(35, length)));
+        int completions = 0;
+        Exception? failure = null;
+        engine.DownloadCompleted += _ => completions++;
+        engine.DownloadFailed += (_, error) => failure = error;
+
+        var server = ServeAsync();
+        try
+        {
+            Assert.True(await new LinkMetadataResolverService(client).ResolveItemMetadataAsync(item, cancellation.Token));
+            Assert.Equal(headLength, item.TotalBytes);
+            Assert.Equal(item.OriginalUrl, item.DirectDownloadUrl);
+
+            await engine.ResumeDownloadAsync(item).WaitAsync(cancellation.Token);
+            Assert.Equal(completed ? DownloadStatus.Completed : DownloadStatus.Failed, item.Status);
+            Assert.Equal(completed ? 1 : 0, completions);
+            if (completed)
+            {
+                Assert.Equal(data, File.ReadAllBytes(destination));
+                Assert.Equal(length, item.TotalBytes);
+                Assert.Equal(length, item.DownloadedBytes);
+                Assert.Equal(100, item.ProgressPercentage);
+                Assert.False(File.Exists(destination + ".part"));
+                Assert.False(File.Exists(destination + ".part.segments"));
+            }
+            else if (scenario == "occupied")
+            {
+                Assert.IsType<DownloadDestinationExistsException>(failure);
+                Assert.Equal(occupant, File.ReadAllBytes(destination));
+                Assert.Equal(data, File.ReadAllBytes(destination + ".part"));
+                File.Move(destination, Path.Combine(_directory.FullName, "occupant.bin"));
+                await engine.ResumeDownloadAsync(item).WaitAsync(cancellation.Token);
+                Assert.Equal(DownloadStatus.Completed, item.Status);
+                Assert.Equal(1, completions);
+                Assert.Equal(data, File.ReadAllBytes(destination));
+                Assert.Equal(occupant, File.ReadAllBytes(Path.Combine(_directory.FullName, "occupant.bin")));
+            }
+            else
+            {
+                Assert.False(File.Exists(destination));
+                if (scenario == "checksum-mismatch") Assert.IsType<DownloadIntegrityException>(failure);
+            }
+
+            if (scenario is "truncated-chunks" or "legacy-checkpoint")
+            {
+                string part = destination + ".part";
+                Assert.Equal(data, File.ReadAllBytes(part));
+                if (scenario == "legacy-checkpoint")
+                {
+                    // Older versions saved the HEAD length as a known total on this incomplete transfer.
+                    string checkpointPath = part + ".segments";
+                    var checkpoint = JsonNode.Parse(File.ReadAllText(checkpointPath))!.AsObject();
+                    checkpoint.Remove("ResponseCompleted");
+                    checkpoint["IsUnknownLength"] = false;
+                    checkpoint["IsSingleResponse"] = true;
+                    File.WriteAllText(checkpointPath, checkpoint.ToJsonString());
+                }
+                await engine.ResumeDownloadAsync(item).WaitAsync(TimeSpan.FromSeconds(3));
+                Assert.Equal(DownloadStatus.Completed, item.Status);
+                Assert.Equal(1, completions);
+                Assert.Equal(retryData, File.ReadAllBytes(destination));
+                Assert.False(File.Exists(part + ".segments"));
+            }
+            await server.WaitAsync(cancellation.Token);
+        }
+        finally
+        {
+            await engine.PauseAllAsync();
+            cancellation.Cancel();
+            listener.Stop();
+            try { await server; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+
+        async Task ServeAsync()
+        {
+            await ReplyAsync("HEAD", "200 OK", $"Content-Length: {headLength}\r\n", []);
+            string status = scenario is "partial" or "short-range" or "full-range" ? "206 Partial Content" : "200 OK";
+            string framing = scenario switch
+            {
+                "zero-length" => "Content-Length: 0\r\n",
+                "truncated-content-length" => "Content-Length: 5\r\n",
+                "partial" => "Content-Range: bytes 0-3/*\r\nTransfer-Encoding: chunked\r\n",
+                "short-range" => "Content-Range: bytes 0-2/4\r\nTransfer-Encoding: chunked\r\n",
+                "full-range" => "Content-Range: bytes 0-3/4\r\nTransfer-Encoding: chunked\r\n",
+                _ => "Transfer-Encoding: chunked\r\n"
+            };
+            bool truncatedChunks = scenario is "truncated-chunks" or "legacy-checkpoint";
+            await ReplyAsync("GET", status, framing, data, terminateChunks: !truncatedChunks);
+            if (truncatedChunks)
+                await ReplyAsync("GET", "200 OK", "Transfer-Encoding: chunked\r\n", retryData);
+        }
+
+        async Task ReplyAsync(string method, string status, string framing, byte[] body, bool terminateChunks = true)
+        {
+            using var connection = await listener.AcceptTcpClientAsync(cancellation.Token);
+            using var stream = connection.GetStream();
+            using var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, leaveOpen: true);
+            Assert.Equal($"{method} /payload.bin HTTP/1.1", await reader.ReadLineAsync(cancellation.Token));
+            while (await reader.ReadLineAsync(cancellation.Token) is { Length: > 0 } line)
+                Assert.False(line.StartsWith("Range:", StringComparison.OrdinalIgnoreCase));
+            if (method == "GET" && scenario == "occupied") File.WriteAllBytes(destination, occupant);
+            string headers = $"HTTP/1.1 {status}\r\nContent-Type: application/octet-stream\r\n{framing}Connection: close\r\n\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(headers), cancellation.Token);
+            if (body.Length == 0) return;
+            bool chunked = framing.Contains("Transfer-Encoding:", StringComparison.Ordinal);
+            if (chunked) await stream.WriteAsync(Encoding.ASCII.GetBytes($"{body.Length:X}\r\n"), cancellation.Token);
+            await stream.WriteAsync(body, cancellation.Token);
+            if (chunked) await stream.WriteAsync(terminateChunks ? "\r\n0\r\n\r\n"u8.ToArray() : "\r\n"u8.ToArray(), cancellation.Token);
         }
     }
 

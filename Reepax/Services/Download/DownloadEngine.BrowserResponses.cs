@@ -83,8 +83,6 @@ public partial class DownloadEngine
                     checkpoint.EntityTag = GetStrongEntityTag(response);
                     checkpoint.ResponseSourceKey = checkpoint.EntityTag == null ? null : GetResponseSourceKey(response, key);
                 }
-                // Ignore metadata size hints when the original response has no length header.
-                item.TotalBytes = response.Content.Headers.ContentLength ?? 0;
                 await ProcessResponseStreamAsync(item, response, part, destination, token,
                     existing, checkpoint: checkpoint, sourceKey: key, requireNewPartial: fresh, browserPause: pause);
             }
