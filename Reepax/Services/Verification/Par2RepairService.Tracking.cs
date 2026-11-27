@@ -43,18 +43,20 @@ public partial class Par2RepairService
 
         async Task<bool> ProcessAsync(Action<string> trackDirectory)
         {
-            string? primaryPar2;
+            PackagePar2Selection? selection;
             using (await PackagePathOperationGate.Instance.EnterAsync(linked.Token))
             {
                 if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
                     return false;
-                if (!HasPar2Files(package, out primaryPar2) || string.IsNullOrEmpty(primaryPar2))
+                selection = SelectPackagePar2(package, linked.Token);
+                if (selection == null)
                     return true;
-                var directory = Path.GetDirectoryName(primaryPar2);
+                var directory = Path.GetDirectoryName(selection.Path);
                 if (!string.IsNullOrWhiteSpace(directory))
                     trackDirectory(directory);
             }
-            return await ProcessPackagePar2CoreAsync(package, primaryPar2, statusCallback, progressCallback, linked.Token);
+            using (selection)
+                return await ProcessPackagePar2CoreAsync(package, selection.Path, statusCallback, progressCallback, linked.Token);
         }
     }
 

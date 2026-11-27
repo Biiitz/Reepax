@@ -177,52 +177,13 @@ public partial class Par2RepairService
     }
 
     /// <summary>
-    /// Checks whether a package contains PAR2 files either in its items or in its target save directory.
+    /// Checks for a listed PAR2 file or a loose index that describes this package's archives.
     /// </summary>
     public bool HasPar2Files(DownloadPackage package, out string? primaryPar2Path)
     {
-        primaryPar2Path = null;
-        if (package == null)
-            return false;
-
-        // 1. Check in save directory
-        var saveDir = package.SaveDirectory;
-        if (!string.IsNullOrWhiteSpace(saveDir) && Directory.Exists(saveDir))
-        {
-            var found = ViewModels.MainViewModel.IsDedicatedPackageDirectory(package, saveDir) ? FindPrimaryPar2File(saveDir) : null;
-            if (!string.IsNullOrEmpty(found))
-            {
-                primaryPar2Path = found;
-                return true;
-            }
-        }
-
-        // 2. Check in package items (physical files on disk)
-        var par2PhysicalItems = package.Items
-            .Where(i => i.IsEnabled && !string.IsNullOrWhiteSpace(i.SaveFilePath) && IsPar2File(i.SaveFilePath) && File.Exists(i.SaveFilePath))
-            .Select(i => i.SaveFilePath!)
-            .ToList();
-
-        if (par2PhysicalItems.Count > 0)
-        {
-            var mainIndex = par2PhysicalItems.FirstOrDefault(f => !_volPar2Pattern.IsMatch(f)) ?? par2PhysicalItems[0];
-            primaryPar2Path = mainIndex;
-            return true;
-        }
-
-        // 3. Check in package items by declared name or path (even before files are downloaded to disk)
-        var par2Items = package.Items
-            .Where(i => i.IsEnabled && (IsPar2File(i.FileName) || IsPar2File(i.SaveFilePath)))
-            .ToList();
-
-        if (par2Items.Count > 0)
-        {
-            var mainItem = par2Items.FirstOrDefault(i => !string.IsNullOrEmpty(i.FileName) && !_volPar2Pattern.IsMatch(i.FileName)) ?? par2Items[0];
-            primaryPar2Path = mainItem.SaveFilePath ?? mainItem.FileName;
-            return true;
-        }
-
-        return false;
+        using var selection = package == null ? null : SelectPackagePar2(package, CancellationToken.None);
+        primaryPar2Path = selection?.Path;
+        return selection != null;
     }
 
     /// <summary>

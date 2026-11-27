@@ -184,6 +184,96 @@ public sealed class PackagePipelineTests
     }
 
     [Theory]
+    [InlineData("invalid")]
+    [InlineData("unrelated")]
+    [InlineData("mixed-targets")]
+    public async Task LocalDownload_UnrelatedPar2DoesNotBlockAnIntactArchive(string indexKind)
+    {
+        byte[] payload = [2, 3, 5, 7];
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        using (var entry = archive.CreateEntry("result.bin").Open())
+            entry.Write(payload);
+        byte[] archiveBytes = buffer.ToArray();
+        await using var fixture = await PackagePipelineFixture.CreateForFilesAsync(
+            new Dictionary<string, byte[]> { ["example.zip"] = archiveBytes });
+        var item = Assert.Single(fixture.Package.Items);
+        string directory = fixture.Package.SaveDirectory;
+        fixture.Package.Name = Path.GetFileName(directory);
+        Assert.True(MainViewModel.IsDedicatedPackageDirectory(fixture.Package, directory));
+        string foreign = Path.Combine(directory, "unrelated.par2");
+        string unrelatedFile = Path.Combine(directory, "other.bin");
+        byte[] other = Enumerable.Range(0, 80).Select(index => (byte)index).ToArray();
+        File.WriteAllBytes(unrelatedFile, other);
+        if (indexKind == "mixed-targets")
+        {
+            File.WriteAllBytes(item.SaveFilePath!, archiveBytes);
+            File.Move(await Par2RepairServiceTests.CreateParityAsync(directory, item.SaveFilePath!, unrelatedFile), foreign);
+            File.Delete(item.SaveFilePath!);
+        }
+        else if (indexKind == "unrelated")
+            File.Move(await Par2RepairServiceTests.CreateParityAsync(directory, unrelatedFile), foreign);
+        else
+            File.WriteAllBytes(foreign, "unrelated text"u8.ToArray());
+        var parity = Directory.GetFiles(directory, "*.par2").ToDictionary(path => path, File.ReadAllBytes);
+
+        var service = Par2RepairService.Instance;
+        var previous = service.ProcessStarted;
+        int nativeStarts = 0;
+        service.ProcessStarted = (_, _) => Interlocked.Increment(ref nativeStarts);
+        try
+        {
+            await fixture.DownloadFileAsync(item);
+            Assert.True(await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(15)));
+        }
+        finally
+        {
+            service.ProcessStarted = previous;
+        }
+        Assert.Equal(0, nativeStarts);
+        Assert.True(fixture.Package.IsFullyCompleted);
+        Assert.DoesNotContain(fixture.Package.NextTaskSteps, step => step.Key == "Par2");
+        Assert.Equal(payload, File.ReadAllBytes(Path.Combine(directory, "result.bin")));
+        Assert.Equal(archiveBytes, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.All(parity, file => Assert.Equal(file.Value, File.ReadAllBytes(file.Key)));
+        Assert.Equal(other, File.ReadAllBytes(unrelatedFile));
+        Assert.Equal(1, fixture.NotificationCount);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public async Task LocalDownload_AssociatedPar2ControlsExtractionBesideAnUnrelatedIndex(bool listed, bool repairable)
+    {
+        await using var fixture = await PackagePipelineFixture.CreateAsync(repairable ? "repairable" : "unrepairable",
+            createPackage: directory => new DownloadPackage
+        {
+            Name = Path.GetFileName(directory), AutoPar2Repair = true, AutoExtractArchives = true, IsCustomName = true
+        });
+        Assert.True(MainViewModel.IsDedicatedPackageDirectory(fixture.Package, fixture.Package.SaveDirectory));
+        string foreign = Path.Combine(fixture.Package.SaveDirectory, "000-unrelated.par2");
+        byte[] unrelated = "unrelated index"u8.ToArray();
+        File.WriteAllBytes(foreign, unrelated);
+        await fixture.DownloadRepairFilesAsync();
+        if (!listed)
+            foreach (var item in fixture.Package.Items.Where(item => item != fixture.Archive).ToArray())
+                fixture.Package.Items.Remove(item);
+
+        await fixture.DownloadArchiveAsync();
+
+        Assert.Equal(repairable, await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Equal(repairable ? fixture.OriginalArchive : fixture.ServedArchive,
+            File.ReadAllBytes(fixture.Archive.SaveFilePath!));
+        Assert.Equal(repairable ? fixture.Payload : fixture.PreviousOutput, File.ReadAllBytes(fixture.OutputPath));
+        Assert.Equal(unrelated, File.ReadAllBytes(foreign));
+        Assert.Equal(repairable ? NextTaskStepState.Done : NextTaskStepState.Failed,
+            Assert.Single(fixture.Package.NextTaskSteps, step => step.Key == "Par2").State);
+        Assert.Equal(repairable, fixture.Package.IsFullyCompleted);
+    }
+
+    [Theory]
     [InlineData("existing", "intact")]
     [InlineData("existing", "repairable")]
     [InlineData("imported", "intact")]

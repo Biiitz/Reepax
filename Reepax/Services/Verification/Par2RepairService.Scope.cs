@@ -26,7 +26,7 @@ public partial class Par2RepairService
         var items = package.ItemsSnapshot;
         if (items.Any(item => item.IsUnavailableForProcessing)) return null;
 
-        var packages = QueueManager.Instance.Packages.ToArray();
+        var packages = QueueManager.IsInitialized ? QueueManager.Instance.Packages.ToArray() : [];
         var ownItems = new List<(string Path, DownloadItem Item)>();
         var protectedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in items)
