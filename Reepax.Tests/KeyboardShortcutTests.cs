@@ -282,6 +282,118 @@ public class KeyboardShortcutTests
     }
 
     [Fact]
+    public void MainViewModel_ResetOneShortcut_TakesBackItsDefaultAndPersistsDisplacedBindings()
+    {
+        var root = Directory.CreateTempSubdirectory("ShortcutReset_");
+        var settings = SettingsService.Instance.Settings;
+        var previousCustomShortcuts = settings.CustomShortcuts;
+        var previousBindings = KeyboardShortcutManager.Instance.ExportCustomShortcuts();
+        try
+        {
+            var vm = new MainViewModel();
+            vm.ResetAllShortcutsCommand.Execute(null);
+            var start = vm.Shortcuts.Single(shortcut => shortcut.Id == "StartAll");
+            var import = vm.Shortcuts.Single(shortcut => shortcut.Id == "ImportPackage");
+            var expand = vm.Shortcuts.Single(shortcut => shortcut.Id == "ToggleExpandCollapse");
+            vm.StartRecordingShortcut(import);
+            vm.FinishRecordingShortcut(Key.R, ModifierKeys.Control);
+            Assert.Same(import, vm.ShortcutManager.FindMatch(Key.R, ModifierKeys.Control));
+            Assert.Equal(Key.None, start.Key);
+
+            vm.StartRecordingShortcut(expand);
+            vm.FinishRecordingShortcut(Key.None, ModifierKeys.None);
+            vm.StartRecordingShortcut(start);
+            vm.ResetShortcutCommand.Execute(start);
+
+            Assert.Same(start, vm.ShortcutManager.FindMatch(Key.R, ModifierKeys.Control));
+            Assert.Single(vm.Shortcuts.Where(shortcut => shortcut.Key == Key.R && shortcut.Modifiers == ModifierKeys.Control));
+            Assert.Equal(Key.None, import.Key);
+            Assert.Equal(ModifierKeys.None, import.Modifiers);
+            Assert.False(start.IsRecording);
+            Assert.Null(vm.RecordingShortcut);
+            Assert.Null(vm.ShortcutManager.FindMatch(Key.None, ModifierKeys.None));
+            Assert.Equal("RestartApp", vm.ShortcutManager.FindMatch(Key.R, ModifierKeys.Control | ModifierKeys.Shift)?.Id);
+            Assert.Equal("None", settings.CustomShortcuts[import.Id]);
+            Assert.Equal("None", settings.CustomShortcuts[expand.Id]);
+
+            var storage = new SettingsService(Path.Combine(root.FullName, "settings.json"));
+            storage.Settings.CustomShortcuts = new(settings.CustomShortcuts);
+            storage.SaveSettings();
+            var loaded = new KeyboardShortcutManager();
+            loaded.LoadCustomShortcuts(new SettingsService(Path.Combine(root.FullName, "settings.json")).Settings.CustomShortcuts);
+            Assert.Equal("StartAll", loaded.FindMatch(Key.R, ModifierKeys.Control)?.Id);
+            Assert.Null(loaded.FindMatch(Key.I, ModifierKeys.Control));
+            Assert.Null(loaded.FindMatch(Key.L, ModifierKeys.None));
+            Assert.Equal(storage.Settings.CustomShortcuts.OrderBy(pair => pair.Key), loaded.ExportCustomShortcuts().OrderBy(pair => pair.Key));
+
+            vm.StartRecordingShortcut(import);
+            vm.ResetAllShortcutsCommand.Execute(null);
+            Assert.Null(vm.RecordingShortcut);
+            Assert.False(import.IsRecording);
+            Assert.Same(import, vm.ShortcutManager.FindMatch(Key.I, ModifierKeys.Control));
+            Assert.Empty(settings.CustomShortcuts);
+        }
+        finally
+        {
+            KeyboardShortcutManager.Instance.LoadCustomShortcuts(previousBindings);
+            settings.CustomShortcuts = previousCustomShortcuts;
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MainViewModel_LoadLegacyConflicts_KeepsThePreviouslyDispatchedBinding()
+    {
+        var root = Directory.CreateTempSubdirectory("ShortcutMigration_");
+        var settings = SettingsService.Instance.Settings;
+        var previousCustomShortcuts = settings.CustomShortcuts;
+        var previousBindings = KeyboardShortcutManager.Instance.ExportCustomShortcuts();
+        try
+        {
+            string path = Path.Combine(root.FullName, "settings.json");
+            var storage = new SettingsService(path);
+            storage.Settings.CustomShortcuts = new()
+            {
+                ["ImportPackage"] = "Control+R",
+                ["PauseAll"] = "Alt+F9",
+                ["AddLinks"] = "Alt+F9",
+                ["RenameSelected"] = "Alt+F6",
+                ["ToggleExpandCollapse"] = "None",
+                ["FutureAction"] = "Alt+F10"
+            };
+            storage.SaveSettings();
+            var old = new SettingsService(path);
+            settings.CustomShortcuts = new(old.Settings.CustomShortcuts);
+
+            var vm = new MainViewModel();
+
+            Assert.Equal("StartAll", vm.ShortcutManager.FindMatch(Key.R, ModifierKeys.Control)?.Id);
+            Assert.Equal("AddLinks", vm.ShortcutManager.FindMatch(Key.F9, ModifierKeys.Alt)?.Id);
+            Assert.Equal("RenameSelected", vm.ShortcutManager.FindMatch(Key.F6, ModifierKeys.Alt)?.Id);
+            Assert.Equal("RestartApp", vm.ShortcutManager.FindMatch(Key.R, ModifierKeys.Control | ModifierKeys.Shift)?.Id);
+            Assert.All(vm.Shortcuts.Where(shortcut => shortcut.Id is "ImportPackage" or "PauseAll" or "ToggleExpandCollapse"),
+                shortcut => Assert.Equal(Key.None, shortcut.Key));
+            var active = vm.Shortcuts.Where(shortcut => shortcut.Key != Key.None).ToArray();
+            Assert.Equal(active.Length, active.Select(shortcut => (shortcut.Key, shortcut.Modifiers)).Distinct().Count());
+            Assert.Equal("None", settings.CustomShortcuts["ImportPackage"]);
+            Assert.Equal("None", settings.CustomShortcuts["PauseAll"]);
+            Assert.Equal("Alt+F10", settings.CustomShortcuts["FutureAction"]);
+
+            storage.Settings.CustomShortcuts = new(settings.CustomShortcuts);
+            storage.SaveSettings();
+            var loaded = new KeyboardShortcutManager();
+            loaded.LoadCustomShortcuts(new SettingsService(path).Settings.CustomShortcuts);
+            Assert.Equal(vm.ShortcutManager.ExportCustomShortcuts().OrderBy(pair => pair.Key), loaded.ExportCustomShortcuts().OrderBy(pair => pair.Key));
+        }
+        finally
+        {
+            KeyboardShortcutManager.Instance.LoadCustomShortcuts(previousBindings);
+            settings.CustomShortcuts = previousCustomShortcuts;
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void MainViewModel_SelectAllAndDeselectAll_UpdatesSelection()
     {
         var vm = new MainViewModel();

@@ -115,6 +115,18 @@ internal static partial class WindowDownloadFlowWorker
             Assert.False(second.IsEditing);
             Assert.Equal(2, confirmations);
 
+            var collapse = model.Shortcuts.Single(shortcut => shortcut.Id == "ToggleExpandCollapse");
+            model.StartRecordingShortcut(collapse);
+            Assert.True(Press(list, Key.F2));
+            Assert.Same(collapse, model.ShortcutManager.FindMatch(Key.F2, ModifierKeys.None));
+            model.ResetShortcutCommand.Execute(rename);
+            Assert.Equal(Key.None, collapse.Key);
+            Assert.Equal(Key.None, delete.Key);
+            Assert.True(Press(list, Key.F2));
+            Assert.True(second.IsEditing);
+            second.IsEditing = false;
+            await IdleAsync();
+
             var menu = Assert.IsType<ContextMenu>(window.FindResource("ItemContextMenu"));
             var renameItem = menu.Items.OfType<MenuItem>().Single(item => Equals(item.Header, Loc.Get("Menu_Rename")));
             renameItem.DataContext = second;

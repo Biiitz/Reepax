@@ -1524,36 +1524,25 @@ public partial class MainViewModel
 
     public void FinishRecordingShortcut(Key key, ModifierKeys modifiers)
     {
-        if (RecordingShortcut == null) return;
-
-        var pureModifiers = modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift | ModifierKeys.Windows);
-
-        // Conflict handling: if another shortcut already has this combination, clear it
-        var existing = Shortcuts.FirstOrDefault(s => s != RecordingShortcut && s.Key == key && s.Modifiers == pureModifiers);
-        if (existing != null)
-        {
-            existing.Key = Key.None;
-            existing.Modifiers = ModifierKeys.None;
-        }
-
-        RecordingShortcut.Key = key;
-        RecordingShortcut.Modifiers = pureModifiers;
-        RecordingShortcut.IsRecording = false;
-        RecordingShortcut = null;
-
+        if (RecordingShortcut is not { } shortcut) return;
+        ShortcutManager.AssignGesture(shortcut, key, modifiers);
+        CancelRecordingShortcut();
         SaveCustomShortcuts();
     }
 
     [RelayCommand]
     public void ResetShortcut(KeyboardShortcut? shortcut)
     {
-        shortcut?.ResetToDefault();
+        if (shortcut == null) return;
+        if (ReferenceEquals(RecordingShortcut, shortcut)) CancelRecordingShortcut();
+        ShortcutManager.AssignGesture(shortcut, shortcut.DefaultKey, shortcut.DefaultModifiers);
         SaveCustomShortcuts();
     }
 
     [RelayCommand]
     public void ResetAllShortcuts()
     {
+        CancelRecordingShortcut();
         ShortcutManager.ResetAll();
         SaveCustomShortcuts();
     }

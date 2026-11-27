@@ -10,6 +10,7 @@ namespace Reepax.Services.Shortcuts;
 
 public partial class KeyboardShortcutManager : ObservableObject
 {
+    private const ModifierKeys GestureModifiers = ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift | ModifierKeys.Windows;
     private static readonly Lazy<KeyboardShortcutManager> _instance = new(() => new KeyboardShortcutManager());
     public static KeyboardShortcutManager Instance => _instance.Value;
 
@@ -57,23 +58,47 @@ public partial class KeyboardShortcutManager : ObservableObject
         Shortcuts.Add(sc);
     }
 
-    public void LoadCustomShortcuts(Dictionary<string, string>? customShortcuts)
+    public IReadOnlyList<KeyboardShortcut> LoadCustomShortcuts(Dictionary<string, string>? customShortcuts)
     {
-        if (customShortcuts == null) return;
+        if (customShortcuts == null) return Array.Empty<KeyboardShortcut>();
 
+        var used = new HashSet<(Key Key, ModifierKeys Modifiers)>();
+        var conflicts = new List<KeyboardShortcut>();
+        // Keep the first match, as older versions did when dispatching a duplicate gesture.
         foreach (var sc in Shortcuts)
         {
-            if (customShortcuts.TryGetValue(sc.Id, out var serialized) &&
-                KeyboardShortcut.TryParse(serialized, out var key, out var mods))
+            if (!customShortcuts.TryGetValue(sc.Id, out var serialized) ||
+                !KeyboardShortcut.TryParse(serialized, out var key, out var modifiers))
             {
-                sc.Key = key;
-                sc.Modifiers = mods;
+                key = sc.DefaultKey;
+                modifiers = sc.DefaultModifiers;
             }
-            else
+            if (key != Key.None && !used.Add((key, modifiers)))
             {
-                sc.ResetToDefault();
+                key = Key.None;
+                modifiers = ModifierKeys.None;
+                conflicts.Add(sc);
+            }
+            sc.Key = key;
+            sc.Modifiers = modifiers;
+            sc.IsRecording = false;
+        }
+        return conflicts;
+    }
+
+    internal void AssignGesture(KeyboardShortcut shortcut, Key key, ModifierKeys modifiers)
+    {
+        modifiers = key == Key.None ? ModifierKeys.None : modifiers & GestureModifiers;
+        if (key != Key.None)
+        {
+            foreach (var conflict in Shortcuts.Where(sc => sc != shortcut && sc.Key == key && sc.Modifiers == modifiers))
+            {
+                conflict.Key = Key.None;
+                conflict.Modifiers = ModifierKeys.None;
             }
         }
+        shortcut.Key = key;
+        shortcut.Modifiers = modifiers;
     }
 
     public Dictionary<string, string> ExportCustomShortcuts()
@@ -107,7 +132,8 @@ public partial class KeyboardShortcutManager : ObservableObject
 
     public KeyboardShortcut? FindMatch(Key key, ModifierKeys modifiers)
     {
-        var pureModifiers = modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift | ModifierKeys.Windows);
+        if (key == Key.None) return null;
+        var pureModifiers = modifiers & GestureModifiers;
         return Shortcuts.FirstOrDefault(s => s.Key == key && s.Modifiers == pureModifiers);
     }
 }

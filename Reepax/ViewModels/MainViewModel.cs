@@ -549,7 +549,15 @@ public partial class MainViewModel : ObservableObject
         CurrentDownloadDirectory = settings.DefaultDownloadDirectory;
         StatusSummary = Loc.Get("Status_ReadyDragDrop");
 
-        ShortcutManager.LoadCustomShortcuts(settings.CustomShortcuts);
+        var shortcutConflicts = ShortcutManager.LoadCustomShortcuts(settings.CustomShortcuts);
+        if (shortcutConflicts.Count > 0)
+        {
+            var repairedShortcuts = new Dictionary<string, string>(settings.CustomShortcuts, settings.CustomShortcuts.Comparer);
+            foreach (var shortcut in shortcutConflicts)
+                repairedShortcuts[shortcut.Id] = shortcut.Serialize();
+            settings.CustomShortcuts = repairedShortcuts;
+            _settingsService.RequestSaveSettings();
+        }
 
         LocalizationService.Instance.LanguageChanged += _ =>
         {
