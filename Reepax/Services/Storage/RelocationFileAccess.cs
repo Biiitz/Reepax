@@ -31,21 +31,7 @@ internal static class RelocationFileAccess
         internal void MoveTo(string destination)
         {
             if (!canDelete) throw new IOException("The source file cannot be renamed.");
-            byte[] name = Encoding.Unicode.GetBytes(Path.GetFullPath(destination) + '\0');
-            int nameLengthOffset = 2 * IntPtr.Size;
-            int nameOffset = nameLengthOffset + sizeof(int);
-            int size = nameOffset + name.Length;
-            nint buffer = Marshal.AllocHGlobal(size);
-            try
-            {
-                Marshal.WriteIntPtr(buffer, 0, 0);
-                Marshal.WriteIntPtr(buffer, IntPtr.Size, 0);
-                Marshal.WriteInt32(buffer, nameLengthOffset, name.Length - sizeof(char));
-                Marshal.Copy(name, 0, buffer + nameOffset, name.Length);
-                if (!SetFileInformationByHandle(Stream.SafeFileHandle, FileRenameInfo, buffer, size))
-                    throw Failure("The source file could not be renamed.", Marshal.GetLastWin32Error());
-            }
-            finally { Marshal.FreeHGlobal(buffer); }
+            Rename(Stream.SafeFileHandle, destination);
         }
 
         public void Dispose() => Stream.Dispose();
@@ -53,9 +39,7 @@ internal static class RelocationFileAccess
 
     internal static SourceLease OpenSource(string path)
     {
-        var fullPath = Path.GetFullPath(path);
-        var nativePath = fullPath.StartsWith(@"\\?\", StringComparison.Ordinal) ? fullPath
-            : fullPath.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + fullPath[2..] : @"\\?\" + fullPath;
+        var nativePath = NativePath(path);
         var handle = CreateFileW(nativePath, GenericRead | DeleteAccess, FileShare.Read, 0, OpenExisting, ReadFlags, 0);
         bool canDelete = !handle.IsInvalid;
         if (handle.IsInvalid)
@@ -76,6 +60,45 @@ internal static class RelocationFileAccess
         catch { handle.Dispose(); throw; }
     }
 
+    internal static bool TryCreateHardLink(string source, string target) =>
+        CreateHardLinkW(NativePath(target), NativePath(source), 0);
+
+    internal static void RenameDirectoryCase(string source, string destination)
+    {
+        const uint openDirectory = 0x02000000;
+        using var handle = CreateFileW(NativePath(source), DeleteAccess, FileShare.ReadWrite | FileShare.Delete,
+            0, OpenExisting, openDirectory | OpenReparsePoint, 0);
+        if (handle.IsInvalid)
+            throw Failure("The directory could not be opened for renaming.", Marshal.GetLastWin32Error());
+        Rename(handle, destination);
+    }
+
+    private static void Rename(SafeFileHandle handle, string destination)
+    {
+        byte[] name = Encoding.Unicode.GetBytes(Path.GetFullPath(destination) + '\0');
+        int nameLengthOffset = 2 * IntPtr.Size;
+        int nameOffset = nameLengthOffset + sizeof(int);
+        int size = nameOffset + name.Length;
+        nint buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            Marshal.WriteIntPtr(buffer, 0, 0);
+            Marshal.WriteIntPtr(buffer, IntPtr.Size, 0);
+            Marshal.WriteInt32(buffer, nameLengthOffset, name.Length - sizeof(char));
+            Marshal.Copy(name, 0, buffer + nameOffset, name.Length);
+            if (!SetFileInformationByHandle(handle, FileRenameInfo, buffer, size))
+                throw Failure("The source could not be renamed.", Marshal.GetLastWin32Error());
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    private static string NativePath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        return fullPath.StartsWith(@"\\?\", StringComparison.Ordinal) ? fullPath
+            : fullPath.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + fullPath[2..] : @"\\?\" + fullPath;
+    }
+
     private static IOException Failure(string message, int error) => new(message, new Win32Exception(error));
 
     [StructLayout(LayoutKind.Sequential)]
@@ -84,6 +107,10 @@ internal static class RelocationFileAccess
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     private static extern SafeFileHandle CreateFileW(string path, uint access, FileShare share, nint security,
         uint creation, uint flags, nint template);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateHardLinkW(string link, string source, nint security);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

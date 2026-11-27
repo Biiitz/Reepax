@@ -21,7 +21,7 @@ public sealed class RejectedDownloadFiles
         Checkpoint = published || path == null ? null : CaptureIdentity(path + ".part.segments")
     };
 
-    private static Identity? CaptureIdentity(string? path)
+    internal static Identity? CaptureIdentity(string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
         try
@@ -102,7 +102,7 @@ public sealed class RejectedDownloadFiles
         else Data = replacement;
     }
 
-    private static Identity? ReadIdentity(SafeFileHandle handle)
+    internal static Identity? ReadIdentity(SafeFileHandle handle)
     {
         if (!GetFileInformationByHandle(handle, out var info) ||
             (info.Attributes & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)

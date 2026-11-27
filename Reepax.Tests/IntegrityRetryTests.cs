@@ -473,7 +473,7 @@ public sealed class IntegrityRetryTests : IDisposable
         package.Items.Add(item);
         string destination = Path.Combine(_root, "destination");
         var plan = Assert.Single(PackageDirectoryMoveService.Prepare(new[] { package }, new[] { package }, destination));
-        Assert.True(await new PackageDirectoryMoveService(allowDirectoryRename: false).ExecuteAsync(plan));
+        Assert.True(await new PackageDirectoryMoveService(allowHardLinks: false).ExecuteAsync(plan));
         package.SaveDirectory = plan.Target;
         item.SaveFilePath = plan.ItemPaths[item];
         queue.RetryItem(item);

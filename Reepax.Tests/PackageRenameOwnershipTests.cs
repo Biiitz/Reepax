@@ -38,6 +38,9 @@ public sealed class PackageRenameOwnershipTests : IDisposable
     [InlineData("manual", "clipped")]
     [InlineData("property", "clipped")]
     [InlineData("automatic", "clipped")]
+    [InlineData("manual", "unregistered")]
+    [InlineData("property", "unregistered")]
+    [InlineData("automatic", "unregistered")]
     public void SharedDirectory_RenamePreservesAllFilesAndPackagePaths(string mode, string reference)
     {
         string name = mode == "automatic" ? "Package (2 files)" : "SourceFolder";
@@ -91,7 +94,7 @@ public sealed class PackageRenameOwnershipTests : IDisposable
         string expectedName = mode == "automatic" ? "ReleaseBundle" : "Renamed";
         _model.Packages.Add(first);
         if (reference == "clipped") first.ClippedPackages.Add(other);
-        else _model.Packages.Add(other);
+        else if (reference != "unregistered") _model.Packages.Add(other);
 
         if (mode == "manual") _model.RenamePackageWhenAvailable(first, expectedName);
         else if (mode == "property") first.Name = expectedName;
@@ -132,6 +135,25 @@ public sealed class PackageRenameOwnershipTests : IDisposable
         Assert.Equal(completed.ExpectedChecksum, restored.Items[0].ExpectedChecksum);
         Assert.Equal(completed.CalculatedChecksum, restored.Items[0].CalculatedChecksum);
         foreach (var file in files) Assert.Equal(file.Value, File.ReadAllBytes(file.Key));
+    }
+
+    [Fact]
+    public void ExistingEmptyFolderWithNoOwnedFiles_IsNotMovedDuringRename()
+    {
+        string source = Directory.CreateDirectory(Path.Combine(_root, "Pending")).FullName;
+        var package = new DownloadPackage { Name = "Pending", SaveDirectory = source };
+        string path = Path.Combine(source, "planned.bin");
+        var item = new DownloadItem { FileName = "planned.bin", SaveFilePath = path, Status = DownloadStatus.Paused };
+        package.Items.Add(item);
+        _model.Packages.Add(package);
+
+        _model.RenamePackageWhenAvailable(package, "NewName");
+
+        Assert.Equal("NewName", package.Name);
+        Assert.Equal(source, package.SaveDirectory);
+        Assert.Equal(path, item.SaveFilePath);
+        Assert.True(Directory.Exists(source));
+        Assert.False(Path.Exists(Path.Combine(_root, "NewName")));
     }
 
     [Fact]

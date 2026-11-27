@@ -191,7 +191,7 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
         using (var locked = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read))
             Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package));
         var plan = Assert.Single(PackageDirectoryMoveService.Prepare(new[] { package }, new[] { package }, Path.Combine(_root.FullName, "Moved")));
-        Assert.True(await new PackageDirectoryMoveService(allowDirectoryRename: !copy).ExecuteAsync(plan));
+        Assert.True(await new PackageDirectoryMoveService(allowHardLinks: !copy).ExecuteAsync(plan));
         package.SaveDirectory = plan.Target;
         foreach (var pair in plan.ItemPaths) pair.Key.SaveFilePath = pair.Value;
         package.ExtractionDirectory = plan.ExtractionDirectory;

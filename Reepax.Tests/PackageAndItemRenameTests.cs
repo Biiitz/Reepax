@@ -135,7 +135,7 @@ public class PackageAndItemRenameTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void PackageRename_CaseOnlyFailureKeepsReferencesToTheActualDirectory(bool failRollback)
+    public void PackageRename_CaseOnlyChangesTheDirectoryAtomically(bool fail)
     {
         var (root, package, item) = CreateRenamePackage();
         var source = package.SaveDirectory;
@@ -143,22 +143,21 @@ public class PackageAndItemRenameTests
         package.RenameDirectory = (from, to) =>
         {
             moves++;
-            if (moves == 2 || (failRollback && moves == 3))
+            Assert.Equal(source, from);
+            Assert.Equal(Path.Combine(root, "sourcefolder"), to);
+            if (fail)
                 throw new IOException("Simulated directory move failure.");
-            Directory.Move(from, to);
+            RelocationFileAccess.RenameDirectoryCase(from, to);
         };
         try
         {
-            Assert.False(package.Rename("sourcefolder"));
-
-            Assert.Equal(3, moves);
-            Assert.Equal("SourceFolder", package.Name);
-            Assert.False(package.IsCustomName);
-            if (failRollback)
-                Assert.NotEqual(source, package.SaveDirectory);
-            else
-                Assert.Equal(source, package.SaveDirectory);
+            Assert.Equal(!fail, package.Rename("sourcefolder"));
+            Assert.Equal(1, moves);
+            Assert.Equal(fail ? "SourceFolder" : "sourcefolder", package.Name);
+            Assert.Equal(!fail, package.IsCustomName);
+            Assert.Equal(fail ? source : Path.Combine(root, "sourcefolder"), package.SaveDirectory);
             Assert.True(Directory.Exists(package.SaveDirectory));
+            Assert.Equal(package.SaveDirectory, Assert.Single(Directory.GetDirectories(root)));
             Assert.Equal("source content", File.ReadAllText(item.SaveFilePath!));
             var dto = Assert.Single(DownloadPersistenceService.SnapshotDtos(new[] { package }));
             Assert.Equal(package.SaveDirectory, dto.SaveDirectory);
@@ -194,6 +193,35 @@ public class PackageAndItemRenameTests
             Assert.False(package.IsCustomName);
             Assert.Equal("source content", File.ReadAllText(original!));
             Assert.Equal("target content", File.ReadAllText(Path.Combine(target, "data.bin")));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void PackageRename_ForeignFileCreatedAfterPlanningStaysInTheOriginalDirectory()
+    {
+        var (root, package, item) = CreateRenamePackage();
+        string source = package.SaveDirectory;
+        string original = item.SaveFilePath!;
+        string foreign = Path.Combine(source, "outside.bin");
+        byte[] untouched = [17, 19, 23];
+        package.RenameDirectory = (from, to) =>
+        {
+            File.WriteAllBytes(foreign, untouched);
+            Directory.Move(from, to);
+        };
+        try
+        {
+            Assert.True(package.Rename("TargetFolder"));
+            Assert.Equal(Path.Combine(root, "TargetFolder"), package.SaveDirectory);
+            Assert.Equal(Path.Combine(package.SaveDirectory, "data.bin"), item.SaveFilePath);
+            Assert.Equal("source content", File.ReadAllText(item.SaveFilePath!));
+            Assert.False(File.Exists(original));
+            Assert.Equal(untouched, File.ReadAllBytes(foreign));
+            Assert.False(File.Exists(Path.Combine(package.SaveDirectory, "outside.bin")));
         }
         finally
         {

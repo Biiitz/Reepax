@@ -1097,7 +1097,13 @@ public partial class DownloadPackage : ObservableObject
         }
     }
 
-    internal Action<string, string> RenameDirectory { get; set; } = Directory.Move;
+    internal Action<string, string> RenameDirectory { get; set; } = (source, target) =>
+    {
+        if (string.Equals(source, target, StringComparison.OrdinalIgnoreCase))
+            RelocationFileAccess.RenameDirectoryCase(source, target);
+        else
+            Directory.Move(source, target);
+    };
 
     internal void RenameAfterRelocation(string name)
     {
@@ -1121,7 +1127,7 @@ public partial class DownloadPackage : ObservableObject
             IsCustomName = true;
         }
 
-        Name = trimmed;
+        SetProperty(ref _name, trimmed, nameof(Name));
         Services.Storage.DownloadPersistenceService.Instance.RequestSave();
         return true;
     }
@@ -1155,42 +1161,26 @@ public partial class DownloadPackage : ObservableObject
                         AppLogger.Warn("[DownloadPackage] Package rename target already exists.");
                         return false;
                     }
-                    if (Directory.Exists(oldDir))
+                    bool sourceExists = Directory.Exists(oldDir);
+                    var plan = PackageDirectoryMoveService.Prepare([this],
+                        PackageDirectoryMoveService.GetRenamePackages(this), newDir, useExactDestination: true).Single();
+                    if (caseOnly)
                     {
-                        if (caseOnly)
-                        {
-                            var tempDir = oldDir + "_case_rename_" + Guid.NewGuid().ToString("N");
-                            RenameDirectory(oldDir, tempDir);
-                            try
-                            {
-                                RenameDirectory(tempDir, newDir);
-                            }
-                            catch
-                            {
-                                try
-                                {
-                                    RenameDirectory(tempDir, oldDir);
-                                }
-                                catch
-                                {
-                                    // Preserve the actual location if rollback cannot restore the original name.
-                                    RelocateExtractionPaths(oldDir, tempDir);
-                                    SaveDirectory = tempDir;
-                                    UpdateItemSaveFilePaths();
-                                    Services.Storage.DownloadPersistenceService.Instance.RequestSave();
-                                }
-                                throw;
-                            }
-                        }
-                        else
-                        {
-                            RenameDirectory(oldDir, newDir);
-                        }
+                        // Change only the casing of the directory entry without a temporary move.
+                        if (sourceExists) RenameDirectory(oldDir, newDir);
                         RelocateExtractionPaths(oldDir, newDir);
+                        SaveDirectory = newDir;
+                        foreach (var (item, path) in plan.ItemPaths)
+                            item.SaveFilePath = Path.Combine(newDir, Path.GetRelativePath(oldDir, path));
                     }
-
-                    SaveDirectory = newDir;
-                    UpdateItemSaveFilePaths();
+                    else
+                    {
+                        plan = plan with { CleanSourceDirectory = sourceExists };
+                        bool cleaned = new PackageDirectoryMoveService()
+                            .ExecuteAsync(plan, RenameDirectory, moveEmptyDirectory: sourceExists).GetAwaiter().GetResult();
+                        plan.ApplyPaths();
+                        if (!cleaned) AppLogger.Warn("[DownloadPackage] Package rename left source entries in place.");
+                    }
                 }
             }
         }

@@ -18,7 +18,7 @@ public sealed class PackageDirectoryMoveSafetyTests : IDisposable
         string source = plan.Files[0].Source;
         string target = Path.Combine(plan.Target, plan.Files[0].RelativePath);
         bool changed = false;
-        var service = new PackageDirectoryMoveService(allowDirectoryRename: false, fileCopied: copied =>
+        var service = new PackageDirectoryMoveService(allowHardLinks: false, fileCopied: copied =>
         {
             if (copied != source) return;
             try
@@ -52,7 +52,7 @@ public sealed class PackageDirectoryMoveSafetyTests : IDisposable
         var plan = CreatePlan();
         string source = plan.Files[0].Source;
         string target = Path.Combine(plan.Target, plan.Files[0].RelativePath);
-        var service = new PackageDirectoryMoveService(allowDirectoryRename: false, fileCopied: copied =>
+        var service = new PackageDirectoryMoveService(allowHardLinks: false, fileCopied: copied =>
         {
             if (copied != source) return;
             string stage = Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(plan.Target)!, ".download-move-*"));
@@ -88,7 +88,7 @@ public sealed class PackageDirectoryMoveSafetyTests : IDisposable
         if (readOnly) File.SetAttributes(source, FileAttributes.ReadOnly);
         try
         {
-            Assert.False(await new PackageDirectoryMoveService(allowDirectoryRename: false).ExecuteAsync(plan));
+            Assert.False(await new PackageDirectoryMoveService(allowHardLinks: false).ExecuteAsync(plan));
             Assert.Equal("original", File.ReadAllText(source));
             Assert.Equal("original", File.ReadAllText(Path.Combine(plan.Target, plan.Files[0].RelativePath)));
             Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(plan.Target)!, ".download-move-*"));
@@ -103,7 +103,7 @@ public sealed class PackageDirectoryMoveSafetyTests : IDisposable
     public async Task FailedCopy_ReleasesAllLocksAndRemovesStagingWithoutDeletingSources()
     {
         var plan = CreatePlan();
-        var service = new PackageDirectoryMoveService(allowDirectoryRename: false,
+        var service = new PackageDirectoryMoveService(allowHardLinks: false,
             fileCopied: _ => throw new IOException("Synthetic copy failure."));
         await Assert.ThrowsAsync<IOException>(() => service.ExecuteAsync(plan));
         Assert.False(Directory.Exists(plan.Target));
@@ -118,7 +118,7 @@ public sealed class PackageDirectoryMoveSafetyTests : IDisposable
     {
         var plan = CreatePlan();
         string extra = Path.Combine(plan.Source!, "new.bin");
-        var service = new PackageDirectoryMoveService(allowDirectoryRename: false, fileCopied: source =>
+        var service = new PackageDirectoryMoveService(allowHardLinks: false, fileCopied: source =>
         {
             if (source == plan.Files[0].Source) File.WriteAllText(extra, "new external file");
         });
@@ -138,12 +138,72 @@ public sealed class PackageDirectoryMoveSafetyTests : IDisposable
         string nested = Path.Combine(initial.Source!, "Nested", "payload.bin");
         Directory.CreateDirectory(Path.GetDirectoryName(nested)!);
         File.WriteAllBytes(nested, partial);
+        initial.Package.ExtractedFiles = [ExtractedPackageFile.Capture(nested)];
         var plan = Assert.Single(PackageDirectoryMoveService.Prepare([initial.Package], [initial.Package],
             Path.GetDirectoryName(initial.Target)!));
-        Assert.True(await new PackageDirectoryMoveService(allowDirectoryRename: false).ExecuteAsync(plan));
+        Assert.True(await new PackageDirectoryMoveService(allowHardLinks: false).ExecuteAsync(plan));
         Assert.Equal(partial, File.ReadAllBytes(Path.Combine(plan.Target, "first.bin.part")));
         Assert.Equal("synthetic checkpoint", File.ReadAllText(Path.Combine(plan.Target, "first.bin.part.segments")));
         Assert.Equal(partial, File.ReadAllBytes(Path.Combine(plan.Target, "Nested", "payload.bin")));
+        Assert.False(Directory.Exists(plan.Source));
+    }
+
+    [Fact]
+    public async Task CopyMove_WithForeignContentsCanBeRetriedAfterOwnedFileIsUnlocked()
+    {
+        var initial = CreatePlan();
+        string foreign = Path.Combine(initial.Source!, "unrelated.bin");
+        byte[] untouched = [11, 17, 23];
+        File.WriteAllBytes(foreign, untouched);
+        var plan = Assert.Single(PackageDirectoryMoveService.Prepare([initial.Package], [initial.Package],
+            Path.GetDirectoryName(initial.Target)!));
+        var service = new PackageDirectoryMoveService(allowHardLinks: false);
+        using (File.Open(initial.Files[1].Source, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            await Assert.ThrowsAsync<IOException>(() => service.ExecuteAsync(plan));
+        Assert.False(Directory.Exists(plan.Target));
+        Assert.Equal(initial.Source, initial.Package.SaveDirectory);
+        Assert.Equal("original", File.ReadAllText(initial.Files[0].Source));
+        Assert.Equal("second payload", File.ReadAllText(initial.Files[1].Source));
+        Assert.Equal(untouched, File.ReadAllBytes(foreign));
+
+        Assert.True(await service.ExecuteAsync(plan));
+        Assert.Equal("original", File.ReadAllText(Path.Combine(plan.Target, initial.Files[0].RelativePath)));
+        Assert.Equal("second payload", File.ReadAllText(Path.Combine(plan.Target, initial.Files[1].RelativePath)));
+        Assert.False(File.Exists(initial.Files[0].Source));
+        Assert.False(File.Exists(initial.Files[1].Source));
+        Assert.Equal(untouched, File.ReadAllBytes(foreign));
+        Assert.False(File.Exists(Path.Combine(plan.Target, "unrelated.bin")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Move_DoesNotAdoptAFileThatReplacedThePlannedSource(bool allowHardLinks)
+    {
+        var plan = CreatePlan();
+        string source = plan.Files[0].Source;
+        string retained = source + ".retained";
+        byte[] original = File.ReadAllBytes(source);
+        byte[] foreign = original.Select(value => (byte)(value ^ 1)).ToArray();
+        DateTime lastWrite = File.GetLastWriteTimeUtc(source);
+        File.Move(source, retained);
+        File.WriteAllBytes(source, foreign);
+        File.SetLastWriteTimeUtc(source, lastWrite);
+        var service = new PackageDirectoryMoveService(allowHardLinks);
+
+        await Assert.ThrowsAsync<IOException>(() => service.ExecuteAsync(plan));
+        Assert.False(Directory.Exists(plan.Target));
+        Assert.Equal(foreign, File.ReadAllBytes(source));
+        Assert.Equal(original, File.ReadAllBytes(retained));
+        Assert.Equal(plan.Source, plan.Package.SaveDirectory);
+        Assert.False(Directory.EnumerateDirectories(Path.GetDirectoryName(plan.Target)!, ".download-move-*").Any());
+
+        string independent = Path.Combine(_root, "independent.bin");
+        File.Move(source, independent);
+        File.Move(retained, source);
+        Assert.True(await service.ExecuteAsync(plan));
+        Assert.Equal(original, File.ReadAllBytes(Path.Combine(plan.Target, plan.Files[0].RelativePath)));
+        Assert.Equal(foreign, File.ReadAllBytes(independent));
         Assert.False(Directory.Exists(plan.Source));
     }
 

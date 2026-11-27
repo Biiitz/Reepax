@@ -194,6 +194,62 @@ public sealed class ContextMenuActionsTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task ChangePaths_LeavesUnregisteredFilesAndMovesOnlyMatchingExtractionOutputs(bool edit)
+    {
+        var package = AddPackage("First");
+        string original = package.SaveDirectory;
+        string extraction = Directory.CreateDirectory(Path.Combine(original, "Extracted")).FullName;
+        string output = Path.Combine(extraction, "owned.bin");
+        string replacement = Path.Combine(extraction, "replaced.bin");
+        string unrelated = Path.Combine(original, "unrelated.bin");
+        byte[] extracted = [5, 8, 13], foreign = [17, 19, 23];
+        File.WriteAllBytes(output, extracted);
+        File.WriteAllBytes(replacement, extracted[..1]);
+        package.ExtractionDirectory = extraction;
+        package.ExtractedFiles = [ExtractedPackageFile.Capture(output), ExtractedPackageFile.Capture(replacement)];
+        File.WriteAllBytes(replacement, foreign);
+        File.WriteAllBytes(unrelated, foreign);
+        string root = Path.Combine(_root, "Target");
+        string target = Path.Combine(root, "First");
+        if (edit)
+        {
+            string url = "https://example.invalid/data.bin";
+            package.Items[0].OriginalUrl = url;
+            await _vm.EditPackageAsync(package, url, "Renamed", target, false, false, false, false);
+            Assert.Equal("Renamed", package.Name);
+        }
+        else
+        {
+            Assert.True(await _vm.ChangeDownloadPathsAsync([package], root));
+        }
+
+        string newOutput = Path.Combine(target, "Extracted", "owned.bin");
+        Assert.Equal(target, package.SaveDirectory);
+        Assert.Equal(Path.Combine(target, "Extracted"), package.ExtractionDirectory);
+        Assert.Equal(Path.Combine(target, "data.bin"), package.Items[0].SaveFilePath);
+        Assert.Equal("complete", File.ReadAllText(package.Items[0].SaveFilePath!));
+        Assert.Equal("partial", File.ReadAllText(package.Items[0].SaveFilePath + ".part"));
+        Assert.Equal("checkpoint", File.ReadAllText(package.Items[0].SaveFilePath + ".part.segments"));
+        Assert.Equal(extracted, File.ReadAllBytes(newOutput));
+        Assert.False(File.Exists(output));
+        Assert.Contains(package.ExtractedFiles, file => file.Path == newOutput);
+        Assert.Equal(foreign, File.ReadAllBytes(replacement));
+        Assert.Equal(foreign, File.ReadAllBytes(unrelated));
+        Assert.False(File.Exists(Path.Combine(target, "Extracted", "replaced.bin")));
+        Assert.False(File.Exists(Path.Combine(target, "unrelated.bin")));
+
+        using var storage = new DownloadPersistenceService(Path.Combine(_root, "downloads.json"));
+        storage.SaveDownloads([package], sync: true);
+        var restored = Assert.Single(storage.LoadDownloads());
+        Assert.Equal(package.SaveDirectory, restored.SaveDirectory);
+        Assert.Equal(package.ExtractionDirectory, restored.ExtractionDirectory);
+        Assert.Equal(package.Items[0].SaveFilePath, restored.Items[0].SaveFilePath);
+        Assert.Contains(restored.ExtractedFiles, file => file.Path == newOutput);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task CopyFallback_PreservesContentsAndCleansStagingOnFailure(bool fail)
     {
         var package = AddPackage("First");
@@ -203,9 +259,9 @@ public sealed class ContextMenuActionsTests : IDisposable
         var original = package.SaveDirectory;
         var target = Path.Combine(_root, "Target");
         var plan = Assert.Single(PackageDirectoryMoveService.Prepare(new[] { package }, _vm.Packages.ToArray(), target));
-        Assert.True(plan.WholeDirectory);
+        Assert.True(plan.CleanSourceDirectory);
         using var locked = fail ? new FileStream(plan.Files.Last().Source, FileMode.Open, FileAccess.ReadWrite, FileShare.None) : null;
-        var service = new PackageDirectoryMoveService(allowDirectoryRename: false);
+        var service = new PackageDirectoryMoveService(allowHardLinks: false);
         if (fail)
         {
             await Assert.ThrowsAsync<IOException>(() => service.ExecuteAsync(plan));
@@ -294,7 +350,7 @@ public sealed class ContextMenuActionsTests : IDisposable
         var plan = Assert.Single(PackageDirectoryMoveService.Prepare(new[] { package }, _vm.Packages.ToArray(), Path.Combine(_root, "Target")));
         Directory.CreateDirectory(plan.Target);
         File.WriteAllText(Path.Combine(plan.Target, "data.bin"), "keep");
-        await Assert.ThrowsAsync<IOException>(() => new PackageDirectoryMoveService(allowDirectoryRename: false).ExecuteAsync(plan));
+        await Assert.ThrowsAsync<IOException>(() => new PackageDirectoryMoveService(allowHardLinks: false).ExecuteAsync(plan));
         Assert.Equal("keep", File.ReadAllText(Path.Combine(plan.Target, "data.bin")));
         Assert.Equal("complete", File.ReadAllText(package.Items[0].SaveFilePath!));
         Assert.Empty(Directory.GetDirectories(Path.GetDirectoryName(plan.Target)!, ".download-move-*"));
