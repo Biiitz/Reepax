@@ -138,21 +138,22 @@ internal static class RecoveryProcessWorker
             await Par2RepairService.Instance.RepairAsync(Path.Combine(directory, "data.par2"));
             throw new IOException("The reconstruction finished before the requested crash boundary.");
         }
-        if (boundary == "missing")
+        if (boundary is "missing-unpublished" or "missing-partial")
         {
-            string missing = Path.Combine(directory, "missing.bin");
-            await using var held = new Par2ExtractionCancellationTests.NativeCheckpoint(repairStage: true, beforeSuspend: process =>
+            var service = Par2RepairService.Instance;
+            service.RepairWorkspaceVerified = workspace =>
             {
-                if (!SpinWait.SpinUntil(() => process.HasExited || File.Exists(missing) ||
-                    Directory.EnumerateDirectories(directory, ".par2-work-*").Any(workspace =>
-                        File.Exists(Path.Combine(workspace, "missing.bin"))), TimeSpan.FromSeconds(10)) || process.HasExited)
-                    throw new IOException("The native reconstruction did not reach the requested boundary.");
-            });
-            var reconstruction = Par2RepairService.Instance.RepairAsync(Path.Combine(directory, "data.par2"));
-            var writer = await held.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
-            stop(new(Environment.ProcessId, boundary, false, false, false, 0, null, NativeProcessId: writer.Id));
-            await reconstruction;
-            return;
+                if (boundary == "missing-partial")
+                {
+                    // Reproduce the disk state of an interrupted native write at a deterministic point.
+                    using var partial = File.Open(Path.Combine(workspace, "missing.bin"), FileMode.Open, FileAccess.Write);
+                    partial.SetLength(4096);
+                    partial.Flush(flushToDisk: true);
+                }
+                stop(new(Environment.ProcessId, boundary, false, false, false, 0, null));
+            };
+            await service.RepairAsync(Path.Combine(directory, "data.par2"));
+            throw new IOException("The reconstruction finished before the requested crash boundary.");
         }
         string target = Path.Combine(directory, "repair.bin");
         var package = new DownloadPackage { Name = "Recovery sample", SaveDirectory = directory };

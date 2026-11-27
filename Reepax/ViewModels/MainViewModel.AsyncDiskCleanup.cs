@@ -399,6 +399,44 @@ public partial class MainViewModel
         DownloadPersistenceService.Instance.RequestSave();
     }
 
+    internal static bool HasSameCleanupSelectionPaths(IEnumerable<DownloadPackage> packages,
+        IEnumerable<DownloadPackage> currentPackages, HashSet<Guid> packageIds, HashSet<Guid> itemIds)
+    {
+        var currentById = new Dictionary<Guid, DownloadPackage>();
+        foreach (var package in currentPackages)
+            currentById.TryAdd(package.Id, package);
+
+        foreach (var package in packages)
+        {
+            bool wholePackage = packageIds.Contains(package.Id);
+            if (!wholePackage && !package.Items.Any(item => itemIds.Contains(item.Id)))
+                continue;
+
+            if (!currentById.TryGetValue(package.Id, out var current) ||
+                package.RequiresRecoveredPathConfirmation != current.RequiresRecoveredPathConfirmation ||
+                !SamePath(package.SaveDirectory, current.SaveDirectory))
+                return false;
+            if (wholePackage && (!SamePath(package.Name, current.Name) ||
+                !SamePath(package.ExtractionDirectory, current.ExtractionDirectory) ||
+                !package.ExtractedFiles.SequenceEqual(current.ExtractedFiles) ||
+                package.Items.Count != current.Items.Count))
+                return false;
+
+            var currentItemsById = new Dictionary<Guid, DownloadItem>();
+            foreach (var item in current.Items)
+                currentItemsById.TryAdd(item.Id, item);
+            foreach (var item in package.Items)
+                if ((wholePackage || itemIds.Contains(item.Id)) &&
+                    (!currentItemsById.TryGetValue(item.Id, out var currentItem) ||
+                     !SamePath(item.FileName, currentItem.FileName) || !SamePath(item.SaveFilePath, currentItem.SaveFilePath)))
+                    return false;
+        }
+        return true;
+
+        static bool SamePath(string? first, string? second) =>
+            string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
+    }
+
     private sealed partial class CleanupSnapshot
     {
         internal List<DownloadPackage> Packages { get; }
@@ -439,44 +477,8 @@ public partial class MainViewModel
             Size = GetTotalFilesSizeOnDisk(Files);
         }
 
-        internal bool HasSameSelectionPaths(CleanupSnapshot other)
-        {
-            foreach (var package in Packages)
-            {
-                var otherPackage = other.Packages.FirstOrDefault(candidate => candidate.Id == package.Id);
-                if (_packageIds.Contains(package.Id))
-                {
-                    if (otherPackage == null || !SamePath(package.Name, otherPackage.Name) ||
-                        package.RequiresRecoveredPathConfirmation != otherPackage.RequiresRecoveredPathConfirmation ||
-                        !SamePath(package.SaveDirectory, otherPackage.SaveDirectory) ||
-                        !SamePath(package.ExtractionDirectory, otherPackage.ExtractionDirectory) ||
-                        !package.ExtractedFiles.SequenceEqual(otherPackage.ExtractedFiles) ||
-                        package.Items.Count != otherPackage.Items.Count)
-                        return false;
-                    foreach (var item in package.Items)
-                    {
-                        var otherItem = otherPackage.Items.FirstOrDefault(candidate => candidate.Id == item.Id);
-                        if (otherItem == null || !SamePath(item.FileName, otherItem.FileName) || !SamePath(item.SaveFilePath, otherItem.SaveFilePath))
-                            return false;
-                    }
-                }
-                else
-                {
-                    foreach (var item in package.Items.Where(item => _itemIds.Contains(item.Id)))
-                    {
-                        var otherItem = otherPackage?.Items.FirstOrDefault(candidate => candidate.Id == item.Id);
-                        if (otherItem == null || !SamePath(package.SaveDirectory, otherPackage!.SaveDirectory) ||
-                            package.RequiresRecoveredPathConfirmation != otherPackage.RequiresRecoveredPathConfirmation ||
-                            !SamePath(item.FileName, otherItem.FileName) || !SamePath(item.SaveFilePath, otherItem.SaveFilePath))
-                            return false;
-                    }
-                }
-            }
-            return true;
-        }
-
-        private static bool SamePath(string? first, string? second)
-            => string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
+        internal bool HasSameSelectionPaths(CleanupSnapshot other) =>
+            HasSameCleanupSelectionPaths(Packages, other.Packages, _packageIds, _itemIds);
 
         internal HashSet<Guid> GetConflictingOperationIds(IEnumerable<Guid> operationIds, IReadOnlyDictionary<Guid, Par2RepairService.RepairActivity>? repairs = null)
         {

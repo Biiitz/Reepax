@@ -86,6 +86,7 @@ public partial class Par2RepairService
 
     private string? _cachedExecutablePath;
     internal Action<Process, bool>? ProcessStarted { get; set; }
+    internal Action<string>? RepairWorkspaceVerified { get; set; }
 
     public string? ResolvePar2ExecutablePath()
     {
@@ -423,7 +424,7 @@ public partial class Par2RepairService
             var output = outputBuilder.ToString();
             bool success = process.ExitCode == 0;
 
-            if (success && backups.WorkspacePath != null)
+            if (success && backups.WorkspacePath is { } workspace)
             {
                 await backups.VerifyWorkspaceOutputsAsync(repairInput.TargetFiles, ct);
                 using var publication = await PackagePathOperationGate.Instance.EnterAsync(ct);
@@ -433,6 +434,7 @@ public partial class Par2RepairService
                     return UnconfirmedRepairTargets();
                 }
                 ct.ThrowIfCancellationRequested();
+                RepairWorkspaceVerified?.Invoke(workspace);
                 backups.PublishWorkspace(purgeBackups);
             }
             else

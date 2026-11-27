@@ -298,8 +298,10 @@ public class AsyncDiskCleanupTests
         }
     }
 
-    [Fact]
-    public async Task Removal_StopsWhenTheConfirmedPathHasChanged()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Removal_StopsWhenTheConfirmedPathHasChanged(bool removeItem)
     {
         var root = Path.Combine(Path.GetTempPath(), "CleanupCase_" + Guid.NewGuid().ToString("N"));
         var first = Path.Combine(root, "TargetFolder");
@@ -324,7 +326,8 @@ public class AsyncDiskCleanupTests
         };
         try
         {
-            await vm.RemovePackage(package);
+            if (removeItem) await vm.RemoveItem(item);
+            else await vm.RemovePackage(package);
             Assert.Contains(package, vm.Packages);
             Assert.Equal(Loc.Get("Status_CleanupChanged"), vm.StatusSummary);
             Assert.Equal("first", File.ReadAllText(firstFile));
@@ -337,6 +340,34 @@ public class AsyncDiskCleanupTests
             if (Directory.Exists(root))
                 Directory.Delete(root, true);
         }
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(1000)]
+    public void CleanupSelectionPathComparison_VisitsEachPackageOnce(int backgroundCount)
+    {
+        var previous = Enumerable.Range(0, backgroundCount)
+            .Select(_ => new DownloadPackage()).ToList();
+        var selectedPackage = new DownloadPackage { Name = "Selected", AutoExtractArchives = false };
+        selectedPackage.Items.Add(new DownloadItem { FileName = "complete.bin", SaveFilePath = @"C:\Downloads\complete.bin" });
+        var parent = new DownloadPackage { Name = "Parent", AutoExtractArchives = false };
+        var selectedItem = new DownloadItem { FileName = "selected.bin", SaveFilePath = @"C:\Downloads\selected.bin" };
+        parent.Items.Add(selectedItem);
+        parent.Items.Add(new DownloadItem { FileName = "unrelated.bin", SaveFilePath = @"C:\Downloads\unrelated.bin" });
+        previous.Add(selectedPackage);
+        previous.Add(parent);
+        var current = previous.Select(package => package.CreateDiskCleanupSnapshot()).ToArray();
+        current[^1].Items[1].SaveFilePath = @"C:\Downloads\different.bin";
+        int previousVisits = 0, currentVisits = 0;
+
+        Assert.True(MainViewModel.HasSameCleanupSelectionPaths(
+            previous.Select(package => { previousVisits++; return package; }),
+            current.Reverse().Select(package => { currentVisits++; return package; }),
+            [selectedPackage.Id], [selectedItem.Id]));
+
+        Assert.Equal(backgroundCount + 2, previousVisits);
+        Assert.Equal(backgroundCount + 2, currentVisits);
     }
 
     [Theory]

@@ -273,8 +273,10 @@ public sealed partial class ProcessRecoveryTests : IDisposable
     }
 
     [Theory]
-    [InlineData("missing", false)]
-    [InlineData("missing", true)]
+    [InlineData("missing-partial", false)]
+    [InlineData("missing-partial", true)]
+    [InlineData("missing-unpublished", false)]
+    [InlineData("missing-unpublished", true)]
     [InlineData("missing-committed", true)]
     public async Task KilledPar2Reconstruction_PreservesMissingOrIndependentlyCreatedTarget(string boundary, bool occupied)
     {
@@ -306,14 +308,12 @@ public sealed partial class ProcessRecoveryTests : IDisposable
         {
             var report = await child.ReceiveAsync();
             Assert.Equal(boundary, report.Boundary);
-            using var native = committed ? null : System.Diagnostics.Process.GetProcessById(report.NativeProcessId);
             await child.KillAtBoundaryAsync();
-            if (native != null) await native.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
         }
         Assert.False(File.Exists(path));
         string workspace = Assert.Single(Directory.GetDirectories(Downloads, ".par2-work-*"));
         byte[] staged = File.ReadAllBytes(Path.Combine(workspace, "missing.bin"));
-        Assert.Equal(committed, original.AsSpan().SequenceEqual(staged));
+        Assert.Equal(boundary == "missing-partial" ? original[..4096] : original, staged);
         if (occupied)
         {
             using var outside = File.Open(path, FileMode.CreateNew);
