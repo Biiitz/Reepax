@@ -312,11 +312,11 @@ internal sealed class PackagePipelineFixture : IAsyncDisposable
         catch (IOException) { EarlyCompletion.Enqueue(stage); }
     }
 
-    internal void AssertUnaffectedFiles()
+    internal void AssertUnaffectedFiles(DownloadItem? repairedItem = null)
     {
         Assert.Equal(Unaffected, File.ReadAllBytes(Path.Combine(Package.SaveDirectory, "unaffected.bin")));
         Assert.Equal(Unaffected, File.ReadAllBytes(Path.Combine(Package.SaveDirectory, "unaffected.bin.1")));
-        foreach (var item in Package.Items.Where(item => item != Archive))
+        foreach (var item in Package.Items.Where(item => item != Archive && item != repairedItem))
             Assert.Equal(item.ExpectedChecksum, item.CalculatedChecksum);
     }
 

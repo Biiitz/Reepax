@@ -76,9 +76,10 @@ public partial class Par2RepairService
         private static bool TryGetIdentity(SafeFileHandle file, out FileIdentity identity)
             => GetFileInformationByHandleEx(file, 18, out identity, (uint)Marshal.SizeOf<FileIdentity>());
 
-        internal static RepairBackupScope Capture(string par2FilePath, IReadOnlyCollection<string>? authorizedTargets = null)
+        internal static RepairBackupScope Capture(string par2FilePath, IReadOnlyCollection<string>? authorizedTargets = null,
+            bool useWorkspace = false)
         {
-            var scope = new RepairBackupScope();
+            var scope = new RepairBackupScope { _needsWorkspace = useWorkspace };
             try
             {
                 var directory = Path.GetDirectoryName(Path.GetFullPath(par2FilePath))!;

@@ -641,6 +641,92 @@ You need 4 more recovery blocks to be able to repair.
     }
 
     [Theory]
+    [InlineData("changed-part-mismatch")]
+    [InlineData("unchanged-part-mismatch")]
+    [InlineData("cancel-before-publication")]
+    public async Task PackageRepair_PublishesMultipartResultsOnlyAfterChecksumValidation(string failure)
+    {
+        string directory = Directory.CreateTempSubdirectory("CheckedPar2_").FullName;
+        bool previousTestMode = DownloadPersistenceService.IsTestEnvironment;
+        try
+        {
+            DownloadPersistenceService.IsTestEnvironment = true;
+            using var buffer = new MemoryStream();
+            using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+            using (var output = zip.CreateEntry("payload.bin", CompressionLevel.NoCompression).Open())
+                output.Write(Enumerable.Range(0, 128).Select(index => (byte)index).ToArray());
+            byte[] archive = buffer.ToArray();
+            byte[] firstVolume = archive[..100];
+            byte[] secondVolume = archive[100..];
+            string first = Path.Combine(directory, "example.zip.001");
+            string second = Path.Combine(directory, "example.zip.002");
+            File.WriteAllBytes(first, firstVolume);
+            File.WriteAllBytes(second, secondVolume);
+            string indexFile = await CreateParityAsync(directory, first, second);
+            byte[] damaged = firstVolume.ToArray();
+            damaged[52] ^= 0x5a;
+            File.WriteAllBytes(first, damaged);
+            byte[] independent = "independent file and pre-existing backup"u8.ToArray();
+            string unrelated = Path.Combine(directory, "unrelated.bin");
+            File.WriteAllBytes(unrelated, independent);
+            File.WriteAllBytes(first + ".1", independent);
+
+            var package = new DownloadPackage { Name = "Example package", SaveDirectory = directory };
+            var firstItem = AddCompletedItem(package, first);
+            var secondItem = AddCompletedItem(package, second);
+            AddCompletedItem(package, indexFile);
+            string firstChecksum = "sha-256: " + Convert.ToHexString(SHA256.HashData(firstVolume));
+            string secondChecksum = "md5=" + Convert.ToHexString(MD5.HashData(secondVolume));
+            firstItem.ExpectedChecksum = failure == "changed-part-mismatch"
+                ? Convert.ToHexString(SHA256.HashData("different revision"u8)) : firstChecksum;
+            secondItem.ExpectedChecksum = failure == "unchanged-part-mismatch"
+                ? Convert.ToHexString(MD5.HashData("different revision"u8)) : secondChecksum;
+
+            var service = new Par2RepairService();
+            using var cancellation = new CancellationTokenSource();
+            byte[]? stagedVolume = null;
+            service.RepairWorkspaceVerified = workspace =>
+            {
+                stagedVolume = File.ReadAllBytes(Path.Combine(workspace, Path.GetFileName(first)));
+                cancellation.Cancel();
+            };
+            bool repairStarted = false;
+            service.ProcessStarted = (_, repair) => repairStarted |= repair;
+            string? status = null;
+            Assert.False(await service.ProcessPackagePar2Async(package, text => status = text, ct: cancellation.Token));
+            Assert.True(repairStarted);
+            if (failure == "cancel-before-publication")
+                Assert.Equal(firstVolume, stagedVolume);
+            else
+            {
+                Assert.Contains(Loc.Get("Status_Par2RepairChecksumMismatch"), status);
+                Assert.Null(stagedVolume);
+            }
+            Assert.Equal(damaged, File.ReadAllBytes(first));
+            Assert.Equal(secondVolume, File.ReadAllBytes(second));
+            Assert.Empty(Directory.GetDirectories(directory, ".par2-work-*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.journal", SearchOption.AllDirectories));
+
+            firstItem.ExpectedChecksum = firstChecksum;
+            secondItem.ExpectedChecksum = secondChecksum;
+            service.RepairWorkspaceVerified = null;
+            Assert.True(await service.ProcessPackagePar2Async(package));
+            Assert.Equal(archive, File.ReadAllBytes(first).Concat(File.ReadAllBytes(second)).ToArray());
+            Assert.Equal(independent, File.ReadAllBytes(first + ".1"));
+            Assert.Equal(independent, File.ReadAllBytes(unrelated));
+            Assert.False(File.Exists(first + ".2"));
+            Assert.Empty(Directory.GetDirectories(directory, ".par2-work-*"));
+            Assert.Empty(Directory.GetFiles(directory, "*.journal", SearchOption.AllDirectories));
+            Assert.Empty(service.GetActiveRepairs());
+        }
+        finally
+        {
+            DownloadPersistenceService.IsTestEnvironment = previousTestMode;
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RepairAsync_MissingAndDamagedTargets_PreservesBackupPolicy(bool purgeBackups)

@@ -10,7 +10,7 @@ namespace Reepax.Services.Verification;
 
 public partial class Par2RepairService
 {
-    private static async Task<List<DownloadItem>?> ConfirmRepairTargetsAsync(DownloadPackage package, string directory,
+    private static async Task<List<(string Path, DownloadItem Item)>?> ConfirmRepairTargetsAsync(DownloadPackage package, string directory,
         IReadOnlyCollection<string> targets, CancellationToken ct)
     {
         var dispatcher = Application.Current?.Dispatcher;
@@ -20,7 +20,7 @@ public partial class Par2RepairService
         return ConfirmRepairTargets(package, directory, targets);
     }
 
-    private static List<DownloadItem>? ConfirmRepairTargets(DownloadPackage package, string directory,
+    private static List<(string Path, DownloadItem Item)>? ConfirmRepairTargets(DownloadPackage package, string directory,
         IReadOnlyCollection<string> targets)
     {
         var items = package.ItemsSnapshot;
@@ -62,8 +62,14 @@ public partial class Par2RepairService
             if (protectedPaths.Contains(backup) || ownPaths.Contains(backup) || targetPaths.Contains(backup))
                 return null;
         }
-        return ownItems.Where(item => targetPaths.Contains(item.Path)).Select(item => item.Item).ToList();
+        return ownItems.Where(item => targetPaths.Contains(item.Path)).ToList();
     }
+
+    private static (string Path, string Checksum)[] GetExpectedChecksums(IEnumerable<(string Path, DownloadItem Item)> targets) =>
+        targets.Select(target => (target.Path, Checksum: target.Item.ExpectedChecksum))
+            .Where(target => !string.IsNullOrWhiteSpace(target.Checksum))
+            .Select(target => (target.Path, target.Checksum!))
+            .ToArray();
 
     private static string? GetConfirmedPath(DownloadItem item, string directory)
     {

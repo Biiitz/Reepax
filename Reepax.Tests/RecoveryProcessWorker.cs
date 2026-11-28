@@ -157,10 +157,19 @@ internal static class RecoveryProcessWorker
         }
         string target = Path.Combine(directory, "repair.bin");
         var package = new DownloadPackage { Name = "Recovery sample", SaveDirectory = directory };
-        package.AddItems([new DownloadItem { FileName = "repair.bin", SaveFilePath = target, Status = DownloadStatus.Completed },
+        var item = new DownloadItem { FileName = "repair.bin", SaveFilePath = target, Status = DownloadStatus.Completed };
+        package.AddItems([item,
             new DownloadItem { FileName = "data.par2", SaveFilePath = Path.Combine(directory, "data.par2"), Status = DownloadStatus.Completed }]);
         QueueManager.Instance.Packages.Add(package);
-        if (boundary is "committed" or "committed-changed")
+        if (boundary is "checked-unpublished" or "checked-committed")
+            item.ExpectedChecksum = File.ReadAllText(Path.Combine(root, "repair.sha256"));
+        if (boundary == "checked-unpublished")
+        {
+            Par2RepairService.Instance.RepairWorkspaceVerified = _ => stop(new(Environment.ProcessId, boundary, false, false, false, 0, null));
+            await Par2RepairService.Instance.ProcessPackagePar2Async(package);
+            throw new IOException("The repair finished before the requested publication boundary.");
+        }
+        if (boundary is "committed" or "committed-changed" or "checked-committed")
         {
             Par2RepairService.RepairDecisionSaved = () => stop(new(Environment.ProcessId, boundary, false, false, false, 0, null));
             await Par2RepairService.Instance.ProcessPackagePar2Async(package);

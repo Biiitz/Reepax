@@ -274,6 +274,109 @@ public sealed class PackagePipelineTests
     }
 
     [Theory]
+    [InlineData("loose")]
+    [InlineData("index-only")]
+    [InlineData("matching-alternative")]
+    [InlineData("listed")]
+    public async Task LocalDownload_PreservesVerifiedArchiveWhenParityTargetsAnOlderVersion(string indexKind)
+    {
+        const string fileName = "example.zip";
+        byte[] oldPayload = [2, 3, 5, 7];
+        byte[] newPayload = [11, 13, 17, 19];
+        byte[] oldArchive = CreateArchive(oldPayload);
+        byte[] newArchive = CreateArchive(newPayload);
+        Assert.Equal(oldArchive.Length, newArchive.Length);
+        await using var fixture = await PackagePipelineFixture.CreateForFilesAsync(
+            new Dictionary<string, byte[]> { [fileName] = newArchive });
+        var item = Assert.Single(fixture.Package.Items);
+        string directory = fixture.Package.SaveDirectory;
+        fixture.Package.Name = Path.GetFileName(directory);
+        Assert.True(MainViewModel.IsDedicatedPackageDirectory(fixture.Package, directory));
+
+        File.WriteAllBytes(item.SaveFilePath!, oldArchive);
+        string index = await Par2RepairServiceTests.CreateParityAsync(directory, item.SaveFilePath!);
+        if (indexKind == "index-only")
+            foreach (string volume in Directory.GetFiles(directory, "data.vol*.par2"))
+                File.Delete(volume);
+        File.WriteAllBytes(item.SaveFilePath!, newArchive);
+        var service = Par2RepairService.Instance;
+        Assert.Equal(indexKind == "index-only" ? Par2VerificationStatus.RepairNotPossible : Par2VerificationStatus.RepairPossible,
+            (await service.VerifyAsync(index)).Status);
+        if (indexKind == "matching-alternative")
+        {
+            string source = Directory.CreateDirectory(Path.Combine(directory, "source")).FullName;
+            string copy = Path.Combine(source, fileName);
+            File.WriteAllBytes(copy, newArchive);
+            File.Move(await Par2RepairServiceTests.CreateParityAsync(source, copy), Path.Combine(directory, "matching.par2"));
+        }
+        File.Delete(item.SaveFilePath!);
+        var parity = Directory.GetFiles(directory, "*.par2").ToDictionary(path => path, File.ReadAllBytes);
+        if (indexKind == "listed")
+            fixture.Package.Items.Add(new DownloadItem { PackageId = fixture.Package.Id, FileName = Path.GetFileName(index),
+                SaveFilePath = index, IsEnabled = true, Status = DownloadStatus.Completed });
+
+        var previousHook = service.ProcessStarted;
+        var verifiedIndexes = new List<string>();
+        int repairs = 0;
+        service.ProcessStarted = (process, repair) =>
+        {
+            if (repair) repairs++;
+            else verifiedIndexes.Add(Path.GetFileName(process.StartInfo.ArgumentList[^1]));
+        };
+        bool extracted;
+        try
+        {
+            await fixture.DownloadFileAsync(item);
+            extracted = await (await fixture.NextExtractionAsync()).WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        finally { service.ProcessStarted = previousHook; }
+
+        bool listed = indexKind == "listed";
+        Assert.Equal(!listed, extracted);
+        Assert.Equal(!listed, fixture.Package.IsFullyCompleted);
+        Assert.Equal(listed ? 1 : 0, repairs);
+        if (indexKind == "matching-alternative")
+            Assert.Equal(new[] { "data.par2", "matching.par2" }, verifiedIndexes);
+        else
+            Assert.Equal("data.par2", Assert.Single(verifiedIndexes));
+        Assert.Equal(newArchive, File.ReadAllBytes(item.SaveFilePath!));
+        Assert.Equal(listed ? fixture.PreviousOutput : newPayload, File.ReadAllBytes(fixture.OutputPath));
+        if (listed)
+        {
+            Assert.Contains(Loc.Get("Status_Par2RepairChecksumMismatch"), fixture.Package.StatusMessage);
+            Assert.Null(item.CalculatedChecksum);
+        }
+        else
+            Assert.Equal(PackagePipelineFixture.Hash(newArchive), item.CalculatedChecksum);
+        Assert.All(parity, file => Assert.Equal(file.Value, File.ReadAllBytes(file.Key)));
+        fixture.AssertUnaffectedFiles(item);
+        Assert.Equal(listed ? 0 : 1, fixture.NotificationCount);
+        Assert.Empty(Directory.GetDirectories(directory, ".par2-work-*"));
+
+        if (indexKind == "loose")
+        {
+            var viewModel = new MainViewModel();
+            await viewModel.Par2RepairPackageCommand.ExecuteAsync(fixture.Package);
+            Assert.Equal(Loc.Get("Status_Par2StaleSetSkipped"), viewModel.StatusSummary);
+            Assert.Equal(newArchive, File.ReadAllBytes(item.SaveFilePath!));
+            Assert.Equal(newPayload, File.ReadAllBytes(fixture.OutputPath));
+        }
+
+        static byte[] CreateArchive(byte[] payload)
+        {
+            using var buffer = new MemoryStream();
+            using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                var entry = archive.CreateEntry("payload.bin", CompressionLevel.NoCompression);
+                entry.LastWriteTime = new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero);
+                using var output = entry.Open();
+                output.Write(payload);
+            }
+            return buffer.ToArray();
+        }
+    }
+
+    [Theory]
     [InlineData("existing", "intact")]
     [InlineData("existing", "repairable")]
     [InlineData("imported", "intact")]

@@ -171,6 +171,8 @@ public sealed partial class ProcessRecoveryTests : IDisposable
     [InlineData("foreign-backup")]
     [InlineData("committed")]
     [InlineData("committed-changed")]
+    [InlineData("checked-unpublished")]
+    [InlineData("checked-committed")]
     public async Task KilledPar2Repair_RestoresOnlyItsProvenBackup(string boundary)
     {
         PrepareDestination();
@@ -185,7 +187,10 @@ public sealed partial class ProcessRecoveryTests : IDisposable
         string unrelated = Path.Combine(Downloads, "other.bin.2");
         File.WriteAllBytes(unrelated, Unaffected);
         string journals = Path.Combine(_directory.FullName, "appdata", "Par2Recovery");
-        bool committed = boundary is "committed" or "committed-changed";
+        bool staged = boundary is "checked-unpublished" or "checked-committed";
+        bool committed = boundary is "committed" or "committed-changed" or "checked-committed";
+        if (staged)
+            File.WriteAllText(Path.Combine(_directory.FullName, "repair.sha256"), Convert.ToHexString(SHA256.HashData(original)));
 
         await using (var child = new RecoveryChildProcess(_directory.FullName, "par2-crash", boundary, "none", 1))
         {
@@ -196,10 +201,20 @@ public sealed partial class ProcessRecoveryTests : IDisposable
             {
                 await child.KillAtBoundaryAsync();
                 if (native != null) await native.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
-                Assert.Equal(damaged, File.ReadAllBytes(path + ".2"));
                 Assert.Single(Directory.GetFiles(journals, "*.journal"));
-                if (boundary == "renamed") Assert.False(File.Exists(path));
-                else Assert.Equal(committed ? original : new byte[] { 9, 8, 7 }, File.ReadAllBytes(path));
+                if (staged)
+                {
+                    string workspace = Assert.Single(Directory.GetDirectories(Downloads, ".par2-work-*"));
+                    Assert.Equal(original, File.ReadAllBytes(Path.Combine(workspace, Path.GetFileName(path))));
+                    Assert.Equal(damaged, File.ReadAllBytes(path));
+                    Assert.False(File.Exists(path + ".2"));
+                }
+                else
+                {
+                    Assert.Equal(damaged, File.ReadAllBytes(path + ".2"));
+                    if (boundary == "renamed") Assert.False(File.Exists(path));
+                    else Assert.Equal(committed ? original : new byte[] { 9, 8, 7 }, File.ReadAllBytes(path));
+                }
             }
             finally
             {
@@ -261,6 +276,7 @@ public sealed partial class ProcessRecoveryTests : IDisposable
             if (boundary == "foreign-backup") Assert.Equal(damaged, File.ReadAllBytes(path + ".4"));
             if (boundary == "committed-changed") Assert.Equal(Unaffected, File.ReadAllBytes(path + ".4"));
             Assert.Empty(Directory.GetFiles(journals));
+            Assert.Empty(Directory.GetDirectories(Downloads, ".par2-work-*"));
             AssertUnaffected();
         }
 

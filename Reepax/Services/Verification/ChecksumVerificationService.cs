@@ -111,18 +111,13 @@ public class ChecksumVerificationService
                 // 4. Validate expected checksum if present
                 if (!string.IsNullOrWhiteSpace(item.ExpectedChecksum))
                 {
-                    var normalizedExpected = NormalizeChecksum(item.ExpectedChecksum);
-                    var (calculated, algorithm) = await CalculateChecksumForExpectedAsync(
-                        filePath, normalizedExpected, cancellationToken).ConfigureAwait(false);
-
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (!string.Equals(calculated, normalizedExpected, StringComparison.OrdinalIgnoreCase))
+                    var check = await CompareExpectedChecksumAsync(filePath, item.ExpectedChecksum, cancellationToken).ConfigureAwait(false);
+                    if (!check.Matches)
                     {
                         return ChecksumVerificationResult.Failure(new DownloadFailure { Kind = DownloadFailureKind.ChecksumMismatch });
                     }
 
-                    return ChecksumVerificationResult.Success(calculated, algorithm);
+                    return ChecksumVerificationResult.Success(check.Actual, check.Algorithm);
                 }
 
                 // Inspect available headers; continuation parts may not contain archive headers.
@@ -300,11 +295,21 @@ public class ChecksumVerificationService
 
     internal async Task VerifyExpectedChecksumAsync(string path, string expected, CancellationToken token)
     {
+        var check = await CompareExpectedChecksumAsync(path, expected, token).ConfigureAwait(false);
+        if (!check.Matches)
+            throw new InvalidDataException(Loc.Format("Validation_ChecksumMismatch", check.Algorithm, check.Expected, check.Actual));
+    }
+
+    internal async Task<bool> MatchesExpectedChecksumAsync(string path, string expected, CancellationToken token) =>
+        (await CompareExpectedChecksumAsync(path, expected, token).ConfigureAwait(false)).Matches;
+
+    private async Task<(bool Matches, string Expected, string Actual, string Algorithm)> CompareExpectedChecksumAsync(
+        string path, string expected, CancellationToken token)
+    {
         string normalized = NormalizeChecksum(expected);
         var (actual, algorithm) = await CalculateChecksumForExpectedAsync(path, normalized, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
-        if (!string.Equals(actual, normalized, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException(Loc.Format("Validation_ChecksumMismatch", algorithm, normalized, actual));
+        return (string.Equals(actual, normalized, StringComparison.OrdinalIgnoreCase), normalized, actual, algorithm);
     }
 
     public static string NormalizeChecksum(string raw)

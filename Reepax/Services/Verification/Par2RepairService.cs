@@ -364,6 +364,7 @@ public partial class Par2RepairService
         NativeRepairProcess? native = null;
         IDisposable? repairLease = null;
         PackageRepairInput? repairInput = null;
+        (string Path, string Checksum)[] expectedChecksums = [];
         bool repairStopped = true;
 
         try
@@ -379,12 +380,14 @@ public partial class Par2RepairService
                 {
                     var affected = await ConfirmRepairTargetsAsync(package, workingDir, repairInput.Targets, ct);
                     if (affected == null) return UnconfirmedRepairTargets();
+                    expectedChecksums = GetExpectedChecksums(affected);
                     ct.ThrowIfCancellationRequested();
-                    foreach (var item in affected)
+                    foreach (var (_, item) in affected)
                         item.CalculatedChecksum = null;
                 }
 
-                backups = RepairBackupScope.Capture(par2FilePath, repairInput.Targets);
+                // Keep the live files untouched until the supplied checksums have been checked.
+                backups = RepairBackupScope.Capture(par2FilePath, repairInput.Targets, useWorkspace: expectedChecksums.Length > 0);
                 backups.PrepareRecovery(workingDir);
                 if (backups.WorkspacePath == null) StartNative();
             }
@@ -426,16 +429,24 @@ public partial class Par2RepairService
 
             if (success && backups.WorkspacePath is { } workspace)
             {
-                await backups.VerifyWorkspaceOutputsAsync(repairInput.TargetFiles, ct);
-                using var publication = await PackagePathOperationGate.Instance.EnterAsync(ct);
-                if (package != null && await ConfirmRepairTargetsAsync(package, workingDir, repairInput.Targets, ct) == null)
+                if (!await backups.VerifyWorkspaceOutputsAsync(repairInput.TargetFiles, expectedChecksums, ct))
                 {
-                    backups.FinishRecovery(success: false, purgeBackups: false);
-                    return UnconfirmedRepairTargets();
+                    RecoverAfterFailure();
+                    return new Par2RepairResult { ErrorMessage = Loc.Get("Status_Par2RepairChecksumMismatch"), RawOutput = output };
+                }
+                using var publication = await PackagePathOperationGate.Instance.EnterAsync(ct);
+                if (package != null)
+                {
+                    var affected = await ConfirmRepairTargetsAsync(package, workingDir, repairInput.Targets, ct);
+                    if (affected == null || !expectedChecksums.SequenceEqual(GetExpectedChecksums(affected)))
+                    {
+                        backups.FinishRecovery(success: false, purgeBackups: false);
+                        return UnconfirmedRepairTargets();
+                    }
                 }
                 ct.ThrowIfCancellationRequested();
                 RepairWorkspaceVerified?.Invoke(workspace);
-                backups.PublishWorkspace(purgeBackups);
+                backups.PublishWorkspace(purgeBackups, ct);
             }
             else
             {
@@ -533,19 +544,11 @@ public partial class Par2RepairService
     private async Task<bool> ProcessPackagePar2CoreAsync(
         DownloadPackage package,
         string primaryPar2,
+        Par2VerifyResult verifyResult,
         Action<string>? statusCallback = null,
         Action<double>? progressCallback = null,
         CancellationToken ct = default)
     {
-        statusCallback?.Invoke(Loc.Get("Status_Par2Verifying"));
-
-        // 1. Run Verification
-        var verifyResult = await VerifyAsync(
-            primaryPar2,
-            pctText => statusCallback?.Invoke(pctText),
-            pct => progressCallback?.Invoke(pct),
-            ct);
-
         if (verifyResult.Status == Par2VerificationStatus.AllFilesIntact)
         {
             AppLogger.Info("[Par2RepairService] All files are intact; no repair is required.");

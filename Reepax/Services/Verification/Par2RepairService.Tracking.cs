@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Reepax.Models;
+using Reepax.Services.Localization;
 using Reepax.Services.Storage;
 using Reepax.Services.SystemIntegration;
 
@@ -43,20 +44,42 @@ public partial class Par2RepairService
 
         async Task<bool> ProcessAsync(Action<string> trackDirectory)
         {
-            PackagePar2Selection? selection;
-            using (await PackagePathOperationGate.Instance.EnterAsync(linked.Token))
+            var staleLooseSets = new List<IReadOnlyDictionary<string, (ulong Length, byte[] Md5)>>();
+            while (true)
             {
-                if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
-                    return false;
-                selection = SelectPackagePar2(package, linked.Token);
+                PackagePar2Selection? selection;
+                using (await PackagePathOperationGate.Instance.EnterAsync(linked.Token))
+                {
+                    if (package.ItemsSnapshot.Any(item => item.IsUnavailableForProcessing))
+                        return false;
+                    selection = SelectPackagePar2(package, linked.Token, staleLooseSets);
+                    var directory = Path.GetDirectoryName(selection?.Path);
+                    if (!string.IsNullOrWhiteSpace(directory))
+                        trackDirectory(directory);
+                }
                 if (selection == null)
+                {
+                    string status = staleLooseSets.Count > 0 ? "Status_Par2StaleSetSkipped" : "Status_NoPar2FilesFound";
+                    statusCallback?.Invoke(Loc.Get(status));
                     return true;
-                var directory = Path.GetDirectoryName(selection.Path);
-                if (!string.IsNullOrWhiteSpace(directory))
-                    trackDirectory(directory);
+                }
+
+                using (selection)
+                {
+                    statusCallback?.Invoke(Loc.Get("Status_Par2Verifying"));
+                    var verification = await VerifyAsync(selection.Path, statusCallback, progressCallback, linked.Token);
+                    linked.Token.ThrowIfCancellationRequested();
+                    if (selection.LooseTargets is { } looseTargets &&
+                        (verification.Status is Par2VerificationStatus.RepairPossible or Par2VerificationStatus.RepairNotPossible) &&
+                        await IsStaleLooseSetAsync(package, Path.GetDirectoryName(selection.Path)!, looseTargets, linked.Token))
+                    {
+                        staleLooseSets.Add(looseTargets);
+                        continue;
+                    }
+
+                    return await ProcessPackagePar2CoreAsync(package, selection.Path, verification, statusCallback, progressCallback, linked.Token);
+                }
             }
-            using (selection)
-                return await ProcessPackagePar2CoreAsync(package, selection.Path, statusCallback, progressCallback, linked.Token);
         }
     }
 

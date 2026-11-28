@@ -1181,7 +1181,7 @@ public partial class MainViewModel : ObservableObject
             if (package.RequiresArchivePassword)
                 Services.Extractor.ArchiveExtractionService.Instance.InvalidatePackageArchivePasswords(package);
             package.SetNextTaskDone("Par2");
-            StatusSummary = Loc.Get("Status_Par2Repaired");
+            StatusSummary = package.StatusMessage;
             repairCompleted = true;
         }
         finally

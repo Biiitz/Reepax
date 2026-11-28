@@ -51,11 +51,12 @@ public partial class Par2RepairService
             }
         }
 
-        internal async Task VerifyWorkspaceOutputsAsync(IReadOnlyDictionary<string, (ulong Length, byte[] Md5)> targets,
-            CancellationToken token)
+        internal async Task<bool> VerifyWorkspaceOutputsAsync(IReadOnlyDictionary<string, (ulong Length, byte[] Md5)> targets,
+            IReadOnlyCollection<(string Path, string Checksum)> expectedChecksums, CancellationToken token)
         {
             var journal = _journal!;
             CheckWorkspace(journal);
+            var checksums = expectedChecksums.ToLookup(target => target.Path, target => target.Checksum, StringComparer.OrdinalIgnoreCase);
             var outputs = new List<Output>();
             foreach (var (target, expected) in targets)
             {
@@ -67,6 +68,9 @@ public partial class Par2RepairService
                 var identity = ReadIdentity(file.SafeFileHandle);
                 if (identity == null || (ulong)identity.Length != expected.Length)
                     throw new InvalidDataException("A staged PAR2 output has an unexpected length.");
+                foreach (string checksum in checksums[target])
+                    if (!await ChecksumVerificationService.Instance.MatchesExpectedChecksumAsync(staged, checksum, token).ConfigureAwait(false))
+                        return false;
                 if (_workspaceInputs.TryGetValue(target, out var stagedInput) && identity == stagedInput) continue;
                 byte[] hash = await MD5.HashDataAsync(file, token).ConfigureAwait(false);
                 if (!hash.AsSpan().SequenceEqual(expected.Md5))
@@ -74,16 +78,25 @@ public partial class Par2RepairService
                 outputs.Add(new(target, identity));
             }
             _pendingOutputs = outputs.ToArray();
+            return true;
         }
 
-        internal void PublishWorkspace(bool purgeBackups)
+        internal void PublishWorkspace(bool purgeBackups, CancellationToken token)
         {
+            foreach (var (entry, _) in _candidates)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!Matches(entry.Original, entry.Identity))
+                    throw new IOException("A PAR2 input changed before publication.");
+            }
+
             var journal = _journal! with
             {
                 Decision = RecoveryDecision.Publish,
                 Stage = _journal.Stage! with { Outputs = _pendingOutputs!, PurgeBackups = purgeBackups }
             };
             CloseTargetHandles();
+            token.ThrowIfCancellationRequested();
             Save(_journalPath!, journal, overwrite: true);
             _journal = journal;
             RepairDecisionSaved?.Invoke();
