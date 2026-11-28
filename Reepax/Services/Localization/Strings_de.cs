@@ -362,6 +362,7 @@ public static class Strings_de
         ["Status_ExtractionCompleted"] = "Entpacken abgeschlossen",
         ["Status_ExtractionPasswordProtected"] = "Falsches oder fehlendes Passwort",
         ["Status_ExtractionFailed"] = "Entpacken fehlgeschlagen: {0}",
+        ["Extraction_TargetReserved"] = "Ein Ausgabepfad gehört zu einem Download oder zu Entpackergebnissen eines anderen Pakets. Bitte einen anderen Zielordner wählen.",
         ["Status_ExtractionDiskFull"] = "Festplatte voll – Dateien konnten nicht vollständig geschrieben werden",
         ["Status_ExtractionCorruptArchive"] = "Beschädigter Archivteil ({0}) – PAR2-Reparatur empfohlen",
         ["Status_ExtractionMissingVolume"] = "Fehlender Archivteil: {0}",

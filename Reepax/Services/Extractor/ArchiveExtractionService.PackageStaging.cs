@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -11,6 +12,23 @@ namespace Reepax.Services.Extractor;
 
 public partial class ArchiveExtractionService
 {
+    private static HashSet<string> CaptureOtherPackagePaths(DownloadPackage package)
+    {
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        SafeInvoke(() =>
+        {
+            foreach (var other in Download.QueueManager.Instance.Packages)
+            {
+                if (other.Id == package.Id) continue;
+                foreach (var item in other.ItemsSnapshot)
+                    paths.UnionWith(ViewModels.MainViewModel.GetItemCandidatePaths(item, other.SaveDirectory));
+                foreach (var file in other.ExtractedFiles)
+                    paths.Add(file.Path);
+            }
+        });
+        return paths;
+    }
+
     private static string GetPackageExtractionTarget(DownloadPackage package, string archivePath)
     {
         string target = package.SaveDirectory;

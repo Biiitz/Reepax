@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Reepax.Models;
+using Reepax.Services.Localization;
 
 namespace Reepax.Services.Extractor;
 
@@ -29,17 +30,29 @@ internal sealed class PackageExtractionWorkspace : IDisposable
         return Path.Combine(workspace.OutputDirectory, Path.GetRelativePath(root, target));
     }
 
-    internal ExtractedPackageFile[] Publish(IEnumerable<string> protectedSources, CancellationToken cancellationToken)
+    internal ExtractedPackageFile[] Publish(IEnumerable<string> reservedPaths, CancellationToken cancellationToken)
     {
-        var protectedPaths = protectedSources.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var protectedPaths = reservedPaths.Select(Path.GetFullPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var protectedParents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in protectedPaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var parent = Path.GetDirectoryName(path);
+            while (parent != null && protectedParents.Add(parent))
+                parent = Path.GetDirectoryName(parent);
+        }
+
         var publishedFiles = new List<ExtractedPackageFile>();
         foreach (var workspace in _workspaces.Values)
-        foreach (var path in Directory.EnumerateFiles(workspace.OutputDirectory, "*", SearchOption.AllDirectories))
+        foreach (var entry in new DirectoryInfo(workspace.OutputDirectory).EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
         {
-            string destination = Path.GetFullPath(Path.Combine(workspace.TargetDirectory, Path.GetRelativePath(workspace.OutputDirectory, path)));
-            if (protectedPaths.Contains(destination))
-                throw new IOException("An extracted file would overwrite a download source.");
-            publishedFiles.Add(ExtractedPackageFile.Capture(path, destination));
+            cancellationToken.ThrowIfCancellationRequested();
+            string relative = Path.GetRelativePath(workspace.OutputDirectory, entry.FullName);
+            string destination = Path.GetFullPath(Path.Combine(workspace.TargetDirectory, relative));
+            if (protectedPaths.Contains(destination) || (entry is FileInfo && protectedParents.Contains(destination)))
+                throw new IOException(Loc.Get("Extraction_TargetReserved"));
+            if (entry is FileInfo file)
+                publishedFiles.Add(new ExtractedPackageFile(destination, file.Length, file.LastWriteTimeUtc.Ticks));
         }
         try
         {

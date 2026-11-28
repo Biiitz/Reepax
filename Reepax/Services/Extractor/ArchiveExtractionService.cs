@@ -642,8 +642,11 @@ public partial class ArchiveExtractionService
                 using (await PackagePathOperationGate.Instance.EnterAsync(token))
                 {
                     token.ThrowIfCancellationRequested();
-                    var sources = enabledItems.Select(item => item.SaveFilePath).OfType<string>().Where(path => !string.IsNullOrWhiteSpace(path));
-                    var published = batch.Publish(sources.Concat(primaryArchives.SelectMany(GetArchiveSourceFiles)), token);
+                    var protectedPaths = CaptureOtherPackagePaths(package);
+                    protectedPaths.UnionWith(enabledItems.Select(item => item.SaveFilePath).OfType<string>()
+                        .Where(path => !string.IsNullOrWhiteSpace(path)));
+                    protectedPaths.UnionWith(primaryArchives.SelectMany(GetArchiveSourceFiles));
+                    var published = batch.Publish(protectedPaths, token);
                     cleanupPlan.ProtectedPaths.UnionWith(published.Select(file => file.Path));
                     SafeInvoke(() => package.RecordExtractedFiles(published));
                 }

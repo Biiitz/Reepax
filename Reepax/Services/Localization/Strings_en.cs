@@ -362,6 +362,7 @@ public static class Strings_en
         ["Status_ExtractionCompleted"] = "Extraction completed",
         ["Status_ExtractionPasswordProtected"] = "Wrong or missing password",
         ["Status_ExtractionFailed"] = "Extraction failed: {0}",
+        ["Extraction_TargetReserved"] = "An output path belongs to a download or to another package's extracted files. Choose a different destination folder.",
         ["Status_ExtractionDiskFull"] = "Disk full – files could not be written completely",
         ["Status_ExtractionCorruptArchive"] = "Corrupted archive part ({0}) – PAR2 repair recommended",
         ["Status_ExtractionMissingVolume"] = "Missing archive part: {0}",
