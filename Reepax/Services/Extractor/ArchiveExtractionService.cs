@@ -625,10 +625,9 @@ public partial class ArchiveExtractionService
                         successfullyExtractedFiles.Add(item.SaveFilePath);
             }
             PasswordCheckpoint();
-            var settings = SettingsService.Instance.Settings;
-            bool shouldDelete = package.DeleteArchiveAfterExtraction || settings.DeleteArchiveAfterExtraction;
-            bool shouldRecycle = !shouldDelete && (package.MoveArchiveToRecycleBin || settings.MoveArchiveToRecycleBin);
-            bool deletePar2 = settings.DeletePar2AfterExtraction;
+            bool shouldDelete = package.DeleteArchiveAfterExtraction;
+            bool shouldRecycle = !shouldDelete && package.MoveArchiveToRecycleBin;
+            bool deletePar2 = SettingsService.Instance.Settings.DeletePar2AfterExtraction;
             ArchiveCleanupFile[] verifiedPar2 = [];
             if (verified.Count == preparation.Archives.Length)
             {

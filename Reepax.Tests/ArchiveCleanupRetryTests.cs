@@ -87,8 +87,12 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
         Assert.Equal(Loc.Format("Status_ArchiveCleanupFailed", restored.PendingArchiveCleanup!.Files.Length), restored.StatusMessage);
         string output = Path.Combine(restored.SaveDirectory, "payload.txt");
         File.WriteAllText(output, "preserved after reload");
+        restored.DeleteArchiveAfterExtraction = false;
+        restored.MoveArchiveToRecycleBin = true;
+        SettingsService.Instance.Settings.MoveArchiveToRecycleBin = true;
         await new MainViewModel().RetryArchiveCleanupAsync(restored);
         Assert.False(File.Exists(archive));
+        Assert.Empty(_recycle.RecycledPaths);
         Assert.Equal("preserved after reload", File.ReadAllText(output));
         Assert.False(restored.HasPendingArchiveCleanup);
         Assert.Equal(NextTaskStepState.Done, restored.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
@@ -224,7 +228,7 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
     }
 
     [Fact]
-    public async Task RecycleRetry_DoesNotAdoptAChangedPermanentDeletionSetting()
+    public async Task RecycleRetry_AfterReloadDoesNotAdoptAChangedPermanentDeletionSetting()
     {
         var package = CreatePackage();
         package.DeleteArchiveAfterExtraction = false;
@@ -235,7 +239,14 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
         string archive = package.Items[0].SaveFilePath!;
         byte[] original = File.ReadAllBytes(archive);
         package.DeleteArchiveAfterExtraction = true;
+        package.MoveArchiveToRecycleBin = false;
         SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = true;
+        using var storage = new DownloadPersistenceService(Path.Combine(_root.FullName, "downloads.json"));
+        storage.SaveDownloads([package], sync: true);
+        QueueManager.Instance.Packages.Clear();
+        package = Assert.Single(storage.LoadDownloads());
+        QueueManager.Instance.Packages.Add(package);
+        Assert.True(package.PendingArchiveCleanup!.RecycleArchives);
         Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true));
         Assert.Equal(original, File.ReadAllBytes(archive));
         Assert.True(package.HasPendingArchiveCleanup);
@@ -294,14 +305,13 @@ public sealed class ArchiveCleanupRetryTests : IDisposable
     [Theory]
     [InlineData("de", false)]
     [InlineData("en", true)]
-    public async Task ManualOrGlobalCleanupFailure_UsesLocalizedStatusAndRemainsVisible(string language, bool global)
+    public async Task ManualCleanupFailure_UsesLocalizedStatusAndRemainsVisible(string language, bool globalRecycle)
     {
         var viewModel = new MainViewModel();
         LocalizationService.Instance.CurrentLanguage = language;
         var package = CreatePackage();
         package.AutoExtractArchives = false;
-        package.DeleteArchiveAfterExtraction = !global;
-        SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = global;
+        SettingsService.Instance.Settings.MoveArchiveToRecycleBin = globalRecycle;
         string archive = package.Items[0].SaveFilePath!;
         using (var locked = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read))
             Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true));

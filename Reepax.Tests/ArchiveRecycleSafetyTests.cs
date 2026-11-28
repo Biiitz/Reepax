@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Reepax.Models;
 using Reepax.Services.Download;
 using Reepax.Services.Extractor;
@@ -116,13 +117,13 @@ public sealed class ArchiveRecycleSafetyTests : IDisposable
     [InlineData("en", true, false)]
     [InlineData("de", false, true)]
     [InlineData("en", false, true)]
-    public async Task PackageRecycleFailure_KeepsExtractionSuccessfulAndMarksCleanupFailed(string language, bool global, bool manual)
+    public async Task PackageRecycleFailure_KeepsExtractionSuccessfulAndMarksCleanupFailed(string language, bool globalDelete, bool manual)
     {
         LocalizationService.Instance.CurrentLanguage = language;
         var package = CreatePackage();
         package.AutoExtractArchives = !manual;
-        package.MoveArchiveToRecycleBin = !global;
-        SettingsService.Instance.Settings.MoveArchiveToRecycleBin = global;
+        package.MoveArchiveToRecycleBin = true;
+        SettingsService.Instance.Settings.DeleteArchiveAfterExtraction = globalDelete;
         string archivePath = package.Items[0].SaveFilePath!;
         byte[] original = File.ReadAllBytes(archivePath);
         ArchiveExtractionService.Instance.RecyclePaths = _ => throw new IOException("Recycling unavailable.");
@@ -163,6 +164,59 @@ public sealed class ArchiveRecycleSafetyTests : IDisposable
         Assert.False(File.Exists(package.Items[0].SaveFilePath));
         Assert.Equal("archive payload", File.ReadAllText(Path.Combine(package.SaveDirectory, "payload.txt")));
         Assert.Equal(NextTaskStepState.Done, package.NextTaskSteps.Single(step => step.Key == "Cleanup").State);
+    }
+
+    [Theory]
+    [InlineData("keep", "downloads", false)]
+    [InlineData("keep", "downloads", true)]
+    [InlineData("keep", "legacy", false)]
+    [InlineData("keep", "legacy", true)]
+    [InlineData("recycle", "history", false)]
+    [InlineData("recycle", "downloads", true)]
+    [InlineData("delete", "downloads", false)]
+    [InlineData("delete", "history", true)]
+    public async Task Extraction_UsesReloadedPackageCleanupChoice(string mode, string storageType, bool manual)
+    {
+        var package = CreatePackage();
+        package.AutoExtractArchives = !manual;
+        package.DeleteArchiveAfterExtraction = mode == "delete";
+        package.MoveArchiveToRecycleBin = mode == "recycle";
+        string archivePath = package.Items[0].SaveFilePath!;
+        byte[] original = File.ReadAllBytes(archivePath);
+        string unrelated = Path.Combine(package.SaveDirectory, "unrelated.bin");
+        byte[] unrelatedBytes = [3, 5, 8];
+        File.WriteAllBytes(unrelated, unrelatedBytes);
+        string statePath = Path.Combine(_root.FullName, "downloads.json");
+        using var storage = new DownloadPersistenceService(statePath);
+        if (storageType == "legacy")
+        {
+            var data = JsonSerializer.SerializeToNode(DownloadPersistenceService.SnapshotDtos([package]))!.AsArray();
+            data[0]!.AsObject().Remove(nameof(DownloadPackage.DeleteArchiveAfterExtraction));
+            data[0]!.AsObject().Remove(nameof(DownloadPackage.MoveArchiveToRecycleBin));
+            File.WriteAllText(statePath, data.ToJsonString());
+        }
+        else if (storageType == "history") storage.SaveHistory([package], sync: true);
+        else storage.SaveDownloads([package], sync: true);
+
+        var settings = SettingsService.Instance.Settings;
+        settings.DeleteArchiveAfterExtraction = mode != "delete";
+        settings.MoveArchiveToRecycleBin = mode == "delete";
+        var restored = Assert.Single(storageType == "history" ? storage.LoadHistory() : storage.LoadDownloads());
+        QueueManager.Instance.Packages.Clear();
+        QueueManager.Instance.Packages.Add(restored);
+        Assert.Equal(package.DeleteArchiveAfterExtraction, restored.DeleteArchiveAfterExtraction);
+        Assert.Equal(package.MoveArchiveToRecycleBin, restored.MoveArchiveToRecycleBin);
+
+        if (manual) await new Reepax.ViewModels.MainViewModel().ExtractPackageAsync(restored);
+        else Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(restored));
+        Assert.True(restored.IsExtracted);
+        Assert.False(restored.HasPendingArchiveCleanup);
+        Assert.Equal("archive payload", File.ReadAllText(Path.Combine(restored.SaveDirectory, "payload.txt")));
+        Assert.Equal(unrelatedBytes, File.ReadAllBytes(unrelated));
+        Assert.Equal(mode == "keep", File.Exists(archivePath));
+        if (mode == "keep") Assert.Equal(original, File.ReadAllBytes(archivePath));
+        if (mode == "recycle") Assert.Equal(original, File.ReadAllBytes(Assert.Single(_recycle.RecycledPaths)));
+        else Assert.Empty(_recycle.RecycledPaths);
     }
 
     private DownloadPackage CreatePackage()

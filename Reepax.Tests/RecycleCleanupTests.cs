@@ -180,18 +180,8 @@ public sealed class RecycleCleanupTests : IDisposable
         archive.TotalBytes = archive.DownloadedBytes = new FileInfo(archive.SaveFilePath!).Length;
         archive.Status = DownloadStatus.Completed;
 
-        var settings = SettingsService.Instance.Settings;
-        var previousCleanup = (settings.DeleteArchiveAfterExtraction, settings.MoveArchiveToRecycleBin);
-        try
-        {
-            settings.DeleteArchiveAfterExtraction = true;
-            settings.MoveArchiveToRecycleBin = false;
-            Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true));
-        }
-        finally
-        {
-            (settings.DeleteArchiveAfterExtraction, settings.MoveArchiveToRecycleBin) = previousCleanup;
-        }
+        package.DeleteArchiveAfterExtraction = true;
+        Assert.True(await ArchiveExtractionService.Instance.CheckAndExtractPackageAsync(package, force: true));
         Assert.False(File.Exists(archive.SaveFilePath));
         Assert.Equal(result, File.ReadAllBytes(Path.Combine(package.SaveDirectory, "payload", "result.bin")));
 
